@@ -27,7 +27,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <WarningLevel>1</WarningLevel>
   </PropertyGroup>
-
+  
   <ItemGroup>
     <None Remove="new-joe-kuo-6.21201" />
     <None Remove="Properties\new-joe-kuo-6.21201" />
@@ -62,5 +62,5 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
-
+  
 </Project>

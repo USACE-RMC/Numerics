@@ -30,7 +30,6 @@
 
 using Numerics.Data.Statistics;
 using System.IO.Compression;
-using System.Text.Json;
 
 namespace Numerics
 {
@@ -626,24 +625,6 @@ namespace Numerics
                 dstream.CopyTo(output);
             }
             return output.ToArray();
-        }
-
-        /// <summary>
-        /// Returns the object as a byte array. 
-        /// </summary>
-        /// <param name="obj">The object to convert.</param>
-        public static byte[] ToByteArray(object obj)
-        {
-            return JsonSerializer.SerializeToUtf8Bytes(obj);
-        }
-
-        /// <summary>
-        /// Returns the object from a byte array. 
-        /// </summary>
-        /// <param name="bytes">Byte array.</param>
-        public static T FromByteArray<T>(byte[] bytes)
-        {
-            return JsonSerializer.Deserialize<T>(bytes);
         }
 
     }

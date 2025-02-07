@@ -35,7 +35,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Text.Json;
 
 namespace Numerics.Sampling.MCMC
 {
@@ -149,8 +148,6 @@ namespace Numerics.Sampling.MCMC
         /// <param name="mcmcResults">The MCMC Results.</param>
         public static byte[] ToByteArray(MCMCResults mcmcResults)
         {
-            //return JsonSerializer.SerializeToUtf8Bytes(mcmcResults);
-
             var bf = new BinaryFormatter();
             using (var ms = new MemoryStream())
             {
@@ -165,8 +162,6 @@ namespace Numerics.Sampling.MCMC
         /// <param name="bytes">Byte array.</param>
         public static MCMCResults FromByteArray(byte[] bytes)
         {
-            //return JsonSerializer.Deserialize<MCMCResults>(bytes);
-
             using (var ms = new MemoryStream())
             {
                 var bf = new BinaryFormatter();
