@@ -402,16 +402,13 @@ namespace Numerics.Sampling.MCMC
                         _mapSuccessful = true;
                         // Get MAP
                         MAP = DE.BestParameterSet.Clone();
-                        // Get Fisher Information Matrix (or Hessian)
-                        var hessian = DE.Hessian.Clone();
-                        Matrix fisher = hessian * -1d;
-                        // Invert it to get the covariance matrix
-                        fisher = fisher.Inverse();
-                        // Scale it to give wider coverage
-                        fisher = fisher * 3;
+                        // Get Fisher Information Matrix
+                        var fisher = DE.Hessian * -1d;
+                        // Invert it to get the covariance matrix, and scale to give wider coverage
+                        var covar = fisher.Inverse() * 2.5;
 
                         // Set up proposal distribution
-                        _MVN = new MultivariateNormal(MAP.Values, fisher.ToArray());
+                        _MVN = new MultivariateNormal(MAP.Values, covar.ToArray());
                         // Then randomly sample from the proposal
                         for (int i = 0; i < InitialIterations; i++)
                         {

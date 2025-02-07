@@ -203,6 +203,7 @@ namespace Numerics.Mathematics
         /// <returns>The Hessian matrix.</returns>
         public static double[,] Hessian(Func<double[], double> f, double[] point, double stepSize = -1)
         {
+
             var hess = new double[point.Length, point.Length];
             var x = new double[point.Length];
             point.CopyTo(x, 0);
@@ -211,11 +212,11 @@ namespace Numerics.Mathematics
 
             for (int i = 0; i < point.Length; i++)
             {
-                hi = stepSize <= 0 ? CalculateStepSize(point[i], 2) : stepSize;
+                hi = stepSize <= 0 ? CalculateStepSize(point[i], 3) : stepSize;
 
                 for (int j = 0; j < point.Length; j++)
                 {
-                    hj = stepSize <= 0 ? CalculateStepSize(point[j], 2) : stepSize;
+                    hj = stepSize <= 0 ? CalculateStepSize(point[j], 3) : stepSize;
 
                     if (i == j)
                     {
@@ -240,7 +241,6 @@ namespace Numerics.Mathematics
                         f4 = f(x);
                         hess[i, j] = (f1 - f2 - f3 + f4) / (4 * hi * hj);
                     }
-
                     x[i] = point[i];
                     x[j] = point[j];
                 }
@@ -260,7 +260,7 @@ namespace Numerics.Mathematics
         /// </returns>
         public static double CalculateStepSize(double x, int order = 1)
         {
-            return Math.Pow(Tools.DoubleMachineEpsilon, 1d / (1d + order)) * (1 + Math.Abs(x));
+            return Math.Pow(Tools.DoubleMachineEpsilon, 1d / (1d + order)) * (1.0 + Math.Abs(x));
         }
     }
 }

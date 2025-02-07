@@ -36,6 +36,10 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Threading.Tasks;
+using System.Text.RegularExpressions;
+using System.IO;
+using System.Net;
 
 namespace Data.TimeSeriesAnalysis
 {
@@ -246,7 +250,7 @@ namespace Data.TimeSeriesAnalysis
             Equal(ts, values);
 
             // Test Standardize method
-            var mean = Numerics.Data.Statistics.Statistics.Mean(values); 
+            var mean = Numerics.Data.Statistics.Statistics.Mean(values);
             var sd = Numerics.Data.Statistics.Statistics.StandardDeviation(values);
             for (int i = 0; i < values.Length; i++) { values[i] = (values[i] - mean) / sd; }
             ts.Standardize();
@@ -545,9 +549,9 @@ namespace Data.TimeSeriesAnalysis
         public void Test_ClipTimeSeries()
         {
             var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), new double[] { 22, 16, 33, 5, 12, 36, 48, 10, 18, 15, 22, 13 });
-            var start = new DateTime(2023, 11, 01); 
+            var start = new DateTime(2023, 11, 01);
             var end = new DateTime(2023, 12, 01);
-            var newTS = ts.ClipTimeSeries(start,end);
+            var newTS = ts.ClipTimeSeries(start, end);
 
             Assert.AreEqual(2, newTS.Count);
             Assert.AreEqual(start, newTS.StartDate);
@@ -617,7 +621,7 @@ namespace Data.TimeSeriesAnalysis
         {
             var data = new double[] { 43, 42, 42, 46, 51, 56, 58, 60, 67, 278, 278, 218, 256, 243, 225, 199, 262, 616, 1440, 2180, 3140, 4520, 4700, 4340, 4190, 3720, 3120, 2550, 2110, 1720, 1350, 1110, 950, 830, 755, 696, 664, 612, 572, 520, 458, 410, 362, 315, 273, 270, 277, 246, 247, 248, 261, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 233, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162, 162 };
             var ts = new TimeSeries(TimeInterval.OneHour, new DateTime(1973, 5, 1), data);
-            
+
             // Convert to 1-Day
             var newTS = ts.ConvertTimeInterval(TimeInterval.OneDay, false);
             var trueValues = new double[] { 23360, 28080, 5649, 4172 };
@@ -784,7 +788,7 @@ namespace Data.TimeSeriesAnalysis
                                          { 17.2, 19.4, 21.6, 23.8, 28.2, 30.4, 32.6, 34.8 },
                                          { 24.8, 27.6, 30.4, 33.2, 38.8, 41.6, 44.4, 47.2 },
                                          { 8.5,  9.0,  9.5, 10.0, 11.0, 11.5, 12.0, 12.5 } };
-            
+
             var summary = ts.MonthlySummaryStatistics();
             var validS = new double[,] { { 22, 22.8, 26.0, 30.0, 34.0, 37.2, 38, 30 },
                                          { 16, 16.05, 16.25, 16.50, 16.75, 16.95, 17, 16.5 },
@@ -801,10 +805,10 @@ namespace Data.TimeSeriesAnalysis
 
             for (int i = 0; i < 11; i++)
             {
-                for(int j = 0; j < 8; j++)
+                for (int j = 0; j < 8; j++)
                 {
-                    Assert.AreEqual(validP[i,j], percentiles[i,j], 1E-10);
-                    Assert.AreEqual(validS[i,j], summary[i,j], 1E-10);
+                    Assert.AreEqual(validP[i, j], percentiles[i, j], 1E-10);
+                    Assert.AreEqual(validS[i, j], summary[i, j], 1E-10);
                 }
             }
         }
@@ -819,7 +823,7 @@ namespace Data.TimeSeriesAnalysis
             var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), values);
 
             var frequencies = ts.MonthlyFrequency();
-            for(int i = 0; i < frequencies.Length; i++)
+            for (int i = 0; i < frequencies.Length; i++)
             {
                 Assert.AreEqual(2, frequencies[i]);
             }
@@ -898,7 +902,7 @@ namespace Data.TimeSeriesAnalysis
             var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), values);
             var monthlyTS = ts.MonthlySeries();
 
-            for(int i = 0; i < monthlyTS.Count; i++)
+            for (int i = 0; i < monthlyTS.Count; i++)
             {
                 // since the time interval is one month, all of the original values are the max of their own month
                 Assert.AreEqual(values[i], monthlyTS[i].Value);
@@ -908,7 +912,7 @@ namespace Data.TimeSeriesAnalysis
             var ts2 = new TimeSeries(TimeInterval.SevenDay, new DateTime(2023, 01, 01), values);
             var monthlyTS2 = ts2.MonthlySeries();
             var maxVals2 = new double[] { 244, 263, 205, 331, 262, 240, 195, 317, 204, 185, 337, 262, 182, 250, 239, 180 };
-            for(int i = 0; i < maxVals2.Length; i++)
+            for (int i = 0; i < maxVals2.Length; i++)
             {
                 Assert.AreEqual(maxVals2[i], monthlyTS2[i].Value);
             }

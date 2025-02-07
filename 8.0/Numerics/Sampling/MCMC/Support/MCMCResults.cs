@@ -63,8 +63,6 @@ namespace Numerics.Sampling.MCMC
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
         public MCMCResults(MCMCSampler sampler, double alpha = 0.1)
         {
-            
-
             // Clone the Markov Chains and Output
             MarkovChains = new List<ParameterSet>[sampler.NumberOfChains];
             Output = new List<ParameterSet>();
@@ -111,6 +109,11 @@ namespace Numerics.Sampling.MCMC
         public ParameterSet MAP { get; private set; }
 
         /// <summary>
+        /// The mean of the posterior distribution of each parameter. 
+        /// </summary>
+        public ParameterSet PosteriorMean { get; private set; }
+
+        /// <summary>
         /// Process the parameter results.
         /// </summary>
         /// <param name="sampler">The MCMC sampler to post-process.</param>
@@ -119,48 +122,23 @@ namespace Numerics.Sampling.MCMC
         {
             // Compute the Gelman-Rubin diagnostic using the post-warm up period
             var GR = MCMCDiagnostics.GelmanRubin(sampler.MarkovChains, sampler.WarmupIterations);
-
+            // Compute the effective sample size using the output
+            var ESS = MCMCDiagnostics.EffectiveSampleSize(sampler.Output, out var averageACF);
             // Compute parameter summary statistics
+            var postMean = new double[sampler.NumberOfParameters];
             ParameterResults = new ParameterResults[sampler.NumberOfParameters];
             for (int i = 0; i < sampler.NumberOfParameters; i++)
             {
-                // Compute the Autocorrelation Function (ACF) and Effective Sample Size (ESS)
-                // Average the ACF and sum the ESS
-                var x = new List<double>();
-                var avgACF = new double[51, 2];
-                double ess = 0;
-
-                for (int j = 0; j < sampler.NumberOfChains; j++)
-                {
-                    // Get list of parameters
-                    var N = sampler.Output[j].Count;
-                    var y = new List<double>();
-                    for (int k = 0; k < N; k++)
-                        y.Add(sampler.Output[j][k].Values[i]);
-                    x.AddRange(y);
-
-                    // Get ACF
-                    var acf = Fourier.Autocorrelation(y, (int)Math.Ceiling((double)N / 2));
-                    for (int k = 0; k < acf.GetLength(0); k++)
-                    {
-                        if (k > 50) break;
-                        avgACF[k, 1] += acf[k, 1] / sampler.NumberOfChains;
-                    }
-                    // Get ESS
-                    double rho = 0;
-                    for (int k = 1; k < acf.GetLength(0); k++)
-                    {
-                        if (acf[k, 1] < 0.05) break;
-                        rho += acf[k, 1];
-                    }
-                    ess += Math.Min(N / (1d + 2d * rho), N);
-                }
-
+                var x = Output.Select(set => set.Values[i]).ToArray();
                 ParameterResults[i] = new ParameterResults(x, alpha);
                 ParameterResults[i].SummaryStatistics.Rhat = GR[i];
-                ParameterResults[i].SummaryStatistics.ESS = ess;
-                ParameterResults[i].Autocorrelation = avgACF;
+                ParameterResults[i].SummaryStatistics.ESS = ESS[i];
+                ParameterResults[i].Autocorrelation = averageACF[i];
+                postMean[i] = ParameterResults[i].SummaryStatistics.Mean;
             }
+            // Set the posterior mean parameter set. 
+            var postMeanLogLH = sampler.LogLikelihoodFunction(postMean);
+            PosteriorMean = new ParameterSet(postMean, postMeanLogLH);
         }
 
         #region Serialization

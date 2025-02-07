@@ -34,6 +34,10 @@ using System.Linq;
 using System.Net;
 using System.Xml.Linq;
 using System;
+using System.Threading.Tasks;
+using System.Net.Http;
+using System.Globalization;
+using System.Collections.Generic;
 
 namespace Numerics.Data
 {
@@ -49,25 +53,54 @@ namespace Numerics.Data
     /// </remarks>
     public class TimeSeriesDownload
     {
+
         /// <summary>
-        /// Enumeration of USGS time series options.
+        /// Checks if there is an Internet connection.
         /// </summary>
-        public enum USGSTimeSeriesType
+        public static async Task<bool> IsConnectedToInternet()
+        {
+            try
+            {
+                using (HttpClient client = new HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromSeconds(5);
+                    await client.GetAsync("https://www.google.com");
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Enumeration of time series options.
+        /// </summary>
+        public enum TimeSeriesType
         {
             /// <summary>
-            /// Daily discharge.
+            /// Daily mean discharge.
             /// </summary>
             DailyDischarge,
             /// <summary>
-            /// Daily stage.
+            /// Daily mean stage.
             /// </summary>
             DailyStage,
             /// <summary>
-            /// Instantaneous discharge, typically record at a 15-minute interval.
+            /// Daily total precipitation.
+            /// </summary>
+            DailyPrecipitation,
+            /// <summary>
+            /// Daily total snow.
+            /// </summary>
+            DailySnow,
+            /// <summary>
+            /// Instantaneous discharge, typically recorded at a 15-minute interval.
             /// </summary>
             InstantaneousDischarge,
             /// <summary>
-            /// Instantaneous stage, typically record at a 15-minute interval.
+            /// Instantaneous stage, typically recorded at a 15-minute interval.
             /// </summary>
             InstantaneousStage,
             /// <summary>
@@ -81,38 +114,55 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Enumeration of GHCN time series options.
-        /// </summary>
-        public enum GHCNTimeSeriesType
-        {
-            /// <summary>
-            /// Daily precipitation.
-            /// </summary>
-            DailyPrecipitation,
-            /// <summary>
-            /// Daily snow.
-            /// </summary>
-            DailySnow,
-        }
-
-        /// <summary>
-        /// Enumeration of GHCN depth unit options.
+        /// Enumeration of depth unit options.
         /// </summary>
         public enum DepthUnit
         {
             /// <summary>
-            /// Millimeters
+            /// Millimeters (mm)
             /// </summary>
             Millimeters,
             /// <summary>
-            /// Centimeters.
+            /// Centimeters (cm).
             /// </summary>
             Centimeters,
             /// <summary>
-            /// Inches.
+            /// Inches (in).
             /// </summary>
             Inches
         }
+
+        /// <summary>
+        /// Enumeration of discharge unit options.
+        /// </summary>
+        public enum DischargeUnit
+        {
+            /// <summary>
+            /// Cubic feet per second (cfs)
+            /// </summary>
+            CubicFeetPerSecond,
+            /// <summary>
+            /// Cubic meters per second (cms)
+            /// </summary>
+            CubicMetersPerSecond,
+        }
+
+        /// <summary>
+        /// Enumeration of gage height unit options.
+        /// </summary>
+        public enum HeightUnit
+        {
+            /// <summary>
+            /// Feet (ft)
+            /// </summary>
+            Feet,
+            /// <summary>
+            /// Meters (m)
+            /// </summary>
+            Meters,
+        }
+
+        #region GHCN
 
         /// <summary>
         /// Download data from the Global Historical Climatology Network (GHCN). 
@@ -121,101 +171,179 @@ namespace Numerics.Data
         /// <param name="timeSeriesType">The time series type. Default = Daily precipitation.</param>
         /// <param name="unit">The depth unit. Default = inches.</param>
         /// <returns>A downloaded time series.</returns>
-        public static TimeSeries FromGHCN(string siteNumber, GHCNTimeSeriesType timeSeriesType = GHCNTimeSeriesType.DailyPrecipitation, DepthUnit unit = DepthUnit.Inches)
-        {     
+        public static async Task<TimeSeries> FromGHCN(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyPrecipitation, DepthUnit unit = DepthUnit.Inches)
+        {
+            // Check internet connection
+            if (!await IsConnectedToInternet())
+            {
+                throw new InvalidOperationException("No internet connection.");
+            }
+
+            // Check site number
+            if (siteNumber.Length != 11)
+            {
+                throw new ArgumentException("The GHCN site number must be 11-digits long", nameof(siteNumber));
+            }
+
+            // Check time series type
+            if (timeSeriesType != TimeSeriesType.DailyPrecipitation && timeSeriesType != TimeSeriesType.DailySnow)
+            {
+                throw new ArgumentException("The time series type must be either daily precipitation or daily snow.", nameof(timeSeriesType));
+            }
+
             var timeSeries = new TimeSeries(TimeInterval.OneDay);
-      
+            DateTime? previousDate = null;
+            string tempFilePath = Path.Combine(Path.GetTempPath(), $"{siteNumber}.dly");
+
             try
             {
-                // Check if there is an Internet connection
-                if (IsConnectedToInternet() == false)
-                    throw new Exception("There is no Internet connection!");
-
-                // Setup url parameters
-                string url = "https://ncei.noaa.gov/pub/data/ghcn/daily/by_station/" + siteNumber + ".csv.gz";
-
-                // Temp file names
-                string zipFileName = "C:/Temp/" + siteNumber + ".csv.gz";
-
-                // Download data to temp directory
-                using (var client = new WebClient())
+ 
+                // Download the GHCN file
+                string ghcnBaseUrl = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/";
+                string stationFileUrl = $"{ghcnBaseUrl}{siteNumber}.dly";
+                using (var client = new HttpClient())
                 {
-                    client.DownloadFile(url, zipFileName);
-                }
-
-                // Unzip the file
-                FileInfo fileToDecompress = new FileInfo(zipFileName);
-                using (FileStream originalFileStream = fileToDecompress.OpenRead())
-                {
-                    string currentFileName = fileToDecompress.FullName;
-                    string newFileName = currentFileName.Remove(currentFileName.Length - fileToDecompress.Extension.Length);
-                    using (FileStream decompressedFileStream = File.Create(newFileName))
+                    // Request the file and ensure that response headers are read first.
+                    using (HttpResponseMessage response = await client.GetAsync(stationFileUrl, HttpCompletionOption.ResponseHeadersRead))
                     {
-                        using (GZipStream decompressionStream = new GZipStream(originalFileStream, CompressionMode.Decompress))
+                        response.EnsureSuccessStatusCode();
+                        using (Stream stream = await response.Content.ReadAsStreamAsync())
+                        using (FileStream fs = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
                         {
-                            decompressionStream.CopyTo(decompressedFileStream);
+                            await stream.CopyToAsync(fs);
                         }
                     }
                 }
 
-                // Parse the file and create time series
-                // import at-site data
-                string filePath = "C:/Temp/" + siteNumber + ".csv";
-                StreamReader reader = null;
-                if (File.Exists(filePath))
-                {               
-                    reader = new StreamReader(File.OpenRead(filePath));
-                    while (!reader.EndOfStream)
-                    {
-                        var line = reader.ReadLine().Split(',');
-
-                        // Get date
-                        var dateString = line[1];
-                        int.TryParse(dateString.Substring(0, 4), out var year);
-                        int.TryParse(dateString.Substring(4, 2), out var month);
-                        int.TryParse(dateString.Substring(6, 2), out var day);
-                        var dateTime = new DateTime(year, month, day);
-
-                        // Get type
-                        var typeString = line[2];
-
-                        // Get value
-                        double.TryParse(line[3], out var value);
-                        if ((typeString == "PRCP" && timeSeriesType == GHCNTimeSeriesType.DailyPrecipitation) || (typeString == "SNOW" && timeSeriesType == GHCNTimeSeriesType.DailySnow))
-                        {
-                            value /= 10d;
-                            if (unit == DepthUnit.Millimeters)
-                            {
-                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(dateTime, value));
-                            }
-                            else if (unit == DepthUnit.Centimeters)
-                            {
-                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(dateTime, value / 10d));
-                            }
-                            else if (unit == DepthUnit.Inches)
-                            {
-                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(dateTime, value / 25.4d));
-                            }
-                        }
-                    }
-                    reader.Close();
-                }
-                else
+                // Read and parse the file
+                if (!File.Exists(tempFilePath))
                 {
-                    throw new Exception("File doesn't exist");
+                    throw new Exception("Downloaded file does not exist.");
                 }
 
-                // Delete the zip file and .csv file
-                File.Delete(zipFileName);
-                File.Delete(filePath);
+                // Read and parse the file
+                string[] lines = File.ReadAllLines(tempFilePath);
+                foreach (string line in lines)
+                {
+                    // Extract the type (PRCP, SNOW, etc.)
+                    var typeString = line.Substring(17, 4);
+                    if ((typeString == "PRCP" && timeSeriesType == TimeSeriesType.DailyPrecipitation) || 
+                        (typeString == "SNOW" && timeSeriesType == TimeSeriesType.DailySnow))
+                    {
+
+                        // Extract year, month, and parse days
+                        int.TryParse(line.Substring(11, 4), out var year);
+                        int.TryParse(line.Substring(15, 2), out var month);
+                        int daysInMonth = DateTime.DaysInMonth(year, month);
+
+                        for (int i = 0; i < daysInMonth; i++)
+                        {
+                            int offset = 21 + (i * 8);
+                            string strgValue = line.Substring(offset, 5).Trim();
+                            var currentDate = new DateTime(year, month, i + 1);
+
+                            // Fill missing dates with NaN if there is a gap
+                            if (previousDate.HasValue && (currentDate - previousDate.Value).Days > 1)
+                            {
+                                FillMissingDates(timeSeries, previousDate.Value, currentDate);
+                            }
+
+                            // Parse the precipitation or snow value
+                            if (int.TryParse(strgValue, out int rawValue) && rawValue != -9999)  // Valid precipitation value
+                            {
+                                double convertedValue = ConvertToDesiredUnit(rawValue, unit);
+                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, convertedValue));
+                            }
+                            else  
+                            {
+                                // Add missing value if invalid
+                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, double.NaN));
+                            }
+
+                            previousDate = currentDate;
+                        }                      
+                    }
+                }
 
             }
             catch (Exception ex)
             {
                 throw ex;
             }
+            finally
+            {
+                // Ensure temporary file is deleted even if an exception occurs
+                if (File.Exists(tempFilePath))
+                {
+                    File.Delete(tempFilePath);
+                }
+            }
 
             return timeSeries;
+        }
+
+        /// <summary>
+        /// Converts raw GHCN values to the desired unit.
+        /// </summary>
+        /// <param name="rawValue">The raw value from the GHCN dataset.</param>
+        /// <param name="unit">The unit to convert to.</param>
+        /// <returns>The converted value.</returns>
+        private static double ConvertToDesiredUnit(int rawValue, DepthUnit unit)
+        {
+            return unit switch
+            {
+                DepthUnit.Millimeters => rawValue / 10.0,
+                DepthUnit.Centimeters => rawValue / 100.0,
+                DepthUnit.Inches => rawValue / 254.0,
+                _ => throw new ArgumentOutOfRangeException(nameof(unit), "Unsupported depth unit.")
+            };
+        }
+
+        /// <summary>
+        /// Fills missing dates between the last available date and the current date.
+        /// </summary>
+        /// <param name="timeSeries">The time series to fill.</param>
+        /// <param name="previousDate">The last available date.</param>
+        /// <param name="currentDate">The current date to reach.</param>
+        private static void FillMissingDates(TimeSeries timeSeries, DateTime previousDate, DateTime currentDate)
+        {
+            DateTime missingDate = previousDate.AddDays(1);
+            while (missingDate < currentDate)
+            {
+                timeSeries.Add(new SeriesOrdinate<DateTime, double>(missingDate, double.NaN));
+                missingDate = missingDate.AddDays(1);
+            }
+        }
+
+        #endregion
+
+        #region USGS
+
+        /// <summary>
+        /// Create the URL string for USGS download.
+        /// </summary>
+        /// <param name="siteNumber">USGS site number.</param>
+        /// <param name="timeSeriesType">The time series type.</param>
+        /// <returns>The URL string.</returns>
+        private static string CreateURLForUSGSDownload(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge)
+        {
+            // For annual max data (peak values)
+            if (timeSeriesType == TimeSeriesType.PeakDischarge || timeSeriesType == TimeSeriesType.PeakStage)
+            {
+                return $"https://nwis.waterdata.usgs.gov/nwis/peak?site_no={siteNumber}&agency_cd=USGS&format=rdb";
+            }
+
+            // Determine URL parts for daily and instantaneous data
+            string dataTypePart = (timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.DailyStage) ? "dv/?" : "iv/?";
+            string siteNumberPart = $"&sites={siteNumber}";
+            string parameterCodePart = $"&parameterCd={(timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.InstantaneousDischarge ? "00060" : "00065")}";
+            string startDatePart = $"&startDT={(timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.DailyStage ? "1800-01-01" : "1900-01-01")}";
+            string endDatePart = $"&endDT={DateTime.Now:yyyy-MM-dd}";
+            string statCodePart = (timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.DailyStage) ? "&statCd=00003" : "";
+            string siteStatusPart = "&siteStatus=all";
+            string formatPart = "&format=rdb";
+
+            return $"https://waterservices.usgs.gov/nwis/{dataTypePart}{siteNumberPart}{parameterCodePart}{startDatePart}{endDatePart}{statCodePart}{siteStatusPart}{formatPart}";
         }
 
         /// <summary>
@@ -223,135 +351,161 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="siteNumber">USGS site number.</param>
         /// <param name="timeSeriesType">The time series type.</param>
-        public static TimeSeries FromUSGS(string siteNumber, USGSTimeSeriesType timeSeriesType = USGSTimeSeriesType.DailyDischarge)
+        public static async Task<TimeSeries> FromUSGS(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge)
         {
+            // Check internet connection
+            if (!await IsConnectedToInternet())
+            {
+                throw new InvalidOperationException("No internet connection.");
+            }
+
+            // Check site number
+            if (siteNumber.Length != 8)
+            {
+                throw new ArgumentException("The USGS site number must be 8-digits long", nameof(siteNumber));
+            }
+
+            // Check time series type
+            if (timeSeriesType == TimeSeriesType.DailyPrecipitation || timeSeriesType == TimeSeriesType.DailySnow)
+            {
+                throw new ArgumentException("The time series type cannot be daily precipitation or daily snow.", nameof(timeSeriesType));
+            }
+
             var timeSeries = new TimeSeries();
+
+            // Get URL
+            string url = CreateURLForUSGSDownload(siteNumber, timeSeriesType);
 
             try
             {
-                // Check if there is an Internet connection
-                if (IsConnectedToInternet() == false)
-                    throw new Exception("There is no Internet connection!");
-
-                // Setup url parameters
-                string timeInterval = "dv";
-                string startDate = "1800-01-01";
-                string endDate = DateTime.Now.ToString("yyyy-MM-dd");
-                string statCode = "&statCd=00003";
-                string parameterCode = "00060";
-                string url = "";
-
-                if (timeSeriesType == USGSTimeSeriesType.DailyDischarge || timeSeriesType == USGSTimeSeriesType.DailyStage)
+                // For daily or instantaneous data, use HttpClient with gzip support
+                if (timeSeriesType == TimeSeriesType.DailyDischarge || 
+                    timeSeriesType == TimeSeriesType.DailyStage || 
+                    timeSeriesType == TimeSeriesType.InstantaneousDischarge || 
+                    timeSeriesType == TimeSeriesType.InstantaneousStage)
                 {
-                    timeInterval = "dv";
-                    statCode = "&statCd=00003";
-                    parameterCode = timeSeriesType == USGSTimeSeriesType.DailyDischarge ? "00060" : "00065";
-                    timeSeries = new TimeSeries(TimeInterval.OneDay);
-                    url = "https://waterservices.usgs.gov/nwis/" + timeInterval + "/?format=waterml,2.0&sites=" + siteNumber + "&startDT=" + startDate + "&endDT=" + endDate + statCode + "&parameterCd=" + parameterCode + "&siteStatus=all";
-                }
-                else if (timeSeriesType == USGSTimeSeriesType.InstantaneousDischarge || timeSeriesType == USGSTimeSeriesType.InstantaneousStage)
-                {
-                    timeInterval = "iv";
-                    statCode = "";
-                    parameterCode = timeSeriesType == USGSTimeSeriesType.InstantaneousDischarge ? "00060" : "00065";
-                    timeSeries = new TimeSeries(TimeInterval.FifteenMinute);
-                    url = "https://waterservices.usgs.gov/nwis/" + timeInterval + "/?format=waterml,2.0&sites=" + siteNumber + "&startDT=" + startDate + "&endDT=" + endDate + statCode + "&parameterCd=" + parameterCode + "&siteStatus=all";
-                }
-                else if (timeSeriesType == USGSTimeSeriesType.PeakDischarge || timeSeriesType == USGSTimeSeriesType.PeakStage)
-                {
-                    timeInterval = "peak";
-                    statCode = "";
-                    timeSeries = new TimeSeries(TimeInterval.Irregular);
-                    url = "https://nwis.waterdata.usgs.gov/nwis/peak?site_no=" + siteNumber + "&agency_cd=USGS&format=rdb";
-                }
-
-                // Download data
-                string textDownload;
-                using (var client = new WebClient())
-                    textDownload = client.DownloadString(url);
-
-                if (timeSeriesType == USGSTimeSeriesType.DailyDischarge || timeSeriesType == USGSTimeSeriesType.DailyStage)
-                {
-                    // Convert to XElement and check if the download was valid
-                    var xElement = XElement.Parse(textDownload);
-                    var points = xElement.Descendants("{http://www.opengis.net/waterml/2.0}point");
-
-                    // Create time series
-                    foreach (XElement point in points.Elements())
+                    using (HttpClient client = new HttpClient())
                     {
-                        if (point.Element("{http://www.opengis.net/waterml/2.0}time") != null && point.Element("{http://www.opengis.net/waterml/2.0}value") != null)
+                        // Set request headers to accept gzip encoding
+                        client.DefaultRequestHeaders.AcceptEncoding.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue("gzip"));
+
+                        HttpResponseMessage response = await client.GetAsync(url);
+                        response.EnsureSuccessStatusCode();
+
+                        // Ensure the response content is compressed as expected
+                        if (!response.Content.Headers.ContentEncoding.Contains("gzip"))
                         {
-                            // Get date
-                            DateTime index = DateTime.Now;
-                            DateTime.TryParse(point.Element("{http://www.opengis.net/waterml/2.0}time").Value, out index);
+                            throw new Exception("Response is not compressed as expected.");
+                        }
 
-                            // See if this date is 
-                            if (timeSeries.Count > 0 && index != TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay))
-                            {
-                                while (timeSeries.Last().Index < TimeSeries.SubtractTimeInterval(index, TimeInterval.OneDay))
-                                    timeSeries.Add(new SeriesOrdinate<DateTime, double>(TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay), double.NaN));
-                            }
+                        using (Stream compressedStream = await response.Content.ReadAsStreamAsync())
+                        using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+                        using (StreamReader reader = new StreamReader(decompressionStream))
+                        {
+                            string line;
+                            bool isHeader = true;
 
-                            // Get value
-                            double value = 0;
-                            string valueStg = point.Element("{http://www.opengis.net/waterml/2.0}value").Value;
-                            if (valueStg == "" || valueStg == " " || valueStg == "  " || string.IsNullOrEmpty(valueStg))
-                                value = double.NaN;
-                            else
+                            while ((line = await reader.ReadLineAsync()) != null)
                             {
-                                double.TryParse(valueStg, out value);
+                                // Skip header row
+                                if (isHeader)
+                                {
+                                    isHeader = false;
+                                    continue;
+                                }
+
+                                // Skip comment lines
+                                if (line.StartsWith("#"))
+                                {
+                                    if (line.Trim() == "#  No sites found matching all criteria")
+                                    {
+                                        throw new Exception("No data found matching all criteria.");
+                                    }
+                                    continue;
+                                }
+
+                                string[] fields = line.Split('\t');
+                                // Validate expected number of fields and record type
+                                if (fields.Length < 5 || fields[0] != "USGS")
+                                    continue;
+
+                                // Parse date (assume fields[2] contains the date)
+                                if (!DateTime.TryParse(fields[2], out DateTime index))
+                                {
+                                    // Optionally log or handle date parse failures
+                                    continue;
+                                }
+
+                                // Fill in missing days if the time series is not continuous
+                                if (timeSeries.Count > 0 && index != TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay))
+                                {
+                                    while (timeSeries.Last().Index < TimeSeries.SubtractTimeInterval(index, TimeInterval.OneDay))
+                                    {
+                                        timeSeries.Add(new SeriesOrdinate<DateTime, double>(
+                                            TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay), double.NaN));
+                                    }
+                                }
+
+                                // Get and parse value
+                                string valueStr = fields[3];
+                                double value = string.IsNullOrWhiteSpace(valueStr) ? double.NaN : double.TryParse(valueStr, out double tempVal) ? tempVal : double.NaN;
+                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
                             }
-                            timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
                         }
                     }
                 }
-                else if (timeSeriesType == USGSTimeSeriesType.PeakDischarge || timeSeriesType == USGSTimeSeriesType.PeakStage)
+                // For peak data (annual max values)
+                else if (timeSeriesType == TimeSeriesType.PeakDischarge || timeSeriesType == TimeSeriesType.PeakStage)
                 {
-                    var delimiters = new char[] { '\t' };
-                    var lines = textDownload.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (string line in lines)
+                    using (HttpClient client = new HttpClient())
                     {
-                        var segments = line.Split(delimiters);
-                        if (segments.First() == "USGS" && segments.Count() >= 5)
-                        {
-                            // Get date
-                            DateTime index = DateTime.Now;
-                            int year = 2000;
-                            int month = 1;
-                            int day = 1;
-                            var dateString = segments[2].Split('-');
-                            DateTime.TryParse(segments[2], out index);
+                        // Download data as string (assumes USGS peak data is not compressed)
+                        string textDownload = await client.GetStringAsync(url);
 
-                            if (index == DateTime.MinValue)
+                        var lines = textDownload.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+                        foreach (string line in lines)
+                        {
+                            var segments = line.Split('\t');
+                            if (segments.First() == "USGS" && segments.Count() >= 5)
                             {
-                                // The date parsing failed, so try to manually parse it
-                                if (dateString[1] == "00" && dateString[2] != "00")
+                                // Get date
+                                DateTime index = DateTime.Now;
+                                int year = 2000;
+                                int month = 1;
+                                int day = 1;
+                                var dateString = segments[2].Split('-');
+                                DateTime.TryParse(segments[2], out index);
+
+                                if (index == DateTime.MinValue)
                                 {
-                                    int.TryParse(dateString[0], out year);
-                                    int.TryParse(dateString[2], out day);
-                                    index = new DateTime(year, month, day, 0, 0, 0);
+                                    // The date parsing failed, so try to manually parse it
+                                    if (dateString[1] == "00" && dateString[2] != "00")
+                                    {
+                                        int.TryParse(dateString[0], out year);
+                                        int.TryParse(dateString[2], out day);
+                                        index = new DateTime(year, month, day, 0, 0, 0);
+                                    }
+                                    else if (dateString[1] != "00" && dateString[2] == "00")
+                                    {
+                                        int.TryParse(dateString[0], out year);
+                                        int.TryParse(dateString[1], out month);
+                                        index = new DateTime(year, month, day, 0, 0, 0);
+                                    }
+                                    else if (dateString[1] == "00" && dateString[2] == "00")
+                                    {
+                                        int.TryParse(dateString[0], out year);
+                                        index = new DateTime(year, month, day, 0, 0, 0);
+                                    }
                                 }
-                                else if (dateString[1] != "00" && dateString[2] == "00")
+                                // Get value
+                                double value = 0;
+                                int idx = timeSeriesType == TimeSeriesType.PeakDischarge ? 4 : 6;
+                                if (segments[idx] != "" && segments[idx] != " " && segments[idx] != "  " && !string.IsNullOrEmpty(segments[idx]))
                                 {
-                                    int.TryParse(dateString[0], out year);
-                                    int.TryParse(dateString[1], out month);
-                                    index = new DateTime(year, month, day, 0, 0, 0);
-                                }
-                                else if (dateString[1] == "00" && dateString[2] == "00")
-                                {
-                                    int.TryParse(dateString[0], out year);
-                                    index = new DateTime(year, month, day, 0, 0, 0);
+                                    double.TryParse(segments[idx], out value);
+                                    timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
                                 }
                             }
-                            // Get value
-                            double value = 0;
-                            int idx = timeSeriesType == USGSTimeSeriesType.PeakDischarge ? 4 : 6;
-                            if (segments[idx] != "" && segments[idx] != " " && segments[idx] != "  " && !string.IsNullOrEmpty(segments[idx]))
-                            {
-                                double.TryParse(segments[idx], out value);
-                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
-                            }
-                            
                         }
                     }
                 }
@@ -364,19 +518,7 @@ namespace Numerics.Data
             return timeSeries;
         }
 
-        /// <summary>
-        /// Checks if there is an Internet connection.
-        /// </summary>
-        public static bool IsConnectedToInternet()
-        {
-            try
-            {
-                using (var client = new WebClient())
-                using (client.OpenRead("http://google.com/generate_204"))
-                    return true;
-            }
-            catch { }
-            return false;
-        }
+        #endregion
+
     }
 }

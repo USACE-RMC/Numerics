@@ -211,11 +211,11 @@ namespace Numerics.Mathematics
 
             for (int i = 0; i < point.Length; i++)
             {
-                hi = stepSize <= 0 ? CalculateStepSize(point[i], 2) : stepSize;
+                hi = stepSize <= 0 ? CalculateStepSize(point[i], 3) : stepSize;
 
                 for (int j = 0; j < point.Length; j++)
                 {
-                    hj = stepSize <= 0 ? CalculateStepSize(point[j], 2) : stepSize;
+                    hj = stepSize <= 0 ? CalculateStepSize(point[j], 3) : stepSize;
 
                     if (i == j)
                     {
@@ -260,7 +260,7 @@ namespace Numerics.Mathematics
         /// </returns>
         public static double CalculateStepSize(double x, int order = 1)
         {
-            return Math.Pow(Tools.DoubleMachineEpsilon, 1d / (1d + order)) * (1 + Math.Abs(x));
+            return Math.Pow(Tools.DoubleMachineEpsilon, 1d / (1d + order)) * (1.0 + Math.Abs(x));
         }
     }
 }

@@ -547,7 +547,7 @@ namespace Data.TimeSeriesAnalysis
             var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), new double[] { 22, 16, 33, 5, 12, 36, 48, 10, 18, 15, 22, 13 });
             var start = new DateTime(2023, 11, 01); 
             var end = new DateTime(2023, 12, 01);
-            var newTS = ts.ClipTimeSeries(start,end);
+            var newTS = ts.ClipTimeSeries(start, end);
 
             Assert.AreEqual(2, newTS.Count);
             Assert.AreEqual(start, newTS.StartDate);

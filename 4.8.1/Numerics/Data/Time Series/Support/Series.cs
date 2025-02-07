@@ -116,6 +116,9 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public virtual void Add(SeriesOrdinate<TIndex, TValue> item)
         {
+            if (item == null)
+                throw new ArgumentNullException(nameof(item));
+
             _seriesOrdinates.Add(item);
             if (SuppressCollectionChanged == false) { CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _seriesOrdinates.Count - 1)); }
         }
@@ -132,6 +135,9 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public virtual void Insert(int index, SeriesOrdinate<TIndex, TValue> item)
         {
+            if (item == null)
+                throw new ArgumentNullException(nameof(item));
+
             _seriesOrdinates.Insert(index, item);
             if (SuppressCollectionChanged == false) { CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index)); }
         }

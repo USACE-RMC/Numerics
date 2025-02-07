@@ -91,6 +91,11 @@ namespace Numerics.Distributions
         public double BIC { get; set; }
 
         /// <summary>
+        /// Gets or sets the Deviance Information Criterion (DIC) of the fit. 
+        /// </summary>
+        public double DIC { get; set; }
+
+        /// <summary>
         /// Gets or sets the Root Mean Square Error (RMSE) of the fit. 
         /// </summary>
         public double RMSE { get; set; }
@@ -149,6 +154,7 @@ namespace Numerics.Distributions
             if (ParentDistribution != null) result.Add(ParentDistribution.ToXElement());
             result.SetAttributeValue(nameof(AIC), AIC.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(BIC), BIC.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(DIC), DIC.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(RMSE), RMSE.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(ERL), ERL.ToString("G17", CultureInfo.InvariantCulture));
             if (ModeCurve != null) result.SetAttributeValue(nameof(ModeCurve), String.Join("|", ModeCurve.Select(d => d.ToString("G17", CultureInfo.InvariantCulture))));
@@ -192,6 +198,12 @@ namespace Numerics.Distributions
             {
                 double.TryParse(xElement.Attribute(nameof(BIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var bic);
                 ua.BIC = bic;
+            }
+            // DIC
+            if (xElement.Attribute(nameof(DIC)) != null)
+            {
+                double.TryParse(xElement.Attribute(nameof(DIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var dic);
+                ua.DIC = dic;
             }
             // RMSE
             if (xElement.Attribute(nameof(RMSE)) != null)

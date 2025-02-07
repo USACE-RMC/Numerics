@@ -78,10 +78,15 @@ namespace Numerics.Data
             if (timeInterval == TimeInterval.Irregular)
                 throw new ArgumentException("The time interval cannot be irregular with this constructor.");
 
+            if (startDate > endDate)
+                throw new ArgumentException("Start date must be less than or equal to end date.");
+
             _timeInterval = timeInterval;
             Add(new SeriesOrdinate<DateTime, double>(startDate, double.NaN));
             while (_seriesOrdinates.Last().Index < endDate)
+            {
                 Add(new SeriesOrdinate<DateTime, double>(AddTimeInterval(_seriesOrdinates.Last().Index, _timeInterval), double.NaN));
+            }
         }
 
         /// <summary>
@@ -96,10 +101,15 @@ namespace Numerics.Data
             if (timeInterval == TimeInterval.Irregular)
                 throw new ArgumentException("The time interval cannot be irregular with this constructor.");
 
+            if (startDate > endDate)
+                throw new ArgumentException("Start date must be less than or equal to end date.");
+
             _timeInterval = timeInterval;
             Add(new SeriesOrdinate<DateTime, double>(startDate, fixedValue));
             while (_seriesOrdinates.Last().Index < endDate)
+            {
                 Add(new SeriesOrdinate<DateTime, double>(AddTimeInterval(_seriesOrdinates.Last().Index, _timeInterval), fixedValue));
+            }
         }
 
         /// <summary>
@@ -117,7 +127,9 @@ namespace Numerics.Data
             if (data.Count == 0) return;
             Add(new SeriesOrdinate<DateTime, double>(startDate, data[0]));
             for (int i = 1; i < data.Count; i++)
+            {
                 Add(new SeriesOrdinate<DateTime, double>(AddTimeInterval(this[i - 1].Index, _timeInterval), data[i]));
+            }
         }
 
         /// <summary>
@@ -404,7 +416,7 @@ namespace Numerics.Data
             {
                 if (this[i].Value > 0 && !double.IsNaN(this[i].Value))
                     this[i].Value = Math.Log(this[i].Value, baseValue);
-                else if (this[i].Value <= 0 || double.IsNaN(this[i].Value))
+                else
                     this[i].Value = double.NaN;
             }
             SuppressCollectionChanged = false;
@@ -422,7 +434,7 @@ namespace Numerics.Data
             for (int i = 0; i < indexes.Count; i++)
             {
                 if (indexes[i] >= 0 && indexes[i] < Count && this[indexes[i]].Value > 0 && (!double.IsNaN(this[indexes[i]].Value))) { this[indexes[i]].Value = Math.Log(this[indexes[i]].Value, baseValue); }
-                else if (this[indexes[i]].Value <= 0 || double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = double.NaN; }
+                else { this[indexes[i]].Value = double.NaN; }
             }
             SuppressCollectionChanged = false;
             RaiseCollectionChangedReset();
@@ -433,9 +445,13 @@ namespace Numerics.Data
         /// </summary>
         public void Standardize()
         {
-            SuppressCollectionChanged = true;
             double mean = MeanValue();
             double stdDev = StandardDeviation();
+
+            if (stdDev == 0)
+                throw new InvalidOperationException("Standard deviation is zero, standardization cannot be performed.");
+
+            SuppressCollectionChanged = true;
             for (int i = 0; i < Count; i++)
             {
                 this[i].Value = (this[i].Value - mean) / stdDev;

@@ -96,12 +96,12 @@ namespace Numerics.Mathematics.LinearAlgebra
                 for (j = i; j < n; j++)
                 {
                     sum = L[i, j];
-               
+
                     for (k = i - 1; k >= 0; k -= 1)
                         sum -= L[i, k] * L[j, k]; // Cholesky formula 
                     if (i == j)
                     {
-                        if (sum <= 0d)
+                        if (double.IsNaN(sum) || sum <= 0d)
                             throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite.");
                         L[i, i] = Math.Sqrt(sum);
                     }
