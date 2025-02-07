@@ -204,7 +204,7 @@ namespace Numerics.Utilities
         /// </summary>
         public void IndicateTaskStart()
         {
-            _synchronizationContext.Post(new SendOrPostCallback(state => TaskStarted?.Invoke()), null);
+            _synchronizationContext?.Post(new SendOrPostCallback(state => TaskStarted?.Invoke()), null);
         }
 
         /// <summary>
@@ -212,7 +212,7 @@ namespace Numerics.Utilities
         /// </summary>
         public void IndicateTaskEnded()
         {
-            _synchronizationContext.Post(new SendOrPostCallback(state => TaskEnded?.Invoke()), null);
+            _synchronizationContext?.Post(new SendOrPostCallback(state => TaskEnded?.Invoke()), null);
         }
 
         /// <summary>
@@ -312,7 +312,7 @@ namespace Numerics.Utilities
             child._cancellationTokenSource = _cancellationTokenSource;
             _subProgReporterCollection.Add(child);
             var invokeChildCreatedHandlers = new SendOrPostCallback(state => ChildReporterCreated?.Invoke(child));
-            _synchronizationContext.Post(invokeChildCreatedHandlers, child);
+            _synchronizationContext?.Post(invokeChildCreatedHandlers, child);
             return child;
         }
 
@@ -335,7 +335,7 @@ namespace Numerics.Utilities
         public void ReportProgress(double progress)
         {
             if (_previousProgress == progress) return;
-            _synchronizationContext.Post(_invokeProgressHandlers, new double[] { progress, _previousProgress });
+            _synchronizationContext?.Post(_invokeProgressHandlers, new double[] { progress, _previousProgress });
             _previousProgress = progress;
         }
 
@@ -346,7 +346,7 @@ namespace Numerics.Utilities
         /// <param name="messageType">The message type.</param>
         public void ReportMessage(string message, MessageType messageType = MessageType.Status)
         {
-            _synchronizationContext.Post(_invokeMessageHandlers, new MessageContentStruct(message, messageType, this));
+            _synchronizationContext?.Post(_invokeMessageHandlers, new MessageContentStruct(message, messageType, this));
             MessageCount += 1;
             _previousMessage = message;
             _previousMessageType = messageType;
@@ -358,7 +358,7 @@ namespace Numerics.Utilities
         /// <param name="message">The message to report.</param>
         protected void ReportMessage(MessageContentStruct message)
         {
-            _synchronizationContext.Post(_invokeMessageHandlers, message);
+            _synchronizationContext?.Post(_invokeMessageHandlers, message);
             MessageCount += 1;
             _previousMessage = message.Message;
             _previousMessageType = message.MessageType;

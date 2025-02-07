@@ -85,6 +85,16 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Text.Encodings.Web, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\..\8.0\packages\System.Text.Encodings.Web.8.0.0\lib\net462\System.Text.Encodings.Web.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json, Version=8.0.0.3, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL" />
+    <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.0.1, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\..\8.0\packages\System.Threading.Tasks.Extensions.4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ValueTuple, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\..\8.0\packages\System.ValueTuple.4.5.0\lib\net47\System.ValueTuple.dll</HintPath>
+    </Reference>
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
   </ItemGroup>
@@ -150,6 +160,8 @@
     <Compile Include="Mathematics\Optimization\Constrained\Constraint\Constraint.cs" />
     <Compile Include="Mathematics\Optimization\Constrained\Constraint\ConstraintType.cs" />
     <Compile Include="Mathematics\Optimization\Constrained\Constraint\IConstraint.cs" />
+    <Compile Include="Mathematics\Optimization\Dynamic\BinaryHeap.cs" />
+    <Compile Include="Mathematics\Optimization\Dynamic\Dijkstra.cs" />
     <Compile Include="Mathematics\Optimization\Global\MLSL.cs" />
     <Compile Include="Mathematics\Optimization\Global\MultiStart.cs" />
     <Compile Include="Mathematics\Optimization\Global\ParticleSwarm.cs" />
