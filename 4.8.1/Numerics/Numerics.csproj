@@ -162,6 +162,7 @@
     <Compile Include="Mathematics\Optimization\Constrained\Constraint\IConstraint.cs" />
     <Compile Include="Mathematics\Optimization\Dynamic\BinaryHeap.cs" />
     <Compile Include="Mathematics\Optimization\Dynamic\Dijkstra.cs" />
+    <Compile Include="Mathematics\Optimization\Dynamic\Network.cs" />
     <Compile Include="Mathematics\Optimization\Global\MLSL.cs" />
     <Compile Include="Mathematics\Optimization\Global\MultiStart.cs" />
     <Compile Include="Mathematics\Optimization\Global\ParticleSwarm.cs" />

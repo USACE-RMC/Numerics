@@ -36,95 +36,112 @@ using System.Threading.Tasks;
 
 namespace Numerics.Mathematics.Optimization
 {
-    public struct Edge
+    /// <summary>
+    /// Struct that represents an edge in a network.
+    /// </summary>
+    /// <remarks>
+    /// Create an edge structure object. An edge contains information on the start node, end node, edge weight, and edge index.
+    /// </remarks>
+    /// <param name="fromNodeIndex">Node index at start of edge.</param>
+    /// <param name="toNodeIndex">Node index at end of edge.</param>
+    /// <param name="edgeWeight">Weight (or Cost) of the edge.</param>
+    /// <param name="edgeIndex">Index of the edge.</param>
+    public struct Edge(int fromNodeIndex, int toNodeIndex, float edgeWeight, int edgeIndex)
     {
-        public int FromIndex;
-        public int ToIndex;
-        public float Weight;
-        public int Index;
-
-        public Edge(int fromNodeIndex, int toNodeIndex, float edgeWeight, int edgeIndex)
-        {
-            FromIndex = fromNodeIndex;
-            ToIndex = toNodeIndex;
-            Weight = edgeWeight;
-            Index = edgeIndex;
-        }
+        /// <summary>
+        /// Node index at start of edge.
+        /// </summary>
+        public int FromIndex = fromNodeIndex;
+        /// <summary>
+        /// Node index at end of edge.
+        /// </summary>
+        public int ToIndex = toNodeIndex;
+        /// <summary>
+        /// Weight (or Cost) of transversing the edge. 
+        /// </summary>
+        public float Weight = edgeWeight;
+        /// <summary>
+        /// Index of the edge, often used as an index to the edge source (e.g., road segment).
+        /// </summary>
+        public int Index = edgeIndex;
     }
 
-    public class Networks
-    {
-        private readonly List<Edge>[] _outgoingEdges;
-        private readonly List<Edge>[] _incomingEdges;
-        private readonly int _nodeCount;
-        private readonly int[] _destinationIndices;
-        //private readonly RoadSegment[] _segments;
-        private readonly Edge[] _edges;
+    //public class Networks
+    //{
+    //    private readonly List<Edge>[] _outgoingEdges;
+    //    private readonly List<Edge>[] _incomingEdges;
+    //    private readonly int _nodeCount;
+    //    private readonly int[] _destinationIndices;
+    //    //private readonly RoadSegment[] _segments;
+    //    private readonly Edge[] _edges;
 
-        //public RoadSegment[] Segments { get => _segments; }
-        public int[] DestinationIndices { get => _destinationIndices; }
-        public List<Edge>[] IncomingEdges { get => _incomingEdges; }
-        public List<Edge>[] OutgoingEdges { get => _outgoingEdges; }
+    //    //public RoadSegment[] Segments { get => _segments; }
+    //    public int[] DestinationIndices { get => _destinationIndices; }
+    //    public List<Edge>[] IncomingEdges { get => _incomingEdges; }
+    //    public List<Edge>[] OutgoingEdges { get => _outgoingEdges; }
 
-        public static void ResultsToCSV(float[,] result, string outputFilePath)
-        {
-            System.IO.StreamWriter sw = new System.IO.StreamWriter(outputFilePath);
-            //Headers
-            sw.WriteLine($"From_Node, To_Node, Edge, Weight_To_Destination");
-            //Data
-            for (Int32 i = 0; i < result.GetLength(0); i++) { sw.WriteLine($"{i}, {result[i, 0]}, {result[i, 1]}, {result[i, 2]}"); }
-            sw.Close(); sw.Dispose();
-        }
+    //    public static void ResultsToCSV(float[,] result, string outputFilePath)
+    //    {
+    //        System.IO.StreamWriter sw = new System.IO.StreamWriter(outputFilePath);
+    //        //Headers
+    //        sw.WriteLine($"From_Node, To_Node, Edge, Weight_To_Destination");
+    //        //Data
+    //        for (int i = 0; i < result.GetLength(0); i++) { sw.WriteLine($"{i}, {result[i, 0]}, {result[i, 1]}, {result[i, 2]}"); }
+    //        sw.Close(); sw.Dispose();
+    //    }
 
-        public static int[] PathEdges(float[,] result, int startNodeIndex)
-        {
-            List<int> edgeList = new List<int>();
-            int nodeIndex = startNodeIndex;
-            // generate the shortest path list from the results table
-            while (result[nodeIndex, 2] != 0)
-            {
-                edgeList.Add((int)result[nodeIndex, 1]);
-                nodeIndex = (int)result[nodeIndex, 0];
-            }
-            return edgeList.ToArray();
-        }
+    //    public static int[] PathEdges(float[,] result, int startNodeIndex)
+    //    {
+    //        List<int> edgeList = new List<int>();
+    //        int nodeIndex = startNodeIndex;
+    //        // generate the shortest path list from the results table
+    //        while (result[nodeIndex, 2] != 0)
+    //        {
+    //            edgeList.Add((int)result[nodeIndex, 1]);
+    //            nodeIndex = (int)result[nodeIndex, 0];
+    //        }
+    //        return edgeList.ToArray();
+    //    }
 
-        //public int[] PathRecords(float[,] result, int startNodeIndex)
-        //{
-        //    List<int> featureList = new List<int>();
-        //    int nodeIndex = startNodeIndex;
-        //    // generate the shortest path list from the results table
-        //    while (result[nodeIndex, 2] != 0)
-        //    {
-        //        featureList.Add(_segments[(int)result[nodeIndex, 1]].RecordIndex);
-        //        nodeIndex = (int)result[nodeIndex, 0];
-        //    }
-        //    return featureList.ToArray();
-        //}
+    //    //public int[] PathRecords(float[,] result, int startNodeIndex)
+    //    //{
+    //    //    List<int> featureList = new List<int>();
+    //    //    int nodeIndex = startNodeIndex;
+    //    //    // generate the shortest path list from the results table
+    //    //    while (result[nodeIndex, 2] != 0)
+    //    //    {
+    //    //        featureList.Add(_segments[(int)result[nodeIndex, 1]].RecordIndex);
+    //    //        nodeIndex = (int)result[nodeIndex, 0];
+    //    //    }
+    //    //    return featureList.ToArray();
+    //    //}
 
-        //public int[] PathRecords(float[,] result, int startRecordIndex)
-        //{
-        //    List<int> featureList = new List<int>();
-        //    for (int i = 0; i < result.GetLength(0); i++)
-        //    {
-        //        if (_segments[(int)result[i, 1]].RecordIndex == startRecordIndex)
-        //        {
-        //            int nodeIndex = i;
-        //            // generate the shortest path list from the results table
-        //            while (result[nodeIndex, 2] != 0)
-        //            {
-        //                featureList.Add(_segments[(int)result[nodeIndex, 1]].RecordIndex);
-        //                nodeIndex = (int)result[nodeIndex, 0];
-        //            }
-        //            break;
-        //        }
-        //    }
+    //    //public int[] PathRecords(float[,] result, int startRecordIndex)
+    //    //{
+    //    //    List<int> featureList = new List<int>();
+    //    //    for (int i = 0; i < result.GetLength(0); i++)
+    //    //    {
+    //    //        if (_segments[(int)result[i, 1]].RecordIndex == startRecordIndex)
+    //    //        {
+    //    //            int nodeIndex = i;
+    //    //            // generate the shortest path list from the results table
+    //    //            while (result[nodeIndex, 2] != 0)
+    //    //            {
+    //    //                featureList.Add(_segments[(int)result[nodeIndex, 1]].RecordIndex);
+    //    //                nodeIndex = (int)result[nodeIndex, 0];
+    //    //            }
+    //    //            break;
+    //    //        }
+    //    //    }
 
-        //    return featureList.ToArray();
-        //}
-    }
+    //    //    return featureList.ToArray();
+    //    //}
+    //}
 
 
+    /// <summary>
+    /// Dijkstra dynamic programming implementation for shortest path optimization.
+    /// </summary>
     public static class Dijkstra
     {
         /// <summary>
@@ -255,7 +272,7 @@ namespace Numerics.Mathematics.Optimization
                 resultTable[destinationIndex, 0] = destinationIndex; //Tail
                 resultTable[destinationIndex, 1] = -1; //edge index
                 resultTable[destinationIndex, 2] = 0; //Cumulative Weight
-
+                previousValue = destinationIndex;
                 if (edgesToNodes[previousValue] == null) { continue; }
 
                 //Add the nodes to the heap connected to the given destination node.
