@@ -37,7 +37,9 @@ using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Xml.Linq;
 
 namespace Numerics.Distributions
 {
@@ -410,6 +412,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
         {
+            if (Distributions.Count == 0) return new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least 1 distribution");
             for (int i = 0; i < Distributions.Count; i++)
             {
                 if (Distributions[i].ParametersValid == false)
@@ -472,7 +475,16 @@ namespace Numerics.Distributions
 
         /// <inheritdoc/>
         public override double PDF(double x)
-        {     
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(GetParameters, true);
+
+            if (Distributions.Count == 1)
+            {
+                return Distributions[0].PDF(x);
+            }
+
             double f = double.NaN;
 
             // Only compute the exact PDF for independent random variables
@@ -508,6 +520,15 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double CDF(double x)
         {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(GetParameters, true);
+
+            if (Distributions.Count == 1)
+            {
+                return Distributions[0].CDF(x);
+            }
+
             double p = double.NaN;
             var ind = new int[Distributions.Count];
             var cdf = new double[Distributions.Count];
@@ -866,6 +887,7 @@ namespace Numerics.Distributions
             }
             _empiricalCDF = new EmpiricalDistribution(xValues, pValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
             _empiricalCDFCreated = true;
+            _momentsComputed = false;
         }
 
         /// <inheritdoc/>
@@ -911,5 +933,80 @@ namespace Numerics.Distributions
             return cr;
         }
 
+        /// <inheritdoc/>
+        public override XElement ToXElement()
+        {
+            var result = new XElement("Distribution");
+            result.SetAttributeValue(nameof(Type), Type.ToString());
+            result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
+            result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+            result.SetAttributeValue(nameof(Distributions), String.Join("|", Distributions.Select(x => x.Type)));
+            // Parameters
+            var parms = GetParameters;
+            var parmStrings = new string[NumberOfParameters];
+            for (int i = 0; i < NumberOfParameters; i++)
+            {
+                parmStrings[i] = parms[i].ToString("G17", CultureInfo.InvariantCulture);
+            }
+            result.SetAttributeValue("Parameters", String.Join("|", parmStrings));
+            return result;
+        }
+
+        /// <summary>
+        /// Create a competing risks distribution from XElement.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new competing risks distribution.</returns>
+        public static CompetingRisks FromXElement(XElement xElement)
+        {
+            UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
+            if (xElement.Attribute(nameof(UnivariateDistributionBase.Type)) != null)
+            {
+                Enum.TryParse(xElement.Attribute(nameof(UnivariateDistributionBase.Type)).Value, out type);
+
+            }
+            if (type == UnivariateDistributionType.CompetingRisks)
+            {
+                var distributions = new List<UnivariateDistributionBase>();
+                if (xElement.Attribute(nameof(Distributions)) != null)
+                {
+                    var types = xElement.Attribute(nameof(Distributions)).Value.Split('|');
+                    for (int i = 0; i < types.Length; i++)
+                    {
+                        Enum.TryParse(types[i], out UnivariateDistributionType distType);
+                        distributions.Add(UnivariateDistributionFactory.CreateDistribution(distType));
+                    }
+                }
+                var competingRisks = new CompetingRisks(distributions.ToArray());
+
+                if (xElement.Attribute(nameof(XTransform)) != null)
+                {
+                    Enum.TryParse(xElement.Attribute(nameof(XTransform)).Value, out Transform xTransform);
+                    competingRisks.XTransform = xTransform;
+                }
+                if (xElement.Attribute(nameof(ProbabilityTransform)) != null)
+                {
+                    Enum.TryParse(xElement.Attribute(nameof(ProbabilityTransform)).Value, out Transform probabilityTransform);
+                    competingRisks.ProbabilityTransform = probabilityTransform;
+                }
+                if (xElement.Attribute("Parameters") != null)
+                {
+                    var vals = xElement.Attribute("Parameters").Value.Split('|');
+                    var parameters = new List<double>();
+                    for (int i = 0; i < vals.Length; i++)
+                    {
+                        double.TryParse(vals[i], NumberStyles.Any, CultureInfo.InvariantCulture, out var parm);
+                        parameters.Add(parm);
+                    }
+                    competingRisks.SetParameters(parameters);
+                }
+
+                return competingRisks;
+            }
+            else
+            {
+                return null;
+            }
+        }
     }
 }

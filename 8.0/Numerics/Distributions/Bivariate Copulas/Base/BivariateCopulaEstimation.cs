@@ -141,8 +141,8 @@ namespace Numerics.Distributions.Copulas
 
             // Theta
             // get ranks of data
-            var rank1 = Statistics.RanksInplace(sampleDataX.ToArray());
-            var rank2 = Statistics.RanksInplace(sampleDataY.ToArray());
+            var rank1 = Statistics.RanksInPlace(sampleDataX.ToArray());
+            var rank2 = Statistics.RanksInPlace(sampleDataY.ToArray());
             // get plotting positions
             for (int i = 0; i < rank1.Length; i++)
             {

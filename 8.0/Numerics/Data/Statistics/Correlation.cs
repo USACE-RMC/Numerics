@@ -117,8 +117,8 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentOutOfRangeException(nameof(sample1), "The sample arrays must be the same length.");
             }
 
-            var rank1 = Statistics.RanksInplace(sample1.ToArray());
-            var rank2 = Statistics.RanksInplace(sample2.ToArray());
+            var rank1 = Statistics.RanksInPlace(sample1.ToArray());
+            var rank2 = Statistics.RanksInPlace(sample2.ToArray());
             return Pearson(rank1, rank2);
         }
 

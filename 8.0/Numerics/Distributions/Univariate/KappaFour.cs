@@ -91,7 +91,7 @@ namespace Numerics.Distributions
         {
             SetParameters([location, scale, shape, shape2]);
         }
-    
+
         private double _xi; // location
         private double _alpha; // scale
         private double _kappa; // shape
@@ -109,6 +109,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters([value, Alpha, Kappa, Hondo], false) is null;
                 _xi = value;
+                _momentsComputed = false;
             }
         }
 
@@ -122,6 +123,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters([Xi, value, Kappa, Hondo], false) is null;
                 _alpha = value;
+                _momentsComputed = false;
             }
         }
 
@@ -135,6 +137,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters([Xi, Alpha, value, Hondo], false) is null;
                 _kappa = value;
+                _momentsComputed = false;
             }
         }
 
@@ -148,6 +151,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters([Xi, Alpha, Kappa, value], false) is null;
                 _hondo = value;
+                _momentsComputed = false;
             }
         }
 
@@ -487,7 +491,7 @@ namespace Numerics.Distributions
                     }
                     ALAM2 = U1 - 2d * U2;
                     ALAM3 = -U1 + 6d * U2 - 6d * U3;
-                    ALAM4 = U1 - 12d * U2 + 30d * U3 - 20d * U4;               
+                    ALAM4 = U1 - 12d * U2 + 30d * U3 - 20d * U4;
                     if (ALAM2 == 0d) throw new Exception("Iteration encountered numerical difficulties - overflow would have been likely to occur.");
                     TAU3 = ALAM3 / ALAM2;
                     TAU4 = ALAM4 / ALAM2;
@@ -541,7 +545,7 @@ namespace Numerics.Distributions
                     U1G = -U1 * Gamma.Digamma(-1d / H - G);
                     U2G = -U2 * Gamma.Digamma(-2d / H - G);
                     U3G = -U3 * Gamma.Digamma(-3d / H - G);
-                    U4G = -U4 * Gamma.Digamma(-4d/ H - G);
+                    U4G = -U4 * Gamma.Digamma(-4d / H - G);
                     U1H = RHH * (-U1G - U1 * Gamma.Digamma(-1d / H + 1d));
                     U2H = 2d * RHH * (-U2G - U2 * Gamma.Digamma(-2d / H + 1d));
                     U3H = 3d * RHH * (-U3G - U3 * Gamma.Digamma(-3d / H + 1d));
@@ -751,15 +755,10 @@ namespace Numerics.Distributions
             if (_parametersValid == false) ValidateParameters([Xi, Alpha, Kappa, Hondo], true);
             if (x < Minimum || x > Maximum) return 0.0d;
 
-
+            double F = CDF(x);
             double y = (x - Xi) / Alpha;
-            if (Kappa != 0)
-            {
-                y = 1d - Kappa * y;
-                y = (1d - 1d / Kappa) * Math.Log(y);
-            }
-            y = Math.Exp(-y);
-            return y / Alpha * Math.Pow(CDF(x), 1d - Hondo);
+            double yy = 1 - Kappa * y;
+            return (1 / Alpha) * Math.Pow(yy, 1 / Kappa - 1) * Math.Pow(F, 1 - Hondo);
         }
 
         /// <inheritdoc/>
@@ -771,28 +770,23 @@ namespace Numerics.Distributions
             if (x >= Maximum) return 1d;
 
             double y = (x - Xi) / Alpha;
-            double arg = 0;
-            if (Kappa == 0)
+            double yy = 1 - Kappa * y;
+            if (Kappa != 0 && Hondo != 0)
             {
-                y = Math.Exp(-y);
+                return Math.Pow(1 - Hondo * Math.Pow(yy, 1 / Kappa), 1 / Hondo);
+            }
+            else if (Kappa != 0 && Hondo == 0)
+            {
+                return Math.Exp(-Math.Pow(yy, 1 / Kappa));
+            }
+            else if (Kappa == 0 && Hondo != 0)
+            {
+                return Math.Pow(1 - Hondo * Math.Exp(-y), 1 / Hondo);
             }
             else
             {
-                arg = 1d - Kappa * y;
-                if (arg > 1E-15)
-                {
-                    y = Math.Exp(-1d * (-Math.Log(arg) / Kappa));
-                }
-                else
-                {
-                    if (Kappa < 0) return 0d;
-                    if (Kappa > 0) return 1d;
-                }             
+                return Math.Exp(-Math.Exp(-y));
             }
-            if (Hondo == 0) return Math.Exp(-y);
-            arg = 1d - Hondo * y;
-            if (arg > 1E-15) return Math.Exp(-1d * (-Math.Log(arg) / Hondo));
-            return 0d;
         }
 
         /// <inheritdoc/>
@@ -806,11 +800,23 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false) ValidateParameters([Xi, Alpha, Kappa, Hondo], true);
 
-            double y = -Math.Log(probability);
-            if (Hondo != 0) y = (1d - Math.Exp(-Hondo * y)) / Hondo;
-            y = -Math.Log(y);
-            if (Kappa != 0) y = (1- Math.Exp(-Kappa * y)) / Kappa;
-            return Xi + Alpha * y;
+
+            if (Kappa != 0 && Hondo != 0)
+            {
+                return Xi + Alpha / Kappa * (1 - Math.Pow((1 - Math.Pow(probability, Hondo)) / Hondo, Kappa));
+            }
+            else if (Kappa != 0 && Hondo == 0)
+            {
+                return Xi + (Alpha / Kappa) * (1 - Math.Pow(-Math.Log(probability), Kappa));
+            }
+            else if (Kappa == 0 && Hondo != 0)
+            {
+                return Xi - Alpha * Math.Log(1 - Math.Pow(probability, Hondo) / Hondo);
+            }
+            else
+            {
+                return Xi - Alpha * Math.Log(-Math.Log(probability));
+            }
         }
 
         /// <summary>

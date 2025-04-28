@@ -28,9 +28,6 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Numerics.Distributions;
 using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
@@ -199,8 +196,7 @@ namespace Numerics.Data.Statistics
             // The number of low outliers computed by this method is consistent with the results from the FORTRAN code.
             // Further testing is necessary to identify any edge cases where the adaptive Simpson's rule might prove insufficient.
             var sr = new AdaptiveSimpsonsRule(FGGB, 1E-16, 1 - 1E-16);
-            sr.RelativeTolerance = 1E-4;
-            sr.MaxDepth = 50;
+            sr.MaxDepth = 25;
             sr.ReportFailure = false;
             sr.Integrate();
             return sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;

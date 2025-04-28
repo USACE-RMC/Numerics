@@ -72,7 +72,6 @@ namespace Numerics.Sampling.MCMC
             // The initial scale & identity covariance matrix
             sigmaIdentity = Matrix.Identity(NumberOfParameters) * (0.1 * 0.1 / NumberOfParameters);
             Beta = 0.05;
-            CrossoverProbability = 0.1;
         }
 
 
@@ -89,11 +88,6 @@ namespace Numerics.Sampling.MCMC
         /// Determines how often to sample from the small identity covariance matrix; e.g., 0.05 will result in sampling 5% of the time.
         /// </summary>
         public double Beta { get; set; }
-
-        /// <summary>
-        /// Determines how often to sample from a different chain; e.g., 0.10 will result in sampling from a different chain 10% of the time.
-        /// </summary>
-        public double CrossoverProbability { get; set; } 
 
         /// <summary>
         /// The covariance matrix Σ (sigma) for the proposal distribution.
@@ -114,7 +108,6 @@ namespace Numerics.Sampling.MCMC
         {
             if (Scale <= 0) throw new ArgumentException(nameof(Scale), "The scale parameter must greater than 0.");
             if (Beta < 0 || Beta > 1) throw new ArgumentException(nameof(Beta), "Beta must be between 0 and 1.");
-            if (CrossoverProbability < 0 || CrossoverProbability > 1) throw new ArgumentException(nameof(CrossoverProbability), "The crossover probability must be between 0 and 1.");
         }
 
         /// <inheritdoc/>
@@ -161,15 +154,8 @@ namespace Numerics.Sampling.MCMC
                 mvn[index].SetParameters(state.Values.ToArray(), (sigma[index].Covariance * (1d / (sigma[index].N - 1)) * Scale).ToArray());
             }
 
-            int c1 = index;
-            if (SampleCount[index] > 100 * NumberOfParameters && _chainPRNGs[index].NextDouble() <= CrossoverProbability)
-            {
-                // Sample from a different chain's covariance matrix
-                do c1 = _chainPRNGs[index].Next(0, NumberOfChains); while (c1 == index);
-            }
-
             // Get proposal vector
-            var xp = mvn[c1].InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
+            var xp = mvn[index].InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
 
             // Check if the parameter is feasible (within the constraints)
             for (int i = 0; i < NumberOfParameters; i++)

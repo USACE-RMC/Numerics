@@ -45,7 +45,7 @@ namespace Numerics.Data
     /// </para>
     /// </remarks>
     [Serializable]
-    public class SeriesOrdinate<TIndex, TValue> : INotifyPropertyChanged
+    public class SeriesOrdinate<TIndex, TValue> : INotifyPropertyChanged, IEquatable<SeriesOrdinate<TIndex, TValue>>
     {
         /// <summary>
         /// Constructs a new series ordinate.
@@ -108,21 +108,26 @@ namespace Numerics.Data
             }
         }
 
+        /// <inheritdoc/>
+        public bool Equals(SeriesOrdinate<TIndex, TValue> other)
+        {
+            if (ReferenceEquals(other, null)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return EqualityComparer<TIndex>.Default.Equals(_index, other._index)
+                && EqualityComparer<TValue>.Default.Equals(_value, other._value);
+        }
+
+        /// <inheritdoc/>
+        public override bool Equals(object obj) => Equals(obj as SeriesOrdinate<TIndex, TValue>);
+
         /// <summary>
         /// Equality operator overload. 
         /// </summary>
         /// <param name="left">The first SeriesOrdinate object to compare.</param>
         /// <param name="right">The second SeriesOrdinate object to compare/</param>
         /// <returns>True of the two SeriesOrdinate objects are equal and false otherwise.</returns>
-        public static bool operator ==(SeriesOrdinate<TIndex, TValue> left, SeriesOrdinate<TIndex, TValue> right)
-        {
-            if (ReferenceEquals(left, null) && ReferenceEquals(right, null))
-                return true;
-            if (ReferenceEquals(left, null) || ReferenceEquals(right, null))
-                return false;
-            return EqualityComparer<TIndex>.Default.Equals(left.Index, right.Index) &&
-                   EqualityComparer<TValue>.Default.Equals(left.Value, right.Value);
-        }
+        public static bool operator ==(SeriesOrdinate<TIndex, TValue> left, SeriesOrdinate<TIndex, TValue> right) => EqualityComparer<SeriesOrdinate<TIndex, TValue>>.Default.Equals(left, right);
+
 
         /// <summary>
         /// Inequality operator overload. 
@@ -130,9 +135,18 @@ namespace Numerics.Data
         /// <param name="left">The first SeriesOrdinate object to compare.</param>
         /// <param name="right">The second SeriesOrdinate object to compare/</param>
         /// <returns>True of the two SeriesOrdinate objects are NOT equal and false otherwise.</returns>
-        public static bool operator !=(SeriesOrdinate<TIndex, TValue> left, SeriesOrdinate<TIndex, TValue> right)
+        public static bool operator !=(SeriesOrdinate<TIndex, TValue> left, SeriesOrdinate<TIndex, TValue> right) => !(left == right);
+        
+        /// <inheritdoc/>
+        public override int GetHashCode()
         {
-            return !(left == right);
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + EqualityComparer<TIndex>.Default.GetHashCode(_index);
+                hash = hash * 23 + EqualityComparer<TValue>.Default.GetHashCode(_value);
+                return hash;
+            }
         }
 
         /// <summary>
@@ -151,8 +165,6 @@ namespace Numerics.Data
         {
             return new SeriesOrdinate<TIndex, TValue>(Index, Value);
         }
-
-
 
     }
 }

@@ -459,7 +459,7 @@ namespace Data.Statistics
         [TestMethod]
         public void Test_RanksInPlace()
         {
-            var test = Numerics.Data.Statistics.Statistics.RanksInplace(_sample1);
+            var test = Numerics.Data.Statistics.Statistics.RanksInPlace(_sample1);
             var valid = new double[] { 4.0, 62.0, 51.0, 27.0, 54.0, 13.0, 50.0, 66.0, 9.0, 36.0, 16.0, 48.5, 7.0, 68.0, 53.0, 29.5, 1.0, 10.0, 59.0, 64.5, 6.0, 57.0, 52.0, 61.0, 55.5, 41.5, 44.0, 24.5, 27.0, 24.5, 11.0, 8.0, 67.0, 16.0, 45.0, 47.0, 43.0, 19.0, 36.0, 16.0, 22.0, 32.0, 39.0, 3.0, 41.5, 69.0, 5.0, 21.0, 2.0, 46.0, 55.5, 14.0, 64.5, 12.0, 19.0, 34.0, 19.0, 36.0, 23.0, 63.0, 38.0, 48.5, 58.0, 31.0, 60.0, 40.0, 33.0, 27.0, 29.5 };
 
             for(int i = 0; i < valid.Length; i++)

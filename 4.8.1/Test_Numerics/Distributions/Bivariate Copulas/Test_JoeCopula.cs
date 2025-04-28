@@ -126,8 +126,8 @@ namespace Distributions.BivariateCopulas
         public void Test_MPL_Fit()
         {
             // get ranks of data
-            var rank1 = Statistics.RanksInplace(data1);
-            var rank2 = Statistics.RanksInplace(data2);
+            var rank1 = Statistics.RanksInPlace(data1);
+            var rank2 = Statistics.RanksInPlace(data2);
             // get plotting positions
             for (int i = 0; i < data1.Length; i++)
             {

@@ -28,7 +28,11 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics.Optimization;
@@ -57,7 +61,7 @@ namespace Numerics.Distributions
     [Serializable]
     public class KernelDensity : UnivariateDistributionBase, IBootstrappable
     {
-  
+
         /// <summary>
         /// Constructs a Gaussian Kernel Density distribution from 30 random samples of a standard Normal distribution using the default bandwidth.
         /// </summary>
@@ -104,7 +108,27 @@ namespace Numerics.Distributions
             KernelDistribution = kernel;
             Bandwidth = bandwidthParameter;
         }
- 
+
+        /// <summary>
+        /// Constructs a weighted Kernel Density distribution.
+        /// </summary>
+        /// <param name="sampleData">Sample values xᵢ.</param>
+        /// <param name="weights">Positive weights wᵢ (length must match sampleData).</param>
+        /// <param name="kernel">Kernel type (default Gaussian).</param>
+        /// <param name="bandwidthParameter">
+        /// Optional bandwidth.  If null we use Silverman’s rule with the weighted σ.
+        /// </param>
+        public KernelDensity(IList<double> sampleData, IList<double> weights, KernelType kernel = KernelType.Gaussian, double? bandwidthParameter = null)
+        {
+            if (weights.Count != sampleData.Count)
+                throw new ArgumentException("weights length must match sampleData length");
+
+            SetSampleData(sampleData, weights);            // <‑‑ overloaded version
+            KernelDistribution = kernel;
+            Bandwidth = bandwidthParameter ?? BandwidthRule(sampleData, weights);  // weighted rule of thumb
+        }
+
+
         /// <summary>
         /// Kernel distribution type.
         /// </summary>
@@ -136,6 +160,9 @@ namespace Numerics.Distributions
         private bool _cdfCreated = false;
         private OrderedPairedData opd;
         private double u1, u2, u3, u4;
+        private double[] _weights;     // one weight per sample (unnormalised)
+        private double _sumW = 1.0;  // Σ wᵢ   (defaults to 1 for un‑weighted case)
+
 
         /// <summary>
         /// Returns the array of X values. Points On the cumulative curve are specified
@@ -294,6 +321,25 @@ namespace Numerics.Distributions
             u4 = moments[3];
         }
 
+        /// <summary>
+        /// Set Product (Central) Moments
+        /// </summary>
+        /// <param name="sample">Sample of data, no sorting is assumed.</param>
+        /// <param name="w">A list of weights.</param>
+        private void ComputeMoments(IList<double> sample, IList<double> w)
+        {
+            double m = w.Zip(sample, (wi, xi) => wi * xi).Sum() / _sumW;
+            double v = w.Zip(sample, (wi, xi) => wi * (xi - m) * (xi - m)).Sum() / _sumW;
+            double s3 = w.Zip(sample, (wi, xi) => wi * Math.Pow(xi - m, 3)).Sum() / _sumW;
+            double s4 = w.Zip(sample, (wi, xi) => wi * Math.Pow(xi - m, 4)).Sum() / _sumW;
+
+            u1 = m;
+            u2 = Math.Sqrt(v);
+            u3 = s3 / Math.Pow(u2, 3);
+            u4 = s4 / Math.Pow(u2, 4) - 3.0;
+        }
+
+
         /// <inheritdoc/>
         public override double Mean
         {
@@ -353,7 +399,6 @@ namespace Numerics.Distributions
             {
                 if (_sampleData is null) return double.NaN;
                 if (_sampleData.Count() == 0) return double.NaN;
-                return Tools.Max(SampleData) + 3 * Bandwidth;
                 return BoundedByData ? Tools.Max(SampleData) : Tools.Max(SampleData) + 3 * Bandwidth;
             }
         }
@@ -451,6 +496,20 @@ namespace Numerics.Distributions
             return sigma * Math.Pow(4.0d / (3.0d * sampleData.Count), 1.0d / 5.0d);
         }
 
+        /// <summary>
+        /// Gets the default estimate of the bandwidth parameter.
+        /// </summary>
+        /// <param name="sample">Sample of data, no sorting is assumed.</param>
+        /// <param name="w">A list of weights.</param>
+        public double BandwidthRule(IList<double> sample, IList<double> w = null)
+        {
+            w ??= Enumerable.Repeat(1.0, sample.Count).ToArray();
+            double m = w.Zip(sample, (wi, xi) => wi * xi).Sum() / w.Sum();
+            double sd = Math.Sqrt(w.Zip(sample, (wi, xi) => wi * (xi - m) * (xi - m)).Sum() / w.Sum());
+            return sd * Math.Pow(4.0 / (3.0 * sample.Count), 0.2);
+        }
+
+
         /// <inheritdoc/>
         public IUnivariateDistribution Bootstrap(ParameterEstimationMethod estimationMethod, int sampleSize, int seed = -1)
         {
@@ -495,16 +554,47 @@ namespace Numerics.Distributions
             _cdfCreated = false;
         }
 
+        /// <summary>
+        /// Set the sample data for the distribution.
+        /// </summary>
+        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">A list of weights.</param>
+        public void SetSampleData(IList<double> sampleData, IList<double> weights)
+        {
+            _sampleData = sampleData.ToArray();
+            _weights = weights.ToArray();
+            _sumW = _weights.Sum();
+
+            if (_sumW <= 0) throw new ArgumentException("All weights are zero or negative.");
+
+            ComputeMoments(_sampleData, _weights);     // weighted version
+            _cdfCreated = false;
+        }
+
+
         /// <inheritdoc/>
         public override double PDF(double x)
         {
-            double total = 0d;
-            Parallel.For(0, SampleSize, () => 0d, (i, loop, subtotal) =>
+            if (_weights == null)
             {
-                subtotal += _kernel.Function((x - _sampleData[i]) / Bandwidth);
-                return subtotal;
-            }, z => Tools.ParallelAdd(ref total, z));
-            return total / (SampleSize * Bandwidth);
+                double total = 0d;
+                Parallel.For(0, SampleSize, () => 0d, (i, loop, subtotal) =>
+                {
+                    subtotal += _kernel.Function((x - _sampleData[i]) / Bandwidth);
+                    return subtotal;
+                }, z => Tools.ParallelAdd(ref total, z));
+                return total / (SampleSize * Bandwidth);
+            }
+            else
+            {
+                double total = 0d;
+                Parallel.For(0, SampleSize, () => 0.0, (i, loop, subtotal) =>
+                {
+                    subtotal += _weights[i] * _kernel.Function((x - _sampleData[i]) / Bandwidth);
+                    return subtotal;
+                }, z => Tools.ParallelAdd(ref total, z));
+                return total / (_sumW * Bandwidth);
+            }
         }
 
         /// <inheritdoc/>
@@ -512,6 +602,7 @@ namespace Numerics.Distributions
         {
             if (x < Minimum) return 0.0;
             if (x > Maximum) return 1.0;
+            if (Minimum == Maximum) return double.NaN;
             if (!_cdfCreated) CreateCDF();
             return opd.GetYFromX(x, XTransform, ProbabilityTransform);
         }
@@ -524,6 +615,7 @@ namespace Numerics.Distributions
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0) return Minimum;
             if (probability == 1.0) return Maximum;
+            if (Minimum == Maximum) return double.NaN;
             if (!_cdfCreated) CreateCDF();
             return opd.GetXFromY(probability, XTransform, ProbabilityTransform);
         }
@@ -531,16 +623,34 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new KernelDensity(SampleData, KernelDistribution, Bandwidth) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform, BoundedByData = BoundedByData };
+            if (_weights == null)
+            {
+                return new KernelDensity(SampleData, KernelDistribution, Bandwidth)
+                {
+                    XTransform = XTransform,
+                    ProbabilityTransform = ProbabilityTransform,
+                    BoundedByData = BoundedByData
+                };
+            }
+            else
+            {
+                return new KernelDensity(SampleData, _weights, KernelDistribution, Bandwidth)
+                {
+                    XTransform = XTransform,
+                    ProbabilityTransform = ProbabilityTransform,
+                    BoundedByData = BoundedByData
+                };
+            }
         }
- 
+
         /// <summary>
         /// Create the empirical CDF.
         /// </summary>
         private void CreateCDF()
         {
+
             // Create wide bins
-            int n = 1000; 
+            int n = 1000;
             var bins = Stratify.XValues(new StratificationOptions(Minimum, Maximum, n));
             var xValues = new double[n];
             var pValues = new double[n];

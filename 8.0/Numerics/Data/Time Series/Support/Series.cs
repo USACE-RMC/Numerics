@@ -28,11 +28,9 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System;
+
 using System.Collections;
-using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Linq;
 
 namespace Numerics.Data
 {
@@ -116,18 +114,15 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public virtual void Add(SeriesOrdinate<TIndex, TValue> item)
         {
-            if (item == null)
-                throw new ArgumentNullException(nameof(item));
-
+            if (item == null) throw new ArgumentNullException(nameof(item));
             _seriesOrdinates.Add(item);
-            if (SuppressCollectionChanged == false) { CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _seriesOrdinates.Count - 1)); }
+            RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _seriesOrdinates.Count - 1));
         }
 
         /// <inheritdoc/>
         public int Add(object item)
         {
             if (item.GetType() != typeof(SeriesOrdinate<TIndex, TValue>)) { return -1; }
-
             Add((SeriesOrdinate<TIndex, TValue>)item);
             return _seriesOrdinates.Count - 1;
         }
@@ -135,17 +130,18 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public virtual void Insert(int index, SeriesOrdinate<TIndex, TValue> item)
         {
-            if (item == null)
-                throw new ArgumentNullException(nameof(item));
-
+            if (item == null) throw new ArgumentNullException(nameof(item));
             _seriesOrdinates.Insert(index, item);
-            if (SuppressCollectionChanged == false) { CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index)); }
+            RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
         /// <inheritdoc/>
         public void Insert(int index, object item)
         {
-            if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>)) { Insert(index, (SeriesOrdinate<TIndex, TValue>)item); }
+            if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>))
+            {
+                Insert(index, (SeriesOrdinate<TIndex, TValue>)item);
+            }
         }
 
         /// <inheritdoc/>
@@ -154,8 +150,7 @@ namespace Numerics.Data
             var index = IndexOf(item);
             if (_seriesOrdinates.Remove(item) == true)
             {
-                if (SuppressCollectionChanged == false)
-                    CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
+                RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
                 return true;
             }
             return false;
@@ -181,11 +176,13 @@ namespace Numerics.Data
         /// </summary>
         public void Clear()
         {
+            bool suppress = SuppressCollectionChanged;
             SuppressCollectionChanged = true;
             for (int i = _seriesOrdinates.Count - 1; i >= 0; i--)
                 Remove(_seriesOrdinates[i]);
             SuppressCollectionChanged = false;
             RaiseCollectionChangedReset();
+            SuppressCollectionChanged = suppress;
         }
 
         /// <inheritdoc/>
@@ -199,7 +196,7 @@ namespace Numerics.Data
         {
             if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>))
             {
-                Contains((SeriesOrdinate<TIndex, TValue>)item);
+                return Contains((SeriesOrdinate<TIndex, TValue>)item);
             }
             return false;
         }
@@ -248,6 +245,16 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Raise the collection changed event.
+        /// </summary>
+        /// <param name="args">Change event args.</param>
+        protected void RaiseCollectionChanged(NotifyCollectionChangedEventArgs args)
+        {
+            if (!SuppressCollectionChanged)
+                CollectionChanged?.Invoke(this, args);
+        }
+
+        /// <summary>
         /// Raise the collection changed reset event.
         /// </summary>
         public void RaiseCollectionChangedReset()
@@ -289,3 +296,4 @@ namespace Numerics.Data
 
     }
 }
+

@@ -51,7 +51,7 @@ namespace Numerics.Distributions
     /// </para>
     /// </remarks>
     [Serializable]
-    public abstract class UnivariateDistributionBase : IUnivariateDistribution
+    public abstract class UnivariateDistributionBase : IUnivariateDistribution, IComparable<UnivariateDistributionBase>
     {
         /// <summary>
         /// Approximation for assessing if a parameter is near zero. 
@@ -177,7 +177,7 @@ namespace Numerics.Distributions
         {
             var logLH = default(double);
             for (int i = 0; i < sample.Count; i++)
-            {        
+            {
                 logLH += LogPDF(sample[i]);
             }
             if (double.IsNaN(logLH) || double.IsInfinity(logLH)) return double.MinValue;
@@ -314,7 +314,7 @@ namespace Numerics.Distributions
         {
             double u1 = 0, u2 = 0, u3 = 0, u4 = 0;
             double a = InverseCDF(1E-16);
-            double b = InverseCDF(1-1E-16);
+            double b = InverseCDF(1 - 1E-16);
             if (a >= b) return new double[] { a, double.NaN, double.NaN, double.NaN };
 
             // Mean
@@ -761,6 +761,21 @@ namespace Numerics.Distributions
         public static bool operator !=(UnivariateDistributionBase left, UnivariateDistributionBase right)
         {
             return !(left == right);
+        }
+
+        /// <summary>
+        /// Implementation of IComparable to sort distributions by their Mean.
+        /// </summary>
+        /// <param name="other">Another UnivariateDistributionBase instance.</param>
+        /// <returns>
+        /// A negative number if this instance's mean is less than the other; zero if equal; a positive number if greater.
+        /// </returns>
+        public int CompareTo(UnivariateDistributionBase other)
+        {
+            if (other == null)
+                return 1; // non-null instance is considered greater than null
+
+            return this.Mean.CompareTo(other.Mean);
         }
 
     }

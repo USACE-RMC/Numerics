@@ -120,6 +120,7 @@
     <Compile Include="Data\Interpolation\Support\Transform.cs" />
     <Compile Include="Data\Paired Data\LineSimplification.cs" />
     <Compile Include="Data\Statistics\RunningCovarianceMatrix.cs" />
+    <Compile Include="Data\Statistics\YeoJohnson.cs" />
     <Compile Include="Data\Time Series\Support\BlockFunctionType.cs" />
     <Compile Include="Data\Time Series\Support\MathFunctionType.cs" />
     <Compile Include="Data\Time Series\Support\Series.cs" />

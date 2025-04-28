@@ -143,6 +143,7 @@ namespace Numerics.Distributions
             {
                 _pValues = orderedPairedData.Select(v => v.Y).ToArray();
             }
+            _momentsComputed = false;
         }
 
         /// <summary>
@@ -156,6 +157,7 @@ namespace Numerics.Distributions
             Array.Sort(_xValues);
             _pValues = PlottingPositions.Function(_xValues.Count(), plottingPostionType);
             opd = new OrderedPairedData(_xValues, _pValues, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            _momentsComputed = false;
         }
 
         private double[] _xValues;
@@ -407,12 +409,35 @@ namespace Numerics.Distributions
         {
             return null;
         }
+
         /// <inheritdoc/>
         public override double PDF(double X)
         {
             if (X < Minimum || X > Maximum) return 0.0d;
-            var d = NumericalDerivative.Derivative(CDF, X);
-            return d < 0d ? 0d : d;
+
+            double dFdx = 0;
+            double x = X;
+            double h = NumericalDerivative.CalculateStepSize(X);
+            if (X <= _xValues.First())
+            {
+                // If x is on the boundary, use a one-sided two-point difference
+                x = _xValues.First();
+                h = NumericalDerivative.CalculateStepSize(x);
+                dFdx = (CDF(x + h) - CDF(x)) / h;
+            }
+            else if (X >= _xValues.Last())
+            {
+                // If x is on the boundary, use a one-sided two-point difference
+                x = _xValues.Last();
+                h = NumericalDerivative.CalculateStepSize(x);
+                dFdx = (CDF(x) - CDF(x - h)) / h;
+            }
+            else
+            {
+                // otherwise central difference
+                dFdx = (CDF(x + h) - CDF(x - h)) / (2 * h);
+            }
+            return dFdx < 0 ? 0 : dFdx;
         }
 
         /// <summary>

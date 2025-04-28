@@ -57,11 +57,6 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-
 namespace Numerics.Data.Statistics
 {
 
@@ -88,23 +83,24 @@ namespace Numerics.Data.Statistics
     /// </list>
     /// </para>
     /// </remarks>
-    public class Statistics
+    public static class Statistics
     {
         /// <summary>
         /// Returns the smallest value from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Minimum(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Minimum(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
             double min = double.MaxValue;
-            for (int i = 0; i < sampleData.Count; i++)
+            for (int i = 0; i < data.Count; i++)
             {
-                if (sampleData[i] < min || double.IsNaN(sampleData[i]))
+                if (data[i] < min || double.IsNaN(data[i]))
                 {
-                    min = sampleData[i];
+                    min = data[i];
                 }
             }
 
@@ -115,17 +111,18 @@ namespace Numerics.Data.Statistics
         /// Returns the largest value from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Maximum(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Maximum(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
             double max = double.MinValue;
-            for (int i = 0; i < sampleData.Count; i++)
+            for (int i = 0; i < data.Count; i++)
             {
-                if (sampleData[i] > max || double.IsNaN(sampleData[i]))
+                if (data[i] > max || double.IsNaN(data[i]))
                 {
-                    max = sampleData[i];
+                    max = data[i];
                 }
             }
 
@@ -136,14 +133,15 @@ namespace Numerics.Data.Statistics
         /// Estimates the sum of the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Sum(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Sum(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
-            double sum = 0d;
-            for (int i = 0; i < sampleData.Count; i++)
-                sum += sampleData[i];
+            double sum = 0;
+            for (int i = 0; i < data.Count; i++)
+                sum += data[i];
             return sum;
         }
 
@@ -151,56 +149,60 @@ namespace Numerics.Data.Statistics
         /// Estimates the arithmetic sample mean from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Mean(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Mean(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
-            double sum = 0d;
-            for (int i = 0; i < sampleData.Count; i++)
-                sum += sampleData[i];
-            return sum / sampleData.Count;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
+            double sum = 0;
+            for (int i = 0; i < data.Count; i++)
+                sum += data[i];
+            return sum / data.Count;
         }
 
         /// <summary>
         /// Computes the arithmetic sample mean from the unsorted data array by first enabling parallelization of the array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double ParallelMean(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double ParallelMean(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
-            double sum = sampleData.AsParallel().Sum();
-            return sum / sampleData.Count;
+            if (data.Count == 0) return double.NaN;
+
+            double sum = data.AsParallel().Sum();
+            return sum / data.Count;
         }
 
         /// <summary>
         /// Evaluates the geometric mean of the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double GeometricMean(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double GeometricMean(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
-            double sum = 0d;
-            for (int i = 0; i < sampleData.Count; i++)
-                sum += Math.Log(sampleData[i]);
-            return Math.Exp(sum / sampleData.Count);
+            double sum = 0;
+            for (int i = 0; i < data.Count; i++)
+                sum += Math.Log(data[i]);
+            return Math.Exp(sum / data.Count);
         }
 
         /// <summary>
         /// Evaluates the harmonic mean of the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double HarmonicMean(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double HarmonicMean(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
-            double sum = 0d;
-            for (int i = 0; i < sampleData.Count; i++)
-                sum += 1.0d / sampleData[i];
-            return sampleData.Count / sum;
+            double sum = 0;
+            for (int i = 0; i < data.Count; i++)
+                sum += 1.0 / data[i];
+            return data.Count / sum;
         }
 
         /// <summary>
@@ -208,20 +210,21 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N-1 normalizer (Bessel's correction).
         /// Returns NaN if data has less than two entries or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Variance(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Variance(IList<double> data)
         {
-            if (sampleData.Count <= 1) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count <= 1) return double.NaN;
 
-            double variance_ = 0d;
-            double t = sampleData[0];
-            for (int i = 1; i < sampleData.Count; i++)
+            double variance_ = 0;
+            double t = data[0];
+            for (int i = 1; i < data.Count; i++)
             {
-                t += sampleData[i];
-                double diff = (i + 1) * sampleData[i] - t;
+                t += data[i];
+                double diff = (i + 1) * data[i] - t;
                 variance_ += diff * diff / ((i + 1.0d) * i);
             }
-            return variance_ / (sampleData.Count - 1);
+            return variance_ / (data.Count - 1);
         }
 
         /// <summary>
@@ -229,20 +232,21 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N normalizer and would thus be biased if applied to a subset.
         /// Returns NaN if data is empty or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double PopulationVariance(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double PopulationVariance(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
-            double variance = 0d;
-            double t = sampleData[0];
-            for (int i = 1; i < sampleData.Count; i++)
+            double variance = 0;
+            double t = data[0];
+            for (int i = 1; i < data.Count; i++)
             {
-                t += sampleData[i];
-                double diff = (i + 1) * sampleData[i] - t;
-                variance += diff * diff / ((i + 1.0d) * i);
+                t += data[i];
+                double diff = (i + 1) * data[i] - t;
+                variance += diff * diff / ((i + 1.0) * i);
             }
-            return variance / sampleData.Count;
+            return variance / data.Count;
         }
 
         /// <summary>
@@ -250,10 +254,10 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N-1 normalizer (Bessel's correction).
         /// Returns NaN if data has less than two entries or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double StandardDeviation(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double StandardDeviation(IList<double> data)
         {
-            return Math.Sqrt(Variance(sampleData));
+            return Math.Sqrt(Variance(data));
         }
 
         /// <summary>
@@ -261,10 +265,10 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N normalizer and would thus be biased if applied to a subset.
         /// Returns NaN if data is empty or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double PopulationStandardDeviation(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double PopulationStandardDeviation(IList<double> data)
         {
-            return Math.Sqrt(PopulationVariance(sampleData));
+            return Math.Sqrt(PopulationVariance(data));
         }
 
         /// <summary>
@@ -272,10 +276,10 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N-1 normalizer (Bessel's correction).
         /// Returns NaN for mean if data is empty or any entry is NaN and NaN for variance if data has less than two entries or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static Tuple<double, double> MeanVariance(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static (double mean, double variance) MeanVariance(IList<double> data)
         {
-            return new Tuple<double, double>(Mean(sampleData), Variance(sampleData));
+            return (Mean(data), Variance(data));
         }
 
         /// <summary>
@@ -283,36 +287,37 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N-1 normalizer (Bessel's correction).
         /// Returns NaN for mean if data is empty or any entry is NaN and NaN for standard deviation if data has less than two entries or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static Tuple<double, double> MeanStandardDeviation(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static (double mean, double standardDeviation) MeanStandardDeviation(IList<double> data)
         {
-            return new Tuple<double, double>(Mean(sampleData), StandardDeviation(sampleData));
+            return (Mean(data), StandardDeviation(data));
         }
 
         /// <summary>
         /// Estimates the coefficient of variation from the provided sample of data.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double CoefficientOfVariation(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double CoefficientOfVariation(IList<double> data)
         {
-            return StandardDeviation(sampleData) / Mean(sampleData);
+            return StandardDeviation(data) / Mean(data);
         }
 
         /// <summary>
         /// Estimates the skewness coefficient from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Skewness(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Skewness(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
-            double mean = Mean(sampleData);
-            int n = sampleData.Count;
-            double s2 = 0d, s3 = 0d;
+            double mean = Mean(data);
+            int n = data.Count;
+            double s2 = 0, s3 = 0;
             for (int i = 0; i < n; i++)
             {
-                double xm = sampleData[i] - mean;
+                double xm = data[i] - mean;
                 s2 += xm * xm;
                 s3 += xm * xm * xm;
             }
@@ -327,17 +332,20 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Computes the standard error of the statistic, using the jackknife method.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <param name="statistic">The statistic for estimating standard error.</param>
-        public static double JackKnifeStandardError(IList<double> sampleData, Func<IList<double>, double> statistic)
+        public static double JackKnifeStandardError(IList<double> data, Func<IList<double>, double> statistic)
         {
-            int N = sampleData.Count;
-            double theta = statistic(sampleData);
-            double I = 0d;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
+
+            int N = data.Count;
+            double theta = statistic(data);
+            double I = 0;
             Parallel.For(0, N, () => 0d, (i, loop, subI) =>
             {
                 // Remove data point
-                var jackSample = new List<double>(sampleData);
+                var jackSample = new List<double>(data);
                 jackSample.RemoveAt(i);
                 // Compute statistic
                 subI += Tools.Sqr(statistic(jackSample) - theta);
@@ -349,17 +357,20 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Returns a jackknifed sample.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <param name="statistic">The statistic for estimating a sample.</param>
-        public static double[] JackKnifeSample(IList<double> sampleData, Func<IList<double>, double> statistic)
+        public static double[] JackKnifeSample(IList<double> data, Func<IList<double>, double> statistic)
         {
-            int N = sampleData.Count;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return null;
+
+            int N = data.Count;
             var thetaJack = new double[N];
             // Perform Jackknife
             Parallel.For(0, N, i =>
             {
                 // Remove data point
-                var jackSample = new List<double>(sampleData);
+                var jackSample = new List<double>(data);
                 jackSample.RemoveAt(i);
                 // Compute statistic
                 thetaJack[i] = statistic(jackSample);
@@ -371,17 +382,18 @@ namespace Numerics.Data.Statistics
         /// Estimates the kurtosis from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double Kurtosis(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double Kurtosis(IList<double> data)
         {
-            if (sampleData.Count == 0) return double.NaN;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Count == 0) return double.NaN;
 
-            double mean = Mean(sampleData);
-            int n = sampleData.Count;
-            double s2 = 0d, s4 = 0d;
+            double mean = Mean(data);
+            int n = data.Count;
+            double s2 = 0, s4 = 0;
             for (int i = 0; i < n; i++)
             {
-                double xm = sampleData[i] - mean;
+                double xm = data[i] - mean;
                 s2 += xm * xm;
                 s4 += xm * xm * xm * xm;
             }
@@ -391,7 +403,7 @@ namespace Numerics.Data.Statistics
             double a = n * (n + 1) / (double)((n - 1) * (n - 2) * (n - 3));
             double b = s4 / (v * v);
             double c = (n - 1) * (n - 1) / (double)((n - 2) * (n - 3));
-            return a * b - 3d * c;
+            return a * b - 3 * c;
         }
 
         /// <summary>
@@ -399,23 +411,25 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N-1 normalizer (Bessel's correction).
         /// Returns NaN if data has less than two entries or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData1">First sample of data, no sorting is assumed.</param>
-        /// <param name="sampleData2">Second sample of data, no sorting is assumed.</param>
-        public static double Covariance(IList<double> sampleData1, IList<double> sampleData2)
+        /// <param name="data1">First sample of data, no sorting is assumed.</param>
+        /// <param name="data2">Second sample of data, no sorting is assumed.</param>
+        public static double Covariance(IList<double> data1, IList<double> data2)
         {
-            if (sampleData1.Count != sampleData2.Count)
+            if (data1 == null) throw new ArgumentNullException(nameof(data1));
+            if (data2 == null) throw new ArgumentNullException(nameof(data2));
+            if (data1.Count != data2.Count)
             {
                 throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
-            if (sampleData1.Count <= 1) return double.NaN;
+            if (data1.Count <= 1) return double.NaN;
 
-            double mean1 = Mean(sampleData1);
-            double mean2 = Mean(sampleData2);
-            double covariance = 0.0d;
-            for (int i = 0; i < sampleData1.Count; i++)
-                covariance += (sampleData1[i] - mean1) * (sampleData2[i] - mean2);
-            return covariance / (sampleData1.Count - 1);
+            double mean1 = Mean(data1);
+            double mean2 = Mean(data2);
+            double covariance = 0.0;
+            for (int i = 0; i < data1.Count; i++)
+                covariance += (data1[i] - mean1) * (data2[i] - mean2);
+            return covariance / (data1.Count - 1);
         }
 
         /// <summary>
@@ -423,108 +437,106 @@ namespace Numerics.Data.Statistics
         /// On a dataset of size N will use an N normalizer and would thus be biased if applied to a subset.
         /// Returns NaN if data is empty or if any entry is NaN.
         /// </summary>
-        /// <param name="sampleData1">First sample of data, no sorting is assumed.</param>
-        /// <param name="sampleData2">Second sample of data, no sorting is assumed.</param>
-        public static double PopulationCovariance(IList<double> sampleData1, IList<double> sampleData2)
+        /// <param name="data1">First sample of data, no sorting is assumed.</param>
+        /// <param name="data2">Second sample of data, no sorting is assumed.</param>
+        public static double PopulationCovariance(IList<double> data1, IList<double> data2)
         {
-            if (sampleData1.Count != sampleData2.Count)
+            if (data1 == null) throw new ArgumentNullException(nameof(data1));
+            if (data2 == null) throw new ArgumentNullException(nameof(data2));
+            if (data1.Count != data2.Count)
             {
                 throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
-            if (sampleData1.Count == 0) return double.NaN;
+            if (data1.Count == 0) return double.NaN;
 
-            double mean1 = Mean(sampleData1);
-            double mean2 = Mean(sampleData2);
-            double covariance = 0.0d;
-            for (int i = 0; i < sampleData1.Count; i++)
-                covariance += (sampleData1[i] - mean1) * (sampleData2[i] - mean2);
-            return covariance / sampleData1.Count;
+            double mean1 = Mean(data1);
+            double mean2 = Mean(data2);
+            double covariance = 0.0;
+            for (int i = 0; i < data1.Count; i++)
+                covariance += (data1[i] - mean1) * (data2[i] - mean2);
+            return covariance / data1.Count;
         }
 
         /// <summary>
         /// Returns the first four product moments of a sample {Mean, Standard Deviation, Skew, and Kurtosis}, or returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double[] ProductMoments(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double[] ProductMoments(IList<double> data)
         {
-            if (sampleData.Count == 0)
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            double N = data.Count;
+            if (N < 4) throw new ArgumentException("There must be more than 4 data points.", nameof(data));
+
+            // sums of powers
+            double X1 = 0, X2 = 0, X3 = 0, X4 = 0;
+            foreach (var x in data)
             {
-                return [double.NaN, double.NaN, double.NaN, double.NaN];
+                double x2 = x * x;
+                X1 += x;
+                X2 += x2;
+                X3 += x2 * x;
+                X4 += x2 * x2;
             }
 
-            // Create variables
-            double M;         // mean
-            double V;         // variance
-            double S;         // standard deviation
-            double G;         // skew
-            double K;         // kurtosis
-            double X = 0;     // sum
-            double X2 = 0;    // sum of X^2
-            double X3 = 0;    // sum of X^3
-            double X4 = 0;    // sum of X^4
-            double U1, U2, U3, U4;
+            // raw moments
+            double U1 = X1 / N;
+            double U2 = X2 / N;
+            double U3 = X3 / N;
+            double U4 = X4 / N;
 
-            // Get sample size
-            double N = sampleData.Count;
+            // central moments
+            double m2 = (U2 - U1 * U1) * (N / (N - 1));  // sample variance
+            double S = Math.Sqrt(m2);
 
-            // Compute sum
-            for (int i = 0; i <= (int)(N - 1L); i++)
-            {
-                X += sampleData[i];
-                X2 += Math.Pow(sampleData[i], 2d);
-                X3 += Math.Pow(sampleData[i], 3d);
-                X4 += Math.Pow(sampleData[i], 4d);
-            }
+            // pre-compute powers
+            double U1_2 = U1 * U1;
+            double U1_3 = U1_2 * U1;
+            double U1_4 = U1_3 * U1;
+            double S3 = S * S * S;
+            double S4 = S3 * S;
 
-            // Compute averages
-            U1 = X / N;
-            U2 = X2 / N;
-            U3 = X3 / N;
-            U4 = X4 / N;
-            // Get mean
-            M = U1;
-            // Compute variance
-            V = (U2 - Math.Pow(U1, 2d)) * (N / (N - 1));
-            // Compute sample standard deviation
-            S = Math.Sqrt(V);
-            // Compute sample skew
-            G = Math.Pow(N, 2d) * (U3 - 3d * U1 * U2 + 2d * Math.Pow(U1, 3d)) / ((N - 1L) * (N - 2L) * Math.Pow(S, 3d));
-            // Compute sample kurtosis
-            K = Math.Pow(N, 2d) * (N + 1L) * (U4 - 4d * U1 * U3 + 6d * U2 * Math.Pow(U1, 2d) - 3d * Math.Pow(U1, 4d)) / ((N - 1L) * (N - 2L) * (N - 3L) * Math.Pow(S, 4d)) - 3d * Math.Pow(N - 1L, 2d) / ((N - 2L) * (N - 3L));
-            return [M, S, G, K];
+            // third central moment
+            double c3 = U3 - 3 * U1 * U2 + 2 * U1_3;
+            // fourth central moment
+            double c4 = U4 - 4 * U1 * U3 + 6 * U2 * U1_2 - 3 * U1_4;
+
+            // bias-corrected skewness
+            double G = (N * N) / ((N - 1) * (N - 2)) * (c3 / S3);
+
+            // bias-corrected excess kurtosis
+            double K = ((N * N) * (N + 1)) / ((N - 1) * (N - 2) * (N - 3)) * (c4 / S4) - 3d * (N - 1) * (N - 1) / ((N - 2) * (N - 3));
+
+            return [U1, S, G, K];
+
         }
 
         /// <summary>
         /// Returns the linear moments of a sample {L-Mean (λ1), L-Scale (λ2), L-Skewness (τ3), and L-Kurtosis (τ4)}, or returns NaN if data is empty or any entry is NaN.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
-        public static double[] LinearMoments(IList<double> sampleData)
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        public static double[] LinearMoments(IList<double> data)
         {
-            var sample = sampleData.ToArray();
-            if (sample.Count() == 0)
-            {
-                return [double.NaN, double.NaN, double.NaN, double.NaN];
-            }
-            // 
-            double B0 = 0d;
-            double B1 = 0d;
-            double B2 = 0d;
-            double B3 = 0d;
-            double N = sample.Count();
-            Array.Sort(sample);
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            double N = data.Count;
+            if (N < 4) throw new ArgumentException("There must be more than 4 data points.", nameof(data));
 
+            // Copy and sort data
+            var sortedData = data.ToArray();
+            Array.Sort(sortedData);
+
+            double B0 = 0, B1 = 0, B2 = 0, B3 = 0;
             for (int i = 1; i <= N; i++)
             {
-                B0 += sample[i - 1];
+                B0 += sortedData[i - 1];
                 if (i > 1)
-                    B1 += (i - 1) / (N - 1) * sample[i - 1];
+                    B1 += (i - 1) / (N - 1) * sortedData[i - 1];
                 if (i > 2)
-                    B2 += (i - 2) * (i - 1) / ((N - 2) * (N - 1)) * sample[i - 1];
+                    B2 += (i - 2) * (i - 1) / ((N - 2) * (N - 1)) * sortedData[i - 1];
                 if (i > 3)
-                    B3 += (i - 3) * (i - 2) * (i - 1) / ((N - 3) * (N - 2) * (N - 1)) * sample[i - 1];
+                    B3 += (i - 3) * (i - 2) * (i - 1) / ((N - 3) * (N - 2) * (N - 1)) * sortedData[i - 1];
             }
- 
+
             B0 /= N;
             B1 /= N;
             B2 /= N;
@@ -534,109 +546,107 @@ namespace Numerics.Data.Statistics
             // L-Skewness (τ3)
             // L-Kurtosis (τ4)
             double L1 = B0;
-            double L2 = 2d * B1 - B0;
-            double T3 = 2d * (3d * B2 - B0) / (2d * B1 - B0) - 3d;
-            double T4 = 5d * (2d * (2d * B3 - 3d * B2) + B0) / (2d * B1 - B0) + 6d;
+            double L2 = 2 * B1 - B0;
+            double T3 = 2 * (3 * B2 - B0) / (2 * B1 - B0) - 3;
+            double T4 = 5 * (2 * (2 * B3 - 3 * B2) + B0) / (2 * B1 - B0) + 6;
             return [L1, L2, T3, T4];
         }
 
         /// <summary>
         /// Returns the k-th percentile of values in a sample.
         /// </summary>
-        /// <param name="sampleData">Sample of data.</param>
+        /// <param name="data">Sample of data.</param>
         /// <param name="k">The k-th percentile to find.</param>
-        /// <param name="sampleDataIsSorted">Boolean value indicating if the sample of data is sorted or not. Assumed false, not sorted, by default.</param>
+        /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
         /// <returns>The k-th percentile.</returns>
-        public static double Percentile(IList<double> sampleData, double k, bool sampleDataIsSorted = false)
+        public static double Percentile(IList<double> data, double k, bool dataIsSorted = false)
         {
-            int n = sampleData.Count;
-            double m = (n - 1) * k + 1d;
-            // 
-            if (sampleDataIsSorted == false)
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            int n = data.Count;
+            if (n == 0) throw new ArgumentException("Sequence contains no elements.", nameof(data));
+            if (k < 0.0 || k > 1.0) throw new ArgumentOutOfRangeException(nameof(k), "k must be in [0,1].");
+
+            // Copy & sort if needed
+            var sortedData = dataIsSorted ? data : data.OrderBy(x => x).ToArray();
+
+            // Trivial cases
+            if (n == 1 || k == 0.0) return sortedData[0];
+            if (k == 1.0) return sortedData[n - 1];
+
+            // Zero-based linear interpolation (Type 7)
+            double h = (n - 1) * k;
+            int lower = (int)Math.Floor(h);
+            int upper = (int)Math.Ceiling(h);
+            double w = h - lower;
+            return sortedData[lower] + w * (sortedData[upper] - sortedData[lower]);
+        }
+
+        /// <summary>
+        /// Returns an array of percentile values of a sample.
+        /// </summary>
+        /// <param name="data">Sample of data.</param>
+        /// <param name="k">The list of k-th percentiles to find.</param>
+        /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
+        /// <returns>The k-th percentile.</returns>
+        public static double[] Percentile(IList<double> data, IList<double> k, bool dataIsSorted = false)
+        {
+            // Copy & sort if needed
+            var sortedData = dataIsSorted ? data : data.OrderBy(x => x).ToArray();
+            var result = new double[k.Count];
+            for (int i = 0; i < k.Count; i++)
             {
-                var sortedSampleData = sampleData.ToArray(); // allows the original sampleData to not get sorted. 
-                Array.Sort(sortedSampleData);
-                // 
-                if (m == 1.0d)
-                {
-                    return sortedSampleData[0];
-                }
-                else if (m == n)
-                {
-                    return sortedSampleData[n - 1];
-                }
-                else
-                {
-                    int i = (int)Math.Truncate(m);
-                    double d = m - i;
-                    return sortedSampleData[i - 1] + d * (sortedSampleData[i] - sortedSampleData[i - 1]);
-                }
+                result[i] = Percentile(sortedData, k[i], true);
             }
-            else if (m == 1.0d)
-            {
-                return sampleData[0];
-            }
-            else if (m == n)
-            {
-                return sampleData[n - 1];
-            }
-            else
-            {
-                int i = (int)Math.Truncate(m);
-                double d = m - i;
-                return sampleData[i - 1] + d * (sampleData[i] - sampleData[i - 1]);
-            }
+            return result;
         }
 
         /// <summary>
         /// Estimates the 5-number summary {min, 25th-percentile, 50th-percentile, 75th-percentile, max} from a sample of data.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <returns>5-number summary statistics.</returns>
-        public static double[] FiveNumberSummary(IList<double> sampleData)
+        public static double[] FiveNumberSummary(IList<double> data)
         {
-            double[] results;
-            if (sampleData.Count == 0)
-            {
-                results = new[] { double.NaN, double.NaN, double.NaN, double.NaN, double.NaN };
-                return results;
-            }
-            // Sort the data, convert to array to so that the input variable does not get changed.
-            var sortedSampleData = sampleData.ToArray();
-            Array.Sort(sortedSampleData);
-            // 
-            results = new[] { sortedSampleData[0], Percentile(sortedSampleData, 0.25d, true), Percentile(sortedSampleData, 0.5d, true), Percentile(sortedSampleData, 0.75d, true), sortedSampleData[sortedSampleData.Count() - 1] };
-            return results;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            // Copy & sort
+            var sortedData = data.ToArray();
+            Array.Sort(sortedData);
+            double min = sortedData[0];
+            double max = sortedData[sortedData.Count() - 1];
+            double p25 = Percentile(sortedData, 0.25, true);
+            double p50 = Percentile(sortedData, 0.5, true);
+            double p75 = Percentile(sortedData, 0.75, true);
+            return [min, p25, p50, p75, max];
         }
 
         /// <summary>
         /// Estimates the 7-number summary {min, 5th percentile, 25th-percentile, 50th-percentile, 75th-percentile, 95th-percentile, max} from a sample of data.
         /// </summary>
-        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <returns>7-number summary statistics.</returns>
-        public static double[] SevenNumberSummary(IList<double> sampleData)
+        public static double[] SevenNumberSummary(IList<double> data)
         {
-            double[] results;
-            if (sampleData.Count == 0)
-            {
-                results = new[] { double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN };
-                return results;
-            }
-            // Sort the data, convert to array to so that the input variable does not get changed.
-            var sortedSampleData = sampleData.ToArray();
-            Array.Sort(sortedSampleData);
-            // 
-            results = new[] { sortedSampleData[0], Percentile(sortedSampleData, 0.05d, true), Percentile(sortedSampleData, 0.25d, true), Percentile(sortedSampleData, 0.5d, true), Percentile(sortedSampleData, 0.75d, true), Percentile(sortedSampleData, 0.95d, true), sortedSampleData[sortedSampleData.Count() - 1] };
-            // 
-            return results;
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            // Copy & sort
+            var sortedData = data.ToArray();
+            Array.Sort(sortedData);
+            double min = sortedData[0];
+            double max = sortedData[sortedData.Count() - 1];
+            double p5 = Percentile(sortedData, 0.05, true);
+            double p25 = Percentile(sortedData, 0.25, true);
+            double p50 = Percentile(sortedData, 0.5, true);
+            double p75 = Percentile(sortedData, 0.75, true);
+            double p95 = Percentile(sortedData, 0.95, true);
+            return [min, p5, p25, p50, p75, p95, max];
         }
 
         /// <summary>
         /// Returns the rank of each entry of the unsorted data array.
         /// </summary>
         /// <param name="data">The array of sample of data, no sorting is assumed.</param>
-        public static double[] RanksInplace(double[] data)
+        public static double[] RanksInPlace(double[] data)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
 
             var ranks = new double[data.Length];
             var index = new int[data.Length];
@@ -645,12 +655,15 @@ namespace Numerics.Data.Statistics
                 index[i] = i;
             }
 
-            Array.Sort(data, index);
+            // Copy and sort array
+            var work = (double[])data.Clone();
+            Array.Sort(work, index);
+
             int previousIndex = 0;
-            for (int i = 1; i < data.Length; i++)
+            for (int i = 1; i < work.Length; i++)
             {
 
-                if (Math.Abs(data[i] - data[previousIndex]) <= 0d)
+                if (Math.Abs(work[i] - work[previousIndex]) <= 0)
                 {
                     continue;
                 }
@@ -667,7 +680,7 @@ namespace Numerics.Data.Statistics
                 previousIndex = i;
             }
 
-            RanksTies(ranks, index, previousIndex, data.Length);
+            RanksTies(ranks, index, previousIndex, work.Length);
             return ranks;
         }
 
@@ -676,8 +689,9 @@ namespace Numerics.Data.Statistics
         /// </summary>
         /// <param name="data">The array of sample of data, no sorting is assumed.</param>
         /// <param name="ties">Output. The number of ties in the data.</param>
-        public static double[] RanksInPlace(double[] data, out double [] ties)
+        public static double[] RanksInPlace(double[] data, out double[] ties)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
 
             var ranks = new double[data.Length];
             ties = new double[data.Length];
@@ -687,12 +701,15 @@ namespace Numerics.Data.Statistics
                 index[i] = i;
             }
 
-            Array.Sort(data, index);
+            // Copy and sort array
+            var work = (double[])data.Clone();
+            Array.Sort(work, index);
+
             int previousIndex = 0;
             int t = 0;
-            for (int i = 1; i < data.Length; i++)
+            for (int i = 1; i < work.Length; i++)
             {
-                if (data[i].AlmostEquals(data[previousIndex], Tools.DoubleMachineEpsilon))
+                if (work[i].AlmostEquals(work[previousIndex], Tools.DoubleMachineEpsilon))
                 {
                     t += 1;
                     continue;
@@ -701,7 +718,7 @@ namespace Numerics.Data.Statistics
                 if (i == previousIndex + 1)
                 {
                     ranks[index[previousIndex]] = i;
-                    t = 0;      
+                    t = 0;
                 }
                 else
                 {
@@ -713,7 +730,7 @@ namespace Numerics.Data.Statistics
                 previousIndex = i;
             }
 
-            RanksTies(ranks, index, previousIndex, data.Length);
+            RanksTies(ranks, index, previousIndex, work.Length);
             return ranks;
         }
 
@@ -722,7 +739,6 @@ namespace Numerics.Data.Statistics
         /// </summary>
         private static void RanksTies(double[] ranks, int[] index, int a, int b)
         {
-            
             double rank = (b + a - 1) / 2d + 1;
             for (int k = a; k < b; k++)
             {
@@ -733,15 +749,20 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Computes the entropy function for a set of numerical values in a given Probability Density Function (pdf).
         /// </summary>
-        /// <param name="values">The array of values.</param>
+        /// <param name="data">The array of values.</param>
         /// <param name="pdf">A probability distribution function.</param>
-        public static double Entropy(double[] values, Func<double, double> pdf)
+        public static double Entropy(double[] data, Func<double, double> pdf)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+
             double sum = 0;
-            for (int i = 0; i < values.Length; i++)
+            for (int i = 0; i < data.Length; i++)
             {
-                double p = pdf(values[i]);
-                sum += p * Math.Log(p);
+                double p = pdf(data[i]);
+                if (p > 0)
+                {
+                    sum += p * Math.Log(p);
+                }
             }
             return -sum;
         }

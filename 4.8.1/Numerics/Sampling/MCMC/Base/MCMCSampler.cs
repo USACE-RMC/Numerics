@@ -405,9 +405,8 @@ namespace Numerics.Sampling.MCMC
                         // Get Fisher Information Matrix
                         var fisher = DE.Hessian * -1d;
                         // Invert it to get the covariance matrix, and scale to give wider coverage
-                        var covar = fisher.Inverse() * 2.5;
+                        var covar = fisher.Inverse();
                         
-
                         // Set up proposal distribution
                         _MVN = new MultivariateNormal(MAP.Values, covar.ToArray());
                         // Then randomly sample from the proposal

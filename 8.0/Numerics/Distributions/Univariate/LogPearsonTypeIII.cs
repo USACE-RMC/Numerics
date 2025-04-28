@@ -56,7 +56,7 @@ namespace Numerics.Distributions
     [Serializable]
     public sealed class LogPearsonTypeIII : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, IMomentEstimation, ILinearMomentEstimation, IStandardError, IBootstrappable
     {
-      
+
         /// <summary>
         /// Constructs a log-Pearson Type III distribution with a mean (of log) of 3, std dev (of log) of 0.5, and skew (of log) of 0.
         /// </summary>
@@ -152,7 +152,7 @@ namespace Numerics.Distributions
         /// </summary>
         public double Base
         {
-            get { return _base;}
+            get { return _base; }
             set
             {
                 if (value < 1d)
@@ -163,6 +163,7 @@ namespace Numerics.Distributions
                 {
                     _base = value;
                 }
+                _momentsComputed = false;
             }
         }
 
@@ -419,6 +420,7 @@ namespace Numerics.Distributions
             _mu = meanOfLog;
             _sigma = standardDeviationOfLog;
             _gamma = skewOfLog;
+            _momentsComputed = false;
         }
 
         /// <inheritdoc/>
@@ -462,7 +464,7 @@ namespace Numerics.Distributions
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }
-      
+
         /// <summary>
         /// The indirect method of moments derives the moments from the log transformed data.
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
@@ -775,7 +777,7 @@ namespace Numerics.Distributions
             return new LogPearsonTypeIII(Mu, Sigma, Gamma);
         }
 
-       
+
         /// <inheritdoc/>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
@@ -901,6 +903,6 @@ namespace Numerics.Distributions
             var jacobian = new double[,] { { a, b, c }, { d, e, f }, { g, h, i } };
             return jacobian;
         }
- 
+
     }
 }

@@ -316,7 +316,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
-        public List<double>  MeanLogLikelihood { get; protected set; }
+        public List<double> MeanLogLikelihood { get; protected set; }
 
         /// <summary>
         /// Gets and sets the number of posterior parameter sets to output.
@@ -382,7 +382,7 @@ namespace Numerics.Sampling.MCMC
             var prng = new Random(PRNGSeed);
             var rnds = LatinHypercube.Random(InitialIterations, NumberOfParameters, prng.Next());
             var parameters = new double[NumberOfParameters];
-            var tempPopulation = new List<ParameterSet>();       
+            var tempPopulation = new List<ParameterSet>();
             var initials = new ParameterSet[NumberOfChains];
             double logLH = 0;
 
@@ -405,7 +405,7 @@ namespace Numerics.Sampling.MCMC
                         // Get Fisher Information Matrix
                         var fisher = DE.Hessian * -1d;
                         // Invert it to get the covariance matrix, and scale to give wider coverage
-                        var covar = fisher.Inverse() * 2.5;
+                        var covar = fisher.Inverse();
 
                         // Set up proposal distribution
                         _MVN = new MultivariateNormal(MAP.Values, covar.ToArray());
@@ -425,7 +425,7 @@ namespace Numerics.Sampling.MCMC
                         return initials;
 
                     }
-                    catch (Exception) 
+                    catch (Exception)
                     {
                         // If this fails go to naive initialization below
                         Initialize = InitializationType.Randomize;
@@ -460,7 +460,7 @@ namespace Numerics.Sampling.MCMC
                 if (IsPopulationSampler) PopulationMatrix.Add(new ParameterSet(parameters, logLH));
                 tempPopulation.Add(new ParameterSet(parameters, logLH));
             }
-            
+
             // Sort temp population by log-likelihood in descending order
             tempPopulation.Sort((x, y) => -1 * x.Fitness.CompareTo(y.Fitness));
 
@@ -588,7 +588,7 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         public void CancelSimulation()
         {
-            if (CancellationTokenSource != null && CancellationTokenSource.Token != null  && CancellationTokenSource.Token.CanBeCanceled == true)
+            if (CancellationTokenSource != null && CancellationTokenSource.Token != null && CancellationTokenSource.Token.CanBeCanceled == true)
             {
                 CancellationTokenSource.Cancel();
             }

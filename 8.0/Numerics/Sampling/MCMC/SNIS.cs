@@ -31,6 +31,7 @@
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.Optimization;
 using System;
 using System.Collections.Generic;
@@ -82,6 +83,9 @@ namespace Numerics.Sampling.MCMC
             if (mvn == null && useImportanceSampling == false && Initialize == InitializationType.MAP && _mapSuccessful)
             {
                 mvn = (MultivariateNormal)_MVN.Clone();
+                var covar = new Matrix(mvn.Covariance);
+                covar = covar * 2.5; // Inflate to cover the posterior
+                mvn.SetParameters(mvn.Mean, covar.ToArray());
                 useImportanceSampling = true;
             }
         }
@@ -161,7 +165,7 @@ namespace Numerics.Sampling.MCMC
                 // Record sample
                 MarkovChains[0][idx] = new ParameterSet(parameters, logLH, weight);
             });
-       
+
             // Get the maximum a posteriori
             for (int i = 0; i < Iterations; i++)
                 if (MarkovChains[0][i].Weight > MAP.Weight)
@@ -175,12 +179,12 @@ namespace Numerics.Sampling.MCMC
                 if (MarkovChains[0][i].Weight != double.MinValue)
                 {
                     sum += Math.Exp(MarkovChains[0][i].Weight - max);
-                }            
-            }               
+                }
+            }
             double normalization = max + Math.Log(sum);
 
             // Compute the posterior weights
-            Parallel.For(0, Iterations, (idx) => 
+            Parallel.For(0, Iterations, (idx) =>
             {
                 double w = MarkovChains[0][idx].Weight != double.MinValue ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
                 MarkovChains[0][idx] = new ParameterSet(MarkovChains[0][idx].Values, MarkovChains[0][idx].Fitness, w);
@@ -193,10 +197,10 @@ namespace Numerics.Sampling.MCMC
 
             // Create CDF
             for (int i = 1; i < Iterations; i++)
-                cdf[i] = cdf[i-1] + MarkovChains[0][i].Weight;
+                cdf[i] = cdf[i - 1] + MarkovChains[0][i].Weight;
 
             // Record output
-            var rndOut  = PlottingPositions.Weibull(OutputLength);
+            var rndOut = PlottingPositions.Weibull(OutputLength);
             int idx = 0;
             for (int i = 0; i < OutputLength; i++)
             {

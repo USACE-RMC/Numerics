@@ -29,9 +29,6 @@
 */
 
 using Numerics.Distributions;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Numerics.Data.Statistics
 {
@@ -114,28 +111,6 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns an array of weights based on a list of model BIC values.
-        /// </summary>
-        /// <param name="bicValues">The list of model BIC values.</param>
-        public static double[] BICWeights(IList<double> bicValues)
-        {
-            var min = Tools.Min(bicValues);
-            var weights = new double[bicValues.Count];
-            var num = new double[bicValues.Count];
-            double sum = 0;
-            for (int i = 0; i < bicValues.Count; i++)
-            {
-                num[i] = Math.Exp(-0.5 * (bicValues[i] - min));
-                sum += num[i];
-            }
-            for (int i = 0; i < bicValues.Count; i++)
-            {
-                weights[i] = num[i] / sum;
-            }
-            return weights;
-        }
-
-        /// <summary>
         /// Gets the Root Mean Square Error (RMSE) of the model compared to the observed data.
         /// </summary>
         /// <param name="observedValues">The list of observed values to measure against.</param>
@@ -147,7 +122,7 @@ namespace Numerics.Data.Statistics
             // Check if the lists are the same size
             if (observedValues.Count != modeledValues.Count)
                 throw new ArgumentOutOfRangeException(nameof(observedValues), "The number of observed values must equal the number of modeled values.");
-            
+
             int n = observedValues.Count - k;
             double sse = 0d;
             for (int i = 0; i < n; i++)
@@ -236,7 +211,7 @@ namespace Numerics.Data.Statistics
             double accuracy = 0;
             for (int i = 0; i < observedValues.Count; ++i)
             {
-                if (observedValues[i]  == modeledValues[i])
+                if (observedValues[i] == modeledValues[i])
                 {
                     accuracy++;
                 }
@@ -318,7 +293,7 @@ namespace Numerics.Data.Statistics
             double S = 0;
             for (int i = 1; i <= n; i++)
                 S += (2 * (double)i - 1) * (model.LogCDF(observedValues[i - 1]) + model.LogCCDF(observedValues[n - i]));
-            
+
             return -n - S / n;
         }
 

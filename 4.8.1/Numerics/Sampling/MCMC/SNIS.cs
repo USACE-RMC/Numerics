@@ -31,6 +31,7 @@
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.Optimization;
 using System;
 using System.Collections.Generic;
@@ -82,6 +83,9 @@ namespace Numerics.Sampling.MCMC
             if (mvn == null && useImportanceSampling == false && Initialize == InitializationType.MAP && _mapSuccessful)
             {
                 mvn = (MultivariateNormal)_MVN.Clone();
+                var covar = new Matrix(mvn.Covariance);
+                covar = covar * 2.5; // Inflate to cover the posterior
+                mvn.SetParameters(mvn.Mean, covar.ToArray());
                 useImportanceSampling = true;
             }
         }

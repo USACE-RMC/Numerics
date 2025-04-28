@@ -64,7 +64,7 @@ namespace Numerics.Distributions
     [Serializable]
     public sealed class Normal : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, IMomentEstimation, ILinearMomentEstimation, IStandardError, IBootstrappable
     {
-      
+
         /// <summary>
         /// Constructs a Normal (Gaussian) distribution with a mean of 0 and standard deviation of 1.
         /// </summary>
@@ -667,8 +667,8 @@ namespace Numerics.Distributions
             if (probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             double limit = 1E-16;
-            if (probability <= limit)
-                return -8.2220822161304348;
+            //if (probability <= limit)
+            //    return -8.2220822161304348;
             if (probability >= 1d - limit)
                 return 8.2095361516013856;
             return r8_normal_01_cdf_inverse(probability);

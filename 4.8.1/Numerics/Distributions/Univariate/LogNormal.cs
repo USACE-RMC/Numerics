@@ -94,6 +94,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters(value, Sigma, false) is null;
                 _mu = value;
+                _momentsComputed = false;
             }
         }
 
@@ -108,6 +109,7 @@ namespace Numerics.Distributions
                 if (value < 1E-16 && Math.Sign(value) != -1) value = 1E-16;
                 _parametersValid = ValidateParameters(Mu, value, false) is null;
                 _sigma = value;
+                _momentsComputed = false;
             }
         }
 
@@ -127,6 +129,7 @@ namespace Numerics.Distributions
                 {
                     _base = value;
                 }
+                _momentsComputed = false;
             }
         }
 

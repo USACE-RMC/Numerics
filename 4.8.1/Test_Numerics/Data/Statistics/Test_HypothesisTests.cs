@@ -336,6 +336,37 @@ namespace Data.Statistics
             Assert.AreEqual(LO, Samp_True);
         }
 
+
+        /// <summary>
+        /// GMM test for unimodality is compared against the R package 'mclust'
+        /// </summary>
+        /// <remarks>
+        /// <b> References: </b>
+        /// Scrucca, L., Fop, M., Murphy, T. B., & Raftery, A. E. (2016). mclust 5: Clustering, Classification and Density Estimation Using Gaussian Finite Mixture Models. The R Journal, 8(1), 289–317. https://doi.org/10.32614/RJ-2016-021
+        /// </remarks>
+        [TestMethod]
+        public void Test_UnimodalityTest()
+        {
+            var unimodalData = new double[] { 4.5, 5.2, 5.1, 4.9, 5.0, 5.3, 5.4, 4.8, 4.7, 5.2,
+                   5.1, 4.6, 5.0, 5.3, 5.1, 4.9, 5.2, 5.0, 4.8, 5.3,
+                   4.9, 5.1, 5.2, 4.8, 5.0, 5.1, 5.2, 4.7, 5.3, 5.0 };
+
+            var pval = HypothesisTests.UnimodalityTest(unimodalData);
+
+            double true_pval = 0.4142441;
+            Assert.AreEqual(true_pval, pval, 1E-4);
+
+            var bimodalData = new double[] { 3.8, 3.9, 4.0, 3.9, 4.0, 4.1, 4.0, 3.8, 3.9, 4.0, 
+                4.1, 4.0, 3.9, 4.0, 4.0, 4.3, 4.4, 4.4, 4.5, 4.4, 4.3, 
+                4.4, 4.5, 4.4, 4.3, 4.4, 4.4, 4.5, 4.4, 4.3 };
+
+            pval = HypothesisTests.UnimodalityTest(bimodalData);
+
+            true_pval = 2.55425752131444e-05;
+            Assert.AreEqual(true_pval, pval, 1E-9);
+
+        }
+
     }
 
 }

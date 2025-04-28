@@ -29,6 +29,8 @@
 */
 
 using Numerics.Data.Statistics;
+using Numerics.MachineLearning;
+using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -509,19 +511,32 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Returns a time-series of the successive differences per time period.
+        /// Returns a time-series of the successive differences.
         /// </summary>
-        /// <param name="period">Time period for taking differences. If time interval is 1-hour, and period is 12, the difference will be computed over a moving 12 hour block.</param>
-        public TimeSeries Difference(int period = 1)
+        /// <param name="lag">The lag between elements to subtract (default is 1).</param>
+        /// <param name="differences">The order of differences (default is 1).</param>
+        /// <returns>A time series of differences.</returns>
+        public TimeSeries Difference(int lag = 1, int differences = 1)
         {
-            var timeSeries = new TimeSeries();
-            for (int i = period; i < Count; i++)
+            double[] result = ValuesToArray();
+            for (int d = 0; d < differences; d++)
             {
-                timeSeries.Add(this[i].Clone());
-                timeSeries.Last().Value = this[i].Value - this[i - period].Value;
+                if (result.Length <= lag)
+                    throw new ArgumentException("The length of the array must be greater than the lag.");
+
+                // Create a new array that is shorter by lag.
+                double[] temp = new double[result.Length - lag];
+                for (int i = 0; i < result.Length - lag; i++)
+                {
+                    temp[i] = result[i + lag] - result[i];
+                }
+                result = temp;
             }
+            // Adjust the start date if needed, depending on how TimeSeries is defined.
+            var timeSeries = new TimeSeries(TimeInterval, StartDate, result);
             return timeSeries;
         }
+
 
         /// <summary>
         /// Returns the number of missing values.
@@ -671,6 +686,35 @@ namespace Numerics.Data
             }
             SuppressCollectionChanged = false;
             RaiseCollectionChangedReset();
+        }
+
+        public static TimeSeries FillMissingDates(TimeSeries timeSeries, DateTime startDate, DateTime endDate, double value = 0.0)
+        {
+            if (timeSeries.TimeInterval == TimeInterval.Irregular) throw new Exception("This method does not work with irregular data.");
+
+            // Create a dictionary for fast lookup
+            // var lookup = this.ToList().ToDictionary(p => p.Index, p => p.Value);
+
+            var lookup = timeSeries.IndexesToList();
+
+            var result = new TimeSeries(timeSeries.TimeInterval);
+
+            // Loop over and add values
+            for (DateTime date = startDate; date <= endDate; date = AddTimeInterval(date, timeSeries.TimeInterval))
+            {
+                var idx = lookup.IndexOf(date);
+                if (idx == -1)
+                {
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, value));
+                }
+                else
+                {
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, timeSeries[idx].Value));
+                }
+            }
+
+            return result;
+
         }
 
         /// <summary>
@@ -973,8 +1017,14 @@ namespace Numerics.Data
             bool wasSuppressed = SuppressCollectionChanged;
             SuppressCollectionChanged = true;
             this[0].Index = newStartDate;
-            for (int i = 1; i < Count; i++) { this[i].Index = AddTimeInterval(this[i - 1].Index, _timeInterval); }
-
+            if (TimeInterval != TimeInterval.Irregular)
+            {
+                for (int i = 1; i < Count; i++) 
+                { 
+                    this[i].Index = AddTimeInterval(this[i - 1].Index, _timeInterval); 
+                }
+            }
+            
             SuppressCollectionChanged = wasSuppressed;
             if (SuppressCollectionChanged == false) { RaiseCollectionChangedReset(); }
         }
@@ -1254,12 +1304,10 @@ namespace Numerics.Data
         /// <param name="kValues">A list of k-th percentile values.</param>
         public double[] Percentiles(IList<double> kValues)
         {
-            var perc = new double[kValues.Count];
             var data = ValuesToArray();
             Array.Sort(data);
-            for (int i = 0; i < kValues.Count; i++)
-                perc[i] = Statistics.Statistics.Percentile(data, kValues[i], true);
-            return perc;
+            var result = Statistics.Statistics.Percentile(data, kValues, true);
+            return result;
         }
 
         /// <summary>
@@ -1287,8 +1335,9 @@ namespace Numerics.Data
         /// <param name="kValues">A list of k-th percentile values.</param>
         public double[,] MonthlyPercentiles(IList<double> kValues)
         {
-            var monthlyPercValues = new double[12, kValues.Count];
-            if (kValues == null || kValues.Count == 0) { return monthlyPercValues; }
+            var result = new double[12, kValues.Count];
+            if (kValues == null || kValues.Count == 0) { return result; }
+
             Parallel.For(1, 13, index =>
             {
                 // Filter data by month
@@ -1299,12 +1348,15 @@ namespace Numerics.Data
                 }
                 // Compute percentiles
                 monthlyData.Sort();
-                for (int j = 0; j < kValues.Count; j++)
+                if (monthlyData.Count > 0)
                 {
-                    monthlyPercValues[index - 1, j] = Statistics.Statistics.Percentile(monthlyData, kValues[j], true);
+                    for (int j = 0; j < kValues.Count; j++)
+                    {
+                        result[index - 1, j] = Statistics.Statistics.Percentile(monthlyData, kValues[j], true);
+                    }
                 }
             });
-            return monthlyPercValues;
+            return result;
         }
 
         /// <summary>
@@ -1344,7 +1396,7 @@ namespace Numerics.Data
         {
             var values = _seriesOrdinates.Where(y => !double.IsNaN(y.Value)).Select(x => x.Value).ToArray();
             var moments = Count <= 2 ? new double[] { double.NaN, double.NaN, double.NaN, double.NaN } : Statistics.Statistics.ProductMoments(values);
-            var percentiles = Count <= 2 ? new double[] { double.NaN, double.NaN, double.NaN, double.NaN, double.NaN } : Percentiles(new[] { 0.05, 0.25, 0.5, 0.75, 0.95 });
+            var percentiles = Count <= 2 ? new double[] { double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN } : Percentiles(new[] { 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99 });
 
             var result = new Dictionary<string, double>();
             result.Add("Record Length", Count);
@@ -1355,11 +1407,13 @@ namespace Numerics.Data
             result.Add("Std Dev", moments[1]);
             result.Add("Skewness", moments[2]);
             result.Add("Kurtosis", moments[3]);
-            result.Add("5%", percentiles[0]);
-            result.Add("25%", percentiles[1]);
-            result.Add("50%", percentiles[2]);
-            result.Add("75%", percentiles[3]);
-            result.Add("95%", percentiles[4]);
+            result.Add("1%", percentiles[0]);
+            result.Add("5%", percentiles[1]);
+            result.Add("25%", percentiles[2]);
+            result.Add("50%", percentiles[3]);
+            result.Add("75%", percentiles[4]);
+            result.Add("95%", percentiles[5]);
+            result.Add("99%", percentiles[6]);
 
             return result;
         }
@@ -2013,6 +2067,85 @@ namespace Numerics.Data
         #endregion
 
         /// <summary>
+        /// Resample the time series using k-Nearest neighbors.
+        /// </summary>
+        /// <param name="timeSteps">The number of time steps to resample.</param>
+        /// <param name="k">The number of nearest neighbors.</param>
+        /// <param name="seed">The prng seed. Default = 12345.</param>
+        /// <returns></returns>
+        public TimeSeries ResampleWithKNN(int timeSteps, int k, int seed = 12345)
+        {
+            if (Count < 2) throw new ArgumentException("Need at least 2 points for resampling.");
+            if (timeSteps < 1) throw new ArgumentException("The number of time steps must be at least 1.");
+
+            // Initialize
+            var timeSeries = new TimeSeries(TimeInterval);
+            var prng = new MersenneTwister(seed);
+            int startIdx = prng.Next(Count - 1);
+            double currentValue = this[startIdx].Value;
+            DateTime currentDate = StartDate;
+            timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, currentValue));
+
+            // Standardize the values
+            double mean = MeanValue();
+            double stdDev = StandardDeviation();
+            var stdData = this.Clone();
+            stdData.Standardize();
+            var stdValues = stdData.ValuesToArray();
+
+            // Perform k-NN
+            var kNN = new KNearestNeighbors(stdValues, stdValues, k);
+            for (int i = 1; i < timeSteps; i++)
+            {
+                double val = (currentValue - mean) / stdDev;
+                var kNearest = kNN.GetNeighbors([val]);
+                int selectedIdx = kNearest[prng.Next(k)];
+                currentValue = this[selectedIdx].Value;
+                currentDate = TimeSeries.AddTimeInterval(currentDate, TimeInterval);
+                timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, currentValue));
+            }
+
+            return timeSeries;
+        }
+
+        /// <summary>
+        /// Resample the time series using the block bootstrap.
+        /// </summary>
+        /// <param name="timeSteps">The number of time steps to resample.</param>
+        /// <param name="blockSize">The resampling block size.</param>
+        /// <param name="seed">The prng seed. Default = 12345.</param>
+        /// <returns></returns>
+        public TimeSeries ResampleWithBlockBootstrap(int timeSteps, int blockSize, int seed = 12345)
+        {
+            if (Count < 2) throw new ArgumentException("Need at least 2 points for resampling.");
+            if (Count < blockSize) throw new ArgumentException("Block size is too large for this time series data.");
+            if (timeSteps < 1) throw new ArgumentException("The number of time steps must be at least 1.");
+
+            // Step 1: collect all blocks of length B
+            var data = ValuesToArray();
+            List<double[]> blocks = new List<double[]>();
+            for (int i = 0; i <= Count - blockSize; i++)
+            {
+                double[] block = new double[blockSize];
+                Array.Copy(data, i, block, 0, blockSize);
+                blocks.Add(block);
+            }
+
+            // Step 2: sample blocks and build synthetic series
+            var prng = new MersenneTwister(seed);
+            List<double> syntheticSeries = new List<double>();
+            while (syntheticSeries.Count < timeSteps)
+            {
+                int index = prng.Next(blocks.Count);
+                syntheticSeries.AddRange(blocks[index]);
+            }
+
+            // Step 3: trim to desired length
+            var timeSeries = new TimeSeries(TimeInterval, StartDate, syntheticSeries.Take(timeSteps).ToArray());
+            return timeSeries;
+        }
+
+        /// <summary>
         /// Returns an XElement of a series ordinate.
         /// </summary>
         public XElement ToXElement()
@@ -2034,7 +2167,7 @@ namespace Numerics.Data
         /// </summary>
         public TimeSeries Clone()
         {
-            return new TimeSeries(TimeInterval, StartDate, ValuesToArray());
+            return new TimeSeries(ToXElement());
         }
 
     }

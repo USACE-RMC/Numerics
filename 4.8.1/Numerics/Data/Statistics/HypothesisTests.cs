@@ -32,6 +32,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Numerics.Distributions;
+using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.SpecialFunctions;
 
@@ -142,7 +143,7 @@ namespace Numerics.Data.Statistics
         /// <param name="sample2">Data sample 2.</param>
         /// <returns>Returns the p-value of the test statistic.</returns>
         public static double Ftest(IList<double> sample1, IList<double> sample2)
-        {        
+        {
             var meanVar1 = Statistics.MeanVariance(sample1);
             var meanVar2 = Statistics.MeanVariance(sample2);
             int n1 = sample1.Count, n2 = sample2.Count;
@@ -224,7 +225,7 @@ namespace Numerics.Data.Statistics
             R += xn * x1;
             double s12 = Tools.Sqr(S1);
             double s22 = Tools.Sqr(S2);
-            double s14 = Tools.Pow(S1,4);
+            double s14 = Tools.Pow(S1, 4);
 
             eR = (s12 - S2) / (n - 1);
             varR = (s22 - S4) / (n - 1) - Tools.Sqr(eR);
@@ -294,7 +295,7 @@ namespace Numerics.Data.Statistics
             int i, j, n = sample.Count;
             if (n < 10) throw new ArgumentException("The sample size must be greater than or equal to 10.");
 
-            double S = 0, T = 0, varS, z; 
+            double S = 0, T = 0, varS, z;
 
             for (i = 0; i < n - 1; i++)
             {
@@ -331,5 +332,40 @@ namespace Numerics.Data.Statistics
             return (1 - tdist.CDF(Math.Abs(lm.Parameters[1] / lm.ParameterStandardErrors[1]))) * 2;
         }
 
+        /// <summary>
+        /// The Gaussian Mixture Model Unimodality Test.
+        /// </summary>
+        /// <param name="sample">Time series sample data.</param>
+        /// <returns>Returns the p-value of the test statistic.</returns>
+        public static double UnimodalityTest(IList<double> sample)
+        {
+            int n = sample.Count;
+            if (n < 10) throw new ArgumentException("The sample size must be greater than or equal to 10.");
+
+            // Fit 1-component GMM (unimodal)
+            var gmm1 = new GaussianMixtureModel(sample.ToArray(), 1);
+            gmm1.Train();
+            var logLH1 = gmm1.LogLikelihood;
+
+            // Fit 2-component GMM (potentially bimodal)
+            var gmm2 = new GaussianMixtureModel(sample.ToArray(), 2);
+            gmm2.Train();
+            var logLH2 = gmm2.LogLikelihood;
+
+            // Compute test statistic: Likelihood Ratio Test
+            double testStat = 2 * (logLH2 - logLH1);
+            int df = 3;
+
+            // Compute p-value from chi-square distribution
+            var chiSquared = new ChiSquared(df);
+            double pval = 1.0 - chiSquared.CDF(testStat);
+
+            return pval;
+
+        }
+
+
     }
+
+
 }

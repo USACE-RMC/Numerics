@@ -157,7 +157,12 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The likelihood of each data point (row) and for each cluster (column).
         /// </summary>
-        public double[,] Likelihood { get; private set; }
+        public double[,] LikelihoodMatrix { get; private set; }
+
+        /// <summary>
+        /// The total log-likelihood of the fit.
+        /// </summary>
+        public double LogLikelihood { get; private set; }
 
         /// <summary>
         /// The maximum iterations in the clustering algorithm. Default = 1,000. 
@@ -189,7 +194,7 @@ namespace Numerics.MachineLearning
             // Give equal weight to each cluster
             // And initialize the covariance matrix
             Weights = new double[K];
-            Likelihood = new double[X.NumberOfRows, K];
+            LikelihoodMatrix = new double[X.NumberOfRows, K];
             Sigmas = new Matrix[K];
             for (int k = 0; k < K; k++)
             {              
@@ -208,7 +213,10 @@ namespace Numerics.MachineLearning
 
                 // Check convergence
                 if (Math.Abs((oldLogLH - newLogLH) / oldLogLH) < Tolerance)
+                {
+                    LogLikelihood = newLogLH;
                     break;
+                }
 
                 // Perform the maximization step
                 MStep();
@@ -246,7 +254,7 @@ namespace Numerics.MachineLearning
                     double sum = 0;
                     for (int d = 0; d < Dimension; d++)
                         sum += Tools.Sqr(v[d]);
-                    Likelihood[i, k] = -0.5 * (sum + logDet[k]) + Math.Log(Weights[k]);
+                    LikelihoodMatrix[i, k] = -0.5 * (sum + logDet[k]) + Math.Log(Weights[k]);
                 }
             }
             // At this point we have unnormalized logs of the likelihoods.
@@ -259,9 +267,9 @@ namespace Numerics.MachineLearning
                 int idx = -1;
                 for (int k = 0; k < K; k++)
                 {
-                    if (Likelihood[i, k] > max)
+                    if (LikelihoodMatrix[i, k] > max)
                     {
-                        max = Likelihood[i, k];
+                        max = LikelihoodMatrix[i, k];
                         idx = k;
                     }
                 }
@@ -271,17 +279,17 @@ namespace Numerics.MachineLearning
                 // log-sum-exp trick begins here
                 double sum = 0;
                 for (int k = 0; k < K; k++)
-                    sum += Math.Exp(Likelihood[i, k] - max);
+                    sum += Math.Exp(LikelihoodMatrix[i, k] - max);
                 double tmp = max + Math.Log(sum);
                 for (int k = 0; k < K; k++)
-                    Likelihood[i, k] = Math.Exp(Likelihood[i, k] - tmp);
+                    LikelihoodMatrix[i, k] = Math.Exp(LikelihoodMatrix[i, k] - tmp);
                 logLH += tmp;
             }
             return logLH;
         }
     
         /// <summary>
-        /// c
+        /// The maximization step. 
         /// </summary>
         private void MStep()
         {
@@ -289,14 +297,14 @@ namespace Numerics.MachineLearning
             {
                 double wgt = 0d;
                 for (int i = 0; i < X.NumberOfRows; i++) 
-                    wgt += Likelihood[i, k];
+                    wgt += LikelihoodMatrix[i, k];
                 Weights[k] = wgt / X.NumberOfRows;
                 for (int d = 0; d < Dimension; d++)
                 {
                     // Compute centroids
                     double sum = 0;
                     for (int i = 0; i < X.NumberOfRows; i++) 
-                        sum += Likelihood[i, k] * X[i, d];
+                        sum += LikelihoodMatrix[i, k] * X[i, d];
                     Means[k, d] = sum / wgt;
                     // Compute covariance
                     for (int j = 0; j < Dimension; j++)
@@ -304,7 +312,7 @@ namespace Numerics.MachineLearning
                         sum = 0;
                         for (int i = 0; i < X.NumberOfRows; i++)
                         {
-                            sum += Likelihood[i, k] * (X[i, d] - Means[k, d]) * (X[i, j] - Means[k, j]);
+                            sum += LikelihoodMatrix[i, k] * (X[i, d] - Means[k, d]) * (X[i, j] - Means[k, j]);
                         }
                         Sigmas[k][d, j] = sum / wgt;
                     }

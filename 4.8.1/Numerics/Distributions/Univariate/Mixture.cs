@@ -995,6 +995,7 @@ namespace Numerics.Distributions
             }
             _empiricalCDF = new EmpiricalDistribution(xValues, pValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
             _empiricalCDFCreated = true;
+            _momentsComputed = false;
         }
 
         /// <inheritdoc/>

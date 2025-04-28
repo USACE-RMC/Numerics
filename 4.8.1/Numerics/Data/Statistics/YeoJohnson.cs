@@ -28,14 +28,14 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using Numerics.Mathematics.Optimization;
 using System;
 using System.Collections.Generic;
-using Numerics.Mathematics.Optimization;
 
 namespace Numerics.Data.Statistics
 {
     /// <summary>
-    /// Class for performing Box-Cox transformation.
+    /// Class for performing Yeo-Johnson transformation.
     /// </summary>
     /// <remarks>
     ///     <b> Authors: </b>
@@ -45,17 +45,13 @@ namespace Numerics.Data.Statistics
     /// This method transforms non-normal dependent variables into a normal shape.
     /// </para>
     /// </remarks>
-    public class BoxCox
+    public class YeoJohnson
     {
-
         /// <summary>
-        /// Fit the transformation parameters using maximum likelihood estimation.
+        /// Fit the transform parameter using maximum likelihood estimation.
         /// </summary>
         /// <param name="values">The list of values to transform.</param>
         /// <param name="lambda">Output. The transformation exponent. Range -5 to +5.</param>
-        /// <remarks>
-        /// https://www.rdocumentation.org/packages/EnvStats/versions/2.4.0/topics/boxcox
-        /// </remarks>
         public static void FitLambda(IList<double> values, out double lambda)
         {
             // Solve with Brent 
@@ -76,29 +72,59 @@ namespace Numerics.Data.Statistics
         /// normal distribution. The change of variable formula is used to write the log-likelihood function.
         /// </summary>
         /// <param name="values">The list of values to transform.</param>
-        /// <param name="lambda1">The transformation exponent. Range -5 to +5.</param>
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
         /// <returns>
         /// The value of log-likelihood function evaluated at the given values and lambdas.
         /// </returns>
-        public static double LogLikelihood(IList<double> values, double lambda1)
+        public static double LogLikelihood(IList<double> values, double lambda)
         {
             int n = values.Count;
-            var y = new double[n];
-            double mu = 0d;
-            var sumX = 0d;
+            var transformed = new double[n];
+            double sum = 0d;
+            double logJacobianSum = 0d;
+
+            // Transform values and compute sum and log-Jacobian
             for (int i = 0; i < n; i++)
             {
-                y[i] = Transform(values[i], lambda1);
-                mu += y[i];
-                sumX += Math.Log(values[i]);
+                double xi = values[i];
+                double yi = Transform(xi, lambda);
+                transformed[i] = yi;
+                sum += yi;
+
+                // Compute derivative dT/dy for log-Jacobian
+                double dTdy;
+                if (xi >= 0)
+                {
+                    dTdy = Math.Pow(xi + 1, lambda - 1);
+                }
+                else
+                {
+                    dTdy = Math.Pow(-xi + 1, 1 - lambda);
+                }
+
+                // Avoid log of zero or negative values
+                if (dTdy > 0)
+                    logJacobianSum += Math.Log(dTdy);
+                else
+                    return double.NegativeInfinity; // log-likelihood undefined
             }
-            mu = mu / n;
+
+            // Compute mean and SSE
+            double mu = sum / n;
             double sse = 0d;
             for (int i = 0; i < n; i++)
-                sse += Math.Pow(y[i] - mu, 2d);
-            double sigma = Math.Sqrt(sse / n);
-            double ll = -n / 2.0d * Tools.LogSqrt2PI - n / 2.0d * Math.Log(sigma * sigma) - 1.0d / (2d * sigma * sigma) * sse + (lambda1 - 1d) * sumX;
-            return ll;
+            {
+                double resid = transformed[i] - mu;
+                sse += resid * resid;
+            }
+
+            double sigmaSq = sse / n;
+            if (sigmaSq <= 0 || double.IsNaN(sigmaSq))
+                return double.NegativeInfinity;
+
+            double logLikelihood = -n / 2.0 * Tools.LogSqrt2PI - n / 2.0 * Math.Log(sigmaSq) - sse / (2.0 * sigmaSq) + logJacobianSum;
+
+            return logLikelihood;
         }
 
         /// <summary>
@@ -112,34 +138,63 @@ namespace Numerics.Data.Statistics
             double logJacobianSum = 0d;
             int n = values.Count;
 
+            // Transform values and compute sum and log-Jacobian
             for (int i = 0; i < n; i++)
             {
                 double xi = values[i];
 
-                if (xi <= 0)
-                    return double.NegativeInfinity; // Box-Cox undefined for non-positive values
+                // Compute derivative dT/dy for log-Jacobian
+                double dTdy;
+                if (xi >= 0)
+                {
+                    dTdy = Math.Pow(xi + 1, lambda - 1);
+                }
+                else
+                {
+                    dTdy = Math.Pow(-xi + 1, 1 - lambda);
+                }
 
-                // For Box-Cox: log derivative is (lambda - 1) * log(x)
-                logJacobianSum += (lambda - 1d) * Math.Log(xi);
+                // Avoid log of zero or negative values
+                if (dTdy > 0)
+                    logJacobianSum += Math.Log(dTdy);
+                else
+                    return double.NegativeInfinity; // log-likelihood undefined
             }
-
             return logJacobianSum;
         }
 
         /// <summary>
-        /// Returns the Box-Cox transformation of the value.
+        /// Returns the Yeo-Johnson transformation of the value.
         /// </summary>
         /// <param name="value">The value to transform.</param>
         /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
         public static double Transform(double value, double lambda)
         {
             if (Math.Abs(lambda) > 5d) return double.NaN;
-            if (Math.Abs(lambda) < 1e-8) return Math.Log(value);
-            return (Math.Pow(value, lambda) - 1.0d) / lambda;
+            if (value >= 0 && Math.Abs(lambda) >= 1E-8)
+            {
+                return (Math.Pow(value + 1, lambda) - 1) / lambda;
+            }
+            else if (value >= 0 && Math.Abs(lambda) < 1E-8)
+            {
+                return Math.Log(value + 1);
+            }
+            else if (value < 0 && lambda != 2)
+            {
+                return -(Math.Pow(-value + 1, 2 - lambda) - 1) / (2 - lambda);
+            }
+            else if (value < 0 && lambda == 2)
+            {
+                return -Math.Log(-value + 1);
+            }
+            else
+            {
+                return double.NaN;
+            }
         }
 
         /// <summary>
-        /// Returns the Box-Cox transformation of each value in the list.
+        /// Returns the Yeo-Johnson transformation of each value in the list.
         /// </summary>
         /// <param name="values">The list of values to transform.</param>
         /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
@@ -152,19 +207,37 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns the reverse of the Box-Cox transformed value.
+        /// Returns the inverse of the Yeo-Johnson transformed value.
         /// </summary>
         /// <param name="value">The value to reverse transform.</param>
         /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
         public static double InverseTransform(double value, double lambda)
         {
             if (Math.Abs(lambda) > 5d) return double.NaN;
-            if (Math.Abs(lambda) < 1e-8) return Math.Exp(value);
-            return Math.Pow(value * lambda + 1.0d, 1.0d / lambda);
+            if (value >= 0 && Math.Abs(lambda) >= 1E-8)
+            {
+                return Math.Pow(lambda * value + 1, 1 / lambda) - 1;
+            }
+            else if (value >= 0 && Math.Abs(lambda) < 1E-8)
+            {
+                return Math.Exp(value) - 1;
+            }
+            else if (value < 0 && lambda != 2)
+            {
+                return 1 - (Math.Pow(1 - (2 - lambda) * value, 1 / (2 - lambda)) - 1);
+            }
+            else if (value < 0 && lambda == 2)
+            {
+                return 1 - Math.Exp(-value);
+            }
+            else
+            {
+                return double.NaN;
+            }
         }
 
         /// <summary>
-        /// Returns the inverse of each Box-Cox transformed value in the list.
+        /// Returns the inverse of each Yeo-Johnson transformed value in the list.
         /// </summary>
         /// <param name="values">The list of values to reverse transform.</param>
         /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>

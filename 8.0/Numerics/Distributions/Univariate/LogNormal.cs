@@ -94,6 +94,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters(value, Sigma, false) is null;
                 _mu = value;
+                _momentsComputed = false;
             }
         }
 
@@ -108,6 +109,7 @@ namespace Numerics.Distributions
                 if (value < 1E-16 && Math.Sign(value) != -1) value = 1E-16;
                 _parametersValid = ValidateParameters(Mu, value, false) is null;
                 _sigma = value;
+                _momentsComputed = false;
             }
         }
 
@@ -127,6 +129,7 @@ namespace Numerics.Distributions
                 {
                     _base = value;
                 }
+                _momentsComputed = false;
             }
         }
 
@@ -220,7 +223,7 @@ namespace Numerics.Distributions
         public override double Mode
         {
             get
-            {    
+            {
                 return Math.Exp(Mu / K);
             }
         }
@@ -370,7 +373,7 @@ namespace Numerics.Distributions
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }
 
-        
+
         /// <summary>
         /// The indirect method of moments derives the moments from the log transformed data.
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
@@ -606,7 +609,7 @@ namespace Numerics.Distributions
                 // Record X values
                 Parallel.For(0, realizations, idx => XValues[idx] = MonteCarloDistributions[idx].InverseCDF(1d - quantiles[i]));
                 // Record percentiles for user-defined probabilities
-                for (int j = 0; j < p;  j++)
+                for (int j = 0; j < p; j++)
                     Output[i, j] = Statistics.Percentile(XValues, percentiles[j]);
             }
 

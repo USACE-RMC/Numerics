@@ -163,6 +163,7 @@ namespace Numerics.Distributions
                 {
                     _base = value;
                 }
+                _momentsComputed = false;
             }
         }
 
@@ -419,6 +420,7 @@ namespace Numerics.Distributions
             _mu = meanOfLog;
             _sigma = standardDeviationOfLog;
             _gamma = skewOfLog;
+            _momentsComputed = false;
         }
 
         /// <inheritdoc/>

@@ -85,6 +85,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters([value, Alpha, Kappa], false) is null;
                 _xi = value;
+                _momentsComputed = false;
             }
         }
 
@@ -98,6 +99,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters(Xi, value, Kappa, false) is null;
                 _alpha = value;
+                _momentsComputed = false;
             }
         }
 
@@ -111,6 +113,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters([Xi, Alpha, value], false) is null;
                 _kappa = value;
+                _momentsComputed = false;
             }
         }
 
@@ -329,7 +332,7 @@ namespace Numerics.Distributions
             _parametersValid = ValidateParameters(location, scale, shape, false) is null;
             // Set parameters
             Xi = location;
-            _alpha = scale;
+            Alpha = scale;
             Kappa = shape;
         }
 

@@ -228,6 +228,11 @@ namespace Numerics.Distributions
                     dist = Mixture.FromXElement(xElement);
                     return dist;
                 }
+                else if (type == UnivariateDistributionType.CompetingRisks)
+                {
+                    dist = CompetingRisks.FromXElement(xElement);
+                    return dist;
+                }
                 else if (type == UnivariateDistributionType.PertPercentile)
                 {
                     dist = PertPercentile.FromXElement(xElement);

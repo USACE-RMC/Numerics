@@ -28,8 +28,6 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System;
-using System.Collections.Generic;
 using Numerics.Mathematics.Optimization;
 
 namespace Numerics.Data.Statistics
@@ -52,31 +50,23 @@ namespace Numerics.Data.Statistics
         /// Fit the transformation parameters using maximum likelihood estimation.
         /// </summary>
         /// <param name="values">The list of values to transform.</param>
-        /// <param name="lambda1">Output. The transformation exponent. Range -5 to +5.</param>
-        /// <param name="lambda2">Output. The transformation shift for negative values.</param>
+        /// <param name="lambda">Output. The transformation exponent. Range -5 to +5.</param>
         /// <remarks>
         /// https://www.rdocumentation.org/packages/EnvStats/versions/2.4.0/topics/boxcox
         /// </remarks>
-        public static void FitLambda(IList<double> values, out double lambda1, out double lambda2)
+        public static void FitLambda(IList<double> values, out double lambda)
         {
-            int n = values.Count;
-            double l1 = 0d;
-            double l2 = 0d;
-            double min = Statistics.Minimum(values);
-            if (min <= 0d) l2 = 0d - min + Tools.DoubleMachineEpsilon;
-            
-            Func<double, double> func = lambda =>
-            {
-                return LogLikelihood(values, lambda, l2);
-            };
-
             // Solve with Brent 
-            var brent = new BrentSearch(func, -5d, 5d);
+            var brent = new BrentSearch((x) => { return LogLikelihood(values, x); }, -5d, 5d);
             brent.Maximize();
-            l1 = brent.BestParameterSet.Values[0];
-            // Set parameters
-            lambda1 = l1;
-            lambda2 = l2;
+            if (brent.Status == OptimizationStatus.Success)
+            {
+                lambda = brent.BestParameterSet.Values[0];
+            }
+            else
+            {
+                lambda = double.NaN;
+            }
         }
 
         /// <summary>
@@ -85,11 +75,10 @@ namespace Numerics.Data.Statistics
         /// </summary>
         /// <param name="values">The list of values to transform.</param>
         /// <param name="lambda1">The transformation exponent. Range -5 to +5.</param>
-        /// <param name="lambda2">The transformation shift for negative values.</param>
         /// <returns>
         /// The value of log-likelihood function evaluated at the given values and lambdas.
         /// </returns>
-        public static double LogLikelihood(IList<double> values, double lambda1, double lambda2)
+        public static double LogLikelihood(IList<double> values, double lambda1)
         {
             int n = values.Count;
             var y = new double[n];
@@ -97,9 +86,9 @@ namespace Numerics.Data.Statistics
             var sumX = 0d;
             for (int i = 0; i < n; i++)
             {
-                y[i] = Transform(values[i], lambda1, lambda2);
+                y[i] = Transform(values[i], lambda1);
                 mu += y[i];
-                sumX += Math.Log(values[i] + lambda2);
+                sumX += Math.Log(values[i]);
             }
             mu = mu / n;
             double sse = 0d;
@@ -111,29 +100,52 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Computes the Log-Jacobian used to adjust the log-likelihood function. 
+        /// </summary>
+        /// <param name="values">The list of values to transform.</param>
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        /// <returns>Returns the Log Jacobian.</returns>
+        public static double LogJacobian(IList<double> values, double lambda)
+        {
+            double logJacobianSum = 0d;
+            int n = values.Count;
+
+            for (int i = 0; i < n; i++)
+            {
+                double xi = values[i];
+
+                if (xi <= 0)
+                    return double.NegativeInfinity; // Box-Cox undefined for non-positive values
+
+                // For Box-Cox: log derivative is (lambda - 1) * log(x)
+                logJacobianSum += (lambda - 1d) * Math.Log(xi);
+            }
+
+            return logJacobianSum;
+        }
+
+        /// <summary>
         /// Returns the Box-Cox transformation of the value.
         /// </summary>
         /// <param name="value">The value to transform.</param>
-        /// <param name="lambda1">The transformation exponent. Range -5 to +5.</param>
-        /// <param name="lambda2">The transformation shift for negative values.</param>
-        public static double Transform(double value, double lambda1, double lambda2 = 0.0d)
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        public static double Transform(double value, double lambda)
         {
-            if (Math.Abs(lambda1) > 5d) return double.NaN;
-            if (lambda1 == 0d) return Math.Log(value + lambda2);
-            return (Math.Pow(value + lambda2, lambda1) - 1.0d) / lambda1;
+            if (Math.Abs(lambda) > 5d) return double.NaN;
+            if (Math.Abs(lambda) < 1e-8) return Math.Log(value);
+            return (Math.Pow(value, lambda) - 1.0d) / lambda;
         }
 
         /// <summary>
         /// Returns the Box-Cox transformation of each value in the list.
         /// </summary>
         /// <param name="values">The list of values to transform.</param>
-        /// <param name="lambda1">The transformation exponent. Range -5 to +5.</param>
-        /// <param name="lambda2">The transformation shift for negative values.</param>
-        public static List<double> Transform(IList<double> values, double lambda1, double lambda2 = 0.0d)
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        public static List<double> Transform(IList<double> values, double lambda)
         {
             var newValues = new List<double>();
             for (int i = 0; i < values.Count; i++)
-                newValues.Add(Transform(values[i], lambda1, lambda2));
+                newValues.Add(Transform(values[i], lambda));
             return newValues;
         }
 
@@ -141,26 +153,24 @@ namespace Numerics.Data.Statistics
         /// Returns the reverse of the Box-Cox transformed value.
         /// </summary>
         /// <param name="value">The value to reverse transform.</param>
-        /// <param name="lambda1">The transformation exponent. Range -5 to +5.</param>
-        /// <param name="lambda2">The transformation shift for negative values.</param>
-        public static double ReverseTransform(double value, double lambda1, double lambda2 = 0.0d)
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        public static double InverseTransform(double value, double lambda)
         {
-            if (Math.Abs(lambda1) > 5d) return double.NaN;
-            if (lambda1 == 0d) return Math.Exp(value) - lambda2;
-            return Math.Pow(value * lambda1 + 1.0d, 1.0d / lambda1) - lambda2;
+            if (Math.Abs(lambda) > 5d) return double.NaN;
+            if (Math.Abs(lambda) < 1e-8) return Math.Exp(value);
+            return Math.Pow(value * lambda + 1.0d, 1.0d / lambda);
         }
 
         /// <summary>
-        /// Returns the reverse of each Box-Cox transformed value in the list.
+        /// Returns the inverse of each Box-Cox transformed value in the list.
         /// </summary>
         /// <param name="values">The list of values to reverse transform.</param>
-        /// <param name="lambda1">The transformation exponent. Range -5 to +5.</param>
-        /// <param name="lambda2">The transformation shift for negative values.</param>
-        public static List<double> ReverseTransform(IList<double> values, double lambda1, double lambda2 = 0.0d)
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        public static List<double> InverseTransform(IList<double> values, double lambda)
         {
             var newValues = new List<double>();
             for (int i = 0; i < values.Count; i++)
-                newValues.Add(ReverseTransform(values[i], lambda1, lambda2));
+                newValues.Add(InverseTransform(values[i], lambda));
             return newValues;
         }
     }

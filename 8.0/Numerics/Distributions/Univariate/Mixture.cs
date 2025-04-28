@@ -234,7 +234,7 @@ namespace Numerics.Distributions
                 for (int i = 0; i < Distributions.Count(); i++)
                 {
                     result.AddRange(Distributions[i].GetParameters);
-                }                  
+                }
                 return result.ToArray();
             }
         }
@@ -263,7 +263,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u1;
             }
@@ -291,7 +291,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u2;
             }
@@ -302,7 +302,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u3;
             }
@@ -313,7 +313,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u4;
             }
@@ -333,8 +333,8 @@ namespace Numerics.Distributions
 
         /// <inheritdoc/>
         public override double[] MinimumOfParameters
-        { 
-            get 
+        {
+            get
             {
                 var result = new List<double>();
                 if (IsZeroInflated) { result.Add(0.0); }
@@ -346,7 +346,7 @@ namespace Numerics.Distributions
                 {
                     result.AddRange(Distributions[i].MinimumOfParameters);
                 }
-                return result.ToArray(); 
+                return result.ToArray();
             }
         }
 
@@ -522,7 +522,7 @@ namespace Numerics.Distributions
             }
             else
             {
-                   
+
                 // Get the weights
                 int K = Distributions.Count();
                 int t = 0; // keep track of parameter index
@@ -546,7 +546,7 @@ namespace Numerics.Distributions
                         Weights[i] = w;
                         parameters[i] = Weights[i];
                     }
-                }                  
+                }
                 else
                 {
                     // Normalize weights to sum to 1.
@@ -558,7 +558,7 @@ namespace Numerics.Distributions
                         parameters[i] = Weights[i];
                     }
                 }
-                
+
 
                 // Set distribution parameters
                 for (int i = 0; i < Distributions.Count(); i++)
@@ -671,7 +671,7 @@ namespace Numerics.Distributions
             var Uppers = tuple.Item3.Subset(K);
 
             // Set up EM parameters
-            var mleWeights = tuple.Item1.Subset(0 , K - 1);
+            var mleWeights = tuple.Item1.Subset(0, K - 1);
             var mleParameters = Initials;
             var likelihood = new double[N, K];
             double oldLogLH = double.MinValue, newLogLH = double.MinValue;
@@ -731,11 +731,11 @@ namespace Numerics.Distributions
                     double wgt = 0d;
                     for (int i = 0; i < N; i++)
                     {
-                        if (!IsZeroInflated || sample[i] > 0.0 )
+                        if (!IsZeroInflated || sample[i] > 0.0)
                         {
                             wgt += likelihood[i, k];
                         }
-                    }  
+                    }
                     mleWeights[k] = wgt / N;
                 }
                 // MLE
@@ -862,7 +862,7 @@ namespace Numerics.Distributions
                 {
                     for (int i = 0; i < Distributions.Count(); i++)
                         lnF.Add(Math.Log(Weights[i]) + Distributions[i].LogCDF(x));
-                }             
+                }
             }
             else
             {
@@ -995,6 +995,7 @@ namespace Numerics.Distributions
             }
             _empiricalCDF = new EmpiricalDistribution(xValues, pValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
             _empiricalCDFCreated = true;
+            _momentsComputed = false;
         }
 
         /// <inheritdoc/>

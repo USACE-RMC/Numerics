@@ -114,28 +114,6 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns an array of weights based on a list of model BIC values.
-        /// </summary>
-        /// <param name="bicValues">The list of model BIC values.</param>
-        public static double[] BICWeights(IList<double> bicValues)
-        {
-            var min = Tools.Min(bicValues);
-            var weights = new double[bicValues.Count];
-            var num = new double[bicValues.Count];
-            double sum = 0;
-            for (int i = 0; i < bicValues.Count; i++)
-            {
-                num[i] = Math.Exp(-0.5 * (bicValues[i] - min));
-                sum += num[i];
-            }
-            for (int i = 0; i < bicValues.Count; i++)
-            {
-                weights[i] = num[i] / sum;
-            }
-            return weights;
-        }
-
-        /// <summary>
         /// Gets the Root Mean Square Error (RMSE) of the model compared to the observed data.
         /// </summary>
         /// <param name="observedValues">The list of observed values to measure against.</param>

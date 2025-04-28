@@ -80,7 +80,7 @@ namespace Data.Statistics
                 data[i - 1] = norm.InverseCDF((double)i / 31);
             logL = norm.LogLikelihood(data);
         }
-        
+
         /// <summary>
         /// Test the AIC value. Validation value was attained directly from the formula for AIC.
         /// </summary>
@@ -123,23 +123,6 @@ namespace Data.Statistics
         {
             var values = new double[] { 8.66, 5.6, 38 };
             var test = GoodnessOfFit.AICWeights(values);
-            var valid = new double[] { 1.779937E-01, 8.220063E-01, 7.573637E-08 };
-
-            for (int i = 0; i < test.Length; i++)
-            {
-                Assert.AreEqual(valid[i], test[i], 1E-6);
-            }
-        }
-
-        /// <summary>
-        /// Test the method for weighting BIC values. Since the manner in which the values are weighted against each other is the same
-        /// here as in the AICWeights() function, these values were also tested against R's "akaike.weights()" function of the "qpcR" package
-        /// </summary>
-        [TestMethod]
-        public void Test_BICWeights()
-        {
-            var values = new double[] { 8.66, 5.6, 38 };
-            var test = GoodnessOfFit.BICWeights(values);
             var valid = new double[] { 1.779937E-01, 8.220063E-01, 7.573637E-08 };
 
             for (int i = 0; i < test.Length; i++)
@@ -199,11 +182,11 @@ namespace Data.Statistics
         {
             var values = new double[] { 8.66, 5.6, 38 };
             var test = GoodnessOfFit.RMSEWeights(values);
-            var valid = new double[] { 0.29041255, 0.69450458, 0.01508287};
+            var valid = new double[] { 0.29041255, 0.69450458, 0.01508287 };
 
             for (int i = 0; i < test.Length; i++)
             {
-               Assert.AreEqual(valid[i], test[i], 1E-6);
+                Assert.AreEqual(valid[i], test[i], 1E-6);
             }
         }
 

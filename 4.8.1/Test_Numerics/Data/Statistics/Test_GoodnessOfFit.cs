@@ -132,23 +132,6 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Test the method for weighting BIC values. Since the manner in which the values are weighted against each other is the same
-        /// here as in the AICWeights() function, these values were also tested against R's "akaike.weights()" function of the "qpcR" package
-        /// </summary>
-        [TestMethod]
-        public void Test_BICWeights()
-        {
-            var values = new double[] { 8.66, 5.6, 38 };
-            var test = GoodnessOfFit.BICWeights(values);
-            var valid = new double[] { 1.779937E-01, 8.220063E-01, 7.573637E-08 };
-
-            for (int i = 0; i < test.Length; i++)
-            {
-                Assert.AreEqual(valid[i], test[i], 1E-6);
-            }
-        }
-
-        /// <summary>
         /// Test the RMSE method that takes a list of observed values, list of model values, and the number of model parameters. These values were tested 
         /// against R's "rmse()" function from the "Metrics" package.
         /// </summary>
