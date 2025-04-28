@@ -218,30 +218,30 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Mean
         {
-            get 
+            get
             {
-                if (_beta.Min == _beta.Max) return _beta.Min;
-                return _beta.Mean < MinAllowableValue ? MinAllowableValue : _beta.Mean > MaxAllowableValue ? MaxAllowableValue : _beta.Mean;  
+                if (_beta.Min.AlmostEquals(_beta.Max)) return _beta.Min;
+                return _beta.Mean < MinAllowableValue ? MinAllowableValue : _beta.Mean > MaxAllowableValue ? MaxAllowableValue : _beta.Mean;
             }
         }
 
         /// <inheritdoc/>
         public override double Median
         {
-            get 
+            get
             {
-                if (_beta.Min == _beta.Max) return _beta.Min;
-                return _beta.Median < MinAllowableValue ? MinAllowableValue : _beta.Median > MaxAllowableValue ? MaxAllowableValue : _beta.Median; 
+                if (_beta.Min.AlmostEquals(_beta.Max)) return _beta.Min;
+                return _beta.Median < MinAllowableValue ? MinAllowableValue : _beta.Median > MaxAllowableValue ? MaxAllowableValue : _beta.Median;
             }
         }
 
         /// <inheritdoc/>
         public override double Mode
         {
-            get 
+            get
             {
-                if (_beta.Min == _beta.Max) return _beta.Min;
-                return _beta.Mode < MinAllowableValue ? MinAllowableValue : _beta.Mode > MaxAllowableValue ? MaxAllowableValue : _beta.Mode; 
+                if (_beta.Min.AlmostEquals(_beta.Max)) return _beta.Min;
+                return _beta.Mode < MinAllowableValue ? MinAllowableValue : _beta.Mode > MaxAllowableValue ? MaxAllowableValue : _beta.Mode;
             }
         }
 
@@ -404,7 +404,7 @@ namespace Numerics.Distributions
             if (_parametersSolved == false) SolveParameters();
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_beta.Min == _beta.Max) return 0.0d;
+            if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return 0.0d;
             if (double.IsNaN(_beta.Mode)) return 0.0d;
             //
             if (x < MinAllowableValue) x = MinAllowableValue;
@@ -419,7 +419,7 @@ namespace Numerics.Distributions
             if (_parametersSolved == false) SolveParameters();
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_beta.Min == _beta.Max) return 1d;
+            if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return 1d;
             if (double.IsNaN(_beta.Mode)) return 1d;
             //
             if (x < MinAllowableValue) x = MinAllowableValue;
@@ -439,7 +439,7 @@ namespace Numerics.Distributions
             if (x > MaxAllowableValue) x = MaxAllowableValue;
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_beta.Min == _beta.Max) return x;
+            if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return x;
             if (double.IsNaN(_beta.Mode)) return x;
             //
             try
@@ -449,7 +449,7 @@ namespace Numerics.Distributions
             catch (ArithmeticException)
             {
                 return x;
-            } 
+            }
             //
             if (x < MinAllowableValue) x = MinAllowableValue;
             if (x > MaxAllowableValue) x = MaxAllowableValue;
@@ -459,11 +459,14 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new PertPercentile(Percentile5th, Percentile50th, Percentile95th) { MinAllowableValue = MinAllowableValue,
+            return new PertPercentile(Percentile5th, Percentile50th, Percentile95th)
+            {
+                MinAllowableValue = MinAllowableValue,
                 MaxAllowableValue = MaxAllowableValue,
                 _parametersSolved = _parametersSolved,
                 _parametersValid = _parametersValid,
-                _beta = (GeneralizedBeta)_beta.Clone()};
+                _beta = (GeneralizedBeta)_beta.Clone()
+            };
         }
 
         /// <summary>

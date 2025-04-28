@@ -466,7 +466,7 @@ namespace Numerics.Data.Statistics
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             double N = data.Count;
-            if (N < 4) throw new ArgumentException("There must be more than 4 data points.", nameof(data));
+            if (N < 4) return [double.NaN, double.NaN, double.NaN, double.NaN];
 
             // sums of powers
             double X1 = 0, X2 = 0, X3 = 0, X4 = 0;
@@ -519,7 +519,7 @@ namespace Numerics.Data.Statistics
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             double N = data.Count;
-            if (N < 4) throw new ArgumentException("There must be more than 4 data points.", nameof(data));
+            if (N < 4) return [double.NaN, double.NaN, double.NaN, double.NaN];
 
             // Copy and sort data
             var sortedData = data.ToArray();

@@ -207,30 +207,30 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Mean
         {
-            get 
+            get
             {
-                if (_beta.Min == _beta.Max) return Normal.StandardCDF(_beta.Min);
-                return Normal.StandardCDF(_beta.Mean); 
+                if (_beta.Min.AlmostEquals(_beta.Max)) return Normal.StandardCDF(_beta.Min);
+                return Normal.StandardCDF(_beta.Mean);
             }
         }
 
         /// <inheritdoc/>
         public override double Median
         {
-            get 
+            get
             {
-                if (_beta.Min == _beta.Max) return Normal.StandardCDF(_beta.Min);
-                return Normal.StandardCDF(_beta.Median); 
+                if (_beta.Min.AlmostEquals(_beta.Max)) return Normal.StandardCDF(_beta.Min);
+                return Normal.StandardCDF(_beta.Median);
             }
         }
 
         /// <inheritdoc/>
         public override double Mode
         {
-            get 
+            get
             {
-                if (_beta.Min == _beta.Max) return Normal.StandardCDF(_beta.Min);
-                return Normal.StandardCDF(_beta.Mode); 
+                if (_beta.Min.AlmostEquals(_beta.Max)) return Normal.StandardCDF(_beta.Min);
+                return Normal.StandardCDF(_beta.Mode);
             }
         }
 
@@ -339,7 +339,7 @@ namespace Numerics.Distributions
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }
 
-        
+
         /// <summary>
         /// Solve the PERT parameters (min, mode, max) given the percentiles.
         /// </summary>
@@ -348,7 +348,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false) return;
             if (_parametersSolved == true) return;
 
-            double fifth =  Percentile5th;
+            double fifth = Percentile5th;
             double fiftieth = Percentile50th;
             double ninetyFifth = Percentile95th;
 
@@ -358,7 +358,7 @@ namespace Numerics.Distributions
                 _parametersSolved = true;
                 return;
             }
-          
+
             fifth = Normal.StandardZ(Percentile5th);
             fiftieth = Normal.StandardZ(Percentile50th);
             ninetyFifth = Normal.StandardZ(Percentile95th);
@@ -413,7 +413,7 @@ namespace Numerics.Distributions
             if (_parametersSolved == false) SolveParameters();
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_beta.Min == _beta.Max) return 0.0d;
+            if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return 0.0d;
             if (double.IsNaN(_beta.Mode)) return 0.0d;
             //
             return _beta.PDF(Normal.StandardZ(x));
@@ -428,7 +428,7 @@ namespace Numerics.Distributions
             if (_parametersSolved == false) SolveParameters();
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_beta.Min == _beta.Max) return 1d;
+            if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return 1d;
             if (double.IsNaN(_beta.Mode)) return 1d;
             //
             return _beta.CDF(Normal.StandardZ(x));
@@ -443,7 +443,7 @@ namespace Numerics.Distributions
             var x = Normal.StandardCDF(_beta.Min);
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_beta.Min == _beta.Max) return x;
+            if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return x;
             if (double.IsNaN(_beta.Mode)) return x;
             //
             try
@@ -460,7 +460,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new PertPercentileZ(Percentile5th, Percentile50th, Percentile95th) { _parametersSolved = _parametersSolved, _parametersValid = _parametersValid, _beta = (GeneralizedBeta)_beta.Clone()};
+            return new PertPercentileZ(Percentile5th, Percentile50th, Percentile95th) { _parametersSolved = _parametersSolved, _parametersValid = _parametersValid, _beta = (GeneralizedBeta)_beta.Clone() };
         }
 
         /// <summary>
