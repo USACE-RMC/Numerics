@@ -124,7 +124,7 @@ namespace Numerics.Distributions
             // get alpha and beta
             double mean = (min + scale * mode + max) / (scale + 2d);
             double alpha = 1d + scale / 2d;
-            if (mean != mode)
+            if (!mean.AlmostEquals(mode))
             {
                 alpha = (mean - min) * (2d * mode - min - max) / ((mode - mean) * (max - min));
             }

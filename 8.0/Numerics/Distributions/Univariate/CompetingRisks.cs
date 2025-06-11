@@ -940,6 +940,8 @@ namespace Numerics.Distributions
             result.SetAttributeValue(nameof(Type), Type.ToString());
             result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
             result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+            result.SetAttributeValue(nameof(MinimumOfRandomVariables), MinimumOfRandomVariables.ToString());
+            result.SetAttributeValue(nameof(Dependency), Dependency.ToString());
             result.SetAttributeValue(nameof(Distributions), String.Join("|", Distributions.Select(x => x.Type)));
             // Parameters
             var parms = GetParameters;
@@ -949,6 +951,36 @@ namespace Numerics.Distributions
                 parmStrings[i] = parms[i].ToString("G17", CultureInfo.InvariantCulture);
             }
             result.SetAttributeValue("Parameters", String.Join("|", parmStrings));
+
+            // Correlation matrix
+            var corrMatrixElement = new XElement(nameof(CorrelationMatrix));
+            if (CorrelationMatrix != null
+                && CorrelationMatrix.GetLength(0) == Distributions.Count
+                && CorrelationMatrix.GetLength(1) == Distributions.Count)
+            {
+                int rows = Distributions.Count;
+                int cols = Distributions.Count;
+                var row = new double[cols];
+
+                for (int i = 0; i < rows; i++)
+                {
+                    var corrRowElement = new XElement("Correlation_Row");
+
+                    // collect one row of the 2D array
+                    for (int j = 0; j < cols; j++)
+                    {
+                        row[j] = _correlationMatrix[i, j];
+                    }
+
+                    // format each double to "G17" with invariant culture
+                    var formatted = row.Select(v => v.ToString("G17", CultureInfo.InvariantCulture));
+                    // join with '|' and set as the element's text
+                    corrRowElement.Value = string.Join("|", formatted);
+                    corrMatrixElement.Add(corrRowElement);
+                }
+            }
+            result.Add(corrMatrixElement);
+
             return result;
         }
 
@@ -989,6 +1021,18 @@ namespace Numerics.Distributions
                     Enum.TryParse(xElement.Attribute(nameof(ProbabilityTransform)).Value, out Transform probabilityTransform);
                     competingRisks.ProbabilityTransform = probabilityTransform;
                 }
+                if (xElement.Attribute(nameof(MinimumOfRandomVariables)) != null)
+                {
+                    bool.TryParse(xElement.Attribute(nameof(MinimumOfRandomVariables)).Value, out bool minOfValues);
+                    competingRisks.MinimumOfRandomVariables = minOfValues;
+                }
+                if (xElement.Attribute(nameof(Dependency)) != null)
+                {
+                    Enum.TryParse(xElement.Attribute(nameof(Dependency)).Value, out Probability.DependencyType dependency);
+                    competingRisks.Dependency = dependency;
+                }
+
+                // Parameters
                 if (xElement.Attribute("Parameters") != null)
                 {
                     var vals = xElement.Attribute("Parameters").Value.Split('|');
@@ -1001,6 +1045,39 @@ namespace Numerics.Distributions
                     competingRisks.SetParameters(parameters);
                 }
 
+                // Correlation matrix
+                var corrMatrixElement = xElement.Element(nameof(CorrelationMatrix));
+                if (corrMatrixElement != null)
+                {
+                    var _corrMatrix = new double[competingRisks.Distributions.Count, competingRisks.Distributions.Count];
+                    int counter = 0;
+                    foreach (var rowEl in corrMatrixElement.Elements("Correlation_Row"))
+                    {
+                        if (counter >= competingRisks.Distributions.Count)
+                            break;
+
+                        // Split on '|' to get each stringified value
+                        var parts = rowEl.Value.Split('|');
+                        int maxCols = Math.Min(parts.Length, competingRisks.Distributions.Count);
+
+                        for (int j = 0; j < maxCols; j++)
+                        {
+                            // Try to parse each part; if it fails, leave as 0 or assign NaN if you prefer
+                            if (double.TryParse(parts[j], NumberStyles.Any, CultureInfo.InvariantCulture, out var p))
+                            {
+                                _corrMatrix[counter, j] = p;
+                            }
+                            else
+                            {
+                                _corrMatrix[counter, j] = double.NaN;
+                            }
+                        }
+
+                        counter++;
+                    }
+                    competingRisks.CorrelationMatrix = _corrMatrix;
+                }
+
                 return competingRisks;
             }
             else
@@ -1008,5 +1085,6 @@ namespace Numerics.Distributions
                 return null;
             }
         }
+
     }
 }

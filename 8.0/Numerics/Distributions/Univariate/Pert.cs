@@ -184,20 +184,20 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Mean
         {
-            get 
+            get
             {
-                if (_min == _max && _min == _mode) return _min;
-                return (Min + 4 * MostLikely + Max) / 6; 
+                if (_min.AlmostEquals(_max) && _min.AlmostEquals(_mode)) return _min;
+                return (Min + 4 * MostLikely + Max) / 6;
             }
         }
 
         /// <inheritdoc/>
         public override double Median
         {
-            get 
+            get
             {
-                if (_min == _max && _min == _mode) return _min;
-                return (Min + 6 * MostLikely + Max) / 8; 
+                if (_min.AlmostEquals(_max) && _min.AlmostEquals(_mode)) return _min;
+                return (Min + 6 * MostLikely + Max) / 8;
             }
         }
 
@@ -405,7 +405,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false) ValidateParameters(Min, Mode, Max, true);
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_min == _max && _min == _mode) return 0.0d;
+            if (_min.AlmostEquals(_max) && _min.AlmostEquals(_mode)) return 0.0d;
             if (double.IsNaN(_mode)) return 0.0d;
             return _beta.PDF(x);
         }
@@ -417,7 +417,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false) ValidateParameters(Min, Mode, Max, true);
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_min == _max && _min == _mode) return 1d;
+            if (_min.AlmostEquals(_max) && _min.AlmostEquals(_mode)) return 1d;
             if (double.IsNaN(_mode)) return 1;
             return _beta.CDF(x);
         }
@@ -429,7 +429,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false) ValidateParameters(Min, Mode, Max, true);
             // These checks are done specifically for an application where a 
             // user inputs min = max = mode
-            if (_min == _max && _min == _mode) return Min;
+            if (_min.AlmostEquals(_max) && _min.AlmostEquals(_mode)) return Min;
             if (double.IsNaN(_mode)) return Min;
             return _beta.InverseCDF(probability);
         }

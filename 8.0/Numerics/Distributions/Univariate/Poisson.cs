@@ -259,10 +259,17 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters([Lambda], true);
 
-            double lower = Minimum;
-            double upper = Mean;           
-            Brent.Bracket(x => CDF(x) - probability, ref lower, ref upper, out var f1, out var f2);
-            return Brent.Solve(x => CDF(x) - probability, lower, upper);
+            int k = (int)Math.Max(0, Math.Floor(Lambda));  // start near the mean
+
+            // Move downward if needed
+            while (k > 0 && CDF(k - 1) >= probability)
+                k--;
+
+            // Move upward to find first k such that CDF(k) >= probability
+            while (CDF(k) < probability)
+                k++;
+
+            return k;
         }
 
         /// <inheritdoc/>

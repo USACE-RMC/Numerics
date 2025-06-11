@@ -399,7 +399,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters(Min, MostLikely, Max, true);
             // 
-            if (Min == Max && Min == MostLikely) return 0.0d;
+            if (Min.AlmostEquals(Max) && Min.AlmostEquals(MostLikely)) return 0.0d;
             if (x < Minimum || x > Maximum) return 0.0d;
             if (x >= Min && x < MostLikely)
             {
@@ -422,7 +422,7 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Min, MostLikely, Max, true);
-            if (Min == Max && Min == MostLikely) return 1d;         
+            if (Min.AlmostEquals(Max) && Min.AlmostEquals(MostLikely)) return 1d;         
             if (x <= Minimum) return 0d;
             if (x >= Maximum) return 1d;
             if (x > Min && x <= MostLikely)
@@ -442,7 +442,7 @@ namespace Numerics.Distributions
             // Validate probability
             if (probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
-            if (Min == Max && Min == MostLikely) return Min;
+            if (Min.AlmostEquals(Max) && Min.AlmostEquals(MostLikely)) return Min;
             if (probability == 0.0d) return Minimum;
             if (probability == 1.0d) return Maximum;
             // Validate parameters
