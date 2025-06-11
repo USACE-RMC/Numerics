@@ -41,25 +41,32 @@ namespace Numerics.Mathematics.Optimization
     /// </summary>
     public class Network
     {
-        private readonly List<Edge>[] _outgoingEdges;
-        private readonly List<Edge>[] _incomingEdges;
+        private readonly Dictionary<int, List<Edge>> _outgoingEdges;
+        private readonly Dictionary<int, List<Edge>> _incomingEdges;
         private readonly int _nodeCount;
         private readonly int[] _destinationIndices;
-        //private readonly RoadSegment[] _segments;
         private readonly Edge[] _edges;
 
-        //public RoadSegment[] Segments { get => _segments; }
         public int[] DestinationIndices { get => _destinationIndices; }
+        public Dictionary<int,List<Edge>> IncomingEdges { get => _incomingEdges; }
+        public Dictionary<int, List<Edge>> OutgoingEdges { get => _outgoingEdges; }
 
-        public List<Edge>[] IncomingEdges { get => _incomingEdges; }
-        public List<Edge>[] OutgoingEdges { get => _outgoingEdges; }
-
-        public Network(Edge[] edges, int[] destinationIndices)
+        public Network(Edge[] edges, int[] destinationIndices, int nodeCount = -1)
         {
-            //_segments = roadSegments;
-            _edges = edges;//new Edge[edges.Length];
+            _edges = edges;
             _destinationIndices = destinationIndices;
-            _nodeCount = 0;
+
+
+            if (nodeCount != -1)
+            {
+                _nodeCount = nodeCount;
+            }
+            else
+            {
+                _nodeCount = 0;
+                // Calculate the number of unique nodes
+            }
+
 
             //for (int i = 0; i < roadSegments.Length; i++)
             //{
@@ -67,20 +74,22 @@ namespace Numerics.Mathematics.Optimization
             //    if (_edges[i].FromIndex > _nodeCount) { _nodeCount = _edges[i].FromIndex; }
             //    if (_edges[i].ToIndex > _nodeCount) { _nodeCount = _edges[i].ToIndex; }
             //}
-            var max1 = edges.Select(x=>x.FromIndex).Max();
-            var max2 = edges.Select(x => x.ToIndex).Max();
-            var max = Math.Max(max1, max2);
+            //var max1 = edges.Select(x=>x.FromIndex).Max();
+            //var max2 = edges.Select(x => x.ToIndex).Max();
+            //var max = Math.Max(max1, max2);
             //// Add one to the count for the index offset.
             //_nodeCount += 1;
-            _incomingEdges = new List<Edge>[max];
-            _outgoingEdges = new List<Edge>[max];
+            _incomingEdges = new Dictionary<int, List<Edge>>();
+            _outgoingEdges = new Dictionary<int, List<Edge>>();
             //
             for (int i = 0; i < _edges.Length; i++)
             {
-                if (_incomingEdges[_edges[i].ToIndex] == null) { _incomingEdges[_edges[i].ToIndex] = new List<Edge>(); }
+                if(_incomingEdges.ContainsKey(_edges[i].ToIndex)==false) { _incomingEdges.Add(_edges[i].ToIndex, new List<Edge>()); }
+                //if (_incomingEdges[_edges[i].ToIndex] == null) { _incomingEdges[_edges[i].ToIndex] = new List<Edge>(); }
                 _incomingEdges[_edges[i].ToIndex].Add(_edges[i]);
 
-                if (_outgoingEdges[_edges[i].FromIndex] == null) { _outgoingEdges[_edges[i].FromIndex] = new List<Edge>(); }
+                if (_outgoingEdges.ContainsKey(_edges[i].FromIndex) == false) { _outgoingEdges.Add(_edges[i].FromIndex, new List<Edge>()); }
+                //if (_outgoingEdges[_edges[i].FromIndex] == null) { _outgoingEdges[_edges[i].FromIndex] = new List<Edge>(); }
                 _outgoingEdges[_edges[i].FromIndex].Add(_edges[i]);
             }
 
