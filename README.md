@@ -4,11 +4,7 @@
 ## Support
 The RMC is committed to maintaining and supporting the software, providing regular updates, bug fixes, and enhancements on an annual basis or as needed.
 
-The repository contains builds for:
-* .NET 8.0
-* .NET Framework 4.8.1
-
-Each build has a unit testing library with more than 1,000 tests. These tests also provide examples for using the classes and methods in the library.
+The repository contains a unit testing library with more than 1,000 tests. These tests also provide examples for using the classes and methods in the library.
 
 ## Installation Instructions
 We recommend using [NuGet](https://www.nuget.org/) for convenient installation of the [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) package.
