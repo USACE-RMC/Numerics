@@ -65,14 +65,14 @@ namespace Numerics.Data
         public LinearRegression(Matrix x, Vector y, bool hasIntercept = true)
         {
 
-            if (y.Length != x.NumberOfRows) throw new ArgumentException("The y vector must be the same length as the x matrix.");
+            if (y.Length != x.NumberOfRows) throw new ArgumentException("X and Y must have the same number of rows.");
             if (y.Length <= 2) throw new ArithmeticException("There must be at least three data points.");
             if (x.NumberOfColumns > y.Length) throw new ArithmeticException($"A regression of the requested order requires at least {x.NumberOfColumns} data points. Only {y.Length} data points have been provided.");
 
             // Set inputs
             Y = y;
-            X = x;
-            this.hasIntercept = hasIntercept;
+            X = hasIntercept ? AddInterceptColumn(x) : x;
+            this.HasIntercept = hasIntercept;
             ParameterNames = new List<string>();
 
             // Set model name
@@ -99,7 +99,10 @@ namespace Numerics.Data
             FitSVD();
         }
 
-        private bool hasIntercept;
+        /// <summary>
+        /// Determines if the linear model has an intercept. 
+        /// </summary>
+        public bool HasIntercept { get; private set; }
 
         /// <summary>
         /// The vector of response values.
@@ -137,6 +140,11 @@ namespace Numerics.Data
         public Matrix Covariance { get; private set; }
 
         /// <summary>
+        /// The residuals of the fitted linear model. 
+        /// </summary>
+        public double[] Residuals { get; private set; }
+
+        /// <summary>
         /// The model standard error.
         /// </summary>
         public double StandardError { get; private set; }
@@ -144,11 +152,8 @@ namespace Numerics.Data
         /// <summary>
         /// The data sample size. 
         /// </summary>
-        public int SampleSize
-        {
-            get { return Y.Length; }
-        }
-
+        public int SampleSize => Y.Length; 
+        
         /// <summary>
         /// The model degrees of freedom.
         /// </summary>
@@ -163,11 +168,6 @@ namespace Numerics.Data
         /// Adjusted R-squared.
         /// </summary>
         public double AdjRSquared { get; private set; }
-
-        /// <summary>
-        /// The residuals of the fitted linear model. 
-        /// </summary>
-        public double[] Residuals { get; private set; }
 
         /// <summary>
         /// Provides a standard summary output table in a list of strings. 
@@ -211,7 +211,7 @@ namespace Numerics.Data
             int dfR = lm.DegreesOfFreedom, dfF = DegreesOfFreedom;
             HypothesisTests.FtestModels(sseR, sseF, dfR, dfF, out F, out fP);
             string fPStrg = fP > 1E-4 ? fP.ToString("N4") : fP < 1E-15 ? "< 1E-15" : fP.ToString("E2");
-            text.Add("F-statistic: " + F.ToString("N1") + ", on " + (hasIntercept ? Parameters.Count - 1 : Parameters.Count).ToString("N0") + " and " + DegreesOfFreedom.ToString("N0") + " DF, p-value: " + fPStrg);
+            text.Add("F-statistic: " + F.ToString("N1") + ", on " + (HasIntercept ? Parameters.Count - 1 : Parameters.Count).ToString("N0") + " and " + DegreesOfFreedom.ToString("N0") + " DF, p-value: " + fPStrg);
             text.Add("");
 
             // Residuals
@@ -230,29 +230,14 @@ namespace Numerics.Data
         private void FitSVD()
         {
             double meanY = Statistics.Statistics.Mean(Y.ToArray());
-            var xx = X;
-            // see if we need to add an intercept column
-            if (hasIntercept)
-            {
-                xx = new Matrix(X.NumberOfRows, X.NumberOfColumns + 1);
-                for (int r = 0; r < X.NumberOfRows; r++)
-                {
-                    xx[r, 0] = 1;
-                    for (int c = 0; c < X.NumberOfColumns; c++)
-                    {
-                        xx[r, c + 1] = X[r, c];
-                    }
-                }
-            }
-
-            int i, j, k, n = xx.NumberOfRows, m = xx.NumberOfColumns;
+            int i, j, k, n = X.NumberOfRows, m = X.NumberOfColumns;
             double sse = 0.0, sst = 0.0, sum = 0.0;
             DegreesOfFreedom = n - m;
             Residuals = new double[n];
             Covariance = new Matrix(m);
 
             // Estimate coefficients
-            var svd = new SingularValueDecomposition(xx);
+            var svd = new SingularValueDecomposition(X);
             double tol = 1E-12;
             double thresh = (tol > 0d ? tol * svd.W[0] : -1d);
             var betas = svd.Solve(Y, thresh); // vector of fitted coefficients
@@ -261,7 +246,7 @@ namespace Numerics.Data
             for (i = 0; i < n; i++)
             {
                 sum = 0.0;
-                for (j = 0; j < m; j++) sum += xx[i, j] * betas[j];
+                for (j = 0; j < m; j++) sum += X[i, j] * betas[j];
                 Residuals[i] = Y[i] - sum;
                 sse += Tools.Sqr(Residuals[i]);
                 sst += Tools.Sqr(Y[i] - meanY);
@@ -288,6 +273,21 @@ namespace Numerics.Data
 
         }
 
+        /// <summary>
+        /// Helper method to add an intercept column to the covariate matrix.
+        /// </summary>
+        /// <param name="x">The matrix of predictor values.</param>
+        private static Matrix AddInterceptColumn(Matrix x)
+        {
+            Matrix result = new Matrix(x.NumberOfRows, x.NumberOfColumns + 1);
+            for (int i = 0; i < x.NumberOfRows; i++)
+            {
+                result[i, 0] = 1.0;
+                for (int j = 0; j < x.NumberOfColumns; j++)
+                    result[i, j + 1] = x[i, j];
+            }
+            return result;
+        }
 
         /// <summary>
         /// Returns the predicted Y values given the X-values. 
@@ -298,7 +298,7 @@ namespace Numerics.Data
             var result = new double[x.NumberOfRows];
             for (int i = 0; i < x.NumberOfRows; i++)
             {
-                if (hasIntercept == true)
+                if (HasIntercept == true)
                 {
                     var values = new List<double>() { 1 };
                     values.AddRange(x.Row(i));
@@ -325,7 +325,7 @@ namespace Numerics.Data
             for (int i = 0; i < x.NumberOfRows; i++)
             {
                 double mu = 0;
-                if (hasIntercept == true)
+                if (HasIntercept == true)
                 {
                     var values = new List<double>() { 1 };
                     values.AddRange(x.Row(i));
@@ -349,4 +349,5 @@ namespace Numerics.Data
         }
 
     }
+
 }

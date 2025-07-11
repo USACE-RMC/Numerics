@@ -1,8 +1,6 @@
 /.vs
-packages
 /Numerics/bin
 /Numerics/obj
-/packages
 /Test_Numerics/bin
 /Test_Numerics/obj
 /TestResults
