@@ -191,9 +191,33 @@ namespace Numerics
         #region 1-D Array
 
         /// <summary>
+        /// Applies a function to each element in the array.
+        /// </summary>
+        /// <param name="array">The array.</param>
+        /// <param name="func">The function to apply to each element.</param>
+        public static void Apply(this double[] array, Func<double, double> func)
+        {
+            for (int i = 0; i < array.Length; i++)
+                array[i] = func(array[i]);
+        }
+
+        /// <summary>
+        /// Applies a function to each element in the array
+        /// </summary>
+        /// <param name="array">The array.</param>
+        /// <param name="func">The function to apply to each element.</param>
+        public static double[] Map(this double[] array, Func<double, double> func)
+        {
+            var result = new double[array.Length];
+            for (int i = 0; i < array.Length; i++)
+                result[i] = func(array[i]);
+            return result;
+        }
+
+        /// <summary>
         /// Adds corresponding elements of arrays.
         /// </summary>
-        /// <param name="array">The array</param>
+        /// <param name="array">The array.</param>
         /// <param name="values">The values to add.</param>
         /// <returns>The array after addition.</returns>
         public static double[] Add(this double[] array, double[] values)
@@ -245,6 +269,21 @@ namespace Numerics
             var result = new double[array.Length];
             for (int i = 0; i < array.Length; i++)
                 result[i] = array[i] / scalar;
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the dot product of two arrays of values.
+        /// </summary>
+        /// <param name="array">The array</param>
+        /// <param name="values">The values to multiply.</param>
+        /// <returns>The array after performing the dot product.</returns>
+        public static double DotProduct(this double[] array, double[] values)
+        {
+            if (array.Length != values.Length) throw new ArgumentException(nameof(array), "The arrays must be the same length.");
+            double result = 0.0;
+            for (int i = 0; i < array.Length; i++)
+                result += array[i] * values[i];
             return result;
         }
 
@@ -321,6 +360,18 @@ namespace Numerics
         #endregion
 
         #region 2-D Array
+
+        /// <summary>
+        /// Applies a function to each element in the array.
+        /// </summary>
+        /// <param name="array">The array.</param>
+        /// <param name="func">The function to apply to each element.</param>
+        public static void Apply(this double[,] array, Func<double, double> func)
+        {
+            for (int i = 0; i < array.GetLength(0); i++)
+                for (int j = 0; j < array.GetLength(1); j++)
+                    array[i, j] = func(array[i, j]);
+        }
 
         /// <summary>
         /// Gets a specific column from a 2-D array.
