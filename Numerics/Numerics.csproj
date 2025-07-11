@@ -50,13 +50,6 @@
     <PackageReference Include="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
   
-  <ItemGroup Condition="'$(TargetFramework)' == 'net481'">
-  <PackageReference Include="System.Text.Encodings.Web" Version="8.0.0" />
-  <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
-  <PackageReference Include="System.ValueTuple" Version="4.5.0" />
-</ItemGroup>
-
-  
   <ItemGroup>
     <None Remove="new-joe-kuo-6.21201" />
     <None Remove="Properties\new-joe-kuo-6.21201" />
