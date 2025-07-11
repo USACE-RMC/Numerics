@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/USArmy-Corps-of-Engineers-RMC/Numerics</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Title>Numerics</Title>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <Company>USACE-RMC</Company>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>interpolation; regression; statistics; machine learning; probability distributions; bootstrap analysis; distribution fitting; MCMC sampling; optimization;</PackageTags>
