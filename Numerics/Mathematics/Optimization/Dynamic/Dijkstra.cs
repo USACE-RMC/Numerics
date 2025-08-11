@@ -71,6 +71,21 @@ namespace Numerics.Mathematics.Optimization
     /// </summary>
     public static class Dijkstra
     {
+        private const int NEXT_NODE = 0;
+        private const int EDGE_INDEX = 1;
+        private const int COST = 2;
+
+        /// <summary>
+        /// May be a useful call in LifeSim -> GetPath().
+        /// Follows the logic that is implemented in the Solve method.
+        /// </summary>
+        /// <param name="resultTable"></param>
+        /// <param name="nodeIndex"></param>
+        /// <returns></returns>
+        public static bool PathExists(float[,] resultTable, int nodeIndex)
+        {
+            return !float.IsPositiveInfinity(resultTable[nodeIndex, COST]);
+        }
         /// <summary>
         /// Solves the shortest path from every node in the network of edges to a given destination.
         /// </summary>
@@ -79,198 +94,49 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="nodeCount">Optional number of nodes in the network. If not provided it will be calculated internally.</param>
         /// <param name="edgesToNodes">Optional list of incoming edges from each node in the network. If not provided or mismatched with edges it will be calculated internally.</param>
         /// <returns>Lookup table of shortest paths from any given node.</returns>
-        public static float[,] Solve(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1, List<Edge>[] edgesToNodes = null)
+        public static float[,] Solve(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1, List<Edge>[] edgesFromNodes = null)
         {
             // Set optional parameters if required.
-            int nNodes = (nodeCount == -1) ? (edges.Max(o => o.FromIndex > o.ToIndex ? o.FromIndex : o.ToIndex) + 1) : nodeCount;
+            int nNodes = (nodeCount == -1) ? (edges.Max(o => Math.Max(o.FromIndex,o.ToIndex)) + 1) : nodeCount;
 
-            if (edgesToNodes == null || edgesToNodes.Length != edges.Count)
+            if (edgesFromNodes == null || edgesFromNodes.Length != nNodes)
             {
-                edgesToNodes = new List<Edge>[nNodes];
+                edgesFromNodes = new List<Edge>[nNodes];
                 //
-                for (int i = 0; i < edges.Count; i++)
+                foreach(var edge in edges)
                 {
-                    if (edgesToNodes[edges[i].ToIndex] == null) { edgesToNodes[edges[i].ToIndex] = new List<Edge>(); }
-                    edgesToNodes[edges[i].ToIndex].Add(edges[i]);
+                    edgesFromNodes[edge.ToIndex] ??= new List<Edge>();
+                    edgesFromNodes[edge.ToIndex].Add(edge);
                 }
             }
+
 
             float[,] resultTable = new float[nNodes, 3];
-            int[] nodeState = new int[nNodes]; //0 - Node hasn't been scanned yet, 1 - Node has been solved for, 2 - Node has been scanned into heap but not solved for.
+            //int[] nodeState = new int[nNodes]; //0 - Node hasn't been scanned yet, 1 - Node has been solved for, 2 - Node has been scanned into heap but not solved for.
+            for(int i = 0; i < nNodes; i++)
+            {
+                resultTable[i, NEXT_NODE] = -1;
+                resultTable[i, EDGE_INDEX] = -1;
+                resultTable[i, COST] = float.PositiveInfinity;
+            }
 
-            // Identify first valid destination index.
-            int startIndex = -1;
-            int destinationIndex = -1;
             for (int i = 0; i < destinationIndices.Length; i++)
             {
-                if (edgesToNodes[destinationIndices[i]] != null && edgesToNodes[destinationIndices[i]].Count != 0)
+                int destinationIndex = destinationIndices[i];
+                var partialResult = Solve(edges, destinationIndex, nNodes, edgesFromNodes);
+                for(int j = 0; j < nNodes; j++)
                 {
-                    startIndex = i;
-                    destinationIndex = destinationIndices[startIndex];
-                    break;
-                }
-            }
-
-            // Calculate shortest path for the first destination
-            nodeState[destinationIndex] = 1;
-            resultTable[destinationIndex, 0] = destinationIndex; //Tail
-            resultTable[destinationIndex, 1] = -1; //edge index
-            resultTable[destinationIndex, 2] = 0; //Cumulative Weight
-
-            int previousValue = destinationIndex;
-            if (edgesToNodes[previousValue] == null) { return resultTable; }
-
-            //Add the nodes to the heap connected to the given destination node.
-            int nodeIndex = 0;
-            BinaryHeap<Edge> heap = new BinaryHeap<Edge>(10000);
-            float[] nodeWeightToDestination = new float[nNodes];
-            foreach (Edge edge in edgesToNodes[previousValue])
-            {
-                nodeIndex = edge.FromIndex;
-                //Update the nodes current state.
-                if (nodeState[nodeIndex] == 0)
-                {
-                    heap.Add(new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge));
-                    nodeState[nodeIndex] = 2;
-                    nodeWeightToDestination[nodeIndex] = edge.Weight;
-                }
-                else if (nodeState[nodeIndex] == 2)
-                {
-                    if (nodeWeightToDestination[nodeIndex] > edge.Weight)
+                    // Keep better path
+                    if (partialResult[j, COST] < resultTable[j, COST])
                     {
-                        nodeWeightToDestination[nodeIndex] = edge.Weight;
-                        heap.Replace(new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge));
+                        resultTable[j, NEXT_NODE] = partialResult[j, NEXT_NODE];
+                        resultTable[j, EDGE_INDEX] = partialResult[j, EDGE_INDEX];
+                        resultTable[j,COST] = partialResult[j,COST];
                     }
                 }
             }
-
-            //Solve for all nodes.
-            BinaryHeap<Edge>.Node resultNode;
-            float cumulativeWeight = 0;
-            do
-            {
-                resultNode = heap.RemoveMin();
-                previousValue = resultNode.Index;
-                nodeState[previousValue] = 1;
-                nodeWeightToDestination[previousValue] = resultNode.Weight;
-
-                //Destination is the first result.
-                resultTable[resultNode.Index, 0] = resultNode.Value.ToIndex;
-                resultTable[resultNode.Index, 1] = resultNode.Value.Index;
-                resultTable[resultNode.Index, 2] = resultNode.Weight;
-
-                //Get all connections to previous node and add the weight to the heap
-                if (edgesToNodes[previousValue] == null) { continue; }
-                foreach (Edge edge in edgesToNodes[previousValue])
-                {
-                    nodeIndex = edge.FromIndex; //(previousValue == item.fromIndex) ? item.toIndex : item.fromIndex;
-                                                //Update the nodes current state.
-                    if (nodeState[nodeIndex] == 0)
-                    {
-                        cumulativeWeight = edge.Weight + resultNode.Weight;
-                        heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                        nodeState[nodeIndex] = 2;
-                        nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                    }
-                    else if (nodeState[nodeIndex] == 2)
-                    {
-                        cumulativeWeight = edge.Weight + resultNode.Weight;
-                        if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                        {
-                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                            heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                        }
-                    }
-                }
-
-            } while (heap.Count > 0);
-
-
-            // Now calculate for all other destinations, time savings are reached by stopping the search vein once 
-            // a distance becomes greater than a previously calculated distance.
-            for (int i = startIndex + 1; i < destinationIndices.Length; i++)
-            {
-                heap = new BinaryHeap<Edge>(10000);
-                nodeState = new int[nNodes];
-                nodeWeightToDestination = new float[nNodes];
-
-                destinationIndex = destinationIndices[i];
-                nodeState[destinationIndex] = 1;
-                resultTable[destinationIndex, 0] = destinationIndex; //Tail
-                resultTable[destinationIndex, 1] = -1; //edge index
-                resultTable[destinationIndex, 2] = 0; //Cumulative Weight
-                previousValue = destinationIndex;
-                if (edgesToNodes[previousValue] == null) { continue; }
-
-                //Add the nodes to the heap connected to the given destination node.
-                nodeIndex = 0;
-                foreach (Edge edge in edgesToNodes[previousValue])
-                {
-                    nodeIndex = edge.FromIndex;
-                    //Update the nodes current state.
-                    if (nodeState[nodeIndex] == 0)
-                    {
-                        heap.Add(new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge));
-                        nodeState[nodeIndex] = 2;
-                        nodeWeightToDestination[nodeIndex] = edge.Weight;
-                    }
-                    else if (nodeState[nodeIndex] == 2)
-                    {
-                        if (nodeWeightToDestination[nodeIndex] > edge.Weight)
-                        {
-                            nodeWeightToDestination[nodeIndex] = edge.Weight;
-                            heap.Replace(new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge));
-                        }
-                    }
-                }
-
-                //Solve for all nodes.
-                do
-                {
-                    resultNode = heap.RemoveMin();
-                    // If a faster route has already been found stop trying.
-                    if (resultNode.Weight > resultTable[resultNode.Index, 2] && (resultTable[resultNode.Index, 0] > 0))
-                    {
-                        continue;
-                    }
-
-                    previousValue = resultNode.Index;
-                    nodeState[previousValue] = 1;
-                    nodeWeightToDestination[previousValue] = resultNode.Weight;
-
-                    //Destination is the first result.
-                    resultTable[previousValue, 0] = resultNode.Value.ToIndex;
-                    resultTable[previousValue, 1] = resultNode.Value.Index;
-                    resultTable[previousValue, 2] = resultNode.Weight;
-
-                    //Get all connections to previous node and add the weight to the heap
-                    if (edgesToNodes[previousValue] == null) { continue; }
-                    foreach (Edge edge in edgesToNodes[previousValue])
-                    {
-                        nodeIndex = edge.FromIndex; //(previousValue == item.fromIndex) ? item.toIndex : item.fromIndex;
-                                                    //Update the nodes current state.
-                        if (nodeState[nodeIndex] == 0)
-                        {
-                            cumulativeWeight = edge.Weight + resultNode.Weight;
-                            heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                            nodeState[nodeIndex] = 2;
-                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                        }
-                        else if (nodeState[nodeIndex] == 2)
-                        {
-                            cumulativeWeight = edge.Weight + resultNode.Weight;
-                            if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                            {
-                                nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                            }
-                        }
-                    }
-
-                } while (heap.Count > 0);
-            }
-
             return resultTable;
+           
         }
 
         /// <summary>
@@ -284,99 +150,97 @@ namespace Numerics.Mathematics.Optimization
         public static float[,] Solve(IList<Edge> edges, int destinationIndex, int nodeCount = -1, List<Edge>[] edgesToNodes = null)
         {
             // Set optional parameters if required.
-            int nNodes = (nodeCount == -1) ? (edges.Max(o => o.FromIndex > o.ToIndex ? o.FromIndex : o.ToIndex) + 1) : nodeCount;
+            int nNodes = (nodeCount == -1) ? (edges.Max(o => Math.Max(o.FromIndex, o.ToIndex)) + 1) : nodeCount;
 
-            if (edgesToNodes == null || edgesToNodes.Length != nodeCount)
+            if (edgesToNodes == null || edgesToNodes.Length != nNodes)
             {
                 edgesToNodes = new List<Edge>[nNodes];
                 //
-                for (int i = 0; i < edges.Count; i++)
+                foreach (var edge in edges)
                 {
-                    if (edgesToNodes[edges[i].ToIndex] == null) { edgesToNodes[edges[i].ToIndex] = new List<Edge>(); }
-                    edgesToNodes[edges[i].ToIndex].Add(edges[i]);
+                    edgesToNodes[edge.ToIndex] ??= new List<Edge>();
+                    edgesToNodes[edge.ToIndex].Add(edge);
                 }
             }
 
             // Prepare results table with destination defined.
             float[,] resultTable = new float[nNodes, 3];
             int[] nodeState = new int[nNodes]; //0 - Node hasn't been scanned yet, 1 - Node has been solved for, 2 - Node has been scanned into heap but not solved for.
-
-            nodeState[destinationIndex] = 1;
-            resultTable[destinationIndex, 0] = destinationIndex; //Tail
-            resultTable[destinationIndex, 1] = -1; //edge index
-            resultTable[destinationIndex, 2] = 0; //Cumulative Weight
-
-            int previousValue = destinationIndex;
-            if (edgesToNodes[previousValue] == null) { return resultTable; }
-
-            //Add the nodes to the heap connected to the given destination node.
-            int nodeIndex = 0;
-            BinaryHeap<Edge> heap = new BinaryHeap<Edge>(10000);
             float[] nodeWeightToDestination = new float[nNodes];
-            foreach (Edge edge in edgesToNodes[previousValue])
+
+            //Initialize all nodes are unreachable
+            for (int i = 0; i < nNodes; i++)
             {
-                nodeIndex = edge.FromIndex;
-                //Update the nodes current state.
-                if (nodeState[nodeIndex] == 0)
+                resultTable[i, NEXT_NODE] = -1;
+                resultTable[i, EDGE_INDEX] = -1;
+                resultTable[i, COST] = float.PositiveInfinity;
+                nodeWeightToDestination[i] = float.PositiveInfinity;
+            }
+
+            BinaryHeap<Edge> heap = new BinaryHeap<Edge>(10000);
+
+            resultTable[destinationIndex, NEXT_NODE] = destinationIndex; //Tail
+            resultTable[destinationIndex, EDGE_INDEX] = -1; //edge index
+            resultTable[destinationIndex, COST] = 0; //Cumulative Weight
+            nodeWeightToDestination[destinationIndex] = 0;
+            heap.Add(new BinaryHeap<Edge>.Node(0, destinationIndex, new Edge(destinationIndex, destinationIndex, 0, -1)));
+            nodeState[destinationIndex] = 2;
+
+           
+            while (heap.Count > 0)
+            {
+                var node = heap.RemoveMin();
+                int current = node.Index;
+                float cost = node.Weight;
+
+                if (nodeState[current] == 1)
+                    continue;
+
+                nodeState[current] = 1;
+
+                //resultTable[current, NEXT_NODE] = node.Value.ToIndex;
+                //resultTable[current, EDGE_INDEX] = node.Value.Index;
+                //resultTable[current, COST] = cost;
+
+                if (edgesToNodes[current] == null)
+                    continue;
+
+                foreach (var edge in edgesToNodes[current])
                 {
-                    heap.Add(new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge));
-                    nodeState[nodeIndex] = 2;
-                    nodeWeightToDestination[nodeIndex] = edge.Weight;
-                }
-                else if (nodeState[nodeIndex] == 2)
-                {
-                    if (nodeWeightToDestination[nodeIndex] > edge.Weight)
+                    int from = edge.FromIndex;
+                    int to = edge.ToIndex;
+                    float newCost = cost + edge.Weight;
+
+                    if (newCost < nodeWeightToDestination[from])
                     {
-                        nodeWeightToDestination[nodeIndex] = edge.Weight;
-                        heap.Replace(new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge));
+                        nodeWeightToDestination[from] = newCost;
+                        var newNode = new BinaryHeap<Edge>.Node(newCost, from, edge);
+
+                        if (nodeState[from] != 2)
+                        {
+                            heap.Add(newNode);
+                            nodeState[from] = 2;
+                        }
+                        else
+                        {
+                            heap.DecreaseKey(newNode);
+                        }
+
+                        resultTable[from, NEXT_NODE] = to;
+                        resultTable[from, EDGE_INDEX] = edge.Index;
+                        resultTable[from, COST] = newCost;
+                      
                     }
                 }
             }
-
-            //Solve for all nodes.
-            BinaryHeap<Edge>.Node resultNode;
-            float cumulativeWeight = 0;
-            do
-            {
-                resultNode = heap.RemoveMin();
-                previousValue = resultNode.Index;
-                nodeState[previousValue] = 1;
-                nodeWeightToDestination[previousValue] = resultNode.Weight;
-
-                //Destination is the first result.
-                resultTable[previousValue, 0] = resultNode.Value.ToIndex;
-                resultTable[previousValue, 1] = resultNode.Value.Index;
-                resultTable[previousValue, 2] = resultNode.Weight;
-
-                //Get all connections to previous node and add the weight to the heap
-                if (edgesToNodes[previousValue] == null) { continue; }
-                foreach (Edge edge in edgesToNodes[previousValue])
+                for (int i = 0; i < nNodes; i++)
                 {
-                    nodeIndex = edge.FromIndex; //(previousValue == item.fromIndex) ? item.toIndex : item.fromIndex;
-                                                //Update the nodes current state.
-                    if (nodeState[nodeIndex] == 0)
-                    {
-                        cumulativeWeight = edge.Weight + resultNode.Weight;
-                        heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                        nodeState[nodeIndex] = 2;
-                        nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                    }
-                    else if (nodeState[nodeIndex] == 2)
-                    {
-                        cumulativeWeight = edge.Weight + resultNode.Weight;
-                        if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                        {
-                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                            heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                        }
-                    }
+                    if (nodeState[i] == 0)
+                        Console.WriteLine($"Node{i} is unreachable from destination {destinationIndex}");
                 }
+                return resultTable;
+            }
 
-            } while (heap.Count > 0);
-
-            return resultTable;
-        }
-
-
+        
     }
 }
