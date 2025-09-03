@@ -291,6 +291,16 @@ namespace Numerics.Utilities
             _cancellationTokenSource.Cancel();
         }
 
+        public void ResetCancel()    
+        { 
+            _cancellationTokenSource = new CancellationTokenSource();
+            foreach (var subProg in _subProgReporterCollection)
+            {
+                subProg._cancellationTokenSource = _cancellationTokenSource;
+            }
+        }
+
+
         /// <summary>
         /// Returns a new thread-safe progress reporter for a subtask.
         /// </summary>
