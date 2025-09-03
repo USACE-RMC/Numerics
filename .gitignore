@@ -1,4 +1,5 @@
 /.vs
+/packages
 /Numerics/bin
 /Numerics/obj
 /Test_Numerics/bin

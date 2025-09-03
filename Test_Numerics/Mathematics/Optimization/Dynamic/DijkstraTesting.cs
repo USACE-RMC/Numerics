@@ -34,12 +34,41 @@ using Numerics.Mathematics.Optimization;
 using System.Diagnostics;
 using System;
 using Numerics.Distributions;
+using Newtonsoft.Json.Bson;
 namespace Mathematics.Optimization
 {
     [TestClass]
     public class ShortestPathTesting
     {
+        /// <summary>
+        /// Testing a something that cost doesn't really matter.
+        /// </summary>
+        [TestMethod]
+        public void SimpleEdgeGraphCost()
+        {
+            List<Edge> edges = new List<Edge>();
+            edges.Add(new Edge(0, 1, 2, 0));
+            edges.Add(new Edge(0, 2, 4, 2));
+            edges.Add(new Edge(1, 2, 1, 2));
+            edges.Add(new Edge(1, 3, 7, 3));
+            edges.Add(new Edge(2, 3, 3, 4));
+            edges.Add(new Edge(4, 0, 1, 5));
 
+            float[,] result = Dijkstra.Solve(edges, 3,6);
+
+            Assert.AreEqual(result[3, 2], 0f);
+            Assert.AreEqual(result[2, 2], 3f);
+            Assert.AreEqual(result[1, 2], 4f);
+            Assert.AreEqual(result[0, 2], 6f);
+            Assert.AreEqual(result[4, 2], 7f);
+            Assert.IsTrue(float.IsPositiveInfinity(result[5,2]));
+
+        }
+
+        /// <summary>
+        /// Simple network run, testing to see if algorithm chooses 
+        /// the lowest cost path as it should.
+        /// </summary>
         [TestMethod]
         public void SimpleNetworkRouting()
         {
@@ -90,26 +119,43 @@ namespace Mathematics.Optimization
             edges.Add(new Edge(9, 4, 30, 9));
 
 
-            float[,] result = Dijkstra.Solve(edges.ToArray(), 9);
+            float[,] result = Dijkstra.Solve(edges,9);
 
-            Assert.AreEqual(result[0, 0] == 5 && result[0, 2] == 8, true);
-            Assert.AreEqual(result[1, 0] == 7 && result[1, 2] == 5, true);
-            Assert.AreEqual(result[2, 0] == 1 && result[2, 2] == 6, true);
-            Assert.AreEqual(result[3, 0] == 8 && result[3, 2] == 4, true);
-            Assert.AreEqual(result[4, 0] == 3 && result[4, 2] == 5, true);
-            Assert.AreEqual(result[5, 0] == 6 && result[5, 2] == 7, true);
-            Assert.AreEqual(result[6, 0] == 7 && result[6, 2] == 4, true);
-            Assert.AreEqual(result[7, 0] == 8 && result[7, 2] == 3, true);
-            Assert.AreEqual(result[8, 0] == 9 && result[8, 2] == 2, true);
-            Assert.AreEqual(result[9, 0] == 9 && result[9, 2] == 0, true);
+            Assert.AreEqual(result[0, 0], 5f); //Algorithm is choosing the next node that yields the shortest paths
+            Assert.AreEqual(result[0, 2], 8f);
 
-            //for (int i = 0; i < result.GetLength(0); i++)
-            //{
-            //    Debug.Print($"{i}, {result[i, 0]}, {result[i, 2]}");
-            //}
+            Assert.AreEqual(result[1, 0], 7);
+            Assert.AreEqual(result[1, 2], 5);
+
+            Assert.AreEqual(1, result[2, 0]);
+            Assert.AreEqual(6, result[2, 2]);
+
+            Assert.AreEqual(8, result[3, 0]);
+            Assert.AreEqual(4, result[3, 2]);
+
+            Assert.AreEqual(3, result[4, 0]);
+            Assert.AreEqual(5, result[4, 2]);
+
+            Assert.AreEqual(6, result[5, 0]);
+            Assert.AreEqual(7, result[5, 2]);
+
+            Assert.AreEqual(7, result[6, 0]);
+            Assert.AreEqual(4, result[6, 2]);
+
+            Assert.AreEqual(8, result[7, 0]);
+            Assert.AreEqual(3, result[7, 2]);
+
+            Assert.AreEqual(9, result[8, 0]);
+            Assert.AreEqual(2, result[8, 2]);
+
+            Assert.AreEqual(9, result[9, 0]);
+            Assert.AreEqual(0, result[9, 2]);
 
         }
 
+        /// <summary>
+        /// Testing edges with with bidirectionality.
+        /// </summary>
         [TestMethod]
         public void BidirectionalRouting()
         {
@@ -134,17 +180,139 @@ namespace Mathematics.Optimization
             edges.Add(new Edge(4, 3, 1, 6));
 
             float[,] result = Dijkstra.Solve(edges.ToArray(), 4);
-            Assert.AreEqual(result[0, 0] == 3 && result[0, 2] == 2, true);
-            Assert.AreEqual(result[1, 0] == 4 && result[1, 2] == 2, true);
-            Assert.AreEqual(result[2, 0] == 4 && result[2, 2] == 5, true);
-            Assert.AreEqual(result[3, 0] == 4 && result[3, 2] == 1, true);
-            Assert.AreEqual(result[4, 0] == 4 && result[4, 2] == 0, true);
 
-            //    for (int i = 0; i < result.GetLength(0); i++)
-            //    {
-            //        Debug.Print($"{i}, {result[i, 0]}, {result[i, 2]}");
-            //    }
+            Assert.AreEqual(3, result[0, 0]);
+            Assert.AreEqual(2, result[0, 2]);
 
+            Assert.AreEqual(4, result[1, 0]);
+            Assert.AreEqual(2, result[1, 2]);
+
+            Assert.AreEqual(4, result[2, 0]);
+            Assert.AreEqual(5, result[2, 2]);
+
+            Assert.AreEqual(4, result[3, 0]);
+            Assert.AreEqual(1, result[3, 2]);
+
+            Assert.AreEqual(4, result[4, 0]);
+            Assert.AreEqual(0, result[4, 2]);
+
+        }
+
+        /// <summary>
+        /// Testing that a disconnected node returns a positive infinity.
+        /// </summary>
+        [TestMethod]
+        public void DisconnectedNodesTest()
+        {
+            var edges = new List<Edge>
+        {
+            new Edge(0, 1, 1, 0),
+             new Edge(1, 2, 1, 1),
+             // Node 3 is disconnected
+        };
+
+            var result = Dijkstra.Solve(edges, 2,4);
+
+            Assert.AreEqual(2, result[1, 0]);
+            Assert.AreEqual(1, result[1, 2]);
+
+            Assert.AreEqual(1, result[0, 0]);
+            Assert.AreEqual(2, result[0, 2]);
+
+            // Unreachable node 3 should remain with default values
+            Assert.IsTrue(float.IsPositiveInfinity(result[3, 2]));
+        }
+
+        /// <summary>
+        /// Simple multiple dest path
+        /// </summary>
+        [TestMethod]
+        public void MultipleDestSharedPath()
+        {
+            // Graph:
+            // 0 - 1 - 2
+            //     |
+            //     3
+
+            var edges = new List<Edge>
+            {
+                new Edge(0,1,1,0),
+                new Edge(1,0,3,1),
+                new Edge(1,2,1,2),
+                new Edge(2,1,2,3),
+                new Edge(1,3,3,4)
+            };
+
+            var result = Dijkstra.Solve(edges, [0,3],4);
+
+            Assert.AreEqual(result[1, 0], 0);
+            Assert.AreEqual(result[1, 2], 3);
+            Assert.AreEqual(result[2, 0], 1);
+            Assert.AreEqual(result[2, 2], 5);
+        }
+
+        /// <summary>
+        /// Checking paths are indeed disconnected.
+        /// </summary>
+        [TestMethod]
+        public void DisconnectedComponent()
+        {
+            // Graph: 
+            // 0 - 1      2 - 3
+            var edges = new List<Edge>
+            {
+                new Edge(0,1,1,0),
+                new Edge(1,0,3,1),
+                new Edge(2,3,1,2)
+            };
+            var result = Dijkstra.Solve(edges, [0, 3], 4);
+            Assert.AreEqual(result[1,0],0);
+            Assert.AreEqual(result[1, 2], 3);
+            Assert.AreEqual(result[2, 0], 3);
+            Assert.AreEqual(result[2, 2], 1);
+        }
+
+        /// <summary>
+        /// Checking disconnected with 1 destination.
+        /// </summary>
+        [TestMethod]
+        public void DisconnectedComponent2()
+        {
+            var edges = new List<Edge>
+            {
+                new Edge(0,1,1,0),
+                new Edge(1,0,3,1),
+                new Edge(2,3,1,2),
+            };
+
+            var result = Dijkstra.Solve(edges, [0], 4);
+            Assert.IsTrue(float.IsPositiveInfinity(result[2, 2]));
+        }
+
+        /// <summary>
+        /// Testing two destinations when they are connected by an edge.
+        /// </summary>
+        [TestMethod]
+        public void TrianglePath()
+        {
+            // Graph:
+            // 0 <-> 1
+            // 1 -> 2
+            // 2 -> 0
+            var edges = new List<Edge>
+            {
+                new Edge(0,1,1,0),
+                new Edge(1,0,4,1),
+                new Edge(1,2,1,2),
+                new Edge(2,0,10,3)
+            };
+
+            var result = Dijkstra.Solve(edges, [0, 2], 3);
+            Assert.AreEqual(result[0, 0], 0);
+            Assert.AreEqual(result[0, 2], 0);
+            Assert.AreEqual(result[1, 0], 2);
+            Assert.AreEqual(result[1, 2], 1);
+            Assert.AreEqual(result[2, 0], 2);
         }
     }
 }

@@ -229,7 +229,7 @@ namespace Numerics.Data
         /// </summary>
         private void FitSVD()
         {
-            double meanY = Statistics.Statistics.Mean(Y.ToArray());
+            double meanY = Statistics.Statistics.Mean(Y.Array);
             int i, j, k, n = X.NumberOfRows, m = X.NumberOfColumns;
             double sse = 0.0, sst = 0.0, sum = 0.0;
             DegreesOfFreedom = n - m;

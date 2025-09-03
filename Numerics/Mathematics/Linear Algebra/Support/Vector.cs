@@ -28,6 +28,7 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using Numerics.Data.Statistics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
