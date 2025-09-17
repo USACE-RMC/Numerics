@@ -31,6 +31,7 @@
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 using System;
+using System.Text.Json.Serialization;
 
 namespace Numerics.Sampling.MCMC
 {
@@ -57,11 +58,11 @@ namespace Numerics.Sampling.MCMC
         public ParameterResults(double[] values, double alpha = 0.1, bool sorted = false)
         {
             // Sort the values
-            if (sorted == false) 
-            { 
+            if (sorted == false)
+            {
                 Array.Sort(values);
             }
-            
+
             // Create Kernel Density Estimate
             var kde = new KernelDensity(values);
             KernelDensity = kde.CreatePDFGraph();
@@ -83,16 +84,19 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Parameter summary statistics.
         /// </summary>
+        [JsonInclude]
         public ParameterStatistics SummaryStatistics { get; private set; }
 
         /// <summary>
         /// The kernel density results.
         /// </summary>
+        [JsonInclude]
         public double[,] KernelDensity { get; private set; }
 
         /// <summary>
         /// The histogram results.
         /// </summary>
+        [JsonInclude]
         public Histogram Histogram { get; private set; }
 
         /// <summary>
