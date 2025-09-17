@@ -3,8 +3,9 @@
   <PropertyGroup>
     <TargetFrameworks>net9.0;net8.0;net481</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
-	<Nullable>enable</Nullable>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>embedded</DebugType>
 	
     <Description>Numerics is a free and open-source library for .NET developed by USACE-RMC, providing a comprehensive set of methods and algorithms for numerical computations and statistical analysis.</Description>
     <PackageProjectUrl>https://github.com/USArmy-Corps-of-Engineers-RMC/Numerics</PackageProjectUrl>
@@ -28,10 +29,25 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <WarningLevel>1</WarningLevel>
   </PropertyGroup>
-  
+
+  <!-- Otherwise targets C# 7.3 which doesn't have global usings and some other syntactic sugar utilized here.  -->
   <PropertyGroup Condition="'$(TargetFramework)' == 'net481'">
 	<LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  
+  	<ItemGroup>
+		<!--https://github.com/dotnet/reproducible-builds-->
+		<PackageReference Include="DotNet.ReproducibleBuilds" Version="1.2.25">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+		</PackageReference>
+    <!--https://github.com/dotnet/sourcelink/tree/main-->
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
+		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		  <PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+	</ItemGroup>
 
    <!-- Conditional dependencies for .NET Framework -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net481'">
@@ -64,7 +80,7 @@
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
-    <None Include="bin\Release\README.md">
+    <None Include="..\README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
