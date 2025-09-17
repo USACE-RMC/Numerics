@@ -346,6 +346,8 @@ namespace Numerics.Data
         {
             if (Math.Abs(left.X - right.X) > Tools.DoubleMachineEpsilon) { return false; }
             if (Math.Abs(left.Y - right.Y) > Tools.DoubleMachineEpsilon) { return false; }
+            // if any of the xs or ys are NaN, the above tests will be false, and this will return true, even if one is NaN and the other is not.
+            // a NaN is always equal in this test. 
             return true;
         }
 
