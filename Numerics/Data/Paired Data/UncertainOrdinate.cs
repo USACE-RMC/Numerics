@@ -216,10 +216,7 @@ namespace Numerics.Data
             var result = new List<string>();
             // Validate the target ordinate
             result.AddRange(OrdinateErrors());
-            // 
-            if (ordinateToCompare == null)
-                return result;
-            // 
+            //
             if (ordinateToCompare.IsValid == false)
             {
                 if (double.IsInfinity(ordinateToCompare.X))
@@ -306,6 +303,35 @@ namespace Numerics.Data
         public static bool operator !=(UncertainOrdinate left, UncertainOrdinate right)
         {
             return !(left == right);
+        }
+
+        /// <summary>
+        /// Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj">The object to compare with the current object.</param>
+        /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
+        public override bool Equals(object obj)
+        {
+            if (obj is UncertainOrdinate other)
+            {
+                return this == other;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Serves as the default hash function.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + X.GetHashCode();
+                hash = hash * 23 + Y.GetHashCode();
+                return hash;
+            }
         }
 
         /// <summary>

@@ -96,7 +96,6 @@ namespace Numerics.Mathematics.Integration
 
         // convergence variables
         private static bool terminate = true;
-        private static bool outOfTolerance = false;
         private double toler;
 
         /// <inheritdoc/>
@@ -136,10 +135,10 @@ namespace Numerics.Mathematics.Integration
                 Result = adaptlob(Function, a, b, fa, fb, iS);
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 Status = IntegrationStatus.Failure;
-                if (ReportFailure) throw ex;
+                if (ReportFailure) throw;
             }
 
         }
@@ -190,7 +189,6 @@ namespace Numerics.Mathematics.Integration
                 if ((mll <= a || b <= mrr) && terminate)
                 {
                     // Interval contains no more machine numbers
-                    outOfTolerance = true;
                     terminate = false;
                 }
                 // Terminate recursion

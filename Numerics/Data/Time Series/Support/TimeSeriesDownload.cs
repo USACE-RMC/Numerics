@@ -266,9 +266,9 @@ namespace Numerics.Data
                 }
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw ex;
+                throw;
             }
             finally
             {
@@ -511,9 +511,9 @@ namespace Numerics.Data
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw ex;
+                throw;
             }
 
             return (timeSeries, textDownload);

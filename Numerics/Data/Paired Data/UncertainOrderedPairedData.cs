@@ -505,6 +505,40 @@ namespace Numerics.Data
             return !(left == right);
         }
 
+        /// <summary>
+        /// Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj">The object to compare with the current object.</param>
+        /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
+        public override bool Equals(object obj)
+        {
+            if (obj is UncertainOrderedPairedData other)
+            {
+                return this == other;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Serves as the default hash function.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                if (_uncertainOrdinates != null)
+                {
+                    foreach (var ordinate in _uncertainOrdinates)
+                    {
+                        hash = hash * 23 + ordinate.GetHashCode();
+                    }
+                }
+                return hash;
+            }
+        }
+
 
         /// <summary>
         /// Get and sets the element at the specific index.

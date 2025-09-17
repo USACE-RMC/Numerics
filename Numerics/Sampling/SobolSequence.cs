@@ -189,9 +189,9 @@ namespace Numerics.Sampling
                         }
 
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
-                       throw ex;
+                       throw;
                     }
                 }
 

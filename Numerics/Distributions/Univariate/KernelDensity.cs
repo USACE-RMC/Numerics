@@ -153,7 +153,7 @@ namespace Numerics.Distributions
         }
 
         private double[] _sampleData;
-        private double[] _pValues;
+        private double[] _pValues = [];
         private double _bandwidth;
         private KernelType _kernelDistribution;
         private IKernel _kernel;
