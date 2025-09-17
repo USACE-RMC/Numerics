@@ -79,10 +79,8 @@ namespace Numerics.Data
         public Ordinate(XElement xElement)
         {
             double x = 0, y = 0;
-            var xAttribute = xElement.Attribute(nameof(X));
-            var yAttribute = xElement.Attribute(nameof(Y));
-            if (xAttribute != null) double.TryParse(xAttribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
-            if (yAttribute != null) double.TryParse(yAttribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out y);
+            if (xElement.Attribute(nameof(X)) != null) double.TryParse(xElement.Attribute(nameof(X)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
+            if (xElement.Attribute(nameof(Y)) != null) double.TryParse(xElement.Attribute(nameof(Y)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out y);
             X = x;
             Y = y;
             IsValid = true;
@@ -348,8 +346,6 @@ namespace Numerics.Data
         {
             if (Math.Abs(left.X - right.X) > Tools.DoubleMachineEpsilon) { return false; }
             if (Math.Abs(left.Y - right.Y) > Tools.DoubleMachineEpsilon) { return false; }
-            // if any of the xs or ys are NaN, the above tests will be false, and this will return true, even if one is NaN and the other is not.
-            // a NaN is always equal in this test. 
             return true;
         }
 
@@ -369,7 +365,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object? obj)
+        public override bool Equals(object obj)
         {
             if (obj is Ordinate other)
             {

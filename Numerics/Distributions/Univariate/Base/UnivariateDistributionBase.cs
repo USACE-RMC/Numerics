@@ -164,7 +164,7 @@ namespace Numerics.Distributions
         public abstract void SetParameters(IList<double> parameters);
 
         /// <inheritdoc/>
-        public abstract ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException);
+        public abstract ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException);
 
         /// <summary>
         /// The log likelihood function.
@@ -318,22 +318,22 @@ namespace Numerics.Distributions
             if (a >= b) return new double[] { a, double.NaN, double.NaN, double.NaN };
 
             // Mean
-            var agk = new AdaptiveGaussKronrod(x => { return x * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            u1 = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            var sr = new AdaptiveSimpsonsRule(x => { return x * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            u1 = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             // Standard Deviation
-            agk = new AdaptiveGaussKronrod(x => { return Math.Pow(x - u1, 2d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            u2 = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            sr = new AdaptiveSimpsonsRule(x => { return Math.Pow(x - u1, 2d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            u2 = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             u2 = Math.Sqrt(u2);
             // Skewness
-            agk = new AdaptiveGaussKronrod(x => { return Math.Pow((x - u1) / u2, 3d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            u3 = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            sr = new AdaptiveSimpsonsRule(x => { return Math.Pow((x - u1) / u2, 3d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            u3 = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             // Kurtosis
-            agk = new AdaptiveGaussKronrod(x => { return Math.Pow((x - u1) / u2, 4d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            u4 = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            sr = new AdaptiveSimpsonsRule(x => { return Math.Pow((x - u1) / u2, 4d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            u4 = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
 
             return new double[] { u1, u2, u3, u4 };
         }
@@ -341,8 +341,8 @@ namespace Numerics.Distributions
         /// <summary>
         /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Trapezoidal rule. 
         /// </summary>
-        ///<param name="steps">Number of integration steps. Default = 300.</param>
-        public virtual double[] CentralMoments(int steps = 300)
+        ///<param name="steps">Number of integration steps.</param>
+        public virtual double[] CentralMoments(int steps = 200)
         {
             double a = InverseCDF(1E-8);
             double b = InverseCDF(1 - 1E-8);
@@ -388,54 +388,6 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Returns the conditional moments of the distribution.
-        /// </summary>
-        /// <param name="a">The lower integration limit, a.</param>
-        /// <param name="b">The upper integration limit, b.</param>
-        /// <summary>
-        /// Returns conditional central moments (up to 4th order) between [a, b].
-        /// </summary>
-        public virtual double[] ConditionalMoments(double a, double b)
-        {
-            if (a >= b)
-                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
-
-            int steps = 300;
-            double l = CDF(a), u = CDF(b), totalProb = u - l;
-            if (totalProb <= 0.0 || double.IsNaN(totalProb))
-                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
-
-            double mean = Mean;
-            var bins = Stratify.XValues(new StratificationOptions(a, b, steps));
-
-            // Midpoint integration
-            double sum1 = 0.0, sum2 = 0.0, sum3 = 0.0, sum4 = 0.0;
-
-            for (int i = 0; i < steps; i++)
-            {
-                double dF = CDF(bins[i].UpperBound) - CDF(bins[i].LowerBound);
-                double xMid = bins[i].Midpoint;
-
-                double delta = xMid - mean;
-                double delta2 = delta * delta;
-                double delta3 = delta2 * delta;
-                double delta4 = delta2 * delta2;
-
-                sum1 += xMid * dF;
-                sum2 += delta2 * dF;
-                sum3 += delta3 * dF;
-                sum4 += delta4 * dF;
-            }
-
-            double m1 = sum1 / totalProb;
-            double m2 = sum2 / totalProb;
-            double m3 = sum3 / totalProb;
-            double m4 = sum4 / totalProb;
-
-            return new[] { m1, m2, m3, m4 };
-        }
-
-        /// <summary>
         /// Returns the conditional mean of the distribution.
         /// </summary>
         /// <param name="a">The lower integration limit, a.</param>
@@ -445,9 +397,9 @@ namespace Numerics.Distributions
         {
             double l = CDF(a);
             double u = CDF(b);
-            var agk = new AdaptiveGaussKronrod(x => { return x * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            double e = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            var sr = new AdaptiveSimpsonsRule(x => { return x * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            double e = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             return e / (u - l);
         }
 
@@ -462,9 +414,9 @@ namespace Numerics.Distributions
         {
             double l = CDF(a);
             double u = CDF(b);
-            var agk = new AdaptiveGaussKronrod(x => { return Math.Pow(x - mean, 2d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            double e = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            var sr = new AdaptiveSimpsonsRule(x => { return Math.Pow(x - mean, 2d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            double e = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             return e / (u - l);
         }
 
@@ -479,9 +431,9 @@ namespace Numerics.Distributions
         {
             double l = CDF(a);
             double u = CDF(b);
-            var agk = new AdaptiveGaussKronrod(x => { return Math.Pow(x - mean, 3d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            double e = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            var sr = new AdaptiveSimpsonsRule(x => { return Math.Pow(x - mean, 3d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            double e = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             return e / (u - l);
         }
 
@@ -496,9 +448,9 @@ namespace Numerics.Distributions
         {
             double l = CDF(a);
             double u = CDF(b);
-            var agk = new AdaptiveGaussKronrod(x => { return Math.Pow(x - mean, 4d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            double e = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            var sr = new AdaptiveSimpsonsRule(x => { return Math.Pow(x - mean, 4d) * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            double e = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             return e / (u - l);
         }
 
@@ -511,9 +463,9 @@ namespace Numerics.Distributions
         {
             double a = InverseCDF(alpha);
             double b = InverseCDF(1 - 1E-16);
-            var agk = new AdaptiveGaussKronrod(x => { return x * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
-            agk.Integrate();
-            double e = agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+            var sr = new AdaptiveSimpsonsRule(x => { return x * PDF(x); }, a, b) { RelativeTolerance = tolerance, ReportFailure = false };
+            sr.Integrate();
+            double e = sr.Status != IntegrationStatus.Failure ? sr.Result : double.NaN;
             return e / (1 - alpha);
         }
 
@@ -816,7 +768,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object? obj)
+        public override bool Equals(object obj)
         {
             if (obj is UnivariateDistributionBase other)
             {
@@ -839,7 +791,7 @@ namespace Numerics.Distributions
                 if (Type == UnivariateDistributionType.Empirical)
                 {
                     var empirical = this as EmpiricalDistribution;
-                    if (empirical is not null)
+                    if (empirical != null)
                     {
                         foreach (var x in empirical.XValues)
                         {
@@ -871,9 +823,9 @@ namespace Numerics.Distributions
         /// <returns>
         /// A negative number if this instance's mean is less than the other; zero if equal; a positive number if greater.
         /// </returns>
-        public int CompareTo(UnivariateDistributionBase? other)
+        public int CompareTo(UnivariateDistributionBase other)
         {
-            if (other is null)
+            if (other == null)
                 return 1; // non-null instance is considered greater than null
 
             return this.Mean.CompareTo(other.Mean);
