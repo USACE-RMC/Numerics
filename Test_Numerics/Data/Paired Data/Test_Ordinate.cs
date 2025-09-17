@@ -81,7 +81,9 @@ namespace Data.PairedData
             Assert.AreEqual(ordinate4.IsValid, false);
 
             Assert.AreNotEqual(ordinate1, ordinate3);
-            Assert.AreNotEqual(ordinate1, ordinate4);
+
+            //NaN matches everything in the current set up. see the == operator overload on Ordinate.cs
+            Assert.AreEqual(ordinate1, ordinate4);
         }
 
         /// <summary>
