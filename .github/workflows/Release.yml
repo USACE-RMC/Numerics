@@ -1,0 +1,45 @@
+name: Snapshot
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: windows-latest     
+    
+    env:
+      dotnet-version: '9.0.x'                                
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+        
+    - name: Setup .NET Core SDK ${{ env.dotnet-version }}
+      uses: actions/setup-dotnet@v4
+      with:
+          dotnet-version: ${{ env.dotnet-version }}
+        
+    - name: Test
+      run: dotnet test -c Release
+
+    - name: Create version number
+      shell: pwsh
+      run: |
+        $TAG = $env:GITHUB_REF -replace 'refs/tags/', ''
+        $VERSION = $TAG -replace '^v', ''
+        echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+
+    - name: Pack
+      shell: pwsh
+      run: |
+            # Use the snapshot version from the previous step
+            dotnet pack --configuration Release /p:PackageVersion=${{ env.VERSION }}
+    
+    - name: Publish
+      shell: pwsh
+      run: dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NEXUS_NUGET_APIKEY }} --source "https://www.hec.usace.army.mil/nexus/repository/fda-nuget/" --skip-duplicate
+      
