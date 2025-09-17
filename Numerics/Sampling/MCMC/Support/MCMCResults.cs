@@ -33,7 +33,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Formatters.Binary;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Numerics.Sampling.MCMC
 {
@@ -46,7 +47,7 @@ namespace Numerics.Sampling.MCMC
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
     /// </remarks>
-    [Serializable]
+   [Serializable] 
     public class MCMCResults
     {
         /// <summary>
@@ -78,37 +79,44 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The list of sampled Markov Chains.
         /// </summary>
+        [JsonInclude]
         public List<ParameterSet>[] MarkovChains { get; private set; }
 
         /// <summary>
-        /// Output posterior parameter sets. 
+        /// Output posterior parameter sets.
         /// </summary>
+        [JsonInclude]
         public List<ParameterSet> Output { get; private set; }
 
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
+        [JsonInclude]
         public List<double> MeanLogLikelihood { get; private set; }
 
         /// <summary>
         /// The acceptance rate for each chain.
         /// </summary>
+        [JsonInclude]
         public double[] AcceptanceRates { get; private set; }
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.
         /// </summary>
+        [JsonInclude]
         public ParameterResults[] ParameterResults { get; private set; }
 
         /// <summary>
-        /// The output parameter set that produced the maximum likelihood. 
-        /// This is referred to as the maximum a posteriori (MAP). 
+        /// The output parameter set that produced the maximum likelihood.
+        /// This is referred to as the maximum a posteriori (MAP).
         /// </summary>
+        [JsonInclude]
         public ParameterSet MAP { get; private set; }
 
         /// <summary>
-        /// The mean of the posterior distribution of each parameter. 
+        /// The mean of the posterior distribution of each parameter.
         /// </summary>
+        [JsonInclude]
         public ParameterSet PosteriorMean { get; private set; }
 
         /// <summary>
@@ -147,12 +155,13 @@ namespace Numerics.Sampling.MCMC
         /// <param name="mcmcResults">The MCMC Results.</param>
         public static byte[] ToByteArray(MCMCResults mcmcResults)
         {
-            var bf = new BinaryFormatter();
-            using (var ms = new MemoryStream())
+            var options = new JsonSerializerOptions
             {
-                bf.Serialize(ms, mcmcResults);
-                return ms.ToArray();
-            }
+                WriteIndented = false,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                IncludeFields = true
+            };
+            return JsonSerializer.SerializeToUtf8Bytes(mcmcResults, options);
         }
 
         /// <summary>
@@ -161,14 +170,37 @@ namespace Numerics.Sampling.MCMC
         /// <param name="bytes">Byte array.</param>
         public static MCMCResults FromByteArray(byte[] bytes)
         {
-            using (var ms = new MemoryStream())
+            var options = new JsonSerializerOptions
             {
-                var bf = new BinaryFormatter();
-                ms.Write(bytes, 0, bytes.Length);
-                ms.Seek(0L, SeekOrigin.Begin);
-                var obj = bf.Deserialize(ms);
-                return (MCMCResults)obj;
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                IncludeFields = true
+            };
+            try
+            {
+                return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
             }
+            catch
+            {
+                ///Previous serialization used Binary Formatter, which won't deserialize cleanly as JSON. 
+                /// If this fails, then it's probably the bf bytes. fall back to legacy.
+                return FromByteArrayLegacy(bytes);
+            }
+        }
+
+        /// <summary>
+        /// Creates MCMC Results from a byte array.
+        /// </summary>
+        /// <param name="bytes">Byte array.</param>
+        private static MCMCResults FromByteArrayLegacy(byte[] bytes)
+        {
+            using var ms = new MemoryStream();
+            #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
+            var bf = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
+            ms.Write(bytes, 0, bytes.Length);
+            ms.Seek(0L, SeekOrigin.Begin);
+            var obj = bf.Deserialize(ms);
+            #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
+            return (MCMCResults)obj;
         }
 
         #endregion
