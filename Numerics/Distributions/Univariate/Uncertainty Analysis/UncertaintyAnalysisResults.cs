@@ -28,8 +28,6 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using Numerics.Data;
-using Numerics.Data.Statistics;
 using Numerics.Mathematics.Optimization;
 using Numerics.Sampling.MCMC;
 using Numerics.Utilities;
@@ -59,74 +57,29 @@ namespace Numerics.Distributions
     {
 
         /// <summary>
-        /// Construct an instance of the UncertaintyAnalysisResults class.
-        /// </summary>
-        public UncertaintyAnalysisResults() { }
-
-        /// <summary>
-        /// Constructs a new instance with computed uncertainty metrics.
-        /// </summary>
-        /// <param name="parentDistribution">The parent (mode/point estimate) distribution.</param>
-        /// <param name="sampledDistributions">Array of sampled distributions from posterior or bootstrap.</param>
-        /// <param name="probabilities">Array of non-exceedance probabilities for quantile estimation.</param>
-        /// <param name="alpha">The confidence level (default = 0.1 for 90% CI).</param>
-        /// <param name="minProbability">Minimum probability for mean curve computation (default = 0.001).</param>
-        /// <param name="maxProbability">Maximum probability for mean curve computation (default = 1 - 1e-9).</param>
-        /// <param name="recordParameterSets">If true, stores all parameter sets from sampled distributions.</param>
-        public UncertaintyAnalysisResults(UnivariateDistributionBase parentDistribution,
-                                          UnivariateDistributionBase[] sampledDistributions,
-                                          double[] probabilities,
-                                          double alpha = 0.1,
-                                          double minProbability = 0.001,
-                                          double maxProbability = 1 - 1e-9,
-                                          bool recordParameterSets = false)
-        {
-            if (parentDistribution == null!)
-                throw new ArgumentNullException(nameof(parentDistribution));
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
-            if (probabilities == null || probabilities.Length == 0)
-                throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
-
-            ProcessModeCurve(parentDistribution, probabilities);
-            ProcessConfidenceIntervals(sampledDistributions, probabilities, alpha);
-            ProcessMeanCurve(sampledDistributions, probabilities, minProbability, maxProbability);
-
-            if (recordParameterSets)
-                ProcessParameterSets(sampledDistributions);
-
-            // Set default values
-            AIC = double.NaN;
-            BIC = double.NaN;
-            DIC = double.NaN;
-            RMSE = double.NaN;
-            ERL = double.NaN;
-        }
-
-        /// <summary>
         /// The parent probability distribution.
         /// </summary>
-        public UnivariateDistributionBase ParentDistribution { get; set; } = null!;
+        public UnivariateDistributionBase ParentDistribution { get; set; }
 
         /// <summary>
         /// The array of parameter sets.
         /// </summary>
-        public ParameterSet[] ParameterSets { get; set; } = null!;
+        public ParameterSet[] ParameterSets { get; set; }
 
         /// <summary>
         /// The confidence intervals. 
         /// </summary>
-        public double[,] ConfidenceIntervals { get; set; } = null!;
+        public double[,] ConfidenceIntervals { get; set; }
 
         /// <summary>
         /// The mode (or computed) curve from the parent distribution. 
         /// </summary>
-        public double[] ModeCurve { get; set; } = null!;
+        public double[] ModeCurve { get; set; }
 
         /// <summary>
         /// The mean (or predictive) curve. 
         /// </summary>
-        public double[] MeanCurve { get; set; } = null!;
+        public double[] MeanCurve { get; set; }
 
         /// <summary>
         /// Gets or sets the Akaike information criteria (AIC) of the fit.
@@ -189,8 +142,7 @@ namespace Numerics.Distributions
                 options.Converters.Add(new Double2DArrayConverter());
                 options.Converters.Add(new String2DArrayConverter());
                 options.Converters.Add(new UnivariateDistributionConverter());
-                var result = JsonSerializer.Deserialize<UncertaintyAnalysisResults>(bytes, options);
-                return result ?? FromByteArrayLegacy(bytes);
+                return JsonSerializer.Deserialize<UncertaintyAnalysisResults>(bytes, options);
             }
             catch (Exception)
             {
@@ -227,7 +179,7 @@ namespace Numerics.Distributions
                 // If there is an error, just catch it and force the user to rerun the
                 // uncertainty analysis. 
             }
-            return null!;
+            return null;
         }
 
         /// <summary>
@@ -236,7 +188,7 @@ namespace Numerics.Distributions
         public XElement ToXElement()
         {
             var result = new XElement(nameof(UncertaintyAnalysisResults));         
-            if (ParentDistribution != null!) result.Add(ParentDistribution.ToXElement());
+            if (ParentDistribution != null) result.Add(ParentDistribution.ToXElement());
             result.SetAttributeValue(nameof(AIC), AIC.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(BIC), BIC.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(DIC), DIC.ToString("G17", CultureInfo.InvariantCulture));
@@ -269,62 +221,44 @@ namespace Numerics.Distributions
         {
             var ua = new UncertaintyAnalysisResults();    
             // Parent distribution
-            var distElement = xElement.Element("Distribution");
-            if (distElement != null)
-            {
-                var parentDist = UnivariateDistributionFactory.CreateDistribution(distElement);
-                if (parentDist is not null)
-                {
-                    ua.ParentDistribution = parentDist;
-                }
-                else
-                {
-                    throw new InvalidDataException("Unable to deserialize parent distribution from XElement.");
-                }    
-            }
-                
+            if (xElement.Element("Distribution") != null)
+                ua.ParentDistribution = UnivariateDistributionFactory.CreateDistribution(xElement.Element("Distribution"));
 
             // AIC
-            var aicElement = xElement.Attribute(nameof(AIC));
-            if (aicElement != null)
+            if (xElement.Attribute(nameof(AIC)) != null)
             {
-                double.TryParse(aicElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var aic);
+                double.TryParse(xElement.Attribute(nameof(AIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var aic);
                 ua.AIC = aic;
             }
             // BIC
-            var bicElement = xElement.Attribute(nameof(BIC));
-            if (bicElement != null)
+            if (xElement.Attribute(nameof(BIC)) != null)
             {
-                double.TryParse(bicElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var bic);
+                double.TryParse(xElement.Attribute(nameof(BIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var bic);
                 ua.BIC = bic;
             }
             // DIC
-            var dicElement = xElement.Attribute(nameof(DIC));
-            if (dicElement != null)
+            if (xElement.Attribute(nameof(DIC)) != null)
             {
-                double.TryParse(dicElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var dic);
+                double.TryParse(xElement.Attribute(nameof(DIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var dic);
                 ua.DIC = dic;
             }
             // RMSE
-            var rmseElement = xElement.Attribute(nameof(RMSE));
-            if (rmseElement != null)
+            if (xElement.Attribute(nameof(RMSE)) != null)
             {
-                double.TryParse(rmseElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var rmse);
+                double.TryParse(xElement.Attribute(nameof(RMSE)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var rmse);
                 ua.RMSE = rmse;
             }
             // ERL
-            var erlElement = xElement.Attribute(nameof(ERL));
-            if (erlElement != null)
+            if (xElement.Attribute(nameof(ERL)) != null)
             {
-                double.TryParse(erlElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var erl);
+                double.TryParse(xElement.Attribute(nameof(ERL)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var erl);
                 ua.ERL = erl;
             }
 
             // Mode Curve
-            var modeAttr = xElement.Attribute(nameof(ua.ModeCurve));
-            if (modeAttr != null)
+            if (xElement.Attribute(nameof(ua.ModeCurve)) != null)
             {
-                var vals = modeAttr.Value.Split('|');
+                var vals = xElement.Attribute(nameof(ua.ModeCurve)).Value.Split('|');
                 if (vals.Length > 0)
                 {
                     ua.ModeCurve = new double[vals.Length];
@@ -335,10 +269,9 @@ namespace Numerics.Distributions
                 }
             }
             // Mean Curve
-            var meanAttr = xElement.Attribute(nameof(ua.MeanCurve));
-            if (meanAttr != null)
+            if (xElement.Attribute(nameof(ua.MeanCurve)) != null)
             {
-                var vals = meanAttr.Value.Split('|');
+                var vals = xElement.Attribute(nameof(ua.MeanCurve)).Value.Split('|');
                 if (vals.Length > 0)
                 {
                     ua.MeanCurve = new double[vals.Length];
@@ -349,10 +282,9 @@ namespace Numerics.Distributions
                 }
             }
             // Confidence Intervals
-            var ciAttr = xElement.Attribute(nameof(ua.ConfidenceIntervals));
-            if (ciAttr != null)
+            if (xElement.Attribute(nameof(ua.ConfidenceIntervals)) != null)
             {
-                var vals = ciAttr.Value.Split('|');
+                var vals = xElement.Attribute(nameof(ua.ConfidenceIntervals)).Value.Split('|');
                 if (vals.Length > 0)
                 {
                     ua.ConfidenceIntervals = new double[vals.Length, vals[0].Split(',').Length];
@@ -370,192 +302,32 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Process and set the parent distribution and computed curve (mode, plug-in, point estimate).
+        /// Returns uncertainty analysis results for the distribution estimated from MCMC.
         /// </summary>
-        /// <param name="parentDistribution">The parent distribution.</param>
-        /// <param name="probabilities">Array of non-exceedance probabilities.</param>
-        public void ProcessModeCurve(UnivariateDistributionBase parentDistribution, double[] probabilities)
-        {
-            if (parentDistribution == null!)
-                throw new ArgumentNullException(nameof(parentDistribution));
-            if (probabilities == null || probabilities.Length == 0)
-                throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
-
-            ParentDistribution = parentDistribution;
-            ModeCurve = ParentDistribution.InverseCDF(probabilities);
-        }
-
-        /// <summary>
-        /// Process and set the confidence intervals from a list of sampled distributions.
-        /// </summary>
-        /// <param name="sampledDistributions">The list of sampled distributions to process.</param>
-        /// <param name="probabilities">Array of non-exceedance probabilities.</param>
+        /// <param name="results">The MCMC results.</param>
+        /// <param name="distribution">The parent distribution.</param>
+        /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public void ProcessConfidenceIntervals(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double alpha = 0.1)
+        public static UncertaintyAnalysisResults FromMCMCResults(MCMCResults results, UnivariateDistributionBase distribution, IList<double> probabilities, double alpha = 0.1)
         {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
-            if (probabilities == null || probabilities.Length == 0)
-                throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
-            if (alpha <= 0 || alpha >= 1)
-                throw new ArgumentOutOfRangeException(nameof(alpha), "Alpha must be between 0 and 1.");
+            if (results == null|| results.Output == null ||results.Output.Count == 0) return null;
+            if (results.Output[0].Values.Length != distribution.NumberOfParameters) return null;
 
-            int B = sampledDistributions.Length;
-            int p = probabilities.Length;
-            double lowerCI = alpha / 2d;
-            double upperCI = 1d - alpha / 2d;
-            ConfidenceIntervals = new double[p, 2];
+            int realz = results.Output.Count;
+            var dists = new UnivariateDistributionBase[results.Output.Count];
 
-            // Loop over probabilities and record percentiles
-            for (int i = 0; i < p; i++)
+            Parallel.For(0, realz, idx => 
             {
-                var XValues = new double[B];
-
-                // Compute quantiles in parallel
-                Parallel.For(0, B, idx => {
-                    XValues[idx] = sampledDistributions[idx]?.InverseCDF(probabilities[i]) ?? double.NaN;
-                });
-
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int j = 0; j < B; j++)
-                {
-                    if (!double.IsNaN(XValues[j])) validCount++;
-                }
-
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int j = 0; j < B; j++)
-                {
-                    if (!double.IsNaN(XValues[j]))
-                        validValues[writeIdx++] = XValues[j];
-                }
-
-                Array.Sort(validValues);
-
-                // Record percentiles for CIs
-                ConfidenceIntervals[i, 0] = Statistics.Percentile(validValues, lowerCI, true);
-                ConfidenceIntervals[i, 1] = Statistics.Percentile(validValues, upperCI, true);
-            }
-        }
-
-        /// <summary>
-        /// Computes the mean (predictive) curve by averaging CDFs across all sampled distributions.
-        /// Uses log-spaced quantiles for efficient computation across wide ranges.
-        /// </summary>
-        /// <param name="sampledDistributions">Array of sampled distributions from posterior or bootstrap.</param>
-        /// <param name="probabilities">Array of non-exceedance probabilities for interpolation.</param>
-        /// <param name="minProbability">Minimum probability for range determination (default = 0.001).</param>
-        /// <param name="maxProbability">Maximum probability for range determination (default = 1 - 1e-9).</param>
-        public void ProcessMeanCurve(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double minProbability = 0.001, double maxProbability = 1 - 1e-9)
-        {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
-            if (probabilities == null || probabilities.Length == 0)
-                throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
-
-            int B = sampledDistributions.Length;
-
-            // Compute min and max X values across all distributions
-            double minX = double.MaxValue;
-            double maxX = double.MinValue;
-            object lockObject = new object();
-
-            Parallel.For(0, B, j =>
-            {
-                if (sampledDistributions[j] != null!)
-                {
-                    var innerMin = sampledDistributions[j].InverseCDF(minProbability);
-                    var innerMax = sampledDistributions[j].InverseCDF(maxProbability);
-
-                    lock (lockObject)
-                    {
-                        if (innerMin < minX) minX = innerMin;
-                        if (innerMax > maxX) maxX = innerMax;
-                    }
-                }
+                var d = distribution.Clone();
+                d.SetParameters(results.Output[idx].Values);
+                dists[idx] = d;
             });
 
-            // Create log-spaced quantiles for efficient coverage
-            double shift = minX <= 0 ? Math.Abs(minX) + 1d : 0;
-            double min = minX + shift;
-            double max = maxX + shift;
-            int order = (int)Math.Floor(Math.Log10(max) - Math.Log10(min));
-            int bins = Math.Max(200, Math.Min(1000, 100 * order));
-
-            var quantiles = new double[bins];
-            double delta = (Math.Log10(max) - Math.Log10(min)) / (bins - 1);
-
-            for (int i = 0; i < bins; i++)
-            {
-                double logX = Math.Log10(min) + i * delta;
-                quantiles[i] = Math.Pow(10, logX) - shift;
-            }
-
-            // Compute expected probability for each quantile
-            var expected = new double[bins];
-            for (int i = 0; i < bins; i++)
-            {
-                double total = 0d;
-                Parallel.For(0, B, () => 0d, (j, loop, sum) =>
-                {
-                    if (sampledDistributions[j] != null!)
-                    {
-                        sum += sampledDistributions[j].CDF(quantiles[i]);
-                    }
-                    return sum;
-                }, z => Tools.ParallelAdd(ref total, z));
-                expected[i] = total / B;
-            }
-
-            // Build monotonic interpolation points
-            var yVals = new List<double> { quantiles[0] };
-            var xVals = new List<double> { expected[0] };
-            double minY = quantiles[0];
-            double maxY = quantiles[0];
-
-            for (int i = 1; i < bins; i++)
-            {
-                if (expected[i] > xVals[xVals.Count - 1])
-                {
-                    minY = Math.Min(minY, quantiles[i]);
-                    maxY = Math.Max(maxY, quantiles[i]);
-                    yVals.Add(quantiles[i]);
-                    xVals.Add(expected[i]);
-                }
-            }
-
-            // Determine if log transform is appropriate
-            bool useLogTransform = minY > 0 && (Math.Log10(maxY) - Math.Log10(minY)) > 1;
-
-            // Interpolate mean curve at requested probabilities
-            var linint = new Linear(xVals, yVals)
-            {
-                XTransform = Transform.NormalZ,
-                YTransform = useLogTransform ? Transform.Logarithmic : Transform.None
-            };
-            MeanCurve = linint.Interpolate(probabilities);
-        }
-
-        /// <summary>
-        /// Processes and stores the parameter sets from all sampled distributions.
-        /// </summary>
-        /// <param name="sampledDistributions">Array of sampled distributions to extract parameters from.</param>
-        public void ProcessParameterSets(UnivariateDistributionBase[] sampledDistributions)
-        {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
-
-            int B = sampledDistributions.Length;
-            ParameterSets = new ParameterSet[B];
-
-            Parallel.For(0, B, idx =>
-            {
-                if (sampledDistributions[idx] != null!)
-                {
-                    ParameterSets[idx] = new ParameterSet(sampledDistributions[idx].GetParameters, double.NaN);
-                }
-            });
+            // Set up dummy bootstrap analysis
+            var boot = new BootstrapAnalysis(distribution, ParameterEstimationMethod.MaximumLikelihood, 100, realz);
+            var uar = boot.Estimate(probabilities, alpha, dists);
+            uar.ParameterSets = null;
+            return uar;
         }
 
     }

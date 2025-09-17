@@ -77,48 +77,34 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
-        /// Constructs and post-processes MCMC results. 
-        /// </summary>
-        /// <param name="map">The output parameter set that produced the maximum likelihood.</param>
-        /// <param name="parameterSets">The list of parameter sets to process.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
-        public MCMCResults(ParameterSet map, IList<ParameterSet> parameterSets, double alpha = 0.1)
-        {
-            
-            MAP = map.Clone();
-            Output = parameterSets.ToList();
-            ProcessParameterResults(alpha);
-        }
-
-        /// <summary>
         /// The list of sampled Markov Chains.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet>[] MarkovChains { get; private set; } = null!;
+        public List<ParameterSet>[] MarkovChains { get; private set; }
 
         /// <summary>
         /// Output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet> Output { get; private set; } = null!;
+        public List<ParameterSet> Output { get; private set; }
 
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
         [JsonInclude]
-        public List<double> MeanLogLikelihood { get; private set; } = null!;
+        public List<double> MeanLogLikelihood { get; private set; }
 
         /// <summary>
         /// The acceptance rate for each chain.
         /// </summary>
         [JsonInclude]
-        public double[] AcceptanceRates { get; private set; } = null!;
+        public double[] AcceptanceRates { get; private set; }
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public ParameterResults[] ParameterResults { get; private set; } = null!;
+        public ParameterResults[] ParameterResults { get; private set; }
 
         /// <summary>
         /// The output parameter set that produced the maximum likelihood.
@@ -161,25 +147,6 @@ namespace Numerics.Sampling.MCMC
             PosteriorMean = new ParameterSet(postMean, postMeanLogLH);
         }
 
-        /// <summary>
-        /// Process a parameter results using the output list.
-        /// </summary>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
-        private void ProcessParameterResults(double alpha = 0.1)
-        {
-            int p = Output.First().Values.Length;
-            var postMean = new double[p];
-            ParameterResults = new ParameterResults[p];
-            for (int i = 0; i < p; i++)
-            {
-                var x = Output.Select(set => set.Values[i]).ToArray();
-                ParameterResults[i] = new ParameterResults(x, alpha);
-                postMean[i] = ParameterResults[i].SummaryStatistics.Mean;
-            }
-            // Set the posterior mean parameter set. 
-            PosteriorMean = new ParameterSet(postMean, double.NaN);
-        }
-
         #region Serialization
 
         /// <summary>
@@ -210,8 +177,7 @@ namespace Numerics.Sampling.MCMC
             };
             try
             {
-                return JsonSerializer.Deserialize<MCMCResults>(bytes, options)
-                    ?? throw new JsonException("Deserialized MCMCResults was null");
+                return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
             }
             catch
             {
