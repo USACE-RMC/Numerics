@@ -158,6 +158,22 @@ namespace Numerics.Data.Statistics
                 Bin bin = (Bin)obj;
                 return LowerBound.Equals(bin.LowerBound) && UpperBound.Equals(bin.UpperBound) && Frequency.Equals(bin.Frequency);
             }
+
+            /// <summary>
+            /// Serves as the default hash function.
+            /// </summary>
+            /// <returns>A hash code for the current object.</returns>
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + LowerBound.GetHashCode();
+                    hash = hash * 23 + UpperBound.GetHashCode();
+                    hash = hash * 23 + Frequency.GetHashCode();
+                    return hash;
+                }
+            }
         }
 
         /// <summary>

@@ -63,7 +63,7 @@ namespace Numerics.Distributions
     /// <list type="bullet">
     /// <item><description>
     /// The distribution behaves similarly to the "RiskCumul" function in the Palisade's @Risk software.
-    /// <see href="http://kb.palisade.com/index.php?pg=kb.page&id=51"/>
+    /// <see href="http://kb.palisade.com/index.php?pg=kb.page&amp;id=51"/>
     /// </description></item>
     /// </list>
     /// </para>

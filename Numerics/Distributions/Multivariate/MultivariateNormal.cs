@@ -1588,7 +1588,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Swaps rows and columns P and Q in situ, with P <= Q.
+        /// Swaps rows and columns P and Q in situ, with P &lt;= Q.
         /// </summary>
         /// <param name="P">Rows</param>
         /// <param name="Q">Columns</param>

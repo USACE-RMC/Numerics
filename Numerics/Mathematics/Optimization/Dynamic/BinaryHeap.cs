@@ -140,7 +140,6 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Add a node to the heap.
         /// </summary>
-        /// <param name="value">Node to add.</param>
         public void Add(Node node)
         {
             if (_n >= _heap.Length) 
