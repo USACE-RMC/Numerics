@@ -153,7 +153,6 @@ namespace Numerics.Distributions
         }
 
         private double[] _sampleData;
-        private double[] _pValues = [];
         private double _bandwidth;
         private KernelType _kernelDistribution;
         private IKernel _kernel;
@@ -169,11 +168,6 @@ namespace Numerics.Distributions
         /// with increasing value and increasing probability.
         /// </summary>
         public ReadOnlyCollection<double> SampleData => new ReadOnlyCollection<double>(_sampleData);
-
-        /// <summary>
-        /// Returns the array of probability plotting position values.
-        /// </summary>
-        public ReadOnlyCollection<double> ProbabilityValues => new ReadOnlyCollection<double>(_pValues);
 
         /// <summary>
         /// Gets and sets the kernel distribution type.
