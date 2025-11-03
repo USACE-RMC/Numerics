@@ -29,7 +29,13 @@
 */
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
+using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Sampling;
+using System.Collections.Generic;
+using System.Diagnostics;
+using static System.Reflection.Metadata.BlobBuilder;
 
 namespace Distributions.Univariate
 {

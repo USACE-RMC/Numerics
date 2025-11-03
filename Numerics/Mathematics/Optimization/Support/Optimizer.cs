@@ -159,7 +159,7 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Clears the results.
         /// </summary>
-        protected virtual void ClearResults()
+        public virtual void ClearResults()
         {
             Iterations = 0;
             FunctionEvaluations = 0;

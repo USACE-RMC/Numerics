@@ -329,7 +329,7 @@ namespace Numerics.Data.Statistics
             double m2 = s2 / n;
             double m3 = s3 / n;
             double g = m3 / Math.Pow(m2, 3.0d / 2.0d);
-            double a = Math.Sqrt(n * (n - 1));
+            double a = Math.Sqrt(n * (n - 1.0));
             double b = n - 2;
             return a / b * g;
         }

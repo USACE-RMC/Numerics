@@ -155,10 +155,11 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Avoid log of zero or negative values
-                if (dTdy > 0)
-                    logJacobianSum += Math.Log(dTdy);
-                else
-                    return double.NegativeInfinity; // log-likelihood undefined
+                logJacobianSum += Math.Log(Math.Abs(dTdy));
+                //if (dTdy > 0)
+                //    logJacobianSum += Math.Log(Math.Abs(dTdy));
+                //else
+                //    return double.NegativeInfinity; // log-likelihood undefined
             }
             return logJacobianSum;
         }
@@ -224,7 +225,7 @@ namespace Numerics.Data.Statistics
             }
             else if (value < 0 && lambda != 2)
             {
-                return 1 - (Math.Pow(1 - (2 - lambda) * value, 1 / (2 - lambda)) - 1);
+                return 1 - (Math.Pow(1 - (2 - lambda) * value, 1 / (2 - lambda)));
             }
             else if (value < 0 && lambda == 2)
             {

@@ -182,7 +182,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1E-8);
+                    u = CentralMoments(1000);
                     _momentsComputed = true;
                 }
                 return u[0];
@@ -213,7 +213,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1E-8);
+                    u = CentralMoments(1000);
                     _momentsComputed = true;
                 }
                 return u[1];
@@ -227,7 +227,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1E-8);
+                    u = CentralMoments(1000);
                     _momentsComputed = true;
                 }
                 return u[2];
@@ -241,7 +241,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1E-8);
+                    u = CentralMoments(1000);
                     _momentsComputed = true;
                 }
                 return u[3];

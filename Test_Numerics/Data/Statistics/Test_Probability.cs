@@ -108,7 +108,7 @@ namespace Data.Statistics
               { r, r, r, 1 }};
 
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var joint = Probability.JointProbability(new double[] { A, B, C, D }, new int[] { 1, 1, 1, 1 }, mvn);
+            var joint = Probability.JointProbabilityMVN(new double[] { A, B, C, D }, new int[] { 1, 1, 1, 1 }, mvn);
             Assert.AreEqual(0.021875, joint, 1E-6);
 
         }
@@ -171,7 +171,7 @@ namespace Data.Statistics
               { r, r, r, 1 }};
 
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var joint = Probability.JointProbability(new double[] { A, B, C, D }, new int[] { 1, 1, 1, 1 }, mvn);
+            var joint = Probability.JointProbabilityMVN(new double[] { A, B, C, D }, new int[] { 1, 1, 1, 1 }, mvn);
             Assert.AreEqual(0.25, joint, 1E-6);
 
         }
@@ -234,7 +234,7 @@ namespace Data.Statistics
               { r, r, r, 1 }};
 
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var joint = Probability.JointProbability(new double[] { A, B, C, D }, new int[] { 1, 1, 1, 1 }, mvn);
+            var joint = Probability.JointProbabilityMVN(new double[] { A, B, C, D }, new int[] { 1, 1, 1, 1 }, mvn);
             // True result comes from Monte Carlo simulation
             Assert.AreEqual(6.27974351606123E-14, joint, 1E-6);
 
@@ -307,7 +307,7 @@ namespace Data.Statistics
 
             // Get union from MVN
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var union = Probability.Union(new double[] { A, B, C, D }, mvn);
+            var union = Probability.UnionMVN(new double[] { A, B, C, D }, mvn);
             Assert.AreEqual(0.878125, union, 1E-6);
 
         }
@@ -373,7 +373,7 @@ namespace Data.Statistics
 
             // Get union from MVN
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var union = Probability.Union(new double[] { A, B, C, D }, mvn);
+            var union = Probability.UnionMVN(new double[] { A, B, C, D }, mvn);
             Assert.AreEqual(0.5, union, 1E-2);
         }
 
@@ -438,7 +438,7 @@ namespace Data.Statistics
 
             // Get union from MVN
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var union = Probability.Union(new double[] { A, B, C, D }, mvn);
+            var union = Probability.UnionMVN(new double[] { A, B, C, D }, mvn);
 
             // True result comes from Monte Carlo simulation
             Assert.AreEqual(0.985016583, union, 1E-5);
@@ -520,7 +520,7 @@ namespace Data.Statistics
 
             // Get exclusive probabilities from MVN
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var exclusive = Probability.Exclusive(new double[] { A, B, C, D }, mvn);
+            var exclusive = Probability.ExclusiveMVN(new double[] { A, B, C, D }, mvn);
 
             // Test exclusive
             var trueE = new double[] { 0.040625, 0.065625, 0.121875, 0.121875, 0.021875, 0.040625, 0.040625, 0.065625, 0.065625, 0.121875, 0.021875, 0.021875, 0.040625, 0.065625, 0.021875 };
@@ -613,7 +613,7 @@ namespace Data.Statistics
 
             // Get exclusive probabilities from MVN
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var exclusive = Probability.Exclusive(new double[] { A, B, C, D }, mvn);
+            var exclusive = Probability.ExclusiveMVN(new double[] { A, B, C, D }, mvn);
 
             // Both MVN and PCM have poor precision on this test
             // Test exclusive
@@ -684,7 +684,7 @@ namespace Data.Statistics
 
             // Get exclusive probabilities from MVN
             var mvn = new MultivariateNormal(new double[] { 0, 0, 0, 0 }, corr) { MVNUNI = new Random(12345) };
-            var exclusive = Probability.Exclusive(new double[] { A, B, C, D }, mvn);
+            var exclusive = Probability.ExclusiveMVN(new double[] { A, B, C, D }, mvn);
 
             // Test exclusive
             var trueE = new double[] { 0.0591144184207316,  0.0841585674381143, 0.137370396630316,  0.137376624193301,  0.0381933344506983, 0.0639822078713156, 0.063975145059157,  0.0962373338116287, 0.0962331282359124, 0.160388585792858,  0.00596032423933968,    0.00596536506423,   0.012809204894465,  0.0232519467600138, 6.27974351606123E-14 };

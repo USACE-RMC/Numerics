@@ -29,6 +29,7 @@
 */
 
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Linq;
 using Numerics.Data.Statistics;
@@ -80,8 +81,6 @@ namespace Numerics.Distributions
         private double _sigma;
         private double _gamma;
         private double _base = 10d;
-        private bool _momentsComputed = false;
-        private double[] u = [double.NaN, double.NaN, double.NaN, double.NaN];
 
         /// <summary>
         /// Gets and sets the Mean (of log) of the distribution.
@@ -163,7 +162,6 @@ namespace Numerics.Distributions
                 {
                     _base = value;
                 }
-                _momentsComputed = false;
             }
         }
 
@@ -237,15 +235,16 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
+                double lnB = Math.Log(Base);
+                if (Math.Abs(Gamma) <= NearZero)
                 {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
+                    return Math.Exp((Mu + 0.5 * Sigma * Sigma * lnB) * lnB);
                 }
-                return u[0];
-                // This is the analytical expression from Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
-                // It is not reliable enough for general use. But keeping this here for reference.
-                // return Math.Exp(Xi / K) / Math.Pow(1d - Beta / K, Alpha); 
+                else
+                {
+                    double lnMean = Xi * lnB - Alpha * Math.Log(1.0 - Beta * lnB);
+                    return Math.Exp(lnMean);
+                }
             }
         }
 
@@ -276,15 +275,27 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
+                double lnB = Math.Log(Base);
+                if (Math.Abs(Gamma) <= NearZero)
                 {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
+                    double a = Sigma * Sigma * lnB;   
+                    double logPrefactor = (2.0 * Mu + a) * lnB;  
+                    double expA = Math.Exp(a * lnB); 
+                    double variance = Math.Exp(logPrefactor) * (expA - 1.0);
+                    return Math.Sqrt(variance);
                 }
-                return u[1];
-                // This is the analytical expression from Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
-                // It is not reliable enough for general use. But keeping this here for reference.
-                //return Math.Sqrt(Math.Pow(Math.Pow(1d - Beta / K, 2d) / (1d - 2d * Beta / K), Alpha) - 1d) * Mean;
+                else
+                {
+                    double t1 = -Alpha * Math.Log(1 - 2.0 * Beta * lnB);  
+                    double t2 = -2.0 * Alpha * Math.Log(1 - Beta * lnB); 
+
+                    // Factor out the larger exponent to keep precision
+                    double maxT = Math.Max(t1, t2);
+                    double diff = Math.Exp(t1 - maxT) - Math.Exp(t2 - maxT);   // positive & stable
+                    double logVariance = 2.0 * Xi * lnB + maxT + Math.Log(diff);
+
+                    return Math.Sqrt(Math.Exp(logVariance));
+                }
             }
         }
 
@@ -293,15 +304,37 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
+                double lnB = Math.Log(Base);
+                if (Math.Abs(Gamma) <= NearZero)
                 {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
+                    // Log-Normal case
+                    double a = Sigma * Sigma * lnB;         // a = σ² ln b
+                    double mu1 = (Mu + 0.5 * a) * lnB;
+                    double mu2 = (2 * Mu + 2 * a) * lnB;
+                    double mu3 = (3 * Mu + 4.5 * a) * lnB;
+
+                    double m1 = Math.Exp(mu1);   // E[X]
+                    double m2 = Math.Exp(mu2);   // E[X²]
+                    double m3 = Math.Exp(mu3);   // E[X³]
+
+                    double thirdCentralMoment = m3 - 3 * m2 * m1 + 2 * m1 * m1 * m1;
+                    return thirdCentralMoment / Math.Pow(StandardDeviation, 3);
                 }
-                return u[2];
-                // This is the analytical expression from Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
-                // It is not reliable enough for general use. But keeping this here for reference.
-                //return (Math.Pow(1d - 3d * Beta / K, -Alpha) - 3d * Math.Pow(1d - 2d * Beta / K, -Alpha) * Math.Pow(1d - Beta / K, -Alpha) + 2d * Math.Pow(1d - Beta / K, -3 * Alpha)) / Math.Pow(Math.Pow(1d - 2d * Beta / K, -Alpha) - Math.Pow(1d - Beta / K, -2 * Alpha), 3d / 2d);
+                else
+                {
+                    // LP3 case
+                    double t1 = 1 - Beta * lnB;
+                    double t2 = 1 - 2 * Beta * lnB;
+                    double t3 = 1 - 3 * Beta * lnB;
+
+                    double m1 = Math.Pow(t1, -Alpha);      // E[X] / b^ξ
+                    double m2 = Math.Pow(t2, -Alpha);      // E[X²] / b^{2ξ}
+                    double m3 = Math.Pow(t3, -Alpha);      // E[X³] / b^{3ξ}
+
+                    double thirdCentralMoment = m3 - 3 * m2 * m1 + 2 * m1 * m1 * m1;
+                    double prefactor = Math.Pow(Base, 3 * Xi);
+                    return prefactor * thirdCentralMoment / Math.Pow(StandardDeviation, 3);
+                }
             }
         }
 
@@ -310,15 +343,44 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
+                double lnB = Math.Log(Base);
+                if (Math.Abs(Gamma) <= NearZero)
                 {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
+                    // Log-Normal case
+                    double a = Sigma * Sigma * lnB;
+
+                    double mu1 = (Mu + 0.5 * a) * lnB;
+                    double mu2 = (2 * Mu + 2 * a) * lnB;
+                    double mu3 = (3 * Mu + 4.5 * a) * lnB;
+                    double mu4 = (4 * Mu + 8.0 * a) * lnB;
+
+                    double m1 = Math.Exp(mu1); // E[X]
+                    double m2 = Math.Exp(mu2); // E[X²]
+                    double m3 = Math.Exp(mu3); // E[X³]
+                    double m4 = Math.Exp(mu4); // E[X⁴]
+
+                    double fourthCentralMoment = m4 - 4.0 * m3 * m1 + 6.0 * m2 * m1 * m1 - 3.0 * m1 * m1 * m1 * m1;
+
+                    return fourthCentralMoment / Math.Pow(StandardDeviation, 4);
                 }
-                return u[3];
-                // This is the analytical expression from Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
-                // It is not reliable enough for general use. But keeping this here for reference.
-                //return (Math.Pow(1d - 4d * Beta / K, -Alpha) - 4d * Math.Pow(1d - 3d * Beta / K, -Alpha) * Math.Pow(1d - Beta / K, -Alpha) + 6d * Math.Pow(1d - 2d * Beta / K, -Alpha) * Math.Pow(1d - Beta / K, -2 * Alpha) - 3d * Math.Pow(1d - Beta / K, -4 * Alpha)) / Math.Pow(Math.Pow(1d - 2d * Beta / K, -Alpha) - Math.Pow(1d - Beta / K, -2 * Alpha), 2d);
+                else
+                {
+                    // LP3 case
+                    double t1 = 1 - Beta * lnB;
+                    double t2 = 1 - 2 * Beta * lnB;
+                    double t3 = 1 - 3 * Beta * lnB;
+                    double t4 = 1 - 4 * Beta * lnB;
+
+                    double m1 = Math.Pow(t1, -Alpha);   // E[X] / b^ξ
+                    double m2 = Math.Pow(t2, -Alpha);   // E[X²] / b^{2ξ}
+                    double m3 = Math.Pow(t3, -Alpha);   // E[X³] / b^{3ξ}
+                    double m4 = Math.Pow(t4, -Alpha);   // E[X⁴] / b^{4ξ}
+
+                    double fourthCentralMoment = m4 - 4.0 * m3 * m1 + 6.0 * m2 * m1 * m1 - 3.0 * m1 * m1 * m1 * m1;
+
+                    double prefactor = Math.Pow(Base, 4 * Xi);
+                    return prefactor * fourthCentralMoment / Math.Pow(StandardDeviation, 4);
+                }
             }
         }
 
@@ -420,7 +482,6 @@ namespace Numerics.Distributions
             _mu = meanOfLog;
             _sigma = standardDeviationOfLog;
             _gamma = skewOfLog;
-            _momentsComputed = false;
         }
 
         /// <inheritdoc/>
@@ -455,6 +516,18 @@ namespace Numerics.Distributions
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
+            }
+            if (gamma > 5)
+            {
+                if (throwException)
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
+            }
+            if (gamma < -5)
+            {
+                if (throwException)
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
             }
             return null;
         }
@@ -639,12 +712,12 @@ namespace Numerics.Distributions
             upperVals[1] = double.IsNaN(upperVals[1]) ? 4 : upperVals[1];
 
             // Get bounds of skew
-            lowerVals[2] = -2d;
-            upperVals[2] = 2d;
+            lowerVals[2] = -5d;
+            upperVals[2] = 5d;
             // Correct initial value of skew if necessary
             if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
             {
-                initialVals[2] = 0d;
+                initialVals[2] = 0.01;
             }
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
         }
@@ -903,6 +976,6 @@ namespace Numerics.Distributions
             var jacobian = new double[,] { { a, b, c }, { d, e, f }, { g, h, i } };
             return jacobian;
         }
- 
+
     }
 }

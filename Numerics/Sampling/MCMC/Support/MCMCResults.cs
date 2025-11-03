@@ -76,6 +76,20 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
+        /// Constructs and post-processes MCMC results. 
+        /// </summary>
+        /// <param name="map">The output parameter set that produced the maximum likelihood.</param>
+        /// <param name="parameterSets">The list of parameter sets to process.</param>
+        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
+        public MCMCResults(ParameterSet map, IList<ParameterSet> parameterSets, double alpha = 0.1)
+        {
+            
+            MAP = map.Clone();
+            Output = parameterSets.ToList();
+            ProcessParameterResults(alpha);
+        }
+
+        /// <summary>
         /// The list of sampled Markov Chains.
         /// </summary>
         public List<ParameterSet>[] MarkovChains { get; private set; }
@@ -137,6 +151,25 @@ namespace Numerics.Sampling.MCMC
             // Set the posterior mean parameter set. 
             var postMeanLogLH = sampler.LogLikelihoodFunction(postMean);
             PosteriorMean = new ParameterSet(postMean, postMeanLogLH);
+        }
+
+        /// <summary>
+        /// Process a parameter results using the output list.
+        /// </summary>
+        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
+        private void ProcessParameterResults(double alpha = 0.1)
+        {
+            int p = Output.First().Values.Length;
+            var postMean = new double[p];
+            ParameterResults = new ParameterResults[p];
+            for (int i = 0; i < p; i++)
+            {
+                var x = Output.Select(set => set.Values[i]).ToArray();
+                ParameterResults[i] = new ParameterResults(x, alpha);
+                postMean[i] = ParameterResults[i].SummaryStatistics.Mean;
+            }
+            // Set the posterior mean parameter set. 
+            PosteriorMean = new ParameterSet(postMean, double.NaN);
         }
 
         #region Serialization

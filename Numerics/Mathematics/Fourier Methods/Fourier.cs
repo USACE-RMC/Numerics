@@ -83,7 +83,7 @@ namespace Numerics.Mathematics
             double wtemp, wr, wpr, wpi, wi, theta, tempr, tempi;
             n = (int)(data.Count() / 2d);
             // Check if n is a power of 2.
-            if (n < 2 || IsPowerOfTwo(n) == false)
+            if (n < 2 || Tools.IsPowerOfTwo(n) == false)
             {
                 throw new ArgumentOutOfRangeException(nameof(data), "The data array length must be a power of 2.");
             }
@@ -310,16 +310,5 @@ namespace Numerics.Mathematics
             return acf;
         }
 
-        /// <summary>
-        /// Helper function to determine if integer is power of 2.
-        /// </summary>
-        /// <param name="n">Integer to test.</param>
-        /// <returns> 
-        /// True if the integer is a power of 2
-        /// </returns>
-        private static bool IsPowerOfTwo(int n)
-        {
-            return (n & n - 1) == 0;
-        }
     }
 }

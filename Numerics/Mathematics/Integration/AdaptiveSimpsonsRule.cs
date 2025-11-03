@@ -29,8 +29,6 @@
 */
 
 using Numerics.Sampling;
-using System;
-using System.Collections.Generic;
 
 namespace Numerics.Mathematics.Integration
 {
@@ -74,8 +72,7 @@ namespace Numerics.Mathematics.Integration
             b = max;
         }
 
-        private double a;
-        private double b;
+        private double a, b, _squaredError;
 
         /// <summary>
         /// The unidimensional function to integrate.
@@ -110,17 +107,26 @@ namespace Numerics.Mathematics.Integration
         /// <inheritdoc/>
         public override void Integrate()
         {
+            _squaredError = 0;
             StandardError = 0;
             ClearResults();
             Validate();
 
             try
             {
+                // Fist evaluation of Simpson's Rule on the whole interval
+                double m = (a + b) / 2d;
                 double fa = Function(a);
                 double fb = Function(b);
-                FunctionEvaluations += 2;
-                double m = 0, fm = 0, whole = Simpsons(Function, a, fa, b, fb, ref m, ref fm);       
-                Result = AdaptiveSimpsons(Function, a, fa, b, fb, RelativeTolerance, MaxDepth, whole, m, fm);
+                double fm = Function(m);
+                FunctionEvaluations +=3; // Count the three evaluations: fa, fb, fm
+                double whole = Math.Abs(b - a) / 6d * (fa + 4d * fm + fb);
+
+                // Recursively sub-divide
+                Result = AdaptiveSimpsons(Function, a, fa, b, fb, MaxDepth, whole, m, fm, a, b);
+
+                // Standard error calculated after recursion completes
+                StandardError = Math.Sqrt(_squaredError);
 
                 if (FunctionEvaluations >= MaxFunctionEvaluations)
                 {
@@ -146,6 +152,7 @@ namespace Numerics.Mathematics.Integration
         /// <param name="bins">The stratification bins to integrate over.</param>
         public void Integrate(List<StratificationBin> bins)
         {
+            _squaredError = 0;
             StandardError = 0;
             ClearResults();
             Validate();
@@ -153,21 +160,28 @@ namespace Numerics.Mathematics.Integration
             try
             {
                 double mu = 0;
-                double sigma = 0;
+                double sigmaSquared = 0;
                 for (int i = 0; i < bins.Count; i++)
                 {
+                    // Fist evaluation of Simpson's Rule on the whole interval
                     double a = bins[i].LowerBound;
                     double b = bins[i].UpperBound;
+                    double m = (a + b) / 2d;
                     double fa = Function(a);
                     double fb = Function(b);
-                    FunctionEvaluations += 2;
-                    double m = 0, fm = 0, whole = Simpsons(Function, a, fa, b, fb, ref m, ref fm);
-                    mu += AdaptiveSimpsons(Function, a, fa, b, fb, RelativeTolerance, MaxDepth, whole, m, fm);
-                    sigma += StandardError;
+                    double fm = Function(m);
+                    FunctionEvaluations += 3; // Count the three evaluations: fa, fb, fm
+                    double whole = Math.Abs(b - a) / 6d * (fa + 4d * fm + fb);
+
+                    // Recursively sub-divide
+                    mu += AdaptiveSimpsons(Function, a, fa, b, fb, MaxDepth, whole, m, fm, a, b);
+
                 }
 
+                // Final result and standard error
                 Result = mu;
-                StandardError = sigma;
+                StandardError = Math.Sqrt(_squaredError); 
+
                 if (FunctionEvaluations >= MaxFunctionEvaluations)
                 {
                     Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
@@ -193,65 +207,55 @@ namespace Numerics.Mathematics.Integration
         /// <param name="fa"> The function evaluated at a </param>
         /// <param name="b"> The maximum value under which the integral must be computed </param>
         /// <param name="fb"> The function evaluated at b </param>
-        /// <param name="m"> The midpoint between a and b </param>
-        /// <param name="fm"> The function evaluated at m </param>
-        /// <returns>
-        /// A three point Simpson's Rule evaluation on [a,b]
-        /// </returns>
-        private double Simpsons(Func<double, double> f, double a, double fa, double b, double fb, ref double m, ref double fm)
-        {
-            m = (a + b) / 2d;
-            fm = f(m);
-            FunctionEvaluations++;           
-            return Math.Abs(b - a) / 6d * (fa + 4d * fm + fb);
-        }
-
-        /// <summary>
-        /// A helper function to the Integrate() function
-        /// </summary>
-        /// <param name="f"> The unidimensional function to integrate </param>
-        /// <param name="a"> The minimum value under which the integral must be computed </param>
-        /// <param name="fa"> The function evaluated at a </param>
-        /// <param name="b"> The maximum value under which the integral must be computed </param>
-        /// <param name="fb"> The function evaluated at b </param>
         /// <param name="epsilon"> Machine epsilon </param>
         /// <param name="depth"> Less than or equal to 0 (max recursions have been reached) </param>
         /// <param name="whole"> The original whole three point Simpson's Rule evaluation on [a,b] </param>
         /// <param name="m"> The midpoint between a and b </param>
         /// <param name="fm"> The function evaluated at m </param>
+        /// <param name="a0"> The original lower bound of the integral </param>
+        /// <param name="b0"> The original upper bound of the integral </param>
         /// <returns>
-        /// An evaluation of Simpson's Rule with the error less than a certain tolerance. This is accomplished but subdividing the interval the rule is
-        /// evaluated on until the error between the last evaluation and the current evaluation is sufficiently small.
+        /// An evaluation of Simpson's Rule with the error less than a certain tolerance. This is accomplished by subdividing the interval 
+        /// until the error between the last evaluation and the current evaluation is sufficiently small.
         /// </returns>
-        private double AdaptiveSimpsons(Func<double, double> f, double a, double fa, double b, double fb, double epsilon, int depth, double whole, double m, double fm)
+        private double AdaptiveSimpsons(Func<double, double> f, double a, double fa, double b, double fb, int depth, double whole, double m, double fm, double a0, double b0)
         {
+            double h = (b - a) * 0.5;
+            double lm = a + h * 0.5;  // left mid
+            double rm = a + h + h * 0.5;  // right mid
+            double flm = f(lm), frm = f(rm);
+            FunctionEvaluations += 2;
 
-            double lm = 0, flm = 0, left = Simpsons(f, a, fa, m, fm, ref lm, ref flm);
-            double rm = 0, frm = 0, right = Simpsons(f, m, fm, b, fb, ref rm, ref frm);
-            double delta = (left + right - whole) / 15d;
+            double left = h / 6 * (fa + 4 * flm + fm);
+            double right = h / 6 * (fm + 4 * frm + fb);
 
-            // Check tolerance 
-            // - Depth is less than or equal to 0 (max recursions have been reached)
-            // - Abs(a-b) is smaller than machine epsilon
-            // - Maximum number of function evaluations
-            // - Minimum number of function evaluations, the minimum depth, and also delta less than tolerance
-            if (depth <= 0 ||  Math.Abs(a - b) <= Tools.DoubleMachineEpsilon || FunctionEvaluations >= MaxFunctionEvaluations ||  
-                (FunctionEvaluations >= MinFunctionEvaluations && depth <= MaxDepth - MinDepth && Math.Abs(delta) <= epsilon + epsilon * Math.Abs(whole)))
+            // Calculate error for current interval
+            double error = (left + right - whole);
+            double delta = error / 15d; // Richardson correction
+
+            // Richardson-based convergence tolerance
+            double toleranceScaled = 15d * (RelativeTolerance * Math.Abs(b - a) / Math.Abs(b0 - a0));
+
+            // Absolute and Relative tolerance checks
+            bool absoluteToleranceReached = Math.Abs(error) <= AbsoluteTolerance;
+            bool relativeToleranceReached = Math.Abs(error) <= toleranceScaled;
+
+            // Check if convergence criteria are met
+            if (depth <= 0 || Math.Abs(a - b) <= Tools.DoubleMachineEpsilon || FunctionEvaluations >= MaxFunctionEvaluations ||
+                (FunctionEvaluations >= MinFunctionEvaluations && depth <= MaxDepth - MinDepth && (absoluteToleranceReached || relativeToleranceReached)))
             {
-                // convergence is reached
-                // Terminate recursion
-                StandardError += Math.Abs(delta);
-                return left + right + delta; 
+                // Convergence is reached
+                _squaredError += delta * delta; // Accumulate squared errors
+                return left + right + delta;
             }
             else
             {
-                // Subdivide interval
-                var l = AdaptiveSimpsons(f, a, fa, m, fm, epsilon, depth - 1, left, lm, flm);
-                var r = AdaptiveSimpsons(f, m, fm, b, fb, epsilon, depth - 1, right, rm, frm);
-                return l + r;
-            }           
+                // Recursively subdivide the intervals and accumulate results
+                var leftResult = AdaptiveSimpsons(f, a, fa, m, fm, depth - 1, left, lm, flm, a0, b0);
+                var rightResult = AdaptiveSimpsons(f, m, fm, b, fb, depth - 1, right, rm, frm, a0, b0);
+                return leftResult + rightResult;
+            }
         }
-
 
     }
 }

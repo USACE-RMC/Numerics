@@ -878,6 +878,67 @@ namespace Numerics.Distributions
             var jacobian = new double[,] { { a, b }, { c, d } };
             return jacobian;
         }
-   
+
+        /// <inheritdoc/>
+        public override double[] ConditionalMoments(double a, double b)
+        {
+            if (a >= b)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            double alpha = Kappa; // shape > 0
+            double beta = Theta;  // scale > 0
+            if (!(alpha > 0.0) || !(beta > 0.0))
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Effective bounds within support [0, ∞)
+            double A = Math.Max(0.0, a);
+            double B = b;
+
+            // Standardized bounds in z = x / beta
+            double zA = A / beta;
+            double zB = double.IsPositiveInfinity(B) ? double.PositiveInfinity : (B / beta);
+
+            // Regularized lower incomplete gamma CDF P(s, z)
+            static double Pg(double s, double z)
+            {
+                if (double.IsNegativeInfinity(z) || z <= 0.0) return 0.0;
+                if (double.IsPositiveInfinity(z)) return 1.0;
+                return Mathematics.SpecialFunctions.Gamma.LowerIncomplete(s, z); // P(s,z)
+            }
+
+            // Normalizing probability over (a,b): P0 = P(alpha, zB) - P(alpha, zA)
+            double P0 = Pg(alpha, zB) - Pg(alpha, zA);
+            if (P0 <= 1e-15)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // For stability: Γ(α+k)/Γ(α) via log-gamma differences
+            double lgAlpha = Mathematics.SpecialFunctions.Gamma.LogGamma(alpha);
+            double[] gr = new double[5]; // gr[k] = Γ(α+k)/Γ(α)
+            for (int k = 0; k <= 4; k++)
+                gr[k] = Math.Exp(Mathematics.SpecialFunctions.Gamma.LogGamma(alpha + k) - lgAlpha);
+
+            // Truncated raw moments E[X^k | a < X < b], k = 1..4
+            double[] EX = new double[5];
+            EX[0] = 1.0; // by definition under conditioning
+            for (int k = 1; k <= 4; k++)
+            {
+                double deltaPk = Pg(alpha + k, zB) - Pg(alpha + k, zA);
+                EX[k] = Math.Pow(beta, k) * gr[k] * (deltaPk / P0);
+            }
+
+            // Central moments about the *unconditional* mean μ = αβ
+            double mu = alpha * beta;
+            double m1 = EX[1];
+            double m2 = EX[2] - 2.0 * mu * EX[1] + mu * mu;
+            double m3 = EX[3] - 3.0 * mu * EX[2] + 3.0 * mu * mu * EX[1] - mu * mu * mu;
+            double m4 = EX[4]
+                      - 4.0 * mu * EX[3]
+                      + 6.0 * mu * mu * EX[2]
+                      - 4.0 * mu * mu * mu * EX[1]
+                      + mu * mu * mu * mu;
+
+            return new[] { m1, m2, m3, m4 };
+        }
+
     }
 }

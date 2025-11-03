@@ -30,6 +30,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Xml.Linq;
 
 namespace Numerics.Mathematics.LinearAlgebra
 {
@@ -122,23 +124,84 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Constructs a new matrix based on a list of single column arrays.
         /// </summary>
         /// <param name="listOfArrays">List of initializing arrays.</param>
-        public Matrix(List<double[]> listOfArrays)
+        /// <param name="byColumn">Determines if the list should be added as columns or rows. Default = columns.</param>
+        public Matrix(List<double[]> listOfArrays, bool byColumn = true)
         {
             if (listOfArrays == null || listOfArrays.Count == 0)
                 throw new ArgumentException("List of arrays must not be empty.");
-            int rowLength = listOfArrays[0].Length;
-            foreach (var array in listOfArrays)
+
+            if (byColumn)
             {
-                if (array.Length != rowLength)
-                    throw new ArgumentException("All arrays must have the same length.");
+                int rowLength = listOfArrays[0].Length;
+                foreach (var array in listOfArrays)
+                {
+                    if (array.Length != rowLength)
+                        throw new ArgumentException("All arrays must have the same length.");
+                }
+
+                _matrix = new double[rowLength, listOfArrays.Count];
+                for (int i = 0; i < rowLength; i++)
+                    for (int j = 0; j < listOfArrays.Count; j++)
+                        _matrix[i, j] = listOfArrays[j][i];
+            }
+            else
+            {
+                int colLength = listOfArrays[0].Length;
+                foreach (var array in listOfArrays)
+                {
+                    if (array.Length != colLength)
+                        throw new ArgumentException("All arrays must have the same length.");
+                }
+
+                _matrix = new double[listOfArrays.Count, colLength];
+                for (int i = 0; i < listOfArrays.Count; i++)
+                    for (int j = 0; j < colLength; j++)
+                        _matrix[i, j] = listOfArrays[i][j];
             }
 
-            _matrix = new double[rowLength, listOfArrays.Count];
-            for (int i = 0; i < rowLength; i++)
-                for (int j = 0; j < listOfArrays.Count; j++)
-                    _matrix[i, j] = listOfArrays[j][i];
         }
 
+        /// <summary>
+        /// Construct a new matrix from XElement.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        public Matrix(XElement xElement)
+        {
+            if (xElement.Name != nameof(Matrix))
+            {
+                return;
+            }
+                
+          
+            int nrow = 0, ncol = 0;
+            if (xElement.Attribute(nameof(NumberOfRows)) != null) int.TryParse(xElement.Attribute(nameof(NumberOfRows)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out nrow);
+            if (xElement.Attribute(nameof(NumberOfColumns)) != null) int.TryParse(xElement.Attribute(nameof(NumberOfColumns)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out ncol);
+
+            _matrix = new double[nrow, ncol];
+            int rowCount = 0;
+            foreach (var row in xElement.Elements("row"))
+            {
+                if (rowCount >= nrow)
+                    break;
+
+                var parts = row.Value.Split('|');
+                int maxCols = Math.Min(parts.Length, ncol);
+
+                for (int j = 0; j < maxCols; j++)
+                {
+                    if (double.TryParse(parts[j], NumberStyles.Any, CultureInfo.InvariantCulture, out var val))
+                    {
+                        _matrix[rowCount, j] = val;
+                    }
+                    else
+                    {
+                        _matrix[rowCount, j] = double.NaN;
+                    }
+                }
+
+                rowCount++;
+            }          
+        }
 
         #endregion
 
@@ -215,6 +278,28 @@ namespace Numerics.Mathematics.LinearAlgebra
         public Matrix Clone()
         {
             return new Matrix(ToArray());
+        }
+
+        /// <summary>
+        /// Returns the matrix as XElement.
+        /// </summary>
+        public XElement ToXElement()
+        {         
+            var result = new XElement(nameof(Matrix));
+            if (_matrix == null) return result;
+            result.SetAttributeValue(nameof(NumberOfRows), NumberOfRows.ToString(CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(NumberOfColumns), NumberOfColumns.ToString(CultureInfo.InvariantCulture));
+            for (int i = 0; i < NumberOfRows; i++)
+            {
+                var rowElement = new XElement("row");
+                var row = new double[NumberOfColumns];
+                for (int j = 0; j < NumberOfColumns; j++)
+                    row[j] = _matrix[i, j];
+                
+                rowElement.Value = string.Join("|", row.Select(v => v.ToString("G17", CultureInfo.InvariantCulture)));
+                result.Add(rowElement);
+            }
+            return result;
         }
 
         /// <summary>
@@ -316,7 +401,6 @@ namespace Numerics.Mathematics.LinearAlgebra
         {
             if (IsSquare == false)
                 throw new ArgumentException("The matrix must be square.");
-
             var lU = new LUDecomposition(this);
             return lU.InverseA();
         }
@@ -333,6 +417,22 @@ namespace Numerics.Mathematics.LinearAlgebra
                     t[j, i] = this[i, j];
             }
             return t;
+        }
+
+        /// <summary>
+        /// Returns the sum of the diagonal elements of a square matrix.
+        /// </summary>
+        public double Trace()
+        {
+            if (IsSquare == false)
+                throw new ArgumentException("The matrix must be square.");
+
+            double sum = 0;
+            for (int i = 0; i < NumberOfRows; i++)
+            {
+                sum += this[i, i];
+            }
+            return sum;
         }
 
         #endregion
@@ -410,6 +510,25 @@ namespace Numerics.Mathematics.LinearAlgebra
         #region Mathematics
 
         /// <summary>
+        /// Computes the mean of each column.
+        /// </summary>
+        /// <returns>A vector where each element is the mean of the corresponding column in the matrix.</returns>
+        public Vector ColumnMeans()
+        {
+            var means = new Vector(NumberOfColumns);
+            for (int j = 0; j < NumberOfColumns; j++)
+            {
+                double sum = 0.0;
+                for (int i = 0; i < NumberOfRows; i++)
+                {
+                    sum += _matrix[i, j];
+                }
+                means[j] = sum / NumberOfRows;
+            }
+            return means;
+        }
+
+        /// <summary>
         /// Applies a function to each element in the matrix.
         /// </summary>
         /// <param name="func">The function to apply to each element.</param>
@@ -450,6 +569,27 @@ namespace Numerics.Mathematics.LinearAlgebra
                 for (int j = 0; j < NumberOfColumns; j++)
                     result += this[i, j];
             return result;
+        }
+
+        /// <summary>
+        /// Returns the outer product A = x yᵀ (size: x.Length × y.Length).
+        /// </summary>
+        public static Matrix Outer(Vector x, Vector y)
+        {
+            if (x == null) throw new ArgumentNullException(nameof(x));
+            if (y == null) throw new ArgumentNullException(nameof(y));
+
+            int m = x.Length;
+            int n = y.Length;
+            var A = new Matrix(m, n);
+
+            for (int i = 0; i < m; i++)
+            {
+                double xi = x[i];
+                for (int j = 0; j < n; j++)
+                    A[i, j] = xi * y[j];
+            }
+            return A;
         }
 
         /// <summary>

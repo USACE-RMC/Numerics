@@ -274,7 +274,7 @@ namespace Numerics.Distributions
         /// </summary>
         private void ComputeMoments()
         {
-            var mom = CentralMoments(200);
+            var mom = CentralMoments(300);
             u1 = mom[0];
             u2 = mom[1];
             u3 = mom[2];
@@ -498,6 +498,222 @@ namespace Numerics.Distributions
         public override UnivariateDistributionBase Clone()
         {
             return new EmpiricalDistribution(XValues, ProbabilityValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
+        }
+
+
+        // <summary>
+        /// Convolves two empirical distributions using FFT.
+        /// </summary>
+        /// <param name="dist1">The first empirical distribution.</param>
+        /// <param name="dist2">The second empirical distribution.</param>
+        /// <param name="numberOfPoints">Number of points in the resulting distribution. Default = 1024.</param>
+        /// <returns>A new empirical distribution representing the convolution.</returns>
+        public static EmpiricalDistribution Convolve(EmpiricalDistribution dist1, EmpiricalDistribution dist2, int numberOfPoints = 1024)
+        {
+            if (numberOfPoints < 2)
+                throw new ArgumentException("Number of points must be at least 2.", nameof(numberOfPoints));
+
+            int requestedPoints = numberOfPoints;
+
+            // Use a large FFT size for accuracy - at least 8x the requested points
+            int fftPoints = Tools.NextPowerOfTwo(Math.Max(numberOfPoints * 8, 2048));
+
+            // Result range
+            double minResult = dist1.Minimum + dist2.Minimum;
+            double maxResult = dist1.Maximum + dist2.Maximum;
+            double rangeResult = maxResult - minResult;
+
+            // Create uniform grid over result range
+            double dx = rangeResult / fftPoints;
+
+            // Sample both PDFs on a uniform grid
+            // For FFT convolution, we need both PDFs on the same spacing
+            var pdf1 = new double[fftPoints];
+            var pdf2 = new double[fftPoints];
+
+            // Sample each PDF on its own domain, then pad with zeros
+            for (int i = 0; i < fftPoints; i++)
+            {
+                double x1 = dist1.Minimum + i * dx;
+                double x2 = dist2.Minimum + i * dx;
+
+                if (x1 >= dist1.Minimum && x1 <= dist1.Maximum)
+                {
+                    pdf1[i] = dist1.PDF(x1);
+                }
+
+                if (x2 >= dist2.Minimum && x2 <= dist2.Maximum)
+                {
+                    pdf2[i] = dist2.PDF(x2);
+                }
+            }
+
+            // Verify and normalize PDFs
+            double integral1 = 0, integral2 = 0;
+            for (int i = 0; i < fftPoints - 1; i++)
+            {
+                integral1 += 0.5 * (pdf1[i] + pdf1[i + 1]) * dx;
+                integral2 += 0.5 * (pdf2[i] + pdf2[i + 1]) * dx;
+            }
+
+            // Normalize if needed
+            if (integral1 > 0.01)
+            {
+                for (int i = 0; i < fftPoints; i++)
+                {
+                    pdf1[i] /= integral1;
+                }
+            }
+            if (integral2 > 0.01)
+            {
+                for (int i = 0; i < fftPoints; i++)
+                {
+                    pdf2[i] /= integral2;
+                }
+            }
+
+            // Prepare for FFT with zero padding to avoid circular convolution
+            int fftSize = Tools.NextPowerOfTwo(fftPoints * 2);
+            var fft1 = new double[2 * fftSize];
+            var fft2 = new double[2 * fftSize];
+
+            for (int i = 0; i < fftPoints; i++)
+            {
+                fft1[2 * i] = pdf1[i] * dx; // Scale by dx for discrete convolution
+                fft2[2 * i] = pdf2[i] * dx;
+            }
+
+            // Perform FFT
+            Fourier.FFT(fft1);
+            Fourier.FFT(fft2);
+
+            // Multiply in frequency domain
+            var result = new double[2 * fftSize];
+            for (int i = 0; i < fftSize; i++)
+            {
+                int idx = 2 * i;
+                double real1 = fft1[idx];
+                double imag1 = fft1[idx + 1];
+                double real2 = fft2[idx];
+                double imag2 = fft2[idx + 1];
+
+                result[idx] = real1 * real2 - imag1 * imag2;
+                result[idx + 1] = real1 * imag2 + imag1 * real2;
+            }
+
+            // Inverse FFT
+            Fourier.FFT(result, inverse: true);
+
+            // Extract and normalize convolved PDF
+            var convolvedPDF = new double[fftSize];
+            double maxPDF = 0;
+            for (int i = 0; i < fftSize; i++)
+            {
+                convolvedPDF[i] = result[2 * i] / fftSize;
+                if (convolvedPDF[i] < 0) convolvedPDF[i] = 0;
+                if (convolvedPDF[i] > maxPDF) maxPDF = convolvedPDF[i];
+            }
+
+            // Build X-axis for convolved PDF - starts at the minimum of the result range
+            var xConv = new double[fftSize];
+            double dxFine = dx; // Use same spacing as input
+            for (int i = 0; i < fftSize; i++)
+            {
+                xConv[i] = dist1.Minimum + dist2.Minimum + i * dxFine;
+            }
+
+            // Integrate to get CDF
+            var cdfFine = new double[fftSize];
+            cdfFine[0] = 0;
+
+            for (int i = 1; i < fftSize; i++)
+            {
+                cdfFine[i] = cdfFine[i - 1] + 0.5 * (convolvedPDF[i - 1] + convolvedPDF[i]) * dxFine;
+            }
+
+            // Normalize CDF
+            double cdfMax = cdfFine[fftSize - 1];
+            if (cdfMax > 1E-10)
+            {
+                for (int i = 0; i < fftSize; i++)
+                {
+                    cdfFine[i] /= cdfMax;
+                }
+            }
+
+            // Resample to requested resolution using interpolation
+            var finalXValues = new double[requestedPoints];
+            var finalCdfValues = new double[requestedPoints];
+
+            // Only use points within the valid range for interpolation
+            var validX = new List<double>();
+            var validCDF = new List<double>();
+
+            for (int i = 0; i < fftSize; i++)
+            {
+                if (xConv[i] >= minResult && xConv[i] <= maxResult)
+                {
+                    validX.Add(xConv[i]);
+                    validCDF.Add(cdfFine[i]);
+                }
+            }
+
+            var tempOpd = new OrderedPairedData(
+                validX.ToArray(),
+                validCDF.ToArray(),
+                true, SortOrder.Ascending,
+                true, SortOrder.Ascending);
+
+            double outputDx = (maxResult - minResult) / (requestedPoints - 1);
+            for (int i = 0; i < requestedPoints; i++)
+            {
+                finalXValues[i] = minResult + i * outputDx;
+                finalCdfValues[i] = tempOpd.GetYFromX(finalXValues[i], Transform.None, Transform.None);
+
+                // Ensure valid CDF values
+                if (finalCdfValues[i] < 0) finalCdfValues[i] = 0;
+                if (finalCdfValues[i] > 1) finalCdfValues[i] = 1;
+            }
+
+            // Ensure monotonicity
+            for (int i = 1; i < requestedPoints; i++)
+            {
+                if (finalCdfValues[i] < finalCdfValues[i - 1])
+                {
+                    finalCdfValues[i] = finalCdfValues[i - 1];
+                }
+            }
+
+            return new EmpiricalDistribution(finalXValues, finalCdfValues, SortOrder.Ascending, SortOrder.Ascending);
+        }
+
+        /// <summary>
+        /// Convolves a list of empirical distributions using FFT.
+        /// </summary>
+        /// <param name="distributions">List of empirical distributions to convolve.</param>
+        /// <param name="numberOfPoints">Number of points in the resulting distribution. Default = 1024.</param>
+        /// <returns>A new empirical distribution representing the convolution of all distributions.</returns>
+        public static EmpiricalDistribution Convolve(IList<EmpiricalDistribution> distributions, int numberOfPoints = 1024)
+        {
+            if (distributions == null || distributions.Count == 0)
+                throw new ArgumentException("Distribution list cannot be null or empty.", nameof(distributions));
+
+            if (distributions.Count == 1)
+                return distributions[0].Clone() as EmpiricalDistribution;
+
+            if (numberOfPoints < 2)
+                throw new ArgumentException("Number of points must be at least 2.", nameof(numberOfPoints));
+
+            // Start with the first distribution
+            var result = distributions[0];
+
+            // Convolve sequentially with each subsequent distribution
+            for (int i = 1; i < distributions.Count; i++)
+            {
+                result = Convolve(result, distributions[i], numberOfPoints);
+            }
+
+            return result;
         }
 
     }

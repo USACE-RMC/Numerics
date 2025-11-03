@@ -590,7 +590,7 @@ namespace Numerics.Distributions
                 }, z => Tools.ParallelAdd(ref P0, z));
 
                 // get proportion
-                P0 = P0 / (Replications + 1);
+                P0 = (P0 + 1) / (Replications + 1);
 
                 // sort X values
                 var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
@@ -641,8 +641,8 @@ namespace Numerics.Distributions
                     for (int i = 0; i < probabilities.Count; i++)
                     {
                         thetaJack[i] = newDistribution.InverseCDF(probabilities[i]);
-                        I2[i] += Math.Pow((N - 1) * (thetaHats[i] - thetaJack[i]), 2);
-                        I3[i] += Math.Pow((N - 1) * (thetaHats[i] - thetaJack[i]), 3);
+                        Tools.ParallelAdd(ref I2[i], Math.Pow(thetaHats[i] - thetaJack[i], 2));
+                        Tools.ParallelAdd(ref I3[i], Math.Pow(thetaHats[i] - thetaJack[i], 3));
                     }
                 }
                 catch (Exception)
@@ -700,7 +700,8 @@ namespace Numerics.Distributions
                         bootXValues[j] = Math.Pow(bootDistributions[i].InverseCDF(probabilities[j]), 1d / 3d);
 
                     // Now estimate the standard error at each quantile using the jackknife method
-                    var bootSE = StandardError(sample, probabilities, bootXValues);
+                    //var bootSE = StandardError(sample, probabilities, bootXValues);
+                    var bootSE = BootstrapStandardError(newDistribution, probabilities, 300, seeds[i]);
                     for (int j = 0; j < probabilities.Count; j++)
                     {
                         xValues[i, j] = bootXValues[j];
@@ -749,6 +750,50 @@ namespace Numerics.Distributions
         /// <param name="sampleData">Sample of data.</param>
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="thetaHats">The list of best-estimate quantiles.</param>
+        private double[] BootstrapStandardError(UnivariateDistributionBase parentDist, IList<double> probabilities, int replications = 300, int seed = 12345)
+        {
+            //var N = sampleData.Count;
+            //var I2 = new double[probabilities.Count];
+            //var se = new double[probabilities.Count];
+            int B = replications;
+            var r = new MersenneTwister(seed);
+            var seeds = r.NextIntegers(replications);
+            var xValues = new double[B, probabilities.Count];
+            var se = new double[probabilities.Count];
+            Parallel.For(0, replications, i =>
+            {
+                try
+                {
+                    var bootDist = parentDist.Clone();
+                    var sample = bootDist.GenerateRandomValues(SampleSize, seeds[i]);
+                    ((IEstimation)bootDist).Estimate(sample, EstimationMethod);
+
+                    // Record inner boot thetas
+                    for (int j = 0; j < probabilities.Count; j++)
+                        xValues[i, j] = Math.Pow(bootDist.InverseCDF(probabilities[j]), 1d / 3d);
+
+                }
+                catch (Exception)
+                {
+                    // MLE and certain L-moments methods can fail to find a solution
+                    // On fail, set to null
+
+                };
+
+            });
+
+            // Get standard error
+            for (int i = 0; i < probabilities.Count; i++)
+                se[i] = Statistics.StandardDeviation(xValues.GetColumn(i));
+            return se;
+        }
+
+        /// <summary>
+        /// Estimates the standard error for each probability.
+        /// </summary>
+        /// <param name="sampleData">Sample of data.</param>
+        /// <param name="probabilities">List of non-exceedance probabilities.</param>
+        /// <param name="thetaHats">The list of best-estimate quantiles.</param>
         private double[] StandardError(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
         {
             var N = sampleData.Count;
@@ -772,15 +817,12 @@ namespace Numerics.Distributions
                     for (int i = 0; i < probabilities.Count; i++)
                     {
                         thetaJack[i] = Math.Pow(newDistribution.InverseCDF(probabilities[i]), 1d / 3d);
-                        I2[i] += Math.Pow(thetaHats[i] - thetaJack[i], 2);
+                        Tools.ParallelAdd(ref I2[i], Math.Pow(thetaHats[i] - thetaJack[i], 2));
                     }
                 }
                 catch (Exception)
                 {
                     // MLE and certain L-moments methods can fail to find a solution
-                    // On fail, set to null
-                    for (int i = 0; i < probabilities.Count; i++)
-                        I2[i] += 0;
                 };
 
             });

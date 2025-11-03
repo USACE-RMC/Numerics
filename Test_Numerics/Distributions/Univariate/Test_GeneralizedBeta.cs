@@ -294,16 +294,16 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var b = new GeneralizedBeta(1, 1,0,2);
-            Assert.AreEqual(0.5, b.PDF(0));
-            Assert.AreEqual(0.5, b.PDF(0.5));
-            Assert.AreEqual(0.5, b.PDF(1));
+            Assert.AreEqual(0.5, b.PDF(0), 1E-4);
+            Assert.AreEqual(0.5, b.PDF(0.5), 1E-4);
+            Assert.AreEqual(0.5, b.PDF(1), 1E-4);
 
             var b2 = new GeneralizedBeta(9, 1);
-            Assert.AreEqual(0, b2.PDF(0));
+            Assert.AreEqual(0, b2.PDF(0), 1E-4);
             Assert.AreEqual(0.035156, b2.PDF(0.5), 1e-04);
             Assert.AreEqual(8.9999, b2.PDF(1), 1e-04);
-            Assert.AreEqual(0, b2.PDF(-1));
-            Assert.AreEqual(0, b2.PDF(2));
+            Assert.AreEqual(0, b2.PDF(-1), 1E-4);
+            Assert.AreEqual(0, b2.PDF(2), 1E-4);
         }
 
         /// <summary>

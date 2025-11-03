@@ -168,6 +168,7 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_Normal_StandardError()
         {
+            var z = Normal.StandardZ(1-double.Epsilon);
 
             // Maximum Likelihood
             var N = new Normal(12665d, 4710d);

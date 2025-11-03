@@ -260,8 +260,7 @@ namespace Numerics.Distributions
         public void SetParameters(double[] mean, double[,] covariance)
         {
             // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(mean, covariance, true);
+            ValidateParameters(mean, covariance, true);
 
             _dimension = mean.Length;      
             _mean = mean;
@@ -322,22 +321,34 @@ namespace Numerics.Distributions
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
         public ArgumentOutOfRangeException ValidateParameters(double[] mean, double[,] covariance, bool throwException)
         {
-            // Check if matrix is square
-            if (_covariance.IsSquare == false)
+            if (mean == null)
             {
-                if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix must be square.");
-                return new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix must be square.");
+                var ex = new ArgumentOutOfRangeException(nameof(mean), "Mean vector must not be null.");
+                if (throwException) throw ex; else return ex;
             }
-            // 
-            // Check if cholesky decomp is positive definite
-            if (_cholesky.IsPositiveDefinite == false)
+            if (covariance == null)
             {
-                if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
-                return new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
+                var ex = new ArgumentOutOfRangeException(nameof(covariance), "Covariance matrix must not be null.");
+                if (throwException) throw ex; else return ex;
+            }          
+            var m = new Matrix(covariance);
+            if (!m.IsSquare)
+            {
+                var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix must be square.");
+                if (throwException) throw ex; else return ex;
             }
-            // 
+            if (m.NumberOfRows != mean.Length)
+            {
+                var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Mean length must match covariance dimension.");
+                if (throwException) throw ex; else return ex;
+            }
+            
+            var chol = new CholeskyDecomposition(m);
+            if (!chol.IsPositiveDefinite)
+            {
+                var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
+                if (throwException) throw ex; else return ex;
+            }
             return null;
         }
 
@@ -390,7 +401,7 @@ namespace Numerics.Distributions
             {
                 double stdDev = Math.Sqrt(Covariance[0, 0]);
                 if (stdDev == 0d)
-                    return x[0] == _mean[0] ? 1 : 0;
+                    return x[0] >= _mean[0] ? 1 : 0;
                 double z = (x[0] - _mean[0]) / stdDev;
                 return Normal.StandardCDF(z);
             }
@@ -399,7 +410,11 @@ namespace Numerics.Distributions
                 double sigma1 = Math.Sqrt(Covariance[0, 0]);
                 double sigma2 = Math.Sqrt(Covariance[1, 1]);
                 double rho = Covariance[0, 1] / (sigma1 * sigma2);
-                if (double.IsNaN(rho)) return x.Equals(_mean) ? 1 : 0;
+                if (double.IsNaN(rho))
+                {
+                    bool atMean = x != null && x.Length == 2 && x[0] == _mean[0] && x[1] == _mean[1];
+                    return atMean ? 1d : 0d;
+                 }
                 double z = (x[0] - _mean[0]) / sigma1;
                 double w = (x[1] - _mean[1]) / sigma2;
                 return BivariateCDF(-z, -w, rho);
@@ -421,24 +436,31 @@ namespace Numerics.Distributions
             }
         }
 
+        /// <summary>
+        /// Computes the probability of a value occurring in the interval.
+        /// </summary>
+        /// <param name="lower">The lower bound array.</param>
+        /// <param name="upper">The upper bound array.</param>
         public double Interval(double[] lower, double[] upper)
         {
             // Construct inputs for GenzBretz method
-            var infin = new int[upper.Length];
-            for (int i = 0; i < upper.Length; i++)
+            var l = (double[])lower.Clone();
+            var u = (double[])upper.Clone();
+            var infin = new int[u.Length];
+            for (int i = 0; i < u.Length; i++)
             {
-                lower[i] = (lower[i] - _mean[i]) / Math.Sqrt(Covariance[i, i]);
-                upper[i] = (upper[i] - _mean[i]) / Math.Sqrt(Covariance[i, i]);
+                l[i] = (l[i] - _mean[i]) / Math.Sqrt(Covariance[i, i]);
+                u[i] = (u[i] - _mean[i]) / Math.Sqrt(Covariance[i, i]);
                 infin[i] = 2;
             }
-                
+          
             double ERROR = 0;
             double VAL = 0;
             int INFORM = 0;
 
             if (_correlationMatrixCreated == false)
                 CreateCorrelationMatrix();
-            MVNDST(Dimension, lower, upper, infin, _correl, _maxEvaluations, _absoluteError, _relativeError, ref ERROR, ref VAL, ref INFORM);
+            MVNDST(Dimension, l, u, infin, _correl, _maxEvaluations, _absoluteError, _relativeError, ref ERROR, ref VAL, ref INFORM);
             return VAL;
         }
 

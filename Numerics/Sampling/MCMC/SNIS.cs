@@ -205,6 +205,7 @@ namespace Numerics.Sampling.MCMC
             for (int i = 0; i < OutputLength; i++)
             {
                 idx = Search.Sequential(rndOut[i], cdf, idx);
+                //idx = Math.Max(0, Math.Min(OutputLength - 1, idx));
                 Output[0].Add(MarkovChains[0][idx].Clone());
             }
         }

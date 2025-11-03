@@ -191,7 +191,12 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// </returns>
         public static int[,] AllCombinations(int n)
         {
-            int f = (int)Math.Pow(2, n) - 1;
+            if (n < 0)
+                throw new ArgumentOutOfRangeException(nameof(n), "n must be non-negative.");
+            // Guard overflow of 2^n in int; this routine is exponential anyway.
+            if (n >= 31)
+                throw new ArgumentOutOfRangeException(nameof(n), "n is too large; number of combinations exceeds Int32 range.");
+            int f = (1 << n) - 1;
             var output = new int[f, n];
             int t = 0;
             for (int i = 1; i <= n; i++)

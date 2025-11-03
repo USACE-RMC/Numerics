@@ -29,6 +29,7 @@
 */
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.RootFinding;
 using System;
 
@@ -179,5 +180,67 @@ namespace Mathematics.RootFinding
             Assert.AreEqual(X, trueX, 1E-5);
         }
 
+        /// <summary>
+        /// Testing multi-dimensional Newton-Raphson with a 2×2 Linear system.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Multi_LinearSystem()
+        {
+            // F([x;y]) = [3x +  y –  9
+            //             x  + 2y –  8 ]
+            //    ⇒ root x* = [2;3]
+            Func<Vector, Vector> F = v => new Vector(new[] { 3.0 * v[0] + v[1] - 9.0, v[0] + 2.0 * v[1] - 8.0 });
+            Func<Vector, Matrix> J = v => new Matrix(new[,] { { 3.0, 1.0 }, { 1.0, 2.0 } } );
+            var x0 = new Vector(new[] { 0.0, 0.0 });
+            var expected = new Vector(new[] { 2.0, 3.0 });
+
+            var root = NewtonRaphson.Solve(F, J, x0);
+            Assert.AreEqual(root[0], expected[0], 1E-5);
+            Assert.AreEqual(root[1], expected[1], 1E-5);
+
+        }
+
+        /// <summary>
+        /// Testing multi-dimensional Newton-Raphson with a 2×2 Nonlinear “circle × hyperbola”.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Multi_Nonlinear()
+        {
+            // F2([x;y]) = [ x^2 + y^2 −  5,
+            //               x*y       −  2 ]
+            //  ⇒ root = [2;1]
+            Func<Vector, Vector> F = v => new Vector(new[] { v[0] * v[0] + v[1] * v[1] - 5, v[0] * v[1] - 2 });
+            Func<Vector, Matrix> J = v => new Matrix(new[,] { { 2.0 * v[0], 2.0 * v[1] }, { v[1], v[0] } });
+            var x0 = new Vector(new[] { 3.0, 2.0 });
+            var expected = new Vector(new[] { 2.0, 1.0 });
+
+            var root = NewtonRaphson.Solve(F, J, x0);
+            Assert.AreEqual(root[0], expected[0], 1E-5);
+            Assert.AreEqual(root[1], expected[1], 1E-5);
+
+        }
+
+        /// <summary>
+        /// Testing multi-dimensional Newton-Raphson with a 3x3 Partially decoupled nonlinear.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Multi_DecoupledNonlinear()
+        {
+            // F([x;y;z]) = [
+            //     x² + y   −  6
+            //     x   + y² −  6
+            //     z   −  2
+            // ]
+            // ⇒ unique root at (2,2,2)
+            Func<Vector, Vector> F = v => new Vector(new[] { v[0] * v[0] + v[1] - 6, v[0] + v[1] * v[1] - 6, v[2] - 2 });
+            Func<Vector, Matrix> J = v => new Matrix(new[,] { { 2 * v[0], 1, 0 }, { 1, 2 * v[1], 0 }, { 0, 0, 1 } });
+            var x0 = new Vector(new[] { 1.0, 3.0, 0.0 });
+            var expected = new Vector(new[] { 2.0, 2.0, 2.0 });
+
+            var root = NewtonRaphson.Solve(F, J, x0);
+            Assert.AreEqual(root[0], expected[0], 1E-5);
+            Assert.AreEqual(root[1], expected[1], 1E-5);
+
+        }
     }
 }

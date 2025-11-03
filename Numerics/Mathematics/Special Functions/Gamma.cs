@@ -50,6 +50,7 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 using System;
+using Microsoft.VisualBasic;
 using Numerics.Distributions;
 
 namespace Numerics.Mathematics.SpecialFunctions
@@ -156,6 +157,21 @@ namespace Numerics.Mathematics.SpecialFunctions
             8.33333333333482257126E-2,
         };
 
+
+       private static double[] GammaDk =
+{
+                2.48574089138753565546e-5,
+                1.05142378581721974210,
+                -3.45687097222016235469,
+                4.51227709466894823700,
+                -2.98285225323576655721,
+                1.05639711577126713077,
+                -1.95428773191645869583e-1,
+                1.70970543404441224307e-2,
+                -5.71926117404305781283e-4,
+                4.63399473359905636708e-6,
+                -2.71994908488607703910e-9
+            };
 
         /// <summary>
         /// The Stirling approximation
@@ -456,105 +472,43 @@ namespace Numerics.Mathematics.SpecialFunctions
         }
 
         /// <summary>
-        /// Natural logarithm of the Gamma function.
+        /// Computes the logarithm of the Gamma function.
         /// </summary>
-        /// <remarks>
-        /// References: 
-        /// <list type="bullet">
-        /// <item><description>
-        /// Based algorithm ACM291, Commun. Assoc. Comput. Mach. (1966)
-        /// </description></item>
-        /// </list>
-        /// </remarks>
-        /// <param name="X"> The value to be evaluated </param>
-        /// <returns>
-        /// The natural logarithm of the Gamma function evaluated at the given x
-        /// </returns>
-        public static double LogGamma(double X)
+        /// <param name="z">The argument of the gamma function.</param>
+        public static double LogGamma(double z)
         {
-            double SMALL = 0.0000001d;
-            double CRIT = 13d;
-            double BIG = 1000000000.0d;
-            double TOOBIG = 2.0E+36d;
-            double C0 = 0.5d * Math.Log(2d * Math.PI);
-            double C1 = 0.083333333333333329d;
-            double C2 = -0.0027777777777777779d;
-            double C3 = 0.00079365079365079365d;
-            double C4 = -0.00059523809523809529d;
-            double C5 = 0.00084175084175084171d;
-            double C6 = -0.0019175269175269176d;
-            double C7 = 0.00641025641025641d;
-            double S1 = -0.57721566490153287d;
-            double S2 = 0.8224670334241132d;
-            double _logGamma = 0.0d;
-            double XX;
-            double Y;
-            double Z;
-            double SUM1;
-            double SUM2;
-            if (X <= 0.0d)
-            {
-                throw new ArgumentOutOfRangeException("X", "X must be greater than zero.");
-            }
+            int GammaN = 10;
+            double GammaR = 10.900511;
+            double LnPi = 1.1447298858494001741434273513530587116472948129153d;
+            double LogTwoSqrtEOverPi = 0.6207822376352452223455184457816472122518527279025978;
 
-            if (X > TOOBIG)
+            if (z < 0.5)
             {
-                throw new ArgumentOutOfRangeException("X", "X is too big. It must be less than 2E36.");
-            }
-
-            if (Math.Abs(X - 2.0d) > SMALL)
-            {
-                if (Math.Abs(X - 1.0d) > SMALL)
+                double s = GammaDk[0];
+                for (int i = 1; i <= GammaN; i++)
                 {
-                    if (X > SMALL)
-                    {
-                        // reduce to LogGamma(X+N) where X+N >= CRIT
-                        SUM1 = 0.0d;
-                        Y = X;
-                        if (Y < CRIT)
-                        {
-                            Z = 1.0d;
-                            while (Y < CRIT)
-                            {
-                                Z = Z * Y;
-                                Y = Y + 1.0d;
-                            }
-
-                            SUM1 = SUM1 - Math.Log(Z);
-                        }
-
-                        // use asymptotic expansion if Y >= CRIT
-                        SUM1 = SUM1 + (Y - 0.5d) * Math.Log(Y) - Y + C0;
-                        SUM2 = 0.0d;
-                        if (Y >= BIG)
-                        {
-                            _logGamma = SUM1 + SUM2;
-                        }
-                        else
-                        {
-                            Z = 1.0d / (Y * Y);
-                            SUM2 = ((((((C7 * Z + C6) * Z + C5) * Z + C4) * Z + C3) * Z + C2) * Z + C1) / Y;
-                            _logGamma = SUM1 + SUM2;
-                        }
-                    }
-                    else
-                    {
-                        _logGamma = -Math.Log(X) + S1 * X;
-                    }
+                    s += GammaDk[i] / (i - z);
                 }
-                else
-                {
-                    XX = X - 1.0d;
-                    _logGamma = XX * (S1 + XX * S2);
-                }
+
+                return LnPi
+                       - Math.Log(Math.Sin(Math.PI * z))
+                       - Math.Log(s)
+                       - LogTwoSqrtEOverPi
+                       - ((0.5 - z) * Math.Log((0.5 - z + GammaR) / Math.E));
             }
             else
             {
-                XX = X - 2.0d;
-                _logGamma = Math.Log(X - 1.0d) + XX * (S1 + XX * S2);
+                double s = GammaDk[0];
+                for (int i = 1; i <= GammaN; i++)
+                {
+                    s += GammaDk[i] / (z + i - 1.0);
+                }
+
+                return Math.Log(s)
+                       + LogTwoSqrtEOverPi
+                       + ((z - 0.5) * Math.Log((z - 0.5 + GammaR) / Math.E));
             }
 
-            return _logGamma;
         }
 
         /// <summary>

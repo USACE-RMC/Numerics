@@ -182,7 +182,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         ///<summary>
-        /// Testing if matrix is square
+        /// Testing Clone
         /// </summary>
         [TestMethod()]
         public void Test_Clone()
@@ -201,6 +201,33 @@ namespace Mathematics.LinearAlgebra
             A[2, 2] = 1d;
             A[2, 3] = 1d;
             var clone = A.Clone();
+            for (int i = 0; i < A.NumberOfRows; i++)
+            {
+                for (int j = 0; j < A.NumberOfColumns; j++)
+                    Assert.AreEqual(A[i, j], clone[i, j], 0.0001d);
+            }
+        }
+
+        ///<summary>
+        /// Testing Clone
+        /// </summary>
+        [TestMethod()]
+        public void Test_XElement()
+        {
+            var A = new Matrix(3, 4);
+            A[0, 0] = 1d;
+            A[0, 1] = 0d;
+            A[0, 2] = 0d;
+            A[0, 3] = 1d;
+            A[1, 0] = 0d;
+            A[1, 1] = 1d;
+            A[1, 2] = 0d;
+            A[1, 3] = 1d;
+            A[2, 0] = 0d;
+            A[2, 1] = 0d;
+            A[2, 2] = 1d;
+            A[2, 3] = 1d;
+            var clone = new Matrix(A.ToXElement());
             for (int i = 0; i < A.NumberOfRows; i++)
             {
                 for (int j = 0; j < A.NumberOfColumns; j++)

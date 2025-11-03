@@ -347,7 +347,7 @@ namespace Numerics.Distributions
             // Get bounds of location
             if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
             lowerVals[0] = initialVals[0] - Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0]))));
-            upperVals[0] = minData;
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
 
             // Get bounds of scale
             lowerVals[1] = Tools.DoubleMachineEpsilon;
@@ -512,6 +512,95 @@ namespace Numerics.Distributions
             var jacobian = new double[,] { { a, b }, { c, d } };
             return jacobian;
         }
-     
+
+        /// <inheritdoc/>
+        public override double[] ConditionalMoments(double a, double b)
+        {
+            if (a >= b)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            double xi = Xi;
+            double alpha = Alpha;
+            if (!(alpha > 0.0))
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Map to Y = X - xi, truncated on (A, B)
+            // Note: support is y >= 0
+            double A = Math.Max(0.0, a - xi);
+            double B = b - xi;
+
+            if (double.IsNaN(A) || double.IsNaN(B) || B <= 0.0) // interval entirely left of support or invalid
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Standardized limits t = y/alpha
+            double tA = A / alpha;
+            double tB = double.IsPositiveInfinity(B) ? double.PositiveInfinity : (B / alpha);
+
+            // Normalizing probability Z = P(A < Y < B) = e^{-tA} - e^{-tB}
+            double eA = Math.Exp(-tA);
+            double eB = double.IsPositiveInfinity(tB) ? 0.0 : Math.Exp(-tB);
+            double Z = eA - eB;
+            if (Z <= 1e-15)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Helper: S_n(t) = e^{-t} * sum_{k=0}^n t^k/k!  (appears in γ(n+1, t) = n! * (1 - S_n(t)))
+            static double Sn(double t, int n)
+            {
+                if (double.IsPositiveInfinity(t)) return 0.0;
+                double term = 1.0; // t^0/0!
+                double sum = term;
+                for (int k = 1; k <= n; k++)
+                {
+                    term *= t / k;    // t^k/k!
+                    sum += term;
+                }
+                return Math.Exp(-t) * sum;
+            }
+
+            // Precompute factorials for n = 0..4
+            double[] fact = { 1.0, 1.0, 2.0, 6.0, 24.0 };
+
+            // Raw truncated moments of Y: E[Y^n | A<Y<B] for n = 0..4
+            // Using: ∫_A^B y^n (1/α) e^{-y/α} dy = α^n * [γ(n+1, B/α) - γ(n+1, A/α)]
+            // and γ(n+1, t) = n! * (1 - S_n(t)).
+            double[] EY = new double[5];
+            EY[0] = 1.0; // by definition under conditioning
+
+            for (int n = 1; n <= 4; n++)
+            {
+                double SnA = Sn(tA, n);
+                double SnB = Sn(tB, n);
+                double numer = Math.Pow(alpha, n) * fact[n] * (SnA - SnB); // α^n n! [S_n(tA) - S_n(tB)]
+                EY[n] = numer / Z;
+            }
+
+            // Convert to raw moments of X via binomial expansion: E[X^k] = sum_{r=0}^k C(k,r) xi^(k-r) E[Y^r]
+            double[] EX = new double[5];
+            for (int k = 0; k <= 4; k++)
+            {
+                double sum = 0.0;
+                for (int r = 0; r <= k; r++)
+                {
+                    double bc = Mathematics.SpecialFunctions.Factorial.BinomialCoefficient(k, r);
+                    sum += bc * Math.Pow(xi, k - r) * EY[r];
+                }
+                EX[k] = sum;
+            }
+
+            // Central moments about the *unconditional* mean μ = xi + alpha
+            double mu = xi + alpha;
+            double m1 = EX[1];
+            double m2 = EX[2] - 2.0 * mu * EX[1] + mu * mu;
+            double m3 = EX[3] - 3.0 * mu * EX[2] + 3.0 * mu * mu * EX[1] - mu * mu * mu;
+            double m4 = EX[4]
+                      - 4.0 * mu * EX[3]
+                      + 6.0 * mu * mu * EX[2]
+                      - 4.0 * mu * mu * mu * EX[1]
+                      + mu * mu * mu * mu;
+
+            return new[] { m1, m2, m3, m4 };
+        }
+
+
     }
 }

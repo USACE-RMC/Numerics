@@ -164,8 +164,6 @@ namespace Numerics.Mathematics.Optimization
                 // Check convergence.
                 if (CheckConvergence(fp, fret))
                 {
-                    for (int i = 0; i < D; i++)
-                        p[i] = RepairParameter(pnew[i], LowerBounds[i], UpperBounds[i]);
                     UpdateStatus(OptimizationStatus.Success);
                     return;
                 }
@@ -184,13 +182,6 @@ namespace Numerics.Mathematics.Optimization
                     dg[i] = g[i];
                 g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p);
                 if (cancel) return;
-
-                //double gnorm = Math.Sqrt(g.Sum(val => val * val));
-                //if (gnorm < 1e-6)
-                //{
-                //    UpdateStatus(OptimizationStatus.Success);
-                //    return;
-                //}
 
                 // Compute difference of gradients.
                 for (int i = 0; i < D; i++)

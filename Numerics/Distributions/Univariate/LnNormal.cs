@@ -586,5 +586,66 @@ namespace Numerics.Distributions
             return jacobian;
         }
 
+        /// <inheritdoc/>
+        public override double[] ConditionalMoments(double a, double b)
+        {
+            if (a >= b)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Log-space Normal parameters: Y = ln X ~ N(mu, sigma^2)
+            double mu = Mu;
+            double sigma = Sigma;
+            if (!(sigma > 0.0))
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Map bounds to log-space [A, B], allowing a <= 0 (A = -inf) and b = +inf
+            double A = (a > 0.0) ? Math.Log(a) : double.NegativeInfinity;
+            double B = double.IsPositiveInfinity(b) ? double.PositiveInfinity
+                                                    : (b > 0.0 ? Math.Log(b) : double.NegativeInfinity);
+
+            // Standardized limits for Y
+            double alpha = (A - mu) / sigma;   // can be -inf
+            double beta = (B - mu) / sigma;   // can be +inf
+
+            // Standard normal CDF helper (consistent with your Normal code)
+            static double Phi(double x) => 0.5 * (1.0 + Mathematics.SpecialFunctions.Erf.Function(x / Math.Sqrt(2.0)));
+
+            double PhiA = double.IsNegativeInfinity(alpha) ? 0.0 : Phi(alpha);
+            double PhiB = double.IsPositiveInfinity(beta) ? 1.0 : Phi(beta);
+
+            double Z = PhiB - PhiA;    // normalization (P(a < X < b))
+            if (Z <= 1e-15)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Raw truncated moments: E[X^k | a < X < b] for k = 1..4
+            double[] Eraw = new double[5]; // we'll fill 1..4
+
+            for (int k = 1; k <= 4; k++)
+            {
+                double ks = k * sigma;
+                // shifted limits: Φ(β - kσ) − Φ(α - kσ)
+                double PhiBk = double.IsPositiveInfinity(beta) ? 1.0 : Phi(beta - ks);
+                double PhiAk = double.IsNegativeInfinity(alpha) ? 0.0 : Phi(alpha - ks);
+
+                double scale = Math.Exp(k * mu + 0.5 * k * k * sigma * sigma);
+                Eraw[k] = scale * (PhiBk - PhiAk) / Z;
+            }
+
+            // Unconditional mean of X (about which we take central moments)
+            double muX = Math.Exp(mu + 0.5 * sigma * sigma);
+
+            // Central moments about μ_X (unconditional)
+            double m1 = Eraw[1];
+            double m2 = Eraw[2] - 2.0 * muX * Eraw[1] + muX * muX;
+            double m3 = Eraw[3] - 3.0 * muX * Eraw[2] + 3.0 * muX * muX * Eraw[1] - muX * muX * muX;
+            double m4 = Eraw[4]
+                      - 4.0 * muX * Eraw[3]
+                      + 6.0 * muX * muX * Eraw[2]
+                      - 4.0 * muX * muX * muX * Eraw[1]
+                      + muX * muX * muX * muX;
+
+            return new[] { m1, m2, m3, m4 };
+        }
+
     }
 }

@@ -28,6 +28,7 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -127,11 +128,28 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double SimplexScale { get; set; } = 0.05;
 
+        // -------------------- NEW: Start-point optimality probe knobs (optional) --------------------
+        /// <summary>
+        /// Enable a tiny random perturbation probe around the initial point. If no probe point
+        /// improves the objective by a meaningful relative amount, the solver returns Success immediately.
+        /// Default: true.
+        /// </summary>
+        public bool EnableStartPointProbe { get; set; } = false;
+
+        /// <summary>
+        /// Number of random perturbations to test around the initial point. Default: 10.
+        /// </summary>
+        public int StartPointProbeCount { get; set; } = 10;
+
+        /// <summary>
+        /// Radius multiplier for each coordinate’s perturbation, scaled by max(1, |x_j|).
+        /// Default: 1e-8.
+        /// </summary>
+        public double StartPointProbeRadius { get; set; } = 1E-3;
 
         /// <inheritdoc/>
         protected override void Optimize()
         {
-
             // Define all variables
             // Three parameters which define the expansion and contractions
             double alpha = 1.0d;
@@ -149,20 +167,56 @@ namespace Numerics.Mathematics.Optimization
             int ilo, ihi, inhi;
             double fpr, fprr;
 
-            // Define D + 1 vertices (+1 by row).
-            // Scaled Simplex Initialization (per Nelder & Mead 1965 and Numerical Recipes)
-            for (int i = 0; i < mpts; i++)
-            {
-                for (int j = 0; j < D; j++)
-                    p[i, j] = InitialValues[j];
-                //if (i != 0)
-                //    p[i, i - 1] += (p[i, i - 1] == 0d) ? 0.00025 : p[i, i - 1] * 0.05;
+            // Tuning knobs for initial simplex
+            double epsAbsFrac = 1e-4;       // absolute floor as a fraction of range (or 1 if unbounded)
 
-                if (i > 0)
+            // vertex 0 = x0 
+            for (int j = 0; j < D; j++)
+            {
+                p[0, j] = InitialValues[j];
+            }
+
+            for (int i = 1; i < mpts; i++)
+            {
+                // copy x0 into vertex i
+                for (int j = 0; j < D; j++)
+                    p[i, j] = p[0, j];
+
+                int d = i - 1; // perturb along axis d
+
+                // range-aware absolute floor
+                double range = Math.Max(UpperBounds[d] - LowerBounds[d], 0.0);
+                double absFloor = double.IsInfinity(range) ? 1.0 : Math.Max(range * epsAbsFrac, 1e-12);
+
+                // scale-aware step
+                double baseScale = Math.Max(Math.Abs(p[0, d]), 1.0);
+                if (!double.IsInfinity(range)) baseScale = Math.Min(baseScale, 0.5 * range);
+                double h = Math.Max(SimplexScale * baseScale, absFloor);
+
+                // try to step inward respecting bounds
+                double up = p[0, d] + h;
+                double dn = p[0, d] - h;
+
+                bool placed = false;
+
+                if (up <= UpperBounds[d]) { p[i, d] = up; placed = true; }
+                else if (dn >= LowerBounds[d]) { p[i, d] = dn; placed = true; }
+                else
                 {
-                    double delta = SimplexScale * (InitialValues[i - 1] != 0.0 ? InitialValues[i - 1] : 1.0);
-                    p[i, i - 1] += delta;
-                    p[i, i - 1] = RepairParameter(p[i, i - 1], LowerBounds[i - 1], UpperBounds[i - 1]);
+                    // shrink until one side fits
+                    for (int it = 0; it < 20 && !placed; it++)
+                    {
+                        h *= 0.5;
+                        up = p[0, d] + h;
+                        dn = p[0, d] - h;
+                        if (up <= UpperBounds[d]) { p[i, d] = up; placed = true; break; }
+                        if (dn >= LowerBounds[d]) { p[i, d] = dn; placed = true; break; }
+                    }
+                    if (!placed)
+                    {
+                        // last resort clamp (degenerate if x0 is squeezed)
+                        p[i, d] = RepairParameter(p[0, d] + h, LowerBounds[d], UpperBounds[d]);
+                    }
                 }
             }
 
@@ -174,6 +228,46 @@ namespace Numerics.Mathematics.Optimization
                 for (int j = 0; j < D; j++)
                     PT[j] = p[i, j];
                 f[i] = Evaluate(PT, ref cancel);
+            }
+
+            // -------------------- NEW: Start-point optimality probe --------------------
+            // Try a few tiny perturbations around InitialValues. If none improves the
+            // objective by a meaningful relative amount, finish immediately with Success.
+            if (EnableStartPointProbe && StartPointProbeCount > 0)
+            {
+                var rng = new MersenneTwister(12345); // deterministic; change to a settable seed if desired
+                var z = new double[D];
+                double f0 = f[0];
+                bool foundMeaningfulImprovement = false;
+
+                for (int k = 0; k < StartPointProbeCount && !cancel; k++)
+                {
+                    for (int j = 0; j < D; j++)
+                    {
+                        double scale = Math.Max(1.0, Math.Abs(InitialValues[j]));
+                        double step = (2.0 * rng.NextDouble() - 1.0) * StartPointProbeRadius * scale;
+                        z[j] = RepairParameter(InitialValues[j] + step, LowerBounds[j], UpperBounds[j]);
+                    }
+
+                    double fz = Evaluate(z, ref cancel);
+                    if (cancel) return;
+
+                    // "Meaningful improvement" = NOT converged by your relative-change check
+                    // between old=f0 and new=fz, *and* fz < f0.
+                    // i.e., if CheckConvergence(f0, fz) is false AND fz < f0, we found real progress.
+                    bool convergedSmallChange = CheckConvergence(f0, fz);
+                    if (!convergedSmallChange && fz < f0)
+                    {
+                        foundMeaningfulImprovement = true;
+                        break;
+                    }
+                }
+
+                if (!foundMeaningfulImprovement)
+                {
+                    UpdateStatus(OptimizationStatus.Success);
+                    return;
+                }
             }
 
             // Do Nelder-Mead Loop

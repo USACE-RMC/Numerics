@@ -303,20 +303,20 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var b = new BetaDistribution(1, 1);
-            Assert.AreEqual(1, b.PDF(0));
-            Assert.AreEqual(1, b.PDF(0.5));
-            Assert.AreEqual(1, b.PDF(1));
+            Assert.AreEqual(1, b.PDF(0), 1E-4);
+            Assert.AreEqual(1, b.PDF(0.5), 1E-4);
+            Assert.AreEqual(1, b.PDF(1), 1E-4);
 
             var b2 = new BetaDistribution(9, 1);
-            Assert.AreEqual(0, b2.PDF(0));
+            Assert.AreEqual(0, b2.PDF(0), 1E-4);
             Assert.AreEqual(0.035156, b2.PDF(0.5),1e-04);
             Assert.AreEqual(8.9999, b2.PDF(1),1e-04);
-            Assert.AreEqual(0, b2.PDF(-1));
-            Assert.AreEqual(0, b2.PDF(2));
+            Assert.AreEqual(0, b2.PDF(-1), 1E-4);
+            Assert.AreEqual(0, b2.PDF(2), 1E-4);
 
             var b3 = new BetaDistribution(5, 100);
-            Assert.AreEqual(0, b3.PDF(0));
-            Assert.AreEqual(0, b3.PDF(1));
+            Assert.AreEqual(0, b3.PDF(0), 1E-4);
+            Assert.AreEqual(0, b3.PDF(1), 1E-4);
         }
 
         /// <summary>

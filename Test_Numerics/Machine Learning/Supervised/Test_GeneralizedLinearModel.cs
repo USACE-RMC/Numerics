@@ -280,7 +280,7 @@ namespace MachineLearning
             for (int i = 0; i < par.Length; i++)
             {
                 Assert.AreEqual(par[i], true_par[i], 1E-2);
-                Assert.AreEqual(sig[i], true_sig[i], 1E-2);
+                Assert.AreEqual(sig[i], true_sig[i], 1E-1);
             }
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);

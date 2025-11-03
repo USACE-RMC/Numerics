@@ -104,6 +104,69 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Computes the Pearson correlation coefficient matrix for the variables in a 2D array.
+        /// </summary>
+        /// <param name="samples">
+        /// A 2D array of size [n, p] where each row is one observation and each column is one variable.
+        /// </param>
+        /// <returns>
+        /// A p×p matrix C where C[j,k] is the Pearson correlation between column j and column k of <paramref name="samples"/>.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="samples"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="samples"/> has zero columns.</exception>
+        public static double[,] Pearson(double[,] samples)
+        {
+            if (samples == null)
+                throw new ArgumentNullException(nameof(samples));
+
+            int n = samples.GetLength(0);
+            int p = samples.GetLength(1);
+            if (p == 0)
+                throw new ArgumentException("Input must have at least one column.", nameof(samples));
+
+            // 1) Compute means for each column
+            double[] means = new double[p];
+            for (int j = 0; j < p; j++)
+                for (int i = 0; i < n; i++)
+                    means[j] += samples[i, j];
+            for (int j = 0; j < p; j++)
+                means[j] /= n;
+
+            // 2) Compute sum of squares (ss) and cross-products (cov)
+            double[] ss = new double[p];
+            double[,] cov = new double[p, p];
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = 0; j < p; j++)
+                {
+                    double dx = samples[i, j] - means[j];
+                    ss[j] += dx * dx;
+                    for (int k = j; k < p; k++)
+                    {
+                        double dy = samples[i, k] - means[k];
+                        cov[j, k] += dx * dy;
+                    }
+                }
+            }
+            // mirror upper triangle to lower
+            for (int j = 0; j < p; j++)
+                for (int k = j + 1; k < p; k++)
+                    cov[k, j] = cov[j, k];
+
+            // 3) Build correlation matrix
+            double[,] corr = new double[p, p];
+            for (int j = 0; j < p; j++)
+            {
+                for (int k = 0; k < p; k++)
+                {
+                    corr[j, k] = cov[j, k] / Math.Sqrt(ss[j] * ss[k]);
+                }
+            }
+
+            return corr;
+        }
+
+        /// <summary>
         /// Computes the Spearman ranked correlation coefficient.
         /// </summary>
         /// <param name="sample1">Sample data 1.</param>
@@ -120,6 +183,35 @@ namespace Numerics.Data.Statistics
             var rank1 = Statistics.RanksInPlace(sample1.ToArray());
             var rank2 = Statistics.RanksInPlace(sample2.ToArray());
             return Pearson(rank1, rank2);
+        }
+
+        /// <summary>
+        /// Computes the Spearman correlation coefficient matrix for the variables in a 2D array.
+        /// </summary>
+        /// <param name="samples">
+        /// A 2D array of size [n, p] where each row is one observation and each column is one variable.
+        /// </param>
+        /// <returns>
+        /// A p×p matrix C where C[j,k] is the Spearman correlation between column j and column k of <paramref name="samples"/>.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="samples"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="samples"/> has zero columns.</exception>
+        public static double[,] Spearman(double[,] samples)
+        {
+            if (samples == null)
+                throw new ArgumentNullException(nameof(samples));
+
+            int n = samples.GetLength(0);
+            int p = samples.GetLength(1);
+            if (p == 0)
+                throw new ArgumentException("Input must have at least one column.", nameof(samples));
+
+            var ranks = new double[n, p];
+            for (int i = 0; i < p; i++)
+            {
+                ranks.SetColumn(i, Statistics.RanksInPlace(samples.GetColumn(i)));
+            }
+            return Pearson(ranks);
         }
 
         /// <summary>

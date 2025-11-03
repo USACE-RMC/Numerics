@@ -54,12 +54,12 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The Gelman-Rubin diagnostic.
         /// </summary>
-        public double Rhat { get; set; }
+        public double Rhat { get; set; } = double.NaN;
 
         /// <summary>
         /// The effective sample size.
         /// </summary>
-        public double ESS { get; set; }
+        public double ESS { get; set; } = double.NaN;
 
         /// <summary>
         /// The total sample size.

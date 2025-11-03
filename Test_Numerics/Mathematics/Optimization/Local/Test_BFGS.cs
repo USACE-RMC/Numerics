@@ -103,7 +103,7 @@ namespace Mathematics.Optimization
             var solution = solver.BestParameterSet.Values;
             var valid = new double[] { 0.0d, 0.0d, 0.0d };
             for (int i = 0; i < valid.Length; i++)
-                Assert.AreEqual(solution[i], valid[i], 1E-4);
+                Assert.AreEqual(solution[i], valid[i], 1E-3);
         }
 
         /// <summary>

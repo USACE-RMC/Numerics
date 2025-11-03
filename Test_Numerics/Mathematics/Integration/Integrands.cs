@@ -86,6 +86,15 @@ namespace Mathematics.Integration
         /// Test function. The integral of Pi. Should equal ~3.14
         /// </summary>
         /// <param name="vals">Array of values.</param>
+        public static double PI2D(double x, double y)
+        {
+            return (x * x + y * y < 1) ? 1 : 0;
+        }
+
+        /// <summary>
+        /// Test function. The integral of Pi. Should equal ~3.14
+        /// </summary>
+        /// <param name="vals">Array of values.</param>
         public static double PI(double[] vals)
         {
             var x = vals[0];
@@ -117,6 +126,19 @@ namespace Mathematics.Integration
                 result += mu20[i] + sigma20[i] * Normal.StandardZ(p[i]);
             }
             return  result;
+        }
+
+        /// <summary>
+        /// Test function for the sum of 2 normal distributions.
+        /// </summary>
+        /// <param name="p1">The probability of distribution 1.</param>
+        /// <param name="p2">The probability of distribution 2.</param>
+        public static double SumOfNormals2D(double p1, double p2)
+        {
+            double result = 0;
+            result += mu20[0] + sigma20[0] * Normal.StandardZ(p1);
+            result += mu20[1] + sigma20[1] * Normal.StandardZ(p2);
+            return result;
         }
 
     }

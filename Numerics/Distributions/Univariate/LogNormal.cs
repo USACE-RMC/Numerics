@@ -81,8 +81,6 @@ namespace Numerics.Distributions
         private double _mu;
         private double _sigma;
         private double _base = 10d;
-        private bool _momentsComputed = false;
-        private double[] u = [double.NaN, double.NaN, double.NaN, double.NaN];
 
         /// <summary>
         /// Gets and sets the location parameter µ (Mu).
@@ -94,7 +92,6 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters(value, Sigma, false) is null;
                 _mu = value;
-                _momentsComputed = false;
             }
         }
 
@@ -109,7 +106,6 @@ namespace Numerics.Distributions
                 if (value < 1E-16 && Math.Sign(value) != -1) value = 1E-16;
                 _parametersValid = ValidateParameters(Mu, value, false) is null;
                 _sigma = value;
-                _momentsComputed = false;
             }
         }
 
@@ -129,7 +125,6 @@ namespace Numerics.Distributions
                 {
                     _base = value;
                 }
-                _momentsComputed = false;
             }
         }
 
@@ -202,12 +197,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
-                {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
-                }
-                return u[0];
+                double lnB = Math.Log(Base);
+                return Math.Exp((Mu + 0.5 * Sigma * Sigma * lnB) * lnB);
             }
         }
 
@@ -233,13 +224,13 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
-                {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
-                }
-                return u[1];
-            }
+                double lnB = Math.Log(Base);
+                double a = Sigma * Sigma * lnB;
+                double logPrefactor = (2.0 * Mu + a) * lnB;
+                double expA = Math.Exp(a * lnB);
+                double variance = Math.Exp(logPrefactor) * (expA - 1.0);
+                return Math.Sqrt(variance);
+            } 
         }
 
         /// <inheritdoc/>
@@ -247,12 +238,16 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
-                {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
-                }
-                return u[2];
+                double lnB = Math.Log(Base);
+                double a = Sigma * Sigma * lnB;        
+                double mu1 = (Mu + 0.5 * a) * lnB;
+                double mu2 = (2 * Mu + 2 * a) * lnB;
+                double mu3 = (3 * Mu + 4.5 * a) * lnB;
+                double m1 = Math.Exp(mu1);   // E[X]
+                double m2 = Math.Exp(mu2);   // E[X²]
+                double m3 = Math.Exp(mu3);   // E[X³]
+                double thirdCentralMoment = m3 - 3 * m2 * m1 + 2 * m1 * m1 * m1;
+                return thirdCentralMoment / Math.Pow(StandardDeviation, 3);
             }
         }
 
@@ -261,12 +256,18 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed)
-                {
-                    u = CentralMoments(1000);
-                    _momentsComputed = true;
-                }
-                return u[3];
+                double lnB = Math.Log(Base);
+                double a = Sigma * Sigma * lnB;
+                double mu1 = (Mu + 0.5 * a) * lnB;
+                double mu2 = (2 * Mu + 2 * a) * lnB;
+                double mu3 = (3 * Mu + 4.5 * a) * lnB;
+                double mu4 = (4 * Mu + 8.0 * a) * lnB;
+                double m1 = Math.Exp(mu1); // E[X]
+                double m2 = Math.Exp(mu2); // E[X²]
+                double m3 = Math.Exp(mu3); // E[X³]
+                double m4 = Math.Exp(mu4); // E[X⁴]
+                double fourthCentralMoment = m4 - 4.0 * m3 * m1 + 6.0 * m2 * m1 * m1 - 3.0 * m1 * m1 * m1 * m1;
+                return fourthCentralMoment / Math.Pow(StandardDeviation, 4);
             }
         }
 
@@ -582,7 +583,6 @@ namespace Numerics.Distributions
             // Create random numbers for mean and standard deviation
             var r = new MersenneTwister(12345);
             var rndMean = r.NextDoubles(realizations);
-            r = new MersenneTwister(45678);
             var rndStdDev = r.NextDoubles(realizations);
 
 
@@ -607,7 +607,7 @@ namespace Numerics.Distributions
                 // Create array of X values across user-defined probabilities
                 var XValues = new double[realizations];
                 // Record X values
-                Parallel.For(0, realizations, idx => XValues[idx] = MonteCarloDistributions[idx].InverseCDF(1d - quantiles[i]));
+                Parallel.For(0, realizations, idx => XValues[idx] = MonteCarloDistributions[idx].InverseCDF(quantiles[i]));
                 // Record percentiles for user-defined probabilities
                 for (int j = 0; j < p;  j++)
                     Output[i, j] = Statistics.Percentile(XValues, percentiles[j]);
@@ -698,5 +698,7 @@ namespace Numerics.Distributions
             var jacobian = new double[,] { { a, b }, { c, d } };
             return jacobian;
         }
+
+
     }
 }

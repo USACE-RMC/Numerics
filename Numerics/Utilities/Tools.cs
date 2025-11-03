@@ -67,7 +67,7 @@ namespace Numerics
         /// <summary>
         /// The golden ratio. 
         /// </summary>
-        public static double GoldenRatio = 1.61803398874989484820; // 0.5d * (1d + Math.Sqrt(5));
+        public const double GoldenRatio = 1.61803398874989484820; // 0.5d * (1d + Math.Sqrt(5));
 
         /// <summary>
         /// Log of square root of 2*pi
@@ -88,6 +88,64 @@ namespace Numerics
         /// Log of 2.
         /// </summary>
         public const double Log2 = 0.69314718055994530941;
+
+
+        /// <summary>
+        /// Returns a value with the magnitude of x and the sign of y.
+        /// </summary>
+        public static double CopySign(double x, double y)
+        {
+            return (y >= 0.0) ? Math.Abs(x) : -Math.Abs(x);
+        }
+
+        /// <summary>
+        /// Determines whether the specified value is finite
+        /// </summary>
+        /// <param name="x">The number to check.</param>
+        public static bool IsFinite(double x) => !(double.IsNaN(x) || double.IsInfinity(x));
+
+        /// <summary>
+        /// Determine if integer is power of 2.
+        /// </summary>
+        /// <param name="n">Integer to test.</param>
+        /// <returns>True if the integer is a power of 2.</returns>
+        public static bool IsPowerOfTwo(int n)
+        {
+            return n > 0 && (n & (n - 1)) == 0;
+        }
+
+        /// <summary>
+        /// Finds the next power of 2 greater than or equal to n.
+        /// </summary>
+        /// <param name="n">The input number.</param>
+        /// <returns>The next power of 2.</returns>
+        public static int NextPowerOfTwo(int n)
+        {
+            if (n < 1) return 1;
+
+            // If already a power of 2, return it
+            if ((n & (n - 1)) == 0)
+                return n;
+
+            // Find the next power of 2
+            int power = 1;
+            while (power < n)
+            {
+                power *= 2;
+            }
+            return power;
+        }
+
+        /// <summary>
+        /// Returns value clamped to the inclusive range of min and max.
+        /// </summary>
+        /// <param name="x">The value to be clamped.</param>
+        /// <param name="min">The lower bound of the result.</param>
+        /// <param name="max">The upper bound of the result.</param>
+        public static double Clamp(double x, double min, double max)
+        {
+            return x < min ? min : (x > max ? max : x);
+        }
 
         /// <summary>
         /// Returns a value with the same magnitude as a and the same sign as b.
@@ -127,11 +185,27 @@ namespace Numerics
         /// <param name="b">The exponent b.</param>
         public static double Pow(double a, int b)
         {
-            if (b == 0d) return 1d;
-            double e = a; int n = Math.Abs(b);
-            for (int i = 2; i <= n; i++) e *= a;
-            if (b > 0d) return e;
-            return 1d / e;
+            // Fast integer exponentiation with sensible edge handling.
+            if (b == 0) return 1d;
+            if (a == 1d) return 1d;
+            if (a == -1d) return (b & 1) == 0 ? 1d : -1d;
+            bool neg = b < 0;
+            long n = b;
+            if (neg) n = -n;
+            double result = 1d;
+            double baseVal = a;
+            while (n > 0)
+            {
+                if ((n & 1L) != 0) result *= baseVal;
+                baseVal *= baseVal;
+                n >>= 1;
+            }
+            if (neg)
+            {
+                if (result == 0d) return double.PositiveInfinity; // 0^(-k)
+                return 1d / result;
+            }
+            return result;
         }
 
         /// <summary>
@@ -155,6 +229,31 @@ namespace Numerics
         }
 
         /// <summary>
+        /// Computes <c>log(1 + x)</c> with improved numerical accuracy for small <paramref name="x"/>.
+        /// </summary>
+        /// <param name="x">
+        /// The input value. The natural domain is <c>x &gt; -1</c>. 
+        /// For <c>x = -1</c>, the result is <c>-∞</c>; for <c>x &lt; -1</c>, the result is <see cref="double.NaN"/>.
+        /// </param>
+        /// <returns>
+        /// The natural logarithm of <c>1 + x</c>. For values of <paramref name="x"/> near zero,
+        /// this method avoids catastrophic cancellation that occurs in <c>Math.Log(1 + x)</c>.
+        /// </returns>
+        /// <remarks>
+        /// Uses a direct call to <see cref="Math.Log(double)"/> when <c>|x| &gt; 1e-4</c>.
+        /// For <c>|x| ≤ 1e-4</c>, applies a compensated evaluation of <c>log(1 + x)</c>:
+        /// <code>log(y) - ((y - 1) - x) / y</code> with <c>y = 1 + x</c>, which reduces rounding error.
+        /// </remarks>
+        public static double Log1p(double x)
+        {
+            if (Math.Abs(x) > 1e-4)
+                return Math.Log(1.0 + x);
+            // series expansion for small x
+            double y = 1.0 + x;
+            return Math.Log(y) - ((y - 1.0) - x) / y;
+        }
+
+        /// <summary>
         /// Returns the Euclidean distance between two points ||x - y||.
         /// </summary>
         /// <param name="x1">X of point 1.</param>
@@ -162,8 +261,10 @@ namespace Numerics
         /// <param name="x2">X of point 2.</param>
         /// <param name="y2">Y of point 2.</param>
         public static double Distance(double x1, double y1, double x2, double y2)
-        {       
-            return Math.Sqrt(Math.Pow(x2 - x1, 2d) + Math.Pow(y2 - y1, 2d));
+        {   
+            double dx = x2 - x1;
+            double dy = y2 - y1;
+            return Math.Sqrt(dx * dx + dy * dy);
         }
 
         /// <summary>
@@ -199,6 +300,11 @@ namespace Numerics
             for (int i = 0; i < x.Count; i++)
             {
                 double range = upper[i] - lower[i];
+                if (range <= 0d || double.IsNaN(range))
+                {
+                    // Degenerate dimension; contribute nothing (identical after normalization).
+                    continue;
+                }
                 double xi = (x[i] - lower[i]) / range;
                 double yi = (y[i] - lower[i]) / range;
                 double dx = xi - yi;
@@ -238,8 +344,16 @@ namespace Numerics
             var result = new double[values.Count];
             double min = 0, max = 0;
             MinMax(values, out min, out max);
+            if (double.IsNaN(min) || double.IsNaN(max) || values.Count == 0)
+                return result; // return zeros for empty/NaN input
+            double range = max - min;
+            if (range == 0d)
+            {
+                // All identical: define normalized values as 0.
+                return result;
+            }
             for (int i = 0; i < values.Count; i++)
-                result[i] = (values[i] - min) / (max - min);
+                result[i] = (values[i] - min) / range;
             return result;
         }
 
@@ -265,8 +379,15 @@ namespace Numerics
         {
             var result = new double[values.Count];
             var meanSD = Statistics.MeanStandardDeviation(values);
+            double mu = meanSD.mean;
+            double sd = meanSD.standardDeviation;
+            if (sd <= 0d || double.IsNaN(sd))
+            {
+                // Degenerate variance 
+                return result;
+            }
             for (int i = 0; i < values.Count; i++)
-                result[i] = (values[i] - meanSD.Item1) / meanSD.Item2;
+                result[i] = (values[i] - mu) / sd;
             return result;
         }
 
@@ -375,7 +496,7 @@ namespace Numerics
                     count += 1;
                 }
             }
-            return sum == 0 || count == 0 ? 0 : sum / count;
+            return count == 0 ? double.NaN : sum / count;
         }
 
         /// <summary>
@@ -386,8 +507,12 @@ namespace Numerics
         {
             if (values.Count == 0) return double.NaN;
             double product = values[0];
+            if (product == 0) return 0d;
             for (int i = 1; i < values.Count; i++)
+            {
                 product *= values[i];
+                if (product == 0) return 0d;
+            }
             return product;
         }
 
@@ -401,19 +526,16 @@ namespace Numerics
         {
             if (values.Count == 0) return double.NaN;
             if (indicators.Count != values.Count) return double.NaN;
-            int i, j, idx = 0;
-            double product = 0;
-            for (i = 0; i < values.Count; i++)
+            double product = 1;
+            int flag = useComplement ? 0 : 1;
+            for (int i = 0; i < values.Count; i++)
             {
-                if (indicators[i] == (useComplement ? 0 : 1))
+                if (indicators[i] == flag)
                 {
-                    product = values[i];
-                    idx = i;
-                    break;
+                    product *= values[i];
+                    if (product == 0) return 0d;
                 }
             }
-            for (j = idx + 1; j < values.Count; j++)
-                if (indicators[j] == (useComplement ? 0 : 1)) product *= values[j];
             return product;
         }
 
@@ -428,14 +550,13 @@ namespace Numerics
         {
             min = double.MaxValue;
             max = double.MinValue;
-            if (values.Count == 0) return;
+            if (values.Count == 0) { min = double.NaN; max = double.NaN; return; };
             for (int i = 0; i < values.Count; i++)
             {
-                if (values[i] < min || double.IsNaN(values[i]))
-                    min = values[i];
-
-                if (values[i] > max || double.IsNaN(values[i]))
-                    max = values[i];
+                double v = values[i];
+                if (double.IsNaN(v)) { min = double.NaN; max = double.NaN; return; }
+                if (v < min) min = v;
+                if (v > max) max = v;
             }
 
         }
@@ -488,8 +609,11 @@ namespace Numerics
             if (values.Count == 0) return double.NaN;
             double min = double.MaxValue;
             for (int i = 0; i < values.Count; i++)
-                if (values[i] < min || double.IsNaN(values[i]))
-                    min = values[i];
+            {
+                double v = values[i];
+                if (double.IsNaN(v)) { return double.NaN; }
+                if (v < min) min = v;        
+            }
             return min;
         }
 
@@ -505,10 +629,19 @@ namespace Numerics
             if (values.Count == 0) return double.NaN;
             if (indicators.Count != values.Count) return double.NaN;
             double min = double.MaxValue;
+            bool any = false;
+            int flag = useComplement ? 0 : 1;
             for (int i = 0; i < values.Count; i++)
-                if (indicators[i] == (useComplement ? 0 : 1) && values[i] < min || double.IsNaN(values[i]))
-                    min = values[i];
-            return min;
+            {
+                double v = values[i];
+                if (indicators[i] == flag)
+                {
+                    if (double.IsNaN(v)) return double.NaN;
+                    if (v < min) min = v;
+                    any = true;
+                } 
+            }
+            return any? min : double.NaN;
         }
 
         /// <summary>
@@ -521,8 +654,11 @@ namespace Numerics
             if (values.Count == 0) return double.NaN;
             double max = double.MinValue;
             for (int i = 0; i < values.Count; i++)
-                if (values[i] > max || double.IsNaN(values[i]))
-                    max = values[i];
+            {
+                double v = values[i];
+                if (double.IsNaN(v)) { return double.NaN; }
+                if (v > max) max = v;
+            }
             return max;
         }
 
@@ -538,10 +674,19 @@ namespace Numerics
             if (values.Count == 0) return double.NaN;
             if (indicators.Count != values.Count) return double.NaN;
             double max = double.MinValue;
+            bool any = false;
+            int flag = useComplement ? 0 : 1;
             for (int i = 0; i < values.Count; i++)
-                if(indicators[i] == (useComplement ? 0 : 1) && values[i] > max|| double.IsNaN(values[i]))
-                    max = values[i];
-            return max;
+            {
+                double v = values[i];
+                if (indicators[i] == flag)
+                {
+                    if (double.IsNaN(v)) return double.NaN;
+                    if (v > max) max = v;
+                    any = true;
+                }
+            }
+            return any ? max : double.NaN;
         }
 
         /// <summary>
@@ -598,12 +743,15 @@ namespace Numerics
         public static int[] Sequence(int start, int end, int step = 1)
         {
             var result = new List<int>();
-            int val = start;
-            while (val <= end)
+            if (step == 0) return result.ToArray();
+            if (step > 0)
             {
-                result.Add(val);
-                val += step;
-            };
+                for (int v = start; v <= end; v += step) result.Add(v);
+            }
+            else
+            {
+                for (int v = start; v >= end; v += step) result.Add(v);
+            }
             return result.ToArray();
         }
 
@@ -616,12 +764,15 @@ namespace Numerics
         public static double[] Sequence(double start, double end, double step = 1)
         {
             var result = new List<double>();
-            double val = start;
-            while (val <= end)
+            if (step == 0) return result.ToArray();
+            if (step > 0)
             {
-                result.Add(val);
-                val += step;
-            };
+                for (double v = start; v <= end; v += step) result.Add(v);
+            }
+            else
+            {
+                for (double v = start; v >= end; v += step) result.Add(v);
+            }
             return result.ToArray();
         }
 

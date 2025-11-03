@@ -37,6 +37,7 @@ namespace Numerics.Mathematics.Integration
 {
     /// <summary>
     /// A class for adaptive Monte Carlo integration for multidimensional integration.
+    /// Enhanced with Power Transform for rare event simulation.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -47,6 +48,12 @@ namespace Numerics.Mathematics.Integration
     /// <b> Description: </b>
     /// This method aims to reduce error in Monte Carlo simulations by using a probability distribution function to concentrate the search
     /// in those areas of the integrand that make the greatest contribution. 
+    /// </para>
+    /// <para>
+    /// <b> Power Transform Enhancement: </b>
+    /// The Power Transform (γ parameter) enables efficient sampling of rare tail events without changing the integrand.
+    /// For rare events (p &lt; 1e-4), set TailFocusParameter &gt; 1 to concentrate samples in tail regions.
+    /// This maintains numerical stability in high dimensions (unlike z-space methods).
     /// </para>
     /// <b> References: </b>
     /// <list type="bullet">
@@ -206,6 +213,19 @@ namespace Numerics.Mathematics.Integration
         }
 
         /// <summary>
+        /// Power transform parameter for tail-focused rare event sampling.
+        /// Default = 1.0 (standard uniform sampling, backward compatible).
+        /// Set γ > 1 to focus sampling on upper tail (p → 1) for rare events.
+        /// Recommended values: γ=2 (moderate focus), γ=4 (strong focus), γ=10 (very strong focus for p &lt; 1e-6).
+        /// </summary>
+        /// <remarks>
+        /// The power transform uses p' = 1 - (1-p)^γ to concentrate samples in the upper tail.
+        /// Unlike z-space transforms, this maintains numerical stability in high dimensions.
+        /// Weights are corrected by Jacobian: dp'/dp = γ(1-p)^(γ-1), which stays O(1).
+        /// </remarks>
+        public double TailFocusParameter { get; set; } = 1.0;
+
+        /// <summary>
         /// Gets the stratification grid boundaries. 
         /// </summary>
         public double[,] Grid => stratificationGrid;
@@ -245,6 +265,66 @@ namespace Numerics.Mathematics.Integration
                 _region[i] = Max[i - Dimensions];
 
             Iterations = 0;
+        }
+
+        /// <summary>
+        /// Apply power transform to probability for tail-focused sampling.
+        /// p' = 1 - (1-p)^γ concentrates samples in upper tail when γ > 1.
+        /// When γ = 1, this is identity transform (backward compatible).
+        /// </summary>
+        private double ApplyPowerTransform(double p)
+        {
+            double gamma = TailFocusParameter;
+
+            // Identity transform when γ = 1 (standard Vegas behavior)
+            if (Math.Abs(gamma - 1.0) < 1e-10)
+            {
+                return p;
+            }
+
+            // Power transform for upper tail focus
+            // Maps [0,1] → [0,1] but concentrates samples near 1
+            return 1.0 - Math.Pow(1.0 - p, gamma);
+        }
+
+        /// <summary>
+        /// Compute Jacobian for power transform: dp'/dp = γ(1-p)^(γ-1).
+        /// This weight correction ensures unbiased integration.
+        /// When γ = 1, returns 1.0 (identity Jacobian).
+        /// </summary>
+        private double PowerTransformJacobian(double p)
+        {
+            double gamma = TailFocusParameter;
+
+            // Identity Jacobian when γ = 1
+            if (Math.Abs(gamma - 1.0) < 1e-10)
+            {
+                return 1.0;
+            }
+
+            // Jacobian: dp'/dp = γ(1-p)^(γ-1)
+            // Clamp (1-p) to avoid numerical issues
+            double oneMinusP = Math.Max(1.0 - p, 1e-15);
+            return gamma * Math.Pow(oneMinusP, gamma - 1.0);
+        }
+
+        /// <summary>
+        /// Configure Vegas for rare tail events.
+        /// Automatically sets TailFocusParameter based on target probability.
+        /// </summary>
+        /// <param name="targetProbability">Target rare event probability (e.g., 1e-6)</param>
+        public void ConfigureForRareEvents(double targetProbability)
+        {
+            // Choose γ so that target probability appears in ~5% of transformed samples
+            // Solving: (1 - 0.95)^γ ≈ targetProbability
+            // γ ≈ ln(targetProbability) / ln(0.05)
+
+            double gamma = Math.Log(targetProbability) / Math.Log(0.05);
+            gamma = Math.Max(1.0, Math.Min(gamma, 20.0));  // Clamp to [1, 20]
+
+            this.TailFocusParameter = gamma;
+            this.NumberOfBins = Math.Max(100, this.NumberOfBins);
+            this.Alpha = 1.8;  // More aggressive grid adaptation
         }
 
         /// <inheritdoc/>
@@ -402,9 +482,20 @@ namespace Numerics.Mathematics.Integration
                                 binSpacingDelta = stratificationGrid[j, binIndexes[j] - 1];
                                 randomPointInBin = (randomBinIndex - binIndexes[j]) * binSpacingDelta;
                             }
-                            // Sample a random point to evaluate
-                            randomPoint[j] = Min[j] + randomPointInBin * dx[j];
-                            weight *= binSpacingDelta * normalizedBinCount;
+
+                            // MODIFIED: Apply power transform if enabled (γ > 1)
+                            // Grid position is in [0, 1]
+                            double p_uniform = randomPointInBin;
+
+                            // Transform to focus on tails (identity if γ = 1)
+                            double p_transformed = ApplyPowerTransform(p_uniform);
+
+                            // Scale to [Min, Max] range
+                            randomPoint[j] = Min[j] + p_transformed * dx[j];
+
+                            // Weight includes Jacobian correction (1.0 if γ = 1)
+                            double jacobian = PowerTransformJacobian(p_uniform);
+                            weight *= binSpacingDelta * normalizedBinCount * jacobian;
                         }
 
                         // Evaluate integrand function
@@ -544,9 +635,5 @@ namespace Numerics.Mathematics.Integration
             }
             stratificationGrid[dimensionIndex, numberOfBins - 1] = 1.0;
         }
-
-
-
-
     }
 }

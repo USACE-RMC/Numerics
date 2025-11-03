@@ -58,7 +58,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="length">The number of elements in the vector.</param>
         public Vector(int length)
         {
-            _array = new double[length];
+            _vector = new double[length];
         }
 
         /// <summary>
@@ -68,10 +68,10 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="fill">Fill the vector with a constant fill value.</param>
         public Vector(int length, double fill)
         {
-            _array = new double[length];
+            _vector = new double[length];
             for(int i = 0; i < length; i++)
             {
-                _array[i] = fill;
+                _vector[i] = fill;
             }
         }
 
@@ -81,21 +81,21 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="initialArray">Initializing array.</param>
         public Vector(double[] initialArray)
         {
-            _array = initialArray;
+            _vector = initialArray;
         }
 
-        private double[] _array;
+        private double[] _vector;
 
         /// <summary>
         /// Returns the underlying array as-is.
         /// </summary>
-        public double[] Array => _array;
+        public double[] Array => _vector;
 
         /// <summary>
         /// The length of the vector.
         /// </summary>
         public int Length {
-            get { return _array.Length; }
+            get { return _vector.Length; }
         }
 
         /// <summary>
@@ -104,8 +104,8 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="index">The zero-based row index of the element to get or set.</param>
         public double this[int index]
         {
-            get { return _array[index]; }
-            set { _array[index] = value; }
+            get { return _vector[index]; }
+            set { _vector[index] = value; }
         }
 
          /// <summary>
@@ -119,7 +119,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         public double[] ToArray()
         {
-            return (double[])_array.Clone();
+            return (double[])_vector.Clone();
         }
 
         /// <summary>
@@ -127,7 +127,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         public List<double> ToList()
         {
-            return _array.ToList();
+            return _vector.ToList();
         }
 
         /// <summary>
@@ -141,7 +141,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <summary>
         /// Clear the vector.
         /// </summary>
-        public void Clear() => System.Array.Clear(_array, 0, _array.Length);
+        public void Clear() => System.Array.Clear(_vector, 0, _vector.Length);
 
 
         /// <summary>
@@ -152,7 +152,15 @@ namespace Numerics.Mathematics.LinearAlgebra
         {
             if (other.Length != Length)
                 throw new ArgumentException("Vectors must be the same length.");
-            System.Array.Copy(other._array, _array, Length);
+            System.Array.Copy(other._vector, _vector, Length);
+        }
+
+        /// <summary>
+        /// Returns the sum of the vector.
+        /// </summary>
+        public double Sum()
+        {
+            return _vector.Sum();
         }
 
         /// <summary>
@@ -162,7 +170,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         {
             double d = 0;
             for (int i = 0; i < Length; i++)
-                d += _array[i] * _array[i];
+                d += _vector[i] * _vector[i];
             return Math.Sqrt(d);
         }
 
@@ -173,7 +181,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         {
             double d = 0;
             for (int i = 0; i < Length; i++)
-                d += _array[i] * _array[i];
+                d += _vector[i] * _vector[i];
             return d;
         }
 
@@ -221,16 +229,178 @@ namespace Numerics.Mathematics.LinearAlgebra
         }
 
         /// <summary>
+        /// Add the vector.
+        /// </summary>
+        /// <param name="vector">The right-side vector.</param>
+        public Vector Add(Vector vector)
+        {
+            if (Length != vector.Length)
+                throw new ArgumentException("Vectors must be the same length.");
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] + vector[i];
+            return result;
+        }
+
+        /// <summary>
+        /// Add the array.
+        /// </summary>
+        /// <param name="vector">The right-side array.</param>
+        public Vector Add(double[] vector)
+        {
+            if (Length != vector.Length)
+                throw new ArgumentException("Vectors must be the same length.");
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] + vector[i];
+            return result;
+        }
+
+        /// <summary>
+        /// Subtract the vector.
+        /// </summary>
+        /// <param name="vector">The right-side vector.</param>
+        public Vector Subtract(Vector vector)
+        {
+            if (Length != vector.Length)
+                throw new ArgumentException("Vectors must be the same length.");
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] - vector[i];
+            return result;
+        }
+
+        /// <summary>
+        /// Subtract the array.
+        /// </summary>
+        /// <param name="vector">The right-side array.</param>
+        public Vector Subtract(double[] vector)
+        {
+            if (Length != vector.Length)
+                throw new ArgumentException("Vectors must be the same length.");
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] - vector[i];
+            return result;
+        }
+
+        /// <summary>
+        /// Multiply by a matrix.
+        /// </summary>
+        /// <param name="matrix">The right-side matrix.</param>
+        public Vector Multiply(Matrix matrix)
+        {
+            if (matrix.NumberOfColumns != Length)
+                throw new ArgumentException("The number of rows in vector must be equal to the number of columns in the matrix.");
+            var result = new double[matrix.NumberOfRows];
+            for (int i = 0; i < matrix.NumberOfRows; i++)
+            {
+                double sum = 0.0d;
+                for (int j = 0; j < matrix.NumberOfColumns; j++)
+                    sum += matrix[i, j] * _vector[j];
+                result[i] = sum;
+            }
+            return new Vector(result);
+        }
+
+        /// <summary>
+        /// Multiply by a vector.
+        /// </summary>
+        /// <param name="vector">The right-side vector.</param>
+        public Vector Multiply(Vector vector)
+        {
+            if (Length != vector.Length) throw new ArgumentException(nameof(Length), "The vectors must be the same length.");
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] * vector[i];
+            return result;
+        }
+
+        /// <summary>
+        /// Multiply by an array.
+        /// </summary>
+        /// <param name="vector">The right-side array.</param>
+        public Vector Multiply(double[] vector)
+        {
+            if (Length != vector.Length) throw new ArgumentException(nameof(Length), "The vectors must be the same length.");
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] * vector[i];
+            return result;
+        }
+
+        /// <summary>
+        /// Multiply by a scalar.
+        /// </summary>
+        /// <param name="scalar">The scalar to multiply by.</param>
+        public Vector Multiply(double scalar)
+        {
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] * scalar;
+            return result;
+        }
+
+        /// <summary>
+        /// Divide by a scalar.
+        /// </summary>
+        /// <param name="scalar">The scalar to divide by.</param>
+        public Vector Divide(double scalar)
+        {
+            var result = new Vector(Length);
+            for (int i = 0; i < Length; i++)
+                result[i] = _vector[i] / scalar;
+            return result;
+        }
+
+        /// <summary>
+        /// Multiplies vectors A and matrix B. 
+        /// </summary>
+        /// <param name="A">Left-side vector.</param>
+        /// <param name="B">Right-side matrix.</param>
+        public static Vector operator *(Vector A, Matrix B)
+        {
+            return A.Multiply(B);
+        }
+
+        /// <summary>
+        /// Multiplies vectors A and B by multiplying corresponding elements. Vectors A and B must the same size. 
+        /// </summary>
+        /// <param name="A">Left-side vector.</param>
+        /// <param name="B">Right-side vector.</param>
+        public static Vector operator *(Vector A, Vector B)
+        {
+            return A.Multiply(B);
+        }
+
+        /// <summary>
+        /// Multiplies vectors A and B by multiplying corresponding elements. Vectors A and B must the same size. 
+        /// </summary>
+        /// <param name="A">Left-side vector.</param>
+        /// <param name="B">Right-side vector.</param>
+        public static Vector operator *(Vector A, double[] B)
+        {
+            return A.Multiply(B);
+        }
+
+        /// <summary>
         /// Multiplies a vector A with a scalar.
         /// </summary>
         /// <param name="A">The vector to multiply.</param>
         /// <param name="scalar">The scalar to multiply by.</param>
         public static Vector operator *(Vector A, double scalar)
         {
-            var v = new Vector(A.Length);
-            for (int i = 0; i < A.Length; i++)
-                v[i] = A[i] * scalar;
-            return v;
+            return A.Multiply(scalar);
+        }
+
+        /// <summary>
+        /// Divides a vector A by a scalar.
+        /// </summary>
+        /// <param name="A">The vector to multiply.</param>
+        /// <param name="scalar">The scalar to divide by.</param>
+        public static Vector operator /(Vector A, double scalar)
+        {
+            return A.Divide(scalar);
         }
 
         /// <summary>
@@ -247,17 +417,13 @@ namespace Numerics.Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Multiplies vectors A and B by multiplying corresponding elements. Vectors A and B must the same size. 
+        /// Adds vectors A and B by summing corresponding elements. Vectors A and B must the same size. 
         /// </summary>
         /// <param name="A">Left-side vector.</param>
         /// <param name="B">Right-side vector.</param>
-        public static Vector operator *(Vector A, Vector B)
+        public static Vector operator +(Vector A, Vector B)
         {
-            if (A.Length != B.Length) throw new ArgumentException(nameof(A.Length), "The vectors must be the same length.");
-            var v = new Vector(A.Length);
-            for (int i = 0; i < A.Length; i++)
-                v[i] = A[i] * B[i];
-            return v;
+            return A.Add(B);
         }
 
         /// <summary>
@@ -265,13 +431,9 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         /// <param name="A">Left-side vector.</param>
         /// <param name="B">Right-side vector.</param>
-        public static Vector operator +(Vector A, Vector B)
+        public static Vector operator +(Vector A, double[] B)
         {
-            if (A.Length != B.Length) throw new ArgumentException(nameof(A.Length), "The vectors must be the same length.");
-            var v = new Vector(A.Length);
-            for (int i = 0; i < A.Length; i++)
-                v[i] = A[i] + B[i];
-            return v;
+            return A.Add(B);
         }
 
         /// <summary>
@@ -281,44 +443,17 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="B">Right-side vector.</param>
         public static Vector operator -(Vector A, Vector B)
         {
-            if (A.Length != B.Length) throw new ArgumentException(nameof(A.Length), "The vectors must be the same length.");
-            var v = new Vector(A.Length);
-            for (int i = 0; i < A.Length; i++)
-                v[i] = A[i] - B[i];
-            return v;
+            return A.Subtract(B);
         }
 
         /// <summary>
-        /// Performs in-place addition: result = A + B.
+        /// Subtracts vectors A and B by subtracting corresponding elements. Vectors A and B must the same size. 
         /// </summary>
-        public static void Add(Vector A, Vector B, Vector result)
+        /// <param name="A">Left-side vector.</param>
+        /// <param name="B">Right-side vector.</param>
+        public static Vector operator -(Vector A, double[] B)
         {
-            if (A.Length != B.Length || result.Length != A.Length)
-                throw new ArgumentException("Vectors must be the same length.");
-            for (int i = 0; i < A.Length; i++)
-                result[i] = A[i] + B[i];
-        }
-
-        /// <summary>
-        /// Performs in-place subtraction: result = A - B.
-        /// </summary>
-        public static void Subtract(Vector A, Vector B, Vector result)
-        {
-            if (A.Length != B.Length || result.Length != A.Length)
-                throw new ArgumentException("Vectors must be the same length.");
-            for (int i = 0; i < A.Length; i++)
-                result[i] = A[i] - B[i];
-        }
-
-        /// <summary>
-        /// Performs in-place scalar multiplication: result = A * scalar.
-        /// </summary>
-        public static void Multiply(Vector A, double scalar, Vector result)
-        {
-            if (result.Length != A.Length)
-                throw new ArgumentException("Vectors must be the same length.");
-            for (int i = 0; i < A.Length; i++)
-                result[i] = A[i] * scalar;
+            return A.Subtract(B);
         }
 
     }

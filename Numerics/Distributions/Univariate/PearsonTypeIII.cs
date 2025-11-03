@@ -206,15 +206,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (Math.Abs(Gamma) <= NearZero)
-                {
-                    // Use Normal
-                    return Mu;
-                }
-                else
-                {
-                    return Xi + Alpha * Beta;
-                }
+                return Mu;
             }
         }
 
@@ -246,15 +238,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (Math.Abs(Gamma) <= NearZero)
-                {
-                    // Use Normal
-                    return Sigma;
-                }
-                else
-                {
-                    return Math.Sqrt(Alpha * Beta * Beta);
-                }
+                return Sigma;
             }
         }
 
@@ -263,15 +247,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (Math.Abs(Gamma) <= NearZero)
-                {
-                    // Use Normal
-                    return 0.0d;
-                }
-                else
-                {
-                    return Math.Sign(Beta) * 2d / Math.Sqrt(Alpha);
-                }
+                return Gamma;
             }
         }
 
@@ -280,14 +256,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (Math.Abs(Gamma) <= NearZero)
-                {
-                    return 3d;
-                }
-                else
-                {
-                    return 3d + 6d / Alpha;
-                }
+                return 3d + 6d / Alpha;
             }
         }
 
@@ -425,6 +394,18 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
             }
+            if (gamma > 5)
+            {
+                if (throwException)
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
+            }
+            if (gamma < -5)
+            {
+                if (throwException)
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
+            }
             return null;
         }
 
@@ -546,13 +527,13 @@ namespace Numerics.Distributions
             lowerVals[1] = Tools.DoubleMachineEpsilon;
             upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
             // Get bounds of skew
-            lowerVals[2] = -2d;
-            upperVals[2] = 2d;
+            lowerVals[2] = -5d;
+            upperVals[2] = 5d;
 
             // Correct initial value of skew if necessary
             if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
             {
-                initialVals[2] = 0d;
+                initialVals[2] = 0.01;
             }
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
         }
@@ -811,6 +792,300 @@ namespace Numerics.Distributions
             // Return Jacobian
             var jacobian = new double[,] { { a, b, c }, { d, e, f }, { g, h, i } };
             return jacobian;
+        }
+
+        /// <inheritdoc/>
+        public override double[] ConditionalMoments(double a, double b)
+        {
+            if (a >= b)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            var pearson = TryPearsonConditionalMoments(a, b, out var mPearson, 1e-15);
+            if (!pearson.stable || !pearson.divisable) 
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+            return mPearson;
+        }
+
+        /// <summary>
+        /// Pearson Type III conditional moments with a smooth Normal ↔ WH ↔ Exact blend.
+        /// Returns [E[X], m2, m3, m4] where mk are central moments about the **unconditional** mean μ0.
+        /// </summary>
+        /// <remarks>Returns (stable=false,false) on hard numerical failure; when stable=true but divisable=false, probability mass was too small.</remarks>
+        private (bool stable, bool divisable) TryPearsonConditionalMoments(
+            double a, double b, out double[] moments, double pMin)
+        {
+            moments = null;
+
+            // ---- small math helpers -------------------------------------------------
+            static double Phi(double x) => 0.5 * (1.0 + Mathematics.SpecialFunctions.Erf.Function(x / Math.Sqrt(2.0)));
+            static double phi(double x) => Math.Exp(-0.5 * x * x) / Math.Sqrt(2.0 * Math.PI);
+
+            // Standardized truncated-normal integrals J_0..J_N with recursion
+            static void TruncStdNormalJ(double aStar, double bStar, int N, double[] J)
+            {
+                double phiA = double.IsNegativeInfinity(aStar) ? 0.0 : phi(aStar);
+                double phiB = double.IsPositiveInfinity(bStar) ? 0.0 : phi(bStar);
+                double PhiA = double.IsNegativeInfinity(aStar) ? 0.0 : Phi(aStar);
+                double PhiB = double.IsPositiveInfinity(bStar) ? 1.0 : Phi(bStar);
+
+                J[0] = PhiB - PhiA;                   // D
+                if (N == 0) return;
+                J[1] = phiA - phiB;                   // E[T] * D
+                for (int n = 2; n <= N; n++)
+                {
+                    double termA = double.IsNegativeInfinity(aStar) ? 0.0 : Math.Pow(aStar, n - 1) * phiA;
+                    double termB = double.IsPositiveInfinity(bStar) ? 0.0 : Math.Pow(bStar, n - 1) * phiB;
+                    J[n] = termA - termB + (n - 1) * J[n - 2]; // E[T^n] * D
+                }
+            }
+
+            // E[(μ+σT)^n | a*<=T<=b*], given standardized J's
+            static double EZPow(int n, double mu, double sigma, double[] J)
+            {
+                double D = J[0];
+                if (!(D > 0)) return double.NaN;
+
+                double sum = 0.0;
+                for (int j = 0; j <= n; j++)
+                {
+                    double bin = Mathematics.SpecialFunctions.Factorial.BinomialCoefficient(n, j);
+                    double Ej = J[j] / D; // E[T^j | trunc]
+                    sum += bin * Math.Pow(mu, n - j) * Math.Pow(sigma, j) * Ej;
+                }
+                return sum;
+            }
+
+            // smooth logistic weights (differentiable)
+            static double Sigmoid(double x, double x0, double s) => 1.0 / (1.0 + Math.Exp((x - x0) / s));
+
+            // ---- guard Gamma(alpha) -------------------------------------------------
+            double lgAlpha = Mathematics.SpecialFunctions.Gamma.LogGamma(Alpha);
+            if (double.IsNaN(lgAlpha) || double.IsInfinity(lgAlpha))
+                return (false, false);
+
+            try
+            {
+                // Map [a,b] in X to [L,U] in Y for unit-scale Gamma Y~Gamma(Alpha,1)
+                bool pos = Beta > 0.0;
+                double absβ = Math.Abs(Beta);
+
+                double L, U;
+                if (pos)
+                {
+                    L = Math.Max(0.0, (a - Xi) / absβ);
+                    U = double.IsPositiveInfinity(b) ? double.PositiveInfinity
+                        : Math.Max(0.0, (b - Xi) / absβ);
+                }
+                else
+                {
+                    L = Math.Max(0.0, (Xi - b) / absβ);
+                    U = double.IsPositiveInfinity(a) ? double.PositiveInfinity
+                        : Math.Max(0.0, (Xi - a) / absβ);
+                }
+
+                // =====================================================================
+                // (A) Exact truncated-Gamma path (numerically stable centralization)
+                // =====================================================================
+                bool exactOk = true;
+                double EX_exact = double.NaN, m2_exact = double.NaN, m3_exact = double.NaN, m4_exact = double.NaN;
+
+                double CdfGamma(int r, double x)
+                {
+                    double y = (pos ? (x - Xi) : (Xi - x)) / absβ;
+                    double P = Mathematics.SpecialFunctions.Gamma.LowerIncomplete(Alpha + r, y);
+                    return pos ? P : (1.0 - P);
+                }
+
+                double[] EY = new double[5]; // E[Y^r | L<=Y<=U], r=0..4
+                {
+                    double[] dP = new double[5];
+                    for (int r = 0; r <= 4; r++) dP[r] = CdfGamma(r, b) - CdfGamma(r, a);
+
+                    double P0 = dP[0];
+                    if (!(P0 > pMin)) exactOk = false;
+                    else
+                    {
+                        double[] gr = new double[5]; // Γ(α+r)/Γ(α)
+                        for (int r = 0; r <= 4; r++)
+                            gr[r] = Math.Exp(Mathematics.SpecialFunctions.Gamma.LogGamma(Alpha + r) - lgAlpha);
+
+                        for (int r = 0; r <= 4; r++)
+                            EY[r] = gr[r] * (dP[r] / P0); // truncated raw moments of Y
+                    }
+                }
+
+                if (exactOk)
+                {
+                    double EY1 = EY[1], EY2 = EY[2], EY3 = EY[3], EY4 = EY[4];
+                    EX_exact = Xi + Beta * EY1;
+
+                    // conditional central moments of Y about its conditional mean
+                    double c2Y = Math.Max(0.0, EY2 - EY1 * EY1);
+                    double c3Y = EY3 - 3.0 * EY1 * EY2 + 2.0 * EY1 * EY1 * EY1;
+                    double c4Y = EY4 - 4.0 * EY1 * EY3 + 6.0 * EY1 * EY1 * EY2 - 3.0 * Math.Pow(EY1, 4);
+
+                    // shift to moments about α (unconditional mean of Y)
+                    double dY = EY1 - Alpha;
+
+                    double b1 = Beta; double b2 = b1 * b1; double b3 = b2 * b1; double b4 = b3 * b1;
+                    m2_exact = b2 * (c2Y + dY * dY);
+                    m3_exact = b3 * (c3Y + 3.0 * dY * c2Y + dY * dY * dY);
+                    m4_exact = b4 * (c4Y + 4.0 * dY * c3Y + 6.0 * dY * dY * c2Y + Math.Pow(dY, 4));
+                }
+
+                // =====================================================================
+                // (B) Wilson–Hilferty (Gamma ≈ Z^3) truncated-Normal path
+                // =====================================================================
+                bool whOk = true;
+                double EX_wh = double.NaN, m2_wh = double.NaN, m3_wh = double.NaN, m4_wh = double.NaN;
+
+                if (!(Alpha > 0.0) || double.IsInfinity(Alpha) || double.IsNaN(Alpha)) whOk = false;
+                else
+                {
+                    // Z ~ N(muZ, sigZ^2); Y ≈ Alpha * Z^3
+                    double muZ = 1.0 - 1.0 / (9.0 * Alpha);
+                    double sigZ = Math.Sqrt(1.0 / (9.0 * Alpha));
+
+                    double ell = (L <= 0.0) ? 0.0 : Math.Pow(L / Alpha, 1.0 / 3.0);
+                    double uuu = double.IsPositiveInfinity(U) ? double.PositiveInfinity
+                               : (U <= 0.0 ? 0.0 : Math.Pow(U / Alpha, 1.0 / 3.0));
+
+                    double aStarZ = double.IsNegativeInfinity(ell) ? double.NegativeInfinity : (ell - muZ) / sigZ;
+                    double bStarZ = double.IsPositiveInfinity(uuu) ? double.PositiveInfinity : (uuu - muZ) / sigZ;
+
+                    double[] Jz = new double[13];
+                    TruncStdNormalJ(aStarZ, bStarZ, 12, Jz);
+                    double Dz = Jz[0];
+                    if (!(Dz > pMin) || double.IsNaN(Dz)) whOk = false;
+                    else
+                    {
+                        // Moments of Z we need
+                        double EZ3 = EZPow(3, muZ, sigZ, Jz);
+                        double EZ6 = EZPow(6, muZ, sigZ, Jz);
+                        double EZ9 = EZPow(9, muZ, sigZ, Jz);
+                        double EZ12 = EZPow(12, muZ, sigZ, Jz);
+
+                        if (!Tools.IsFinite(EZ3) || !Tools.IsFinite(EZ6) || !Tools.IsFinite(EZ9) || !Tools.IsFinite(EZ12))
+                            whOk = false;
+                        else
+                        {
+                            // Mean
+                            EX_wh = Xi + Beta * (Alpha * EZ3);
+
+                            // Central moments about μ0 using W = Z^3 - 1
+                            double EW2 = (EZ6 - 2.0 * EZ3 + 1.0);
+                            double EW3 = (EZ9 - 3.0 * EZ6 + 3.0 * EZ3 - 1.0);
+                            double EW4 = (EZ12 - 4.0 * EZ9 + 6.0 * EZ6 - 4.0 * EZ3 + 1.0);
+
+                            double BA = Beta * Alpha;
+                            double BA2 = BA * BA, BA3 = BA2 * BA, BA4 = BA3 * BA;
+                            m2_wh = BA2 * EW2;
+                            m3_wh = BA3 * EW3;
+                            m4_wh = BA4 * EW4;
+                        }
+                    }
+                }
+
+                // =====================================================================
+                // (C) Normal small-skew path: Y ~ N(α, α) truncated to [L,U]
+                // =====================================================================
+                bool normalOk = true;
+                double EX_n = double.NaN, m2_n = double.NaN, m3_n = double.NaN, m4_n = double.NaN;
+
+                {
+                    if (!(Alpha > 0.0) || double.IsNaN(Alpha) || double.IsInfinity(Alpha)) normalOk = false;
+                    else
+                    {
+                        double s = Math.Sqrt(Alpha);
+                        double aStar = (L - Alpha) / s;
+                        double bStar = double.IsPositiveInfinity(U) ? double.PositiveInfinity : (U - Alpha) / s;
+
+                        double[] J = new double[5];
+                        TruncStdNormalJ(aStar, bStar, 4, J);
+                        double D = J[0];
+                        if (!(D > pMin)) normalOk = false;
+                        else
+                        {
+                            // E[T^m]
+                            double[] ET = new double[5];
+                            for (int m = 0; m <= 4; m++) ET[m] = J[m] / D;
+
+                            // E[Y^j], j=0..4 with Y = α + s T
+                            double[] EYnorm = new double[5];
+                            EYnorm[0] = 1.0;
+                            for (int j = 1; j <= 4; j++)
+                            {
+                                double sum = 0.0;
+                                for (int m = 0; m <= j; m++)
+                                {
+                                    double bin = Mathematics.SpecialFunctions.Factorial.BinomialCoefficient(j, m);
+                                    sum += bin * Math.Pow(Alpha, j - m) * Math.Pow(s, m) * ET[m];
+                                }
+                                EYnorm[j] = sum;
+                            }
+
+                            EX_n = Xi + Beta * EYnorm[1];
+
+                            // central moments about α for Y
+                            double[] CY = new double[5];
+                            CY[0] = 1.0; CY[1] = 0.0; // centered at α
+                            for (int k = 2; k <= 4; k++)
+                            {
+                                double sum = 0.0;
+                                for (int m = 0; m <= k; m++)
+                                {
+                                    double bin = Mathematics.SpecialFunctions.Factorial.BinomialCoefficient(k, m);
+                                    sum += bin * Math.Pow(-Alpha, k - m) * EYnorm[m];
+                                }
+                                CY[k] = sum;
+                            }
+
+                            double b1 = Beta, b2 = b1 * b1, b3 = b2 * b1, b4 = b3 * b1;
+                            m2_n = b2 * CY[2];
+                            m3_n = b3 * CY[3];
+                            m4_n = b4 * CY[4];
+
+                            if (!(Tools.IsFinite(EX_n) && Tools.IsFinite(m2_n) && Tools.IsFinite(m3_n) && Tools.IsFinite(m4_n)))
+                                normalOk = false;
+                        }
+                    }
+                }
+
+                // If no path has usable mass, return divisable=false
+                if (!exactOk && !whOk && !normalOk) return (true, false);
+
+                // =====================================================================
+                // (D) Smooth weights and blend
+                // =====================================================================
+                // Unconditional skew magnitude for Gamma(alpha,·): |γ1| = 2 / sqrt(α)
+                double absGamma1 = 2.0 / Math.Sqrt(Alpha);
+
+                // WH ↔ Exact around 0.10 (scale 0.03)
+                double wWH = Sigmoid(absGamma1, 0.10, 0.03);   // near 1 at very small skew (favor WH)
+                if (!whOk) wWH = 0.0;
+                if (!exactOk) wWH = 1.0;
+
+                double EX_we = wWH * EX_wh + (1.0 - wWH) * EX_exact;
+                double m2_we = wWH * m2_wh + (1.0 - wWH) * m2_exact;
+                double m3_we = wWH * m3_wh + (1.0 - wWH) * m3_exact;
+                double m4_we = wWH * m4_wh + (1.0 - wWH) * m4_exact;
+
+                // Normal small-skew vs (WH/Exact) around 1e-2 (narrow scale)
+                double wN = Sigmoid(absGamma1, 1e-3, 3e-4);    // near 1 below ~1e-3 (favor Normal)
+                if (!normalOk) wN = 0.0;
+
+                double EX = wN * EX_n + (1.0 - wN) * EX_we;
+                double m2 = wN * m2_n + (1.0 - wN) * m2_we;
+                double m3 = wN * m3_n + (1.0 - wN) * m3_we;
+                double m4 = wN * m4_n + (1.0 - wN) * m4_we;
+
+                moments = new[] { EX, m2, m3, m4 };
+                return (true, true);
+            }
+            catch
+            {
+                return (false, true);
+            }
         }
 
     }

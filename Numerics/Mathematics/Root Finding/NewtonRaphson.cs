@@ -28,6 +28,7 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using Numerics.Mathematics.LinearAlgebra;
 using System;
 
 namespace Numerics.Mathematics.RootFinding
@@ -259,5 +260,51 @@ namespace Numerics.Mathematics.RootFinding
             }
 
         }
+    
+        public static Vector Solve(Func<Vector, Vector> f, Func<Vector, Matrix> df, Vector firstGuess, double tolerance = 1E-8, int maxIterations = 1000, bool reportFailure = true) 
+        {
+
+            Vector x = firstGuess.Clone();
+            bool converged = false;
+            double eps = Tools.DoubleMachineEpsilon;
+
+            for (int iter = 1; iter <= maxIterations; iter++)
+            {
+                Vector fx = f(x);
+                Matrix J = df(x);
+
+                // Check for near-singular Jacobian
+                if (Math.Abs(J.Determinant()) < eps)
+                {
+                    if (reportFailure)
+                        throw new ArgumentException("Jacobian is singular or nearly singular.");
+                    break;
+                }
+
+                // Solve J·Δx = F(x)  →  Δx = J⁻¹·F(x)
+                Vector deltaX = J.Inverse().Multiply(fx);
+
+                // Update
+                Vector xNew = x - deltaX;
+
+                // Check convergence: step size and residual
+                if (deltaX.Norm() < tolerance && f(xNew).Norm() < tolerance)
+                {
+                    x = xNew;
+                    converged = true;
+                    break;
+                }
+
+                x = xNew;
+            }
+
+            if (!converged && reportFailure)
+                throw new ArgumentException($"Newton–Raphson did not converge after {maxIterations} iterations.");
+
+            return x;
+
+        }
+    
+    
     }
 }

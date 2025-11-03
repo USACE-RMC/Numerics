@@ -666,11 +666,8 @@ namespace Numerics.Distributions
             // Validate probability
             if (probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
-            double limit = 1E-16;
-            //if (probability <= limit)
-            //    return -8.2220822161304348;
-            if (probability >= 1d - limit)
-                return 8.2095361516013856;
+            if (probability == 0) return r8_normal_01_cdf_inverse(double.Epsilon);
+            if (probability == 1) return r8_normal_01_cdf_inverse(1-double.Epsilon);
             return r8_normal_01_cdf_inverse(probability);
         }
 
@@ -780,7 +777,6 @@ namespace Numerics.Distributions
             // Create random numbers for mean and standard deviation
             var r = new MersenneTwister(12345);
             var rndMean = r.NextDoubles(realizations);
-            r = new MersenneTwister(45678);
             var rndStdDev = r.NextDoubles(realizations);
 
             // Create list of Monte Carlo distributions
@@ -899,6 +895,44 @@ namespace Numerics.Distributions
             // Return Jacobian
             var jacobian = new double[,] { { a, b }, { c, d } };
             return jacobian;
+        }
+
+        /// <inheritdoc/>
+        public override double[] ConditionalMoments(double a, double b)
+        {
+            if (a >= b)
+                return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+
+            // Unconditional parameters
+            double mu = Mu;              
+            double sigma = Sigma; 
+
+            // Standardized limits
+            double α = (a - mu) / sigma;
+            double β = (b - mu) / sigma;
+
+            // CDF of standard normal
+            double Φα = 0.5 * (1 + Erf.Function(α / Math.Sqrt(2)));
+            double Φβ = 0.5 * (1 + Erf.Function(β / Math.Sqrt(2)));
+            double Z = Φβ - Φα;             // normalization
+
+            // PDF of standard normal
+            double φα = Math.Exp(-0.5 * α * α) / Math.Sqrt(2 * Math.PI);
+            double φβ = Math.Exp(-0.5 * β * β) / Math.Sqrt(2 * Math.PI);
+
+            // auxiliary ratios
+            double λ = (φα - φβ) / Z;               // E[Z]
+            double δ = (α * φα - β * φβ) / Z;           // E[Z²]−1
+            double τ = ((α * α + 2) * φα - (β * β + 2) * φβ) / Z;    // E[Z³]
+            double κ = (α * α * α * φα - β * β * β * φβ) / Z;           // for E[Z⁴]
+
+            // now build the moments
+            double m1 = mu + sigma * λ;
+            double m2 = sigma * sigma * (1 + δ);
+            double m3 = sigma * sigma * sigma * τ;
+            double m4 = sigma * sigma * sigma * sigma * (3 + κ + 3 * δ);
+
+            return new[] { m1, m2, m3, m4 };
         }
 
     }
