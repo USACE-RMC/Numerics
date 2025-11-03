@@ -108,7 +108,7 @@ namespace Numerics.Mathematics.Optimization
         public double[] UpperBounds { get; private set; }
 
         /// <summary>
-        /// The total population size. Default = 10 * D (Storn & Price, 1997).
+        /// The total population size. Default = 10 * D (Storn &amp; Price, 1997).
         /// </summary>
         public int PopulationSize { get; set; } = 30;
 

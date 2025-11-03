@@ -250,7 +250,7 @@ namespace Mathematics.Optimization
             var solver = new ShuffledComplexEvolution(TestFunctions.Rastrigin, 5, lower, upper);
             solver.Minimize();
             double F = solver.BestParameterSet.Fitness;
-            double trueF = 0.0;
+            //double trueF = 0.0;
             
             // SCE fail to converge on this test
 

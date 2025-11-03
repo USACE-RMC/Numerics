@@ -586,7 +586,7 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         public void CancelSimulation()
         {
-            if (CancellationTokenSource != null && CancellationTokenSource.Token != null  && CancellationTokenSource.Token.CanBeCanceled == true)
+            if (CancellationTokenSource != null && CancellationTokenSource.Token.CanBeCanceled == true)
             {
                 CancellationTokenSource.Cancel();
             }

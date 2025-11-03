@@ -60,8 +60,10 @@ namespace Numerics.Mathematics.Optimization
         }
 
         private readonly Node[] _heap;
+        private readonly Dictionary<int, int> _positionMap = new();
+
         private int _n = 0; // Number of nodes.
-        private int _p = 0; // Parent Index
+        //private int _p = 0; // Parent Index
 
         public int Count => _n;
 
@@ -71,30 +73,82 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
+        /// Putting the new inem in the first vacant cell in the array. 
+        /// Then move it up in the heap based on its value compared to its parent.
+        /// </summary>
+        /// <param name="i">Index of the node.</param>
+        private void BubbleUp(int i)
+        {
+            while (i > 0)
+            {
+                int parent = (i - 1) / 2;
+                if (_heap[i].Weight >= _heap[parent].Weight) break;
+
+                //Swap
+                (_heap[i], _heap[parent]) = (_heap[parent], _heap[i]);
+                
+
+                _positionMap[_heap[i].Index] = i;
+                _positionMap[_heap[parent].Index] = parent;
+                i = parent;
+            }
+        }
+
+        /// <summary>
+        /// Used in heap deletion. Compares the parent nodes with child nodes in subtree.
+        /// </summary>
+        /// <param name="i"></param>
+        private void BubbleDown(int i)
+        {
+            while (true)
+            {
+                int left = 2 * i + 1;
+                int right = 2 * i + 2;
+                int smallest = i; 
+
+                if (left <_n && _heap[left].Weight < _heap[smallest].Weight)
+                    smallest = left;
+                if (right < _n && _heap[right].Weight < _heap[smallest].Weight)
+                    smallest = right;
+                if (smallest == i) break; 
+
+                (_heap[i], _heap[smallest]) = (_heap[smallest], _heap[i]);
+                _positionMap[_heap[i].Index] = i;
+                _positionMap[_heap[smallest].Index] = smallest;
+
+                i = smallest;
+            }
+        }
+
+        /// <summary>
+        /// Updates the distance (priority) of a node if a shorter path is found.
+        /// </summary>
+        /// <param name="newNode"></param>
+        public void DecreaseKey(Node newNode)
+        {
+            if(!_positionMap.TryGetValue(newNode.Index, out int position))
+            {
+                Add(newNode);
+                return;
+            }
+            if (newNode.Weight >= _heap[position].Weight) return; // No need to decrease key if the new weight is not smaller.
+
+            _heap[position] = newNode;
+            BubbleUp(position);
+        }
+
+        /// <summary>
         /// Add a node to the heap.
         /// </summary>
-        /// <param name="value">Node to add.</param>
-        public void Add(Node value)
+        public void Add(Node node)
         {
-            _heap[_n] = value;
-            _n += 1;
+            if (_n >= _heap.Length) 
+                throw new InvalidOperationException("Heap is full.");
 
-            //Push the node up the tree.
-            if (_n <= 1) return;
-            int i = _n - 1;
-            _p = (i - 1) / 2; // parent index (use integer division).
-            Node parentNode = _heap[_p];
-            Node currentNode = value;
-
-            while (i > 0 && currentNode.Weight < parentNode.Weight)
-            {
-                _heap[i] = parentNode;
-                _heap[_p] = currentNode;
-                i = _p;
-                _p = (i - 1) / 2; // parent index (use integer division).
-                parentNode = _heap[_p];
-                currentNode = _heap[i];
-            }
+            _heap[_n] = node;
+            _positionMap[node.Index] = _n; // Map the index to the position in the heap array (for Replace method)
+            BubbleUp(_n);
+            _n++;
         }
 
         /// <summary>
@@ -103,76 +157,21 @@ namespace Numerics.Mathematics.Optimization
         /// <returns></returns>
         public Node RemoveMin()
         {
-            Node result = _heap[0];
+            if (_n == 0) 
+                throw new InvalidOperationException("Heap is empty.");
 
-            //Push the empty node down the tree then replace with last node in array
-            int r;
-            int l;
-            int i = 0;
-            int pIndex = 0;
-            Node lNode;
-            Node rNode;
-            do
+            Node min = _heap[0];
+            _positionMap.Remove(min.Index);
+
+            _n--;
+
+            if (_n > 0)
             {
-                r = 2 * i + 2; //right child index
-                l = r - 1; //left child index
-                if (r < _n)
-                {
-                    lNode = _heap[l];
-                    rNode = _heap[r];
-                    if (lNode.Weight < rNode.Weight)
-                    {
-                        _heap[i] = lNode;
-                        pIndex = i;
-                        i = l;
-                    }
-                    else
-                    {
-                        _heap[i] = rNode;
-                        pIndex = i;
-                        i = r;
-                    }
-                }
-                else
-                {
-                    if (l < _n)
-                    {
-                        _heap[i] = _heap[l];
-                        pIndex = i;
-                        i = l;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            } while (i >= 0);
-            //
-            _n -= 1;
-            //Replace with last node in array and push up.
-            if (i != _n)
-            {
-                _heap[i] = _heap[_n];
-                if (_heap[pIndex].Weight > _heap[i].Weight)
-                {
-                    //Push the node up.
-                    if (i <= 0) return result;
-                    _p = pIndex;
-                    Node parentNode = _heap[_p];
-                    Node currentNode = _heap[i];
-                    while (i > 0 && currentNode.Weight < parentNode.Weight)
-                    {
-                        _heap[i] = parentNode;
-                        _heap[_p] = currentNode;
-                        i = _p;
-                        _p = (i - 1) / 2; // parent index (use integer division).
-                        parentNode = _heap[_p];
-                        currentNode = _heap[i];
-                    }
-                }
+                _heap[0] = _heap[_n];
+                _positionMap[_heap[0].Index] = 0; // Update position map
+                BubbleDown(0);
             }
-            //
-            return result;
+            return min;
         }
 
         /// <summary>
@@ -186,20 +185,7 @@ namespace Numerics.Mathematics.Optimization
                 if (_heap[i].Index == newNode.Index)
                 {
                     _heap[i] = newNode;
-                    //Push the node up the tree
-                    if (i <= 0) return;
-                    _p = (i - 1) / 2; // parent index (use integer division).
-                    Node parentNode = _heap[_p];
-                    Node currentNode = newNode;
-                    while (i > 0 && currentNode.Weight < parentNode.Weight)
-                    {
-                        _heap[i] = parentNode;
-                        _heap[_p] = currentNode;
-                        i = _p;
-                        _p = (i - 1) / 2;
-                        parentNode = _heap[_p];
-                        currentNode = _heap[i];
-                    }
+                    BubbleUp(i);
                     break;
                 }
             }

@@ -173,6 +173,16 @@ namespace Numerics.Sampling
         }
 
         /// <summary>
+        /// Serves as the default hash function. Purposefuly does not include the weight, because the 
+        /// equals and compare to methods also do not.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(LowerBound.GetHashCode(), UpperBound.GetHashCode());
+        }
+
+        /// <summary>
         /// Returns an XElement of a stratification bin, can be used for serialization.
         /// </summary>
         public XElement SaveToXElement()

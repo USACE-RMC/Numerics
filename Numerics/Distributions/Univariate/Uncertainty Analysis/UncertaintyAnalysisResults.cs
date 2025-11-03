@@ -30,12 +30,14 @@
 
 using Numerics.Mathematics.Optimization;
 using Numerics.Sampling.MCMC;
+using Numerics.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Formatters.Binary;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
@@ -51,7 +53,6 @@ namespace Numerics.Distributions
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
     /// </remarks>
-    [Serializable]
     public class UncertaintyAnalysisResults
     {
 
@@ -111,12 +112,17 @@ namespace Numerics.Distributions
         /// <param name="results">The uncertainty analysis results.</param>
         public static byte[] ToByteArray(UncertaintyAnalysisResults results)
         {
-            BinaryFormatter bf = new BinaryFormatter();
-            using (var ms = new MemoryStream())
+            var options = new JsonSerializerOptions
             {
-                bf.Serialize(ms, results);
-                return ms.ToArray();
-            }
+                WriteIndented = false,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                IncludeFields = true
+            };
+            // Add custom converters for unsupported types
+            options.Converters.Add(new Double2DArrayConverter());
+            options.Converters.Add(new String2DArrayConverter());
+            options.Converters.Add(new UnivariateDistributionConverter());
+            return JsonSerializer.SerializeToUtf8Bytes(results, options);
         }
 
         /// <summary>
@@ -127,14 +133,45 @@ namespace Numerics.Distributions
         {
             try
             {
+                var options = new JsonSerializerOptions
+                {
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                    IncludeFields = true
+                };
+                // Add custom converters for unsupported types
+                options.Converters.Add(new Double2DArrayConverter());
+                options.Converters.Add(new String2DArrayConverter());
+                options.Converters.Add(new UnivariateDistributionConverter());
+                return JsonSerializer.Deserialize<UncertaintyAnalysisResults>(bytes, options);
+            }
+            catch (Exception)
+            {
+                // An error can occur because we're trying to deserialize a blob written with binary formatter, 
+                //as a blob of json bytes. If that happens, fall back to the old.  
+                return FromByteArrayLegacy(bytes);
+            }          
+        }
+
+         /// <summary>
+        /// Returns the class from a byte array. 
+        /// </summary>
+        /// <param name="bytes">Byte array.</param>
+        private static UncertaintyAnalysisResults FromByteArrayLegacy(byte[] bytes)
+        {
+            try
+            {
                 using (var memStream = new MemoryStream())
                 {
-                    var binForm = new BinaryFormatter();
+                    #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
+                    var binForm = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
                     memStream.Write(bytes, 0, bytes.Length);
                     memStream.Seek(0, SeekOrigin.Begin);
                     var obj = binForm.Deserialize(memStream);
+                    #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
                     return (UncertaintyAnalysisResults)obj;
                 }
+
+
             }
             catch (Exception)
             {

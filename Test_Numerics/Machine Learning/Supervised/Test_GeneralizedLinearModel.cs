@@ -80,7 +80,7 @@ namespace MachineLearning
             var true_se = 0.6026;
             var true_sigA = 0.05569;
             var true_sigB = 0.04744;
-            var true_r2 = 0.159;
+            // var true_r2 = 0.159; Never used below. 
             var true_df = 185;
 
             Assert.AreEqual(a, true_a, 1E-3);

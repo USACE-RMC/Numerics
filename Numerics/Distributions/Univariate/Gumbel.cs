@@ -448,9 +448,9 @@ namespace Numerics.Distributions
                 // If the newton method fails to converge, fall back to sample moments
                 SetParameters(ParametersFromMoments(moments));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw ex;
+                throw;
             }
         }
 

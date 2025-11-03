@@ -346,6 +346,8 @@ namespace Numerics.Data
         {
             if (Math.Abs(left.X - right.X) > Tools.DoubleMachineEpsilon) { return false; }
             if (Math.Abs(left.Y - right.Y) > Tools.DoubleMachineEpsilon) { return false; }
+            // if any of the xs or ys are NaN, the above tests will be false, and this will return true, even if one is NaN and the other is not.
+            // a NaN is always equal in this test. 
             return true;
         }
 
@@ -358,6 +360,29 @@ namespace Numerics.Data
         public static bool operator !=(Ordinate left, Ordinate right)
         {
             return !(left == right);
+        }
+
+        /// <summary>
+        /// Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj">The object to compare with the current object.</param>
+        /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
+        public override bool Equals(object obj)
+        {
+            if (obj is Ordinate other)
+            {
+                return this == other;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Serves as the default hash function.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(X.GetHashCode(), Y.GetHashCode());
         }
 
         /// <summary>

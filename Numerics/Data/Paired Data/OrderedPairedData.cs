@@ -608,6 +608,41 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj">The object to compare with the current object.</param>
+        /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
+        public override bool Equals(object obj)
+        {
+            if (obj is OrderedPairedData other)
+            {
+                return this == other;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Serves as the default hash function.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                if (_ordinates != null)
+                {
+                    foreach (var ordinate in _ordinates)
+                    {
+                        hash = hash * 23 + ordinate.X.GetHashCode();
+                        hash = hash * 23 + ordinate.Y.GetHashCode();
+                    }
+                }
+                return hash;
+            }
+        }
+
+        /// <summary>
         /// Calculates the area between the Y values and the zero axis using the trapezoidal approximation.
         /// </summary>
         /// <returns>The area under the curve.</returns>

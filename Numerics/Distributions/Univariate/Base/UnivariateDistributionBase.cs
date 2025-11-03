@@ -813,6 +813,59 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj">The object to compare with the current object.</param>
+        /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
+        public override bool Equals(object obj)
+        {
+            if (obj is UnivariateDistributionBase other)
+            {
+                return this == other;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Serves as the default hash function.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + Type.GetHashCode();
+
+                if (Type == UnivariateDistributionType.Empirical)
+                {
+                    var empirical = this as EmpiricalDistribution;
+                    if (empirical != null)
+                    {
+                        foreach (var x in empirical.XValues)
+                        {
+                            hash = hash * 23 + x.GetHashCode();
+                        }
+                        foreach (var p in empirical.ProbabilityValues)
+                        {
+                            hash = hash * 23 + p.GetHashCode();
+                        }
+                    }
+                }
+                else if (Type != UnivariateDistributionType.KernelDensity)
+                {
+                    var parameters = GetParameters;
+                    foreach (var param in parameters)
+                    {
+                        hash = hash * 23 + param.GetHashCode();
+                    }
+                }
+
+                return hash;
+            }
+        }
+
+        /// <summary>
         /// Implementation of IComparable to sort distributions by their Mean.
         /// </summary>
         /// <param name="other">Another UnivariateDistributionBase instance.</param>

@@ -107,10 +107,10 @@ namespace Numerics.Mathematics.Integration
         /// </summary>
         public int MinDepth { get; set; } = 0;
 
-        /// <summary>
-        /// The maximum recursion depth. Default = 100.
-        /// </summary>
-        public int MaxDepth { get; set; } = 100;
+        // convergence variables
+        private static bool terminate = true;
+        private static bool outOfTolerance = false;
+        private double toler;
 
         /// <summary>
         /// Returns an approximate measure of the standard error of the integration. 
@@ -157,32 +157,11 @@ namespace Numerics.Mathematics.Integration
                                  0.224926465333340 * (y[5] + y[7]) +
                                  0.242611071901408 * y[6]);
 
-                double erri1 = Math.Abs(i1 - iS);
-                double erri2 = Math.Abs(i2 - iS);
-                double r = (erri2 != 0.0) ? erri1 / erri2 : 1.0;
-                double toler = (r > 0.0 && r < 1.0) ? RelativeTolerance / r : RelativeTolerance;
-
-                double iSabs = (iS == 0.0) ? (b - a) : Math.Abs(iS);
-
-                // Recursively sub-divide
-                Result = AdaptiveLobatto(Function, a, b, y[0], y[12], MaxDepth, iSabs, toler);
-
-                // Standard error calculated after recursion completes
-                StandardError = Math.Sqrt(_squaredError);
-
-                if (FunctionEvaluations >= MaxFunctionEvaluations)
-                {
-                    Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
-                }
-                else
-                {
-                    Status = IntegrationStatus.Success;
-                }
             }
             catch (Exception ex)
             {
                 Status = IntegrationStatus.Failure;
-                if (ReportFailure) throw ex;
+                if (ReportFailure) throw;
             }
         }
 
@@ -241,82 +220,32 @@ namespace Numerics.Mathematics.Integration
 
                     double iSabs = (iS == 0.0) ? (binB - binA) : Math.Abs(iS);
 
-                    // Recursively sub-divide
-                    mu += AdaptiveLobatto(Function, binA, binB, y[0], y[12], MaxDepth, iSabs, toler);
-                }
-
-                // Final result and standard error
-                Result = mu;
-                StandardError = Math.Sqrt(_squaredError);
-
-                if (FunctionEvaluations >= MaxFunctionEvaluations)
-                {
-                    Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
-                }
-                else
-                {
-                    Status = IntegrationStatus.Success;
-                }
-            }
-            catch (Exception ex)
+            // Check iterations
+            if (Iterations >= MaxIterations)
             {
-                Status = IntegrationStatus.Failure;
-                if (ReportFailure) throw ex;
+                // Terminate recursion
+                UpdateStatus(IntegrationStatus.MaximumIterationsReached);
+                return i1;
             }
-        }
-
-        /// <summary>
-        /// A helper function for adaptive Gauss-Lobatto integration.
-        /// Recursively subdivides the integration domain and applies nested Gauss-Lobatto-Kronrod rules.
-        /// </summary>
-        /// <param name="f">The unidimensional function to integrate.</param>
-        /// <param name="a">The minimum value under which the integral must be computed.</param>
-        /// <param name="b">The maximum value under which the integral must be computed.</param>
-        /// <param name="fa">The function evaluated at a.</param>
-        /// <param name="fb">The function evaluated at b.</param>
-        /// <param name="depth">The current recursion depth remaining.</param>
-        /// <param name="iSabs">The absolute value of the integral estimate (for scaling tolerance).</param>
-        /// <param name="toler">The adaptive tolerance for this interval.</param>
-        /// <returns>
-        /// An evaluation of the integral using adaptive Gauss-Lobatto-Kronrod with error less than the specified tolerance. 
-        /// This is accomplished by subdividing the interval into 6 subintervals until the error between different order 
-        /// estimates is sufficiently small.
-        /// </returns>
-        private double AdaptiveLobatto(Func<double, double> f, double a, double b, double fa, double fb,
-            int depth, double iSabs, double toler)
-        {
-            double m = 0.5 * (a + b);
-            double h = 0.5 * (b - a);
-            double mll = m - alpha * h;
-            double ml = m - beta * h;
-            double mr = m + beta * h;
-            double mrr = m + alpha * h;
-
-            double fmll = f(mll);
-            double fml = f(ml);
-            double fm = f(m);
-            double fmr = f(mr);
-            double fmrr = f(mrr);
-            FunctionEvaluations += 5;
-
-            // 4-point Gauss-Lobatto formula on current interval
-            double i2 = h / 6.0 * (fa + fb + 5.0 * (fml + fmr));
-
-            // 7-point Kronrod extension on current interval
-            double i1 = h / 1470.0 * (77.0 * (fa + fb) + 432.0 * (fmll + fmrr) + 625.0 * (fml + fmr) + 672.0 * fm);
-
-            // Error estimate: difference between 4-point and 7-point estimates
-            double error = Math.Abs(i1 - i2);
-
-            // Check if convergence criteria are met
-            // The original algorithm uses toler * iSabs as the tolerance threshold
-            if (depth <= 0 || Math.Abs(a - b) <= Tools.DoubleMachineEpsilon ||
-                mll <= a || b <= mrr || FunctionEvaluations >= MaxFunctionEvaluations ||
-                error <= toler * iSabs)
+            // Check function evaluations
+            if (FunctionEvaluations >= MaxFunctionEvaluations)
             {
-                // Convergence is reached
-                _squaredError += error * error; // Accumulate squared errors
-                return i1; // Return the more accurate 7-point estimate
+                // Terminate recursion
+                UpdateStatus(IntegrationStatus.MaximumFunctionEvaluationsReached);           
+                return i1;
+            }
+            // Check tolerance
+            if (Math.Abs(i1 - i2) <= toler * iS || mll <= a || b <= mrr)
+            {
+                if ((mll <= a || b <= mrr) && terminate)
+                {
+                    // Interval contains no more machine numbers
+                    outOfTolerance = true;
+                    terminate = false;
+                }
+                // Terminate recursion
+                UpdateStatus(IntegrationStatus.Success);
+                return i1;
             }
             else
             {

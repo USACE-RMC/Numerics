@@ -138,10 +138,10 @@ namespace Numerics.Mathematics.Integration
                 }
                     
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 Status = IntegrationStatus.Failure;
-                if (ReportFailure) throw ex;
+                if (ReportFailure) throw;
             }
 
         }
@@ -192,10 +192,10 @@ namespace Numerics.Mathematics.Integration
                 }
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 Status = IntegrationStatus.Failure;
-                if (ReportFailure) throw ex;
+                if (ReportFailure) throw;
             }
         }
 

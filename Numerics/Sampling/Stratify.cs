@@ -175,7 +175,7 @@ namespace Numerics.Sampling
             if (xValues == null || xValues.Count == 0)
                 return bins;
 
-            double xl, xu, w;
+            double xl, xu;
             // transform first bin
             xl = transformFunction(xValues.First().LowerBound);
             xu = transformFunction(xValues.First().UpperBound);
@@ -397,7 +397,7 @@ namespace Numerics.Sampling
             if (options == null || !options.IsValid || !options.IsProbability)
                 return bins;
 
-            double delta, offset = 0, min, max, pl, pu, xl, xu, w;
+            double delta, offset = 0, min, max, pl, pu, xl, xu;
 
             UnivariateDistributionBase distribution = distributionType switch
             {

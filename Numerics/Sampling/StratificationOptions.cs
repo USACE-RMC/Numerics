@@ -238,5 +238,14 @@ namespace Numerics.Sampling
                    NumberOfBins == other.NumberOfBins &&
                    IsProbability == other.IsProbability;
         }
+
+        /// <summary>
+        /// Serves as the default hash function.
+        /// </summary>
+        /// <returns>A hash code for the current object.</returns>
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(LowerBound, UpperBound, NumberOfBins, IsProbability);
+        }
     }
 }
