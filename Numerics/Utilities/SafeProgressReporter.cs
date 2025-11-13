@@ -133,30 +133,55 @@ namespace Numerics.Utilities
         /// Event is raised when the progress is reported.
         /// </summary>
         public event ProgressReportedEventHandler ProgressReported;
+
+        /// <summary>
+        /// Delegate for handling progress reported events.
+        /// </summary>
+        /// <param name="reporter">The SafeProgressReporter instance raising the event.</param>
+        /// <param name="prog">The current progress value (typically 0.0 to 1.0).</param>
+        /// <param name="progDelta">The change in progress since the last report.</param>
         public delegate void ProgressReportedEventHandler(SafeProgressReporter reporter, double prog, double progDelta);
 
         /// <summary>
         /// Event is raised when a message is reported.
         /// </summary>
         public event MessageReportedEventHandler MessageReported;
+
+        /// <summary>
+        /// Delegate for handling message reported events.
+        /// </summary>
+        /// <param name="msg">The message structure containing the message content and metadata.</param>
         public delegate void MessageReportedEventHandler(MessageContentStruct msg);
 
         /// <summary>
         /// Event is raised when the task starts.
         /// </summary>
         public event TaskStartedEventHandler TaskStarted;
+
+        /// <summary>
+        /// Delegate for handling task started events.
+        /// </summary>
         public delegate void TaskStartedEventHandler();
 
         /// <summary>
         /// Event is raised when the task ended.
         /// </summary>
         public event TaskEndedEventHandler TaskEnded;
+
+        /// <summary>
+        /// Delegate for handling task ended events.
+        /// </summary>
         public delegate void TaskEndedEventHandler();
 
         /// <summary>
         /// Event is raised when a child reporter is created.
         /// </summary>
         public event ChildReporterCreatedEventHandler ChildReporterCreated;
+
+        /// <summary>
+        /// Delegate for handling child reporter created events.
+        /// </summary>
+        /// <param name="childReporter">The newly created child SafeProgressReporter instance.</param>
         public delegate void ChildReporterCreatedEventHandler(SafeProgressReporter childReporter);
 
         /// <summary>
@@ -291,6 +316,19 @@ namespace Numerics.Utilities
             _cancellationTokenSource.Cancel();
         }
 
+        /// <summary>
+        /// Resets the cancellation token to allow the task to continue after a cancellation request.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Creates a new CancellationTokenSource and propagates it to all child reporters.
+        /// This allows a canceled task to be restarted or continued.
+        /// </para>
+        /// <para>
+        /// Use this method after calling RequestCancel() if you want to allow the task to run again
+        /// without the cancellation flag being set.
+        /// </para>
+        /// </remarks>
         public void ResetCancel()    
         { 
             _cancellationTokenSource = new CancellationTokenSource();

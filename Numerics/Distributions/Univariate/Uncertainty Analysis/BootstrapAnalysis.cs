@@ -745,16 +745,14 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Estimates the standard error for each probability.
+        /// Estimates the standard error for each probability using the parametric bootstrap.
         /// </summary>
-        /// <param name="sampleData">Sample of data.</param>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="thetaHats">The list of best-estimate quantiles.</param>
+        ///<param name="parentDist">The parent distribution.</param>
+        ///<param name="probabilities">The list of probabilities where the standard error is calculated.</param>
+        ///<param name="replications">The number of bootstrap replications. Default = 300.</param>
+        ///<param name="seed">The PRNG seed. Default = 12345.</param>
         private double[] BootstrapStandardError(UnivariateDistributionBase parentDist, IList<double> probabilities, int replications = 300, int seed = 12345)
         {
-            //var N = sampleData.Count;
-            //var I2 = new double[probabilities.Count];
-            //var se = new double[probabilities.Count];
             int B = replications;
             var r = new MersenneTwister(seed);
             var seeds = r.NextIntegers(replications);

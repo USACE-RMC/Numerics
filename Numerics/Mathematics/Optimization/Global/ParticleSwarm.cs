@@ -215,8 +215,26 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         private class Particle
         {
+            /// <summary>
+            /// Gets or sets the current parameter set (position) of the particle in the search space.
+            /// </summary>
             public ParameterSet ParameterSet { get; set; }
+
+            /// <summary>
+            /// Gets or sets the best parameter set (position) this particle has found during the search.
+            /// </summary>
+            /// <remarks>
+            /// This represents the particle's "personal best" or "pbest" in PSO terminology.
+            /// </remarks>
             public ParameterSet BestParameterSet { get; set; }
+
+            /// <summary>
+            /// Gets or sets the velocity vector of the particle in parameter space.
+            /// </summary>
+            /// <remarks>
+            /// The velocity determines how the particle moves through the search space.
+            /// It is updated based on the particle's personal best and the global best.
+            /// </remarks>
             public double[] Velocity { get; set; }
         }
     }

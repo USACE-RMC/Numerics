@@ -85,7 +85,19 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="initialArray">Initializing array.</param>
         public Matrix(double[,] initialArray)
         {
-            _matrix = initialArray;
+            if (initialArray == null) throw new ArgumentNullException(nameof(initialArray));
+            int rows = initialArray.GetLength(0);
+            int cols = initialArray.GetLength(1);
+            _matrix = new double[rows, cols];
+
+            // Deep copy - compatible with .NET Framework 4.8.1 and later
+            for (int i = 0; i < rows; i++)
+            {
+                for (int j = 0; j < cols; j++)
+                {
+                    _matrix[i, j] = initialArray[i, j];
+                }
+            }
         }
 
         /// <summary>

@@ -501,7 +501,7 @@ namespace Numerics.Distributions
         }
 
 
-        // <summary>
+        /// <summary>
         /// Convolves two empirical distributions using FFT.
         /// </summary>
         /// <param name="dist1">The first empirical distribution.</param>

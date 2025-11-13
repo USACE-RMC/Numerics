@@ -392,7 +392,6 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="a">The lower integration limit, a.</param>
         /// <param name="b">The upper integration limit, b.</param>
-        /// <param name="steps">Number of integration steps. Default = 300.</param>
         /// <summary>
         /// Returns conditional central moments (up to 4th order) between [a, b].
         /// </summary>

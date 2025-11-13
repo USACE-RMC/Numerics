@@ -726,12 +726,12 @@ namespace Numerics
         {
             if (values.Count == 0) return double.NaN;
             double max = Max(values);
-            double exp = 0;
+            double sum = 0;
             for (int i = 0; i < values.Count; i++)
             {
-                exp += Math.Exp(values[i] - max);
+                sum += Math.Exp(values[i] - max);
             }
-            return max + Math.Log(exp);
+            return max + Math.Log(sum);
         }
 
         /// <summary>

@@ -339,7 +339,7 @@ namespace Numerics.Data
             string parameterCodePart = $"&parameterCd={(timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.InstantaneousDischarge ? "00060" : "00065")}";
             string startDatePart = $"&startDT={(timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.DailyStage ? "1800-01-01" : "1900-01-01")}";
             string endDatePart = $"&endDT={DateTime.Now:yyyy-MM-dd}";
-            string statCodePart = (timeSeriesType == TimeSeriesType.DailyDischarge || timeSeriesType == TimeSeriesType.DailyStage) ? "&statCd=00003" : "";
+            string statCodePart = (timeSeriesType == TimeSeriesType.DailyDischarge) ? "&statCd=00003" : "";
             string siteStatusPart = "&siteStatus=all";
             string formatPart = "&format=rdb";
 
@@ -517,6 +517,468 @@ namespace Numerics.Data
             }
 
             return (timeSeries, textDownload);
+        }
+
+        #endregion
+
+        #region Canadian Hydrometric Monitoring Network (CHMN)
+
+        /// <summary>
+        /// Download historical daily means from the Water Survey of Canada
+        /// (Environment and Climate Change Canada Hydrometric Monitoring Network).
+        /// </summary>
+        /// <param name="stationNumber">WSC 7-character station id, e.g., "08LG010".</param>
+        /// <param name="timeSeriesType">
+        ///     DailyDischarge → parameters[]=flow
+        ///     DailyStage     → parameters[]=level
+        /// </param>
+        /// <param name="dischargeUnit">Desired discharge unit if DailyDischarge.</param>
+        /// <param name="heightUnit">Desired stage unit if DailyStage.</param>
+        /// <param name="startDate">
+        ///     Optional inclusive start date. If null, defaults to 1800-01-01
+        ///     to request full POR. The service returns only available days.
+        /// </param>
+        /// <param name="endDate">
+        ///     Optional inclusive end date. If null, defaults to DateTime.Today.
+        /// </param>
+        /// <returns>TimeSeries of daily means.</returns>
+        public static async Task<TimeSeries> FromCHMN(
+            string stationNumber,
+            TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge,
+            DischargeUnit dischargeUnit = DischargeUnit.CubicMetersPerSecond,
+            HeightUnit heightUnit = HeightUnit.Meters,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
+        {
+            // Connectivity
+            if (!await IsConnectedToInternet())
+                throw new InvalidOperationException("No internet connection.");
+
+            // Basic validation (WSC station numbers are 7 chars including letters)
+            if (string.IsNullOrWhiteSpace(stationNumber) || stationNumber.Length != 7)
+                throw new ArgumentException("The WSC station number must be 7 characters, e.g., 08LG010.", nameof(stationNumber));
+
+            // Supported series types for this endpoint
+            if (timeSeriesType != TimeSeriesType.DailyDischarge && timeSeriesType != TimeSeriesType.DailyStage)
+                throw new ArgumentException("Canadian daily_data API supports DailyDischarge or DailyStage.", nameof(timeSeriesType));
+
+            // Parameter mapping per WSC docs: parameters[]=flow or parameters[]=level
+            string parameter = timeSeriesType == TimeSeriesType.DailyDischarge ? "flow" : "level";
+
+            // Date range: request wide window to effectively get full POR
+            DateTime sd = startDate ?? new DateTime(1800, 1, 1);
+            DateTime ed = endDate ?? DateTime.Today;
+
+            string url =
+                "https://wateroffice.ec.gc.ca/services/daily_data/csv/inline" +
+                $"?stations[]={Uri.EscapeDataString(stationNumber)}" +
+                $"&parameters[]={parameter}" +
+                $"&start_date={sd:yyyy-MM-dd}" +
+                $"&end_date={ed:yyyy-MM-dd}";
+
+            var ts = new TimeSeries(TimeInterval.OneDay);
+
+            // Create HttpClientHandler to bypass proxy if needed
+            var handler = new HttpClientHandler
+            {
+                UseProxy = false,  // Bypass corporate proxy
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+
+            using (var client = new HttpClient(handler))
+            {
+                // Add browser-like headers to avoid security proxy issues
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                client.DefaultRequestHeaders.Add("Accept", "text/csv,application/csv,text/plain,*/*");
+                client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
+                client.DefaultRequestHeaders.Add("DNT", "1");
+                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
+                client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
+
+                // The endpoint returns CSV (possibly gzip-compressed)
+                using HttpResponseMessage resp = await client.GetAsync(url);
+                resp.EnsureSuccessStatusCode();
+
+                string csv;
+                byte[] responseBytes = await resp.Content.ReadAsByteArrayAsync();
+
+                // Check if the response is gzip-compressed by checking the magic number
+                // Gzip magic number is 0x1f 0x8b
+                bool isGzipped = responseBytes.Length >= 2 && responseBytes[0] == 0x1f && responseBytes[1] == 0x8b;
+
+                if (isGzipped)
+                {
+                    // Decompress gzip data
+                    using (var compressedStream = new MemoryStream(responseBytes))
+                    using (var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+                    using (var reader = new StreamReader(gzipStream))
+                    {
+                        csv = await reader.ReadToEndAsync();
+                    }
+                }
+                else
+                {
+                    // Read as plain text
+                    csv = System.Text.Encoding.UTF8.GetString(responseBytes);
+                }
+
+                // Parse the CSV response
+                using (var sr = new StringReader(csv))
+                {
+                    string? line;
+                    int idCol = 0, dateCol = 1, paramCol = 2, valueCol = 3;
+                    bool headerParsed = false;
+
+                    // For filling missing dates
+                    DateTime? prevDate = null;
+
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        // Skip empty lines
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+
+                        // Try to detect and parse the header
+                        if (!headerParsed)
+                        {
+
+                            // If this line contains the key header terms, treat it as the header
+                            if (line == "﻿ ID,Date,Parameter/Paramètre,Value/Valeur,Symbol/Symbole")
+                            {
+                                headerParsed = true;
+                            }
+
+                            // If we haven't found a header yet, skip this line (could be metadata)
+                            continue;
+                        }
+
+                        // We're past the header - parse data rows
+                        string[] parts = line.Split(',');
+
+                        // Validate row has enough columns
+                        if (parts.Length <= Math.Max(Math.Max(idCol, dateCol), valueCol))
+                            continue;
+
+                        // Check station match
+                        if (!parts[idCol].Trim().Equals(stationNumber, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        // Check parameter match (parameter column contains "discharge/débit" or "level")
+                        if (paramCol >= 0 && parts.Length > paramCol)
+                        {
+                            string paramValue = parts[paramCol].Trim().ToLowerInvariant();
+                            bool isFlowParam = paramValue.Contains("discharge") || paramValue.Contains("débit") || paramValue.Contains("flow");
+                            bool isLevelParam = paramValue.Contains("level") || paramValue.Contains("stage") || paramValue.Contains("niveau");
+
+                            // Skip if parameter doesn't match requested type
+                            if (timeSeriesType == TimeSeriesType.DailyDischarge && !isFlowParam)
+                                continue;
+                            if (timeSeriesType == TimeSeriesType.DailyStage && !isLevelParam)
+                                continue;
+                        }
+
+                        // Parse date (handle both M/d/yyyy and yyyy-MM-dd formats)
+                        if (!DateTime.TryParse(parts[dateCol].Trim(), out DateTime date))
+                            continue;
+
+                        // Parse value
+                        double val = double.NaN;
+                        string valueStr = parts[valueCol].Trim();
+
+                        if (!string.IsNullOrWhiteSpace(valueStr))
+                        {
+                            // WSC uses dot decimal, values in m^3/s for flow and m for level
+                            if (double.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double raw))
+                            {
+                                if (timeSeriesType == TimeSeriesType.DailyDischarge)
+                                {
+                                    val = dischargeUnit == DischargeUnit.CubicFeetPerSecond
+                                        ? raw * 35.3146667   // cms → cfs
+                                        : raw;               // cms
+                                }
+                                else
+                                {
+                                    val = heightUnit == HeightUnit.Feet
+                                        ? raw * 3.280839895 // m → ft
+                                        : raw;              // m
+                                }
+                            }
+                        }
+
+                        // Fill gaps with NaN to keep a continuous daily series
+                        if (prevDate.HasValue && (date - prevDate.Value).Days > 1)
+                            FillMissingDates(ts, prevDate.Value, date);
+
+                        ts.Add(new SeriesOrdinate<DateTime, double>(date, val));
+                        prevDate = date;
+                    }
+                }
+            }
+
+            return ts;
+        }
+
+
+        #endregion
+
+        #region Australian Bureau of Meteorology (BOM)
+
+        /// <summary>
+        /// Download daily discharge or stage data from the Australian Bureau of Meteorology (BOM) 
+        /// via the KiWIS API.
+        /// </summary>
+        /// <param name="stationNumber">BOM station number (e.g., "410730").</param>
+        /// <param name="timeSeriesType">The time series type (DailyDischarge or DailyStage).</param>
+        /// <param name="dischargeUnit">Desired discharge unit if DailyDischarge.</param>
+        /// <param name="heightUnit">Desired stage unit if DailyStage.</param>
+        /// <param name="startDate">Optional start date. If null, attempts to retrieve full period of record.</param>
+        /// <param name="endDate">Optional end date. If null, defaults to today.</param>
+        /// <returns>TimeSeries of daily values.</returns>
+        public static async Task<TimeSeries> FromABOM(
+            string stationNumber,
+            TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge,
+            DischargeUnit dischargeUnit = DischargeUnit.CubicMetersPerSecond,
+            HeightUnit heightUnit = HeightUnit.Meters,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
+        {
+            // Check connectivity
+            if (!await IsConnectedToInternet())
+                throw new InvalidOperationException("No internet connection.");
+
+            // Validate station number (BOM station numbers are typically 6 digits)
+            if (string.IsNullOrWhiteSpace(stationNumber) || stationNumber.Length < 6)
+                throw new ArgumentException("BOM station number must be at least 6 digits.", nameof(stationNumber));
+
+            // Validate time series type
+            if (timeSeriesType != TimeSeriesType.DailyDischarge && timeSeriesType != TimeSeriesType.DailyStage)
+                throw new ArgumentException("BOM API supports DailyDischarge or DailyStage only.", nameof(timeSeriesType));
+
+            // Set default dates
+            DateTime sd = startDate ?? new DateTime(1800, 1, 1);
+            DateTime ed = endDate ?? DateTime.Today;
+
+            // Determine parameter type based on requested series
+            string parameterType = timeSeriesType == TimeSeriesType.DailyDischarge
+                ? "Water Course Discharge"
+                : "Water Course Level";
+
+            // Step 1: Get timeseries list to find the appropriate ts_id
+            string tsListUrl = "http://www.bom.gov.au/waterdata/services" +
+                $"?service=kisters&type=QueryServices&datasource=0&format=json" +
+                $"&request=getTimeseriesList" +
+                $"&station_no={Uri.EscapeDataString(stationNumber)}" +
+                $"&parametertype_name={Uri.EscapeDataString(parameterType)}";
+
+            string tsId = null;
+
+            // Create HttpClientHandler with automatic decompression
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+
+            using (var client = new HttpClient(handler))
+            {
+                // Add browser-like headers to avoid security proxy issues
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+                client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
+                client.DefaultRequestHeaders.Add("DNT", "1");
+                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
+                client.Timeout = TimeSpan.FromSeconds(30);
+
+                HttpResponseMessage response;
+                try
+                {
+                    response = await client.GetAsync(tsListUrl);
+                    response.EnsureSuccessStatusCode();
+                }
+                catch (HttpRequestException ex)
+                {
+                    throw new Exception($"Failed to connect to BOM API: {ex.Message}", ex);
+                }
+                catch (TaskCanceledException ex)
+                {
+                    throw new Exception("Request to BOM API timed out.", ex);
+                }
+
+                var listResponse = await response.Content.ReadAsStringAsync();
+
+                // Check for error response from KiWIS
+                if (listResponse.Contains("\"type\":\"error\"") || listResponse.StartsWith("{\"type\":\"error\""))
+                {
+                    throw new Exception($"BOM API returned an error. Response: {listResponse}");
+                }
+
+                // Parse JSON response to find appropriate timeseries
+                // BOM returns array where first element is column headers, subsequent elements are data rows
+                System.Text.Json.JsonDocument listData;
+                try
+                {
+                    listData = System.Text.Json.JsonDocument.Parse(listResponse);
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    throw new Exception($"Failed to parse BOM API response as JSON. Response: {listResponse.Substring(0, Math.Min(500, listResponse.Length))}", ex);
+                }
+
+                var root = listData.RootElement;
+
+                if (root.ValueKind != System.Text.Json.JsonValueKind.Array || root.GetArrayLength() < 2)
+                    throw new Exception($"No time series found for station {stationNumber} with parameter {parameterType}. " +
+                        $"API returned {root.GetArrayLength()} items.");
+
+                // Find ts_id column index from header row
+                int tsIdIndex = -1;
+                int tsNameIndex = -1;
+                var headers = root[0];
+
+                if (headers.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    throw new Exception("Unexpected response format: first element is not an array of headers");
+
+                for (int i = 0; i < headers.GetArrayLength(); i++)
+                {
+                    string header = headers[i].GetString();
+                    if (header == "ts_id") tsIdIndex = i;
+                    if (header == "ts_name") tsNameIndex = i;
+                }
+
+                if (tsIdIndex == -1)
+                    throw new Exception("Could not find ts_id in response");
+
+                // Look for daily mean time series (prioritize merged/quality-checked data)
+                for (int i = 1; i < root.GetArrayLength(); i++)
+                {
+                    var row = root[i];
+                    string tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() : "";
+
+                    // Prioritize: DMQaQc.Merged.DailyMean.24HR or similar daily mean series
+                    if (tsName.Contains("DailyMean") || tsName.Contains("Daily Mean"))
+                    {
+                        tsId = row[tsIdIndex].GetString();
+                        break;
+                    }
+                }
+
+                // If no daily mean found, take the first available series
+                if (tsId == null && root.GetArrayLength() > 1)
+                {
+                    tsId = root[1][tsIdIndex].GetString();
+                }
+
+                if (tsId == null)
+                    throw new Exception($"No suitable time series found for station {stationNumber}");
+            }
+
+            // Step 2: Get time series values using the ts_id
+            string valuesUrl = "http://www.bom.gov.au/waterdata/services" +
+                $"?service=kisters&type=QueryServices&datasource=0&format=json" +
+                $"&request=getTimeseriesValues" +
+                $"&ts_id={tsId}" +
+                $"&from={sd:yyyy-MM-dd}" +
+                $"&to={ed:yyyy-MM-dd}";
+
+            var ts = new TimeSeries(TimeInterval.OneDay);
+            DateTime? prevDate = null;
+
+            // Create HttpClientHandler with automatic decompression
+            var handler2 = new HttpClientHandler
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+
+            using (var client = new HttpClient(handler2))
+            {
+                // Add browser-like headers to avoid security proxy issues
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+                client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
+                client.DefaultRequestHeaders.Add("DNT", "1");
+                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
+                client.Timeout = TimeSpan.FromSeconds(60);
+
+                HttpResponseMessage response;
+                try
+                {
+                    response = await client.GetAsync(valuesUrl);
+                    response.EnsureSuccessStatusCode();
+                }
+                catch (HttpRequestException ex)
+                {
+                    throw new Exception($"Failed to retrieve time series values from BOM API: {ex.Message}", ex);
+                }
+                catch (TaskCanceledException ex)
+                {
+                    throw new Exception("Request to BOM API timed out while retrieving values.", ex);
+                }
+
+                var valuesResponse = await response.Content.ReadAsStringAsync();
+
+                // Check for error response
+                if (valuesResponse.Contains("\"type\":\"error\"") || valuesResponse.StartsWith("{\"type\":\"error\""))
+                {
+                    throw new Exception($"BOM API returned an error for time series values. Response: {valuesResponse}");
+                }
+
+                var valuesData = System.Text.Json.JsonDocument.Parse(valuesResponse);
+                var root = valuesData.RootElement;
+
+                // Response structure: array with single object containing 'data' array
+                if (root.GetArrayLength() == 0)
+                    throw new Exception("No data returned from BOM");
+
+                var dataObj = root[0];
+                if (!dataObj.TryGetProperty("data", out var dataArray))
+                    throw new Exception("Invalid response format from BOM");
+
+                // Parse the data array - each element is [timestamp, value, ...]
+                foreach (var point in dataArray.EnumerateArray())
+                {
+                    if (point.GetArrayLength() < 2) continue;
+
+                    // Parse timestamp
+                    string timestampStr = point[0].GetString();
+                    if (!DateTime.TryParse(timestampStr, out DateTime date))
+                        continue;
+
+                    // Parse value
+                    double val = double.NaN;
+                    var valueElement = point[1];
+
+                    if (valueElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    {
+                        double raw = valueElement.GetDouble();
+
+                        // Apply unit conversion
+                        if (timeSeriesType == TimeSeriesType.DailyDischarge)
+                        {
+                            // BOM returns discharge in m³/s
+                            val = dischargeUnit == DischargeUnit.CubicFeetPerSecond
+                                ? raw * 35.3146667
+                                : raw;
+                        }
+                        else
+                        {
+                            // BOM returns stage in meters
+                            val = heightUnit == HeightUnit.Feet
+                                ? raw * 3.280839895
+                                : raw;
+                        }
+                    }
+
+                    // Fill gaps with NaN
+                    if (prevDate.HasValue && (date - prevDate.Value).Days > 1)
+                        FillMissingDates(ts, prevDate.Value, date);
+
+                    ts.Add(new SeriesOrdinate<DateTime, double>(date, val));
+                    prevDate = date;
+                }
+            }
+
+            return ts;
         }
 
         #endregion

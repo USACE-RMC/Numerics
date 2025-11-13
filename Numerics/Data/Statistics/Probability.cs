@@ -1017,7 +1017,6 @@ namespace Numerics.Data.Statistics
 
         /// <summary>
         /// Returns an array of exclusive probabilities of multiple events occurring assuming independence.
-        /// This method applies the <see cref="IndependentExclusive"/> method to multiple event combinations from the indicators array.
         /// </summary>
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <param name="indicators">A 2D array of indicators, where each row represents a combination of events, and 0 means the event did not occur and 1 means the event did occur.</param>

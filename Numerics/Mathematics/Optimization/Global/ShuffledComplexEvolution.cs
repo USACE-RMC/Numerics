@@ -439,6 +439,11 @@ namespace Numerics.Mathematics.Optimization
         {
             public ParameterSet ParameterSet;
             public int Index;
+
+            /// <summary>
+            /// Creates a deep copy of this PointFitness instance.
+            /// </summary>
+            /// <returns>A new PointFitness with cloned ParameterSet and copied Index.</returns>
             public PointFitness Clone()
             {
                 return new PointFitness { ParameterSet = ParameterSet.Clone(), Index = Index };

@@ -100,16 +100,16 @@ namespace Numerics.Data.Statistics
             if (data == null) throw new ArgumentNullException(nameof(data));
             if (data.Count == 0) return double.NaN;
 
-            double min = double.MaxValue;
+            double min = double.PositiveInfinity;
             for (int i = 0; i < data.Count; i++)
             {
-                if (data[i] < min || double.IsNaN(data[i]))
-                {
+                if (double.IsNaN(data[i]))
+                    return double.NaN;
+                if (data[i] < min)
                     min = data[i];
-                }
             }
 
-            return min;
+            return double.IsPositiveInfinity(min) ? double.NaN : min;
         }
 
         /// <summary>
@@ -122,16 +122,16 @@ namespace Numerics.Data.Statistics
             if (data == null) throw new ArgumentNullException(nameof(data));
             if (data.Count == 0) return double.NaN;
 
-            double max = double.MinValue;
+            double max = double.NegativeInfinity;
             for (int i = 0; i < data.Count; i++)
             {
-                if (data[i] > max || double.IsNaN(data[i]))
-                {
+                if (double.IsNaN(data[i]))
+                    return double.NaN;
+                if (data[i] > max)
                     max = data[i];
-                }
             }
 
-            return max;
+            return double.IsNegativeInfinity(max) ? double.NaN : max;
         }
 
         /// <summary>
@@ -190,7 +190,11 @@ namespace Numerics.Data.Statistics
 
             double sum = 0;
             for (int i = 0; i < data.Count; i++)
+            {
+                if (data[i] <= 0) return double.NaN;
                 sum += Math.Log(data[i]);
+            }
+
             return Math.Exp(sum / data.Count);
         }
 

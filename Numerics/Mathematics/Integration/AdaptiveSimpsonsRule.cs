@@ -160,7 +160,6 @@ namespace Numerics.Mathematics.Integration
             try
             {
                 double mu = 0;
-                double sigmaSquared = 0;
                 for (int i = 0; i < bins.Count; i++)
                 {
                     // Fist evaluation of Simpson's Rule on the whole interval
@@ -207,7 +206,6 @@ namespace Numerics.Mathematics.Integration
         /// <param name="fa"> The function evaluated at a </param>
         /// <param name="b"> The maximum value under which the integral must be computed </param>
         /// <param name="fb"> The function evaluated at b </param>
-        /// <param name="epsilon"> Machine epsilon </param>
         /// <param name="depth"> Less than or equal to 0 (max recursions have been reached) </param>
         /// <param name="whole"> The original whole three point Simpson's Rule evaluation on [a,b] </param>
         /// <param name="m"> The midpoint between a and b </param>

@@ -260,7 +260,69 @@ namespace Numerics.Mathematics.RootFinding
             }
 
         }
-    
+
+        /// <summary>
+        /// Solves a system of nonlinear equations using the Newton-Raphson method.
+        /// </summary>
+        /// <param name="f">
+        /// The system of equations to solve, provided as a function that takes a vector 
+        /// and returns a vector of the same dimension. The root is where f(x) = 0.
+        /// </param>
+        /// <param name="df">
+        /// The Jacobian matrix function. Takes a vector x and returns the matrix of 
+        /// partial derivatives ∂fᵢ/∂xⱼ evaluated at x.
+        /// </param>
+        /// <param name="firstGuess">Initial guess for the solution vector.</param>
+        /// <param name="tolerance">Optional. Desired tolerance for both the root and the function value at the root.
+        /// The root will be refined until the tolerance is achieved or the maximum number of iterations is reached. Default = 1e-8.</param>
+        /// <param name="maxIterations"> Maximum number of iterations allowed. Default is 1000. </param>
+        /// <param name="reportFailure"> If true, throws an exception on failure. If false, returns the best estimate found. Default is true.
+        /// </param>
+        /// <returns>The solution vector where f(x) ≈ 0.</returns>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the Jacobian is singular or the method fails to converge 
+        /// (only if reportFailure is true).
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// The multivariate Newton-Raphson method uses the iterative formula:
+        /// x_{n+1} = x_n - J(x_n)^{-1} * f(x_n)
+        /// where J is the Jacobian matrix of partial derivatives.
+        /// </para>
+        /// <para>
+        /// <b>Performance:</b> For an n-dimensional system, each iteration requires:
+        /// - Evaluation of n function values
+        /// - Evaluation of n² Jacobian elements
+        /// - Solution of an n×n linear system
+        /// Time complexity per iteration: O(n³)
+        /// </para>
+        /// <para>
+        /// <b>Convergence:</b> Quadratic convergence when started near the solution 
+        /// and the Jacobian is non-singular. Convergence is not guaranteed for poor 
+        /// initial guesses.
+        /// </para>
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// // Solve the system:
+        /// // f1(x,y) = x² + y² - 4 = 0
+        /// // f2(x,y) = x - y = 0
+        /// 
+        /// Func&lt;Vector, Vector&gt; f = (x) => new Vector(new[] {
+        ///     x[0]*x[0] + x[1]*x[1] - 4,
+        ///     x[0] - x[1]
+        /// });
+        /// 
+        /// Func&lt;Vector, Matrix&gt; df = (x) => new Matrix(new[,] {
+        ///     { 2*x[0], 2*x[1] },
+        ///     { 1, -1 }
+        /// });
+        /// 
+        /// var initial = new Vector(new[] { 1.0, 1.0 });
+        /// var solution = NewtonRaphson.Solve(f, df, initial);
+        /// // solution ≈ (√2, √2)
+        /// </code>
+        /// </example>
         public static Vector Solve(Func<Vector, Vector> f, Func<Vector, Matrix> df, Vector firstGuess, double tolerance = 1E-8, int maxIterations = 1000, bool reportFailure = true) 
         {
 
