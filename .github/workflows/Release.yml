@@ -41,5 +41,5 @@ jobs:
     
     - name: Publish
       shell: pwsh
-      run: dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NEXUS_NUGET_APIKEY }} --source "https://www.hec.usace.army.mil/nexus/repository/fda-nuget/" --skip-duplicate
+      run: dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NEXUS_NUGET_APIKEY }} --source "https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/" --skip-duplicate
       
