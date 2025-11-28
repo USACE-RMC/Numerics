@@ -6,61 +6,11 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest     
-    
-    env:
-      dotnet-version: '9.0.x'                                
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-        
-    - name: Setup .NET Core SDK ${{ env.dotnet-version }}
-      uses: actions/setup-dotnet@v4
-      with:
-          dotnet-version: ${{ env.dotnet-version }}
-      
-    - name: Test
-      run: dotnet test -c Release
-
-    - name: Get version from built assembly and set snapshot version
-      id: set-version
-      shell: powershell
-      run: |
-        # Get the assembly version from the built DLL. It's already built from the test step.
-        $assemblyPath = "Numerics/bin/Release/net8.0/Numerics.dll"
-
-        # Load the assembly and get its version
-        $assembly = [System.Reflection.Assembly]::LoadFrom((Resolve-Path $assemblyPath).Path)
-        $assemblyVersion = $assembly.GetName().Version
-
-        # Extract major.minor.patch from assembly version
-        $baseVersion = "$($assemblyVersion.Major).$($assemblyVersion.Minor).$($assemblyVersion.Build)"
-
-        # Create snapshot version with GitHub run number
-        $snapshotVersion = "${baseVersion}.${{ github.run_number }}-dev"
-
-        # Output the version for use in next steps
-        echo "SNAPSHOT_VERSION=$snapshotVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
-        echo "BASE_VERSION=$baseVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-        # Also set as step output
-        echo "version=$snapshotVersion" >> $env:GITHUB_OUTPUT
-        echo "base_version=$baseVersion" >> $env:GITHUB_OUTPUT
-
-        # Display the version
-        Write-Host "Assembly Version: $assemblyVersion"
-        Write-Host "Base Version: $baseVersion"
-        Write-Host "Snapshot Version: $snapshotVersion"
-
-    - name: Pack
-      run: |
-            # Use the snapshot version from the previous step
-            dotnet pack --configuration Release /p:PackageVersion=$env:SNAPSHOT_VERSION
-            Write-Host "Created package with version: $env:SNAPSHOT_VERSION"
-      shell: powershell
-
-    - name: Publish
-      run: dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NEXUS_NUGET_APIKEY }} --source "https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/" --skip-duplicate
+    uses: HydrologicEngineeringCenter/dotnet-workflows/.github/workflows/snapshot.yml@main
+    with:
+      dotnet-version: '9.0.x'
+      project-names: 'Numerics'
+      run-tests: true
+      nuget-source: 'https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/'
+    secrets:
+      NUGET_API_KEY: ${{ secrets.NEXUS_NUGET_APIKEY }}
