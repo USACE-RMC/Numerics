@@ -204,54 +204,6 @@ Console.WriteLine($"  [{hessian[1,0]:F4}, {hessian[1,1]:F4}]");
 ```
 
 ---
-
-## Partial Derivatives
-
-### Single Partial Derivative
-
-```cs
-Func<double[], double> f = x => x[0]*x[0]*x[1] + Math.Sin(x[1]);
-double[] point = { 2.0, Math.PI/4 };
-
-// ∂f/∂x₀
-double partial0 = NumericalDerivative.PartialDerivative(f, point, variableIndex: 0);
-
-// ∂f/∂x₁
-double partial1 = NumericalDerivative.PartialDerivative(f, point, variableIndex: 1);
-
-Console.WriteLine($"∂f/∂x₀ = {partial0:F6}");  // 2x₀x₁
-Console.WriteLine($"∂f/∂x₁ = {partial1:F6}");  // x₀² + cos(x₁)
-```
-
-### Mixed Partial Derivatives
-
-```cs
-// ∂²f/∂x₀∂x₁
-double mixed = NumericalDerivative.MixedPartialDerivative(f, point, 0, 1);
-Console.WriteLine($"∂²f/∂x₀∂x₁ = {mixed:F6}");  // 2x₀
-```
-
----
-
-## Directional Derivative
-
-The derivative of $f$ in direction $\mathbf{v}$:
-
-```math
-D_\mathbf{v}f = \nabla f \cdot \frac{\mathbf{v}}{|\mathbf{v}|}
-```
-
-```cs
-Func<double[], double> f = x => x[0]*x[0] + x[1]*x[1];
-double[] point = { 1.0, 1.0 };
-double[] direction = { 1.0, 1.0 };
-
-double directional = NumericalDerivative.DirectionalDerivative(f, point, direction);
-Console.WriteLine($"Directional derivative: {directional:F6}");
-```
-
----
-
 ## Error Analysis
 
 ### Truncation Error
@@ -295,32 +247,6 @@ for (int i = 1; i <= 16; i++)
 ```
 
 Typical output shows error decreasing until ~1e-8, then increasing due to roundoff.
-
----
-
-## Higher-Order Formulas
-
-### Five-Point Stencil (First Derivative)
-
-Fourth-order accurate:
-
-```math
-f'(x) \approx \frac{-f(x+2h) + 8f(x+h) - 8f(x-h) + f(x-2h)}{12h}
-```
-
-```cs
-double fivePoint = NumericalDerivative.FivePointStencil(f, x, h);
-```
-
-### Five-Point Stencil (Second Derivative)
-
-```math
-f''(x) \approx \frac{-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)}{12h^2}
-```
-
-```cs
-double secondFivePoint = NumericalDerivative.FivePointSecondDerivative(f, x, h);
-```
 
 ---
 
