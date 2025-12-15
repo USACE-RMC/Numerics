@@ -76,7 +76,7 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Test the quantile function for the Gumbel Distribution.
+        /// Test the quantile function for the Weibull Distribution.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -99,7 +99,7 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Test the standard error for the Gumbel Distribution.
+        /// Test the standard error for the Weibull Distribution.
         /// </summary>
         /// <remarks>
         /// <para>

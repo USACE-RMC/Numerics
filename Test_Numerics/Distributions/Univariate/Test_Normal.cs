@@ -125,8 +125,8 @@ namespace Distributions.Univariate
             double u2 = norm.Sigma;
             double true_u1 = 12665d;
             double true_u2 = 4660d;
-            Assert.AreEqual((u1 - true_u1) / true_u1 < 0.01d, true);
-            Assert.AreEqual((u2 - true_u2) / true_u2 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (u1 - true_u1) / true_u1);
+            Assert.IsLessThan(0.01d, (u2 - true_u2) / true_u2);
 
             var lh = norm.LogLikelihood(sample);
         }

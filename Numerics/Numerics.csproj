@@ -8,14 +8,14 @@
     <DebugType>embedded</DebugType>
 	
     <Description>Numerics is a free and open-source library for .NET developed by USACE-RMC, providing a comprehensive set of methods and algorithms for numerical computations and statistical analysis.</Description>
-    <PackageProjectUrl>https://github.com/USArmy-Corps-of-Engineers-RMC/Numerics</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/USArmy-Corps-of-Engineers-RMC/Numerics</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/USACE-RMC/Numerics</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/USACE-RMC/Numerics</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Title>Numerics</Title>
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <Company>USACE-RMC</Company>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>interpolation; regression; statistics; machine learning; probability distributions; bootstrap analysis; distribution fitting; MCMC sampling; optimization;</PackageTags>
+    <PackageTags>interpolation; regression; statistics; machine learning; probability distributions; bootstrap analysis; distribution fitting; Bayesian MCMC sampling; optimization;</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageId>RMC.Numerics</PackageId>
@@ -29,6 +29,9 @@
   <PropertyGroup>
     <!-- 1591 is missing xml comment for a public member. 1587 is an xml comment not placed on a valid member (in our case, mostly license text at top of files) -->
     <NoWarn>CS1591;CS1587</NoWarn>
+    <Version>2.0.0</Version>
+    <PackageReleaseNotes>This major update delivers broad improvements across the entire Numerics library, with substantial enhancements to data analysis, statistical modeling, numerical methods, distributions, optimization, machine learning utilities, and overall performance and reliability. The update reflects over a year of incremental development, code modernization, and refinement.</PackageReleaseNotes>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
   </PropertyGroup>
 
   

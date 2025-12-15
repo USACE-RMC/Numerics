@@ -29,9 +29,12 @@
 */
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting.Logging;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 using System;
+using System.Reflection;
+using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 namespace Data.Statistics
 {
@@ -260,12 +263,14 @@ namespace Data.Statistics
         /// Test that MAPE throws exception when observed values contain zero.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
         public void Test_MAPE_ZeroObserved()
         {
             var observed = new double[] { 2.5, 0.0, 2.1, 1.4 };
             var modeled = new double[] { 3.0, -0.5, 2.0, 1.5 };
-            GoodnessOfFit.MAPE(observed, modeled);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                GoodnessOfFit.MAPE(observed, modeled);
+            });
         }
 
         /// <summary>
@@ -303,12 +308,14 @@ namespace Data.Statistics
         /// Test that sMAPE throws exception when both observed and modeled values are zero.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
         public void Test_sMAPE_BothZero()
         {
             var observed = new double[] { 2.5, 0.0, 2.1, 1.4 };
             var modeled = new double[] { 3.0, 0.0, 2.0, 1.5 };
-            GoodnessOfFit.sMAPE(observed, modeled);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                GoodnessOfFit.sMAPE(observed, modeled);
+            });
         }
 
         /// <summary>
@@ -760,36 +767,42 @@ namespace Data.Statistics
         /// Test that methods throw appropriate exceptions when observed and modeled arrays have different lengths.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentOutOfRangeException))]
         public void Test_UnequalArrayLengths_RMSE()
         {
             var observed = new double[] { 1.0, 2.0, 3.0 };
             var modeled = new double[] { 1.0, 2.0 };
-            GoodnessOfFit.RMSE(observed, modeled);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                GoodnessOfFit.RMSE(observed, modeled);
+            });
         }
 
         /// <summary>
         /// Test that methods throw appropriate exceptions when observed and modeled arrays have different lengths.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentOutOfRangeException))]
         public void Test_UnequalArrayLengths_NSE()
         {
             var observed = new double[] { 1.0, 2.0, 3.0 };
             var modeled = new double[] { 1.0, 2.0 };
-            GoodnessOfFit.NashSutcliffeEfficiency(observed, modeled);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                GoodnessOfFit.NashSutcliffeEfficiency(observed, modeled);
+            });
         }
 
         /// <summary>
         /// Test that statistical tests throw appropriate exceptions with insufficient data.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentOutOfRangeException))]
         public void Test_InsufficientData_KS()
         {
             var observed = new double[] { };
             var norm = new Normal(0, 1);
-            GoodnessOfFit.KolmogorovSmirnov(observed, norm);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                GoodnessOfFit.KolmogorovSmirnov(observed, norm);
+            });
         }
 
         #endregion

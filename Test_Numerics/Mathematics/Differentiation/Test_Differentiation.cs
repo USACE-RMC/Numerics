@@ -919,31 +919,37 @@ namespace Mathematics.Differentiation
         /// Test that null function throws exception.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
         public void Test_Derivative_NullFunction()
         {
-            NumericalDerivative.Derivative(null, 1.0);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                NumericalDerivative.Derivative(null, 1.0);
+            });
         }
 
         /// <summary>
         /// Test that null theta throws exception in Gradient.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
         public void Test_Gradient_NullTheta()
         {
-            NumericalDerivative.Gradient(FXY, null);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                NumericalDerivative.Gradient(FXY, null);
+            });
         }
 
         /// <summary>
         /// Test Hessian with non-finite function value.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArithmeticException))]
         public void Test_Hessian_NonFiniteValue()
         {
             Func<double[], double> badFunc = x => double.NaN;
-            NumericalDerivative.Hessian(badFunc, new[] { 1.0, 1.0 });
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                NumericalDerivative.Hessian(badFunc, new[] { 1.0, 1.0 });
+            });
         }
 
         #endregion

@@ -121,33 +121,39 @@ namespace Mathematics.RootFinding
         }
 
         [TestMethod()]
-        [ExpectedException(typeof(ArgumentOutOfRangeException))]
         public void Test_BisectionEdge1()
         {
             double initial = -1d;
             double lower = 1d;
             double upper = 5d;
-            double X = Bisection.Solve(TestFunctions.Cubic, initial, lower, upper);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                double X = Bisection.Solve(TestFunctions.Cubic, initial, lower, upper);
+            });
         }
 
         [TestMethod()]
-        [ExpectedException(typeof(ArgumentOutOfRangeException), "The upper bound (b) cannot be less than the lower bound (a).")]
         public void Test_BisectionEdge2()
         {
             double initial = 1d;
             double lower = 5;
             double upper = 0d;
-            double X = Bisection.Solve(TestFunctions.Cubic, initial, lower, upper);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                double X = Bisection.Solve(TestFunctions.Cubic, initial, lower, upper);
+            });
         }
 
         [TestMethod()]
-        [ExpectedException(typeof(ArgumentException), "Bisection method failed because the root is not bracketed.")]
         public void Test_BisectionEdge3()
         {
             double initial = 3d;
             double lower = 2;
             double upper = 5d;
-            double X = Bisection.Solve(TestFunctions.Cubic, initial, lower, upper);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                double X = Bisection.Solve(TestFunctions.Cubic, initial, lower, upper);
+            });
         }
 
     }

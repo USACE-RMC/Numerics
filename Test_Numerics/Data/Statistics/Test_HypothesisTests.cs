@@ -222,10 +222,11 @@ namespace Data.Statistics
             Assert.AreEqual(p2, true_p2, 1E-4);
         }
 
-        [TestMethod]
+
         /// <summary>
         /// Test the Mann-Whitney method against a known example from "The Gamma Family..."
         /// </summary>
+        [TestMethod]
         public void Test_MannWhitney()
         {
             // Table 1.2 Maximum annual peak discharge values in cms, observed at the Harricana River at Amos (Quebec, Canada)

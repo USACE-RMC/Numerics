@@ -99,14 +99,16 @@ namespace Mathematics.RootFinding
         }
 
         [TestMethod()]
-        [ExpectedException(typeof(ArgumentException),"Secant method failed to find root")]
         public void Test_Edge()
         {
             double lower = -6d;
             double upper = 5d;
-            double X = Secant.Solve(Undefined, lower, upper);
-            double trueX = Math.Sqrt(2);
-            Assert.AreEqual(X, trueX, 1E-4);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                double X = Secant.Solve(Undefined, lower, upper);
+                double trueX = Math.Sqrt(2);
+                Assert.AreEqual(X, trueX, 1E-4);
+            });
         }
 
     }

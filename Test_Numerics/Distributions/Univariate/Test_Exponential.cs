@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double a = EXP.Alpha;
             double true_x = 30314.48d;
             double true_a = 18907.87d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
         }
 
         /// <summary>
@@ -100,10 +100,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(x, true_x, 0.001d);
             Assert.AreEqual(a, true_a, 0.001d);
             var lmom = EXP.LinearMomentsFromParameters(EXP.GetParameters);
-            Assert.AreEqual(lmom[0], 1648.806d, 0.001d);
-            Assert.AreEqual(lmom[1], 138.2366d, 0.001d);
-            Assert.AreEqual(lmom[2], 0.3333333d, 0.001d);
-            Assert.AreEqual(lmom[3], 0.1666667d, 0.001d);
+            Assert.AreEqual(1648.806d, lmom[0], 0.001d);
+            Assert.AreEqual(138.2366d, lmom[1], 0.001d);
+            Assert.AreEqual(0.3333333d, lmom[2], 0.001d);
+            Assert.AreEqual(0.1666667d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -126,8 +126,8 @@ namespace Distributions.Univariate
             double a = EXP.Alpha;
             double true_x = 13100d;
             double true_a = 36122.35d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
         }
 
         /// <summary>
@@ -264,7 +264,7 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var EXP = new Exponential(1, 1);
-            Assert.AreEqual(EXP.Mean, 2);
+            Assert.AreEqual(2, EXP.Mean);
 
             var EXP2 = new Exponential(-100, 4);
             Assert.AreEqual(EXP2.Mean, -96);

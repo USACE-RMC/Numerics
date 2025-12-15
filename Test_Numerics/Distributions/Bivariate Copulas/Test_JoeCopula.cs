@@ -57,29 +57,29 @@ namespace Distributions.BivariateCopulas
         public void Test_PDF()
         {
             var copula = new JoeCopula(10);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 4.342727e-05, 1E-6);
+            Assert.AreEqual(4.342727e-05, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new JoeCopula(20);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 8.645443e-11, 1E-6);
+            Assert.AreEqual(8.645443e-11, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new JoeCopula(1.1);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 0.9512265, 1E-6);
+            Assert.AreEqual(0.9512265, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new JoeCopula(5);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 0.02110735, 1E-6);
+            Assert.AreEqual(0.02110735, copula.PDF(0.2, 0.8), 1E-6);
 
             // Test symmetry
             copula = new JoeCopula(10);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 4.342727e-05, 1E-6);
+            Assert.AreEqual(4.342727e-05, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new JoeCopula(20);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 8.645443e-11, 1E-6);
+            Assert.AreEqual(8.645443e-11, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new JoeCopula(1.1);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 0.9512265, 1E-6);
+            Assert.AreEqual(0.9512265, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new JoeCopula(5);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 0.02110735, 1E-6);
+            Assert.AreEqual(0.02110735, copula.PDF(0.8, 0.2), 1E-6);
 
         }
 
@@ -90,29 +90,29 @@ namespace Distributions.BivariateCopulas
         public void Test_CDF()
         {
             var copula = new JoeCopula(10);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1999999, 1E-6);
+            Assert.AreEqual(0.1999999, copula.CDF(0.2, 0.8), 1E-6);
 
             copula = new JoeCopula(20);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.2, 1E-6);
+            Assert.AreEqual(0.2, copula.CDF(0.2, 0.8), 1E-6);
 
             copula = new JoeCopula(1.1);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1656223, 1E-6);
+            Assert.AreEqual(0.1656223, copula.CDF(0.2, 0.8), 1E-6);
 
             copula = new JoeCopula(5);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.199895, 1E-6);
+            Assert.AreEqual(0.199895, copula.CDF(0.2, 0.8), 1E-6);
 
             // Test symmetry
             copula = new JoeCopula(10);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1999999, 1E-6);
+            Assert.AreEqual(0.1999999, copula.CDF(0.8, 0.2), 1E-6);
 
             copula = new JoeCopula(20);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.2, 1E-6);
+            Assert.AreEqual(0.2, copula.CDF(0.8, 0.2), 1E-6);
 
             copula = new JoeCopula(1.1);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1656223, 1E-6);
+            Assert.AreEqual(0.1656223, copula.CDF(0.8, 0.2), 1E-6);
 
             copula = new JoeCopula(5);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.199895, 1E-6);
+            Assert.AreEqual(0.199895, copula.CDF(0.8, 0.2), 1E-6);
 
         }
 

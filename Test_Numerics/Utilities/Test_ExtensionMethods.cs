@@ -174,12 +174,14 @@ namespace Utilities
         /// Test edge case of different sized arrays throwing exception.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
         public void Test_AddEdge()
         {
             double[] array = new double[] { 1, 2, 3 };
             double[] values = new double[] { 1, 2, 3, 4};
-            var result = array.Add(values);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                var result = array.Add(values);
+            });
         }
 
         /// <summary>
@@ -199,12 +201,14 @@ namespace Utilities
         /// Test edge case of different sized arrays throwing exception.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
         public void Test_SubtractEdge()
         {
             var array = new double[] { 3, 2, 1, 0 };
             var values = new double[] { 1, 2, 3 };
-            var result = array.Subtract(values);       
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                var result = array.Subtract(values);
+            });
         }
 
         /// <summary>

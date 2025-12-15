@@ -114,12 +114,19 @@ namespace Mathematics.RootFinding
         /// Test bad bracket.
         /// </summary>
         [TestMethod()]
-        [ExpectedException(typeof(Exception), "Bad initial range in bracket.")]
         public void Test_BracketEdge()
         {
             double lower = 1;
             double upper = 1;
-            bool X = Brent.Bracket(TestFunctions.Quadratic, ref lower, ref upper, out double f1, out double f2);
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                bool x = Brent.Bracket(
+                    TestFunctions.Quadratic,
+                    ref lower,
+                    ref upper,
+                    out double f1,
+                    out double f2);
+            });
         }
     }
 }

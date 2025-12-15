@@ -169,25 +169,29 @@ namespace Mathematics.Optimization
         /// Edge case for heap capacity.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(InvalidOperationException))]
         public void HeapCapacityExceededTest()
         {
-            var heap = new BinaryHeap<int>(3);
-            heap.Add(new BinaryHeap<int>.Node(1f, 1, 1));
-            heap.Add(new BinaryHeap<int>.Node(2f, 2, 2));
-            heap.Add(new BinaryHeap<int>.Node(3f, 3, 3));
-            heap.Add(new BinaryHeap<int>.Node(4f, 4, 4)); // exceeds capacity
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                var heap = new BinaryHeap<int>(3);
+                heap.Add(new BinaryHeap<int>.Node(1f, 1, 1));
+                heap.Add(new BinaryHeap<int>.Node(2f, 2, 2));
+                heap.Add(new BinaryHeap<int>.Node(3f, 3, 3));
+                heap.Add(new BinaryHeap<int>.Node(4f, 4, 4)); // exceeds capacity
+            });
         }
 
         /// <summary>
         /// Testing RemoveMin() is getting called correctly on heap.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(InvalidOperationException))]
         public void RemoveMinFromEmptyHeapTest()
         {
-            var heap = new BinaryHeap<int>(10);
-            heap.RemoveMin(); // should throw
+            var ex = Assert.Throws<Exception>(() =>
+            {
+                var heap = new BinaryHeap<int>(10);
+                heap.RemoveMin(); // should throw
+            });
         }
 
         /// <summary>

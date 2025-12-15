@@ -57,29 +57,29 @@ namespace Distributions.BivariateCopulas
         public void Test_PDF()
         {
             var copula = new NormalCopula(0.8);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 0.09803021, 1E-6);
+            Assert.AreEqual(0.09803021, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new NormalCopula(0.1);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 0.928971, 1E-6);
+            Assert.AreEqual(0.928971, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new NormalCopula(-0.5);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 1.462211, 1E-6);
+            Assert.AreEqual(1.462211, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new NormalCopula(-0.9);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 3.208773, 1E-6);
+            Assert.AreEqual(3.208773, copula.PDF(0.2, 0.8), 1E-6);
 
             // Test symmetry
             copula = new NormalCopula(0.8);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 0.09803021, 1E-6);
+            Assert.AreEqual(0.09803021, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new NormalCopula(0.1);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 0.928971, 1E-6);
+            Assert.AreEqual(0.928971, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new NormalCopula(-0.5);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 1.462211, 1E-6);
+            Assert.AreEqual(1.462211, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new NormalCopula(-0.9);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 3.208773, 1E-6);
+            Assert.AreEqual(3.208773, copula.PDF(0.8, 0.2), 1E-6);
         }
 
         /// <summary>
@@ -90,29 +90,29 @@ namespace Distributions.BivariateCopulas
         {
 
             var copula = new NormalCopula(0.8);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1996831, 1E-2);
+            Assert.AreEqual(0.1996831, copula.CDF(0.2, 0.8), 1E-2);
 
             copula = new NormalCopula(0.1);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1675602, 1E-2);
+            Assert.AreEqual(0.1675602, copula.CDF(0.2, 0.8), 1E-2);
 
             copula = new NormalCopula(-0.5);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1128494, 1E-2);
+            Assert.AreEqual(0.1128494, copula.CDF(0.2, 0.8), 1E-2);
 
             copula = new NormalCopula(-0.9);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.05006756, 1E-2);
+            Assert.AreEqual(0.05006756, copula.CDF(0.2, 0.8), 1E-2);
 
             // Test symmetry
             copula = new NormalCopula(0.8);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1996831, 1E-2);
+            Assert.AreEqual(0.1996831, copula.CDF(0.8, 0.2), 1E-2);
 
             copula = new NormalCopula(0.1);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1675602, 1E-2);
+            Assert.AreEqual(0.1675602, copula.CDF(0.8, 0.2), 1E-2);
 
             copula = new NormalCopula(-0.5);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1128494, 1E-2);
+            Assert.AreEqual(0.1128494, copula.CDF(0.8, 0.2), 1E-2);
 
             copula = new NormalCopula(-0.9);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.05006756, 1E-2);
+            Assert.AreEqual(0.05006756, copula.CDF(0.8, 0.2), 1E-2);
         }
 
         private double[] data1 = new double[] { 122.094066003419, 92.8321267206161, 86.4920318705377, 87.6183663113541, 102.558777787492, 103.627475117762, 127.084948716539, 105.908684131013, 110.065795957654, 105.924647125867, 110.009738155469, 126.490833800772, 64.1264871206211, 81.3150800229481, 92.0780134395721, 106.040322550555, 113.158086143066, 117.051057784044, 127.110531266645, 108.907371862136, 105.476247114194, 108.629403495407, 98.7803988364997, 93.217925588845, 97.7219451830075, 109.178093756809, 137.69504856252, 106.884615327674, 112.139177456202, 85.7416217661797, 71.0610938629716, 112.644166631765, 119.545871678548, 70.5169833274982, 99.6896817997206, 100.987892854545, 103.659280253554, 75.6075621013066, 118.810868919796, 109.113664695226, 113.636425353944, 100.008375355612, 113.178917359795, 80.4269472604342, 88.3638384448237, 90.2905074656314, 98.7995143316863, 98.4698060067802, 108.279297570816, 86.1578437055905, 101.183725242941, 85.5531148952956, 111.024195253862, 121.934506174556, 104.169993666179, 84.4652994609478, 99.6099259747033, 95.3130792386208, 115.45680252817, 120.213139478586, 95.5691788140058, 92.7950300448044, 102.58430893827, 86.7105161576407, 82.8059368562185, 107.335705516294, 112.603259240932, 102.780778760832, 128.958090528336, 105.139162595628, 118.272661482198, 99.8275937885748, 94.2856024560543, 108.48679008009, 100.147734981682, 88.7006383425785, 89.6441478272035, 112.24266306884, 99.8184811468069, 120.592090049738, 124.023170133661, 101.250961381805, 90.0000027551006, 108.781064635426, 94.9203320035987, 99.9491821782837, 88.7473944659517, 94.3643253649856, 105.814317118952, 92.6866900633813, 111.020330544613, 111.676189456988, 115.70235103978, 124.659106152655, 81.3866270495082, 120.178528245778, 93.6511977805724, 114.099368762143, 119.062045395294, 74.1998497412903 };

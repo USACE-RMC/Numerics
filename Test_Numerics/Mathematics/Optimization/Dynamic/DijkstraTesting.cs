@@ -28,13 +28,9 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * **/
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Collections.Generic;
+
 using Numerics.Mathematics.Optimization;
-using System.Diagnostics;
-using System;
-using Numerics.Distributions;
-using Newtonsoft.Json.Bson;
+
 namespace Mathematics.Optimization
 {
     [TestClass]

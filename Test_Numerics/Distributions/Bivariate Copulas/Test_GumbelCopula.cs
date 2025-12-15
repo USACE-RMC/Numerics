@@ -56,29 +56,29 @@ namespace Distributions.BivariateCopulas
         public void Test_PDF()
         {
             var copula = new GumbelCopula(10);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 1.559981e-07, 1E-6);
+            Assert.AreEqual(1.559981e-07, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new GumbelCopula(20);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 7.954156e-16, 1E-6);
+            Assert.AreEqual(7.954156e-16, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new GumbelCopula(1.1);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 0.9004251, 1E-6);
+            Assert.AreEqual(0.9004251, copula.PDF(0.2, 0.8), 1E-6);
 
             copula = new GumbelCopula(5);
-            Assert.AreEqual(copula.PDF(0.2, 0.8), 0.001609717, 1E-6);
+            Assert.AreEqual(0.001609717, copula.PDF(0.2, 0.8), 1E-6);
 
             // Test symmetry
             copula = new GumbelCopula(10);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 1.559981e-07, 1E-6);
+            Assert.AreEqual(1.559981e-07, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new GumbelCopula(20);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 7.954156e-16, 1E-6);
+            Assert.AreEqual(7.954156e-16, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new GumbelCopula(1.1);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 0.9004251, 1E-6);
+            Assert.AreEqual(0.9004251, copula.PDF(0.8, 0.2), 1E-6);
 
             copula = new GumbelCopula(5);
-            Assert.AreEqual(copula.PDF(0.8, 0.2), 0.001609717, 1E-6);
+            Assert.AreEqual(0.001609717, copula.PDF(0.8, 0.2), 1E-6);
 
         }
 
@@ -89,29 +89,29 @@ namespace Distributions.BivariateCopulas
         public void Test_CDF()
         {
             var copula = new GumbelCopula(10);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.2, 1E-6);
+            Assert.AreEqual(0.2, copula.CDF(0.2, 0.8), 1E-6);
 
             copula = new GumbelCopula(20);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.2, 1E-6);
+            Assert.AreEqual(0.2, copula.CDF(0.2, 0.8), 1E-6);
 
             copula = new GumbelCopula(1.1);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1694668, 1E-6);
+            Assert.AreEqual(0.1694668, copula.CDF(0.2, 0.8), 1E-6);
 
             copula = new GumbelCopula(5);
-            Assert.AreEqual(copula.CDF(0.2, 0.8), 0.1999967, 1E-6);
+            Assert.AreEqual(0.1999967, copula.CDF(0.2, 0.8), 1E-6);
 
             // Test symmetry
             copula = new GumbelCopula(10);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.2, 1E-6);
+            Assert.AreEqual(0.2, copula.CDF(0.8, 0.2), 1E-6);
 
             copula = new GumbelCopula(20);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.2, 1E-6);
+            Assert.AreEqual(0.2, copula.CDF(0.8, 0.2), 1E-6);
 
             copula = new GumbelCopula(1.1);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1694668, 1E-6);
+            Assert.AreEqual(0.1694668, copula.CDF(0.8, 0.2), 1E-6);
 
             copula = new GumbelCopula(5);
-            Assert.AreEqual(copula.CDF(0.8, 0.2), 0.1999967, 1E-6);
+            Assert.AreEqual(0.1999967, copula.CDF(0.8, 0.2), 1E-6);
 
         }
 

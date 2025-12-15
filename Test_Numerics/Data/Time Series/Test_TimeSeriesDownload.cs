@@ -275,7 +275,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task CHMN_InvalidStation_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromCHMN("08LG01"));
         }
 
@@ -285,7 +285,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task CHMN_UnsupportedType_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromCHMN(CHMN_1,
                     TimeSeriesDownload.TimeSeriesType.PeakDischarge));
         }
@@ -339,7 +339,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task USGS_InvalidStation_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromUSGS("1134500"));
         }
 
@@ -349,7 +349,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task USGS_UnsupportedType_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromUSGS(USGS_1,
                     TimeSeriesDownload.TimeSeriesType.DailyPrecipitation));
         }
@@ -434,7 +434,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task GHCN_InvalidStation_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromGHCN("USC0004074"));
         }
 
@@ -444,7 +444,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task GHCN_UnsupportedType_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromGHCN(GHCN_1,
                     TimeSeriesDownload.TimeSeriesType.DailyStage));
         }
@@ -544,7 +544,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task BOM_InvalidStation_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromABOM("41073"));
         }
 
@@ -554,7 +554,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task BOM_UnsupportedType_Throws()
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromABOM(BOM_1,
                     TimeSeriesDownload.TimeSeriesType.PeakDischarge));
         }
