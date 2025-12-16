@@ -68,9 +68,9 @@ namespace Data.PairedData
             UnivariateDistributionBase[] yVals = new UnivariateDistributionBase[] { new Triangular(1, 2, 3), new Triangular(2, 4, 5), new Triangular(6, 8, 12), new Triangular(13, 19, 20) };
 
             _dataset1 = new UncertainOrderedPairedData(xVals, yVals, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Triangular);
-            _dataset2 = new UncertainOrderedPairedData(xVals.Reverse().ToArray(), yVals, true, SortOrder.Descending, true, SortOrder.Ascending, UnivariateDistributionType.Triangular);
-            _dataset3 = new UncertainOrderedPairedData(xVals, yVals.Reverse().ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending, UnivariateDistributionType.Triangular);
-            _dataset4 = new UncertainOrderedPairedData(xVals.Reverse().ToArray(), yVals.Reverse().ToArray(), true, SortOrder.Descending, true, SortOrder.Descending, UnivariateDistributionType.Triangular);
+            _dataset2 = new UncertainOrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yVals, true, SortOrder.Descending, true, SortOrder.Ascending, UnivariateDistributionType.Triangular);
+            _dataset3 = new UncertainOrderedPairedData(xVals, Enumerable.Reverse(yVals).ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending, UnivariateDistributionType.Triangular);
+            _dataset4 = new UncertainOrderedPairedData(Enumerable.Reverse(xVals).ToArray(), Enumerable.Reverse(yVals).ToArray(), true, SortOrder.Descending, true, SortOrder.Descending, UnivariateDistributionType.Triangular);
         }
 
         /// <summary>
@@ -112,9 +112,9 @@ namespace Data.PairedData
             double[] yMeanVals = new double[] { 2, 3.66667, 8.66667, 17.33333 };
 
             var data1Expected = new OrderedPairedData(xVals, yMeanVals, true, SortOrder.Ascending, true, SortOrder.Ascending);
-            var data2Expected = new OrderedPairedData(xVals.Reverse().ToArray(), yMeanVals, true, SortOrder.Descending, true, SortOrder.Ascending);
-            var data3Expected = new OrderedPairedData(xVals, yMeanVals.Reverse().ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
-            var data4Expected = new OrderedPairedData(xVals.Reverse().ToArray(), yMeanVals.Reverse().ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
+            var data2Expected = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yMeanVals, true, SortOrder.Descending, true, SortOrder.Ascending);
+            var data3Expected = new OrderedPairedData(xVals, Enumerable.Reverse(yMeanVals).ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
+            var data4Expected = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), Enumerable.Reverse(yMeanVals).ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
 
             for (int i = 0; i < data1.Count; i++)
             {
@@ -153,9 +153,9 @@ namespace Data.PairedData
             double[] yInverseVals = new double[] { 2, 3.732051, 8.535898, 17.58258 };
 
             var data1Expected = new OrderedPairedData(xVals, yInverseVals, true, SortOrder.Ascending, true, SortOrder.Ascending);
-            var data2Expected = new OrderedPairedData(xVals.Reverse().ToArray(), yInverseVals, true, SortOrder.Descending, true, SortOrder.Ascending);
-            var data3Expected = new OrderedPairedData(xVals, yInverseVals.Reverse().ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
-            var data4Expected = new OrderedPairedData(xVals.Reverse().ToArray(), yInverseVals.Reverse().ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
+            var data2Expected = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yInverseVals, true, SortOrder.Descending, true, SortOrder.Ascending);
+            var data3Expected = new OrderedPairedData(xVals, Enumerable.Reverse(yInverseVals).ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
+            var data4Expected = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), Enumerable.Reverse(yInverseVals).ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
 
             for (int i = 0; i < data1.Count; i++)
             {
@@ -189,12 +189,12 @@ namespace Data.PairedData
             // Test Remove and Contains
             pairedData.Remove(ordinate);
             bool test2 = pairedData.Contains(ordinate);
-            Assert.AreEqual(false, test2);
+            Assert.IsFalse(test2);
 
             // Test RemoveAt and Contains
             pairedData.RemoveAt(2);
             bool test3 = pairedData.Contains(ordinate);
-            Assert.AreEqual(false, test3);
+            Assert.IsFalse(test3);
 
             // Test Insert and IndexOf
             pairedData.Insert(2, ordinate);

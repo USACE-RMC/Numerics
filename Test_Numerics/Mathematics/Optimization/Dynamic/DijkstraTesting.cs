@@ -52,11 +52,11 @@ namespace Mathematics.Optimization
 
             float[,] result = Dijkstra.Solve(edges, 3,6);
 
-            Assert.AreEqual(result[3, 2], 0f);
-            Assert.AreEqual(result[2, 2], 3f);
-            Assert.AreEqual(result[1, 2], 4f);
-            Assert.AreEqual(result[0, 2], 6f);
-            Assert.AreEqual(result[4, 2], 7f);
+            Assert.AreEqual(0f, result[3, 2]);
+            Assert.AreEqual(3f, result[2, 2]);
+            Assert.AreEqual(4f, result[1, 2]);
+            Assert.AreEqual(6f, result[0, 2]);
+            Assert.AreEqual(7f, result[4, 2]);
             Assert.IsTrue(float.IsPositiveInfinity(result[5,2]));
 
         }
@@ -117,11 +117,11 @@ namespace Mathematics.Optimization
 
             float[,] result = Dijkstra.Solve(edges,9);
 
-            Assert.AreEqual(result[0, 0], 5f); //Algorithm is choosing the next node that yields the shortest paths
-            Assert.AreEqual(result[0, 2], 8f);
+            Assert.AreEqual(5f, result[0, 0]); //Algorithm is choosing the next node that yields the shortest paths
+            Assert.AreEqual(8f, result[0, 2]);
 
-            Assert.AreEqual(result[1, 0], 7);
-            Assert.AreEqual(result[1, 2], 5);
+            Assert.AreEqual(7, result[1, 0]);
+            Assert.AreEqual(5, result[1, 2]);
 
             Assert.AreEqual(1, result[2, 0]);
             Assert.AreEqual(6, result[2, 2]);
@@ -241,10 +241,10 @@ namespace Mathematics.Optimization
 
             var result = Dijkstra.Solve(edges, [0,3],4);
 
-            Assert.AreEqual(result[1, 0], 0);
-            Assert.AreEqual(result[1, 2], 3);
-            Assert.AreEqual(result[2, 0], 1);
-            Assert.AreEqual(result[2, 2], 5);
+            Assert.AreEqual(0, result[1, 0]);
+            Assert.AreEqual(3, result[1, 2]);
+            Assert.AreEqual(1, result[2, 0]);
+            Assert.AreEqual(5, result[2, 2]);
         }
 
         /// <summary>
@@ -262,10 +262,10 @@ namespace Mathematics.Optimization
                 new Edge(2,3,1,2)
             };
             var result = Dijkstra.Solve(edges, [0, 3], 4);
-            Assert.AreEqual(result[1,0],0);
-            Assert.AreEqual(result[1, 2], 3);
-            Assert.AreEqual(result[2, 0], 3);
-            Assert.AreEqual(result[2, 2], 1);
+            Assert.AreEqual(0, result[1, 0]);
+            Assert.AreEqual(3, result[1, 2]);
+            Assert.AreEqual(3, result[2, 0]);
+            Assert.AreEqual(1, result[2, 2]);
         }
 
         /// <summary>
@@ -304,11 +304,11 @@ namespace Mathematics.Optimization
             };
 
             var result = Dijkstra.Solve(edges, [0, 2], 3);
-            Assert.AreEqual(result[0, 0], 0);
-            Assert.AreEqual(result[0, 2], 0);
-            Assert.AreEqual(result[1, 0], 2);
-            Assert.AreEqual(result[1, 2], 1);
-            Assert.AreEqual(result[2, 0], 2);
+            Assert.AreEqual(0, result[0, 0]);
+            Assert.AreEqual(0, result[0, 2]);
+            Assert.AreEqual(2, result[1, 0]);
+            Assert.AreEqual(1, result[1, 2]);
+            Assert.AreEqual(2, result[2, 0]);
         }
     }
 }

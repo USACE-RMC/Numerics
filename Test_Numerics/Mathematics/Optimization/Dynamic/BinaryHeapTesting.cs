@@ -143,7 +143,7 @@ namespace Mathematics.Optimization
             //Compare
             for (int i = 0; i < weights.Length; i++)
             {
-                Assert.AreEqual(heap.RemoveMin().Value == weights[i], false);
+                Assert.AreNotEqual(heap.RemoveMin().Value , weights[i]);
             }
         }
 

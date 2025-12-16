@@ -85,14 +85,14 @@ namespace Data.PairedData
             // Also testing overloaded equality operators
             Assert.IsTrue(unordinate1 == unordinate3);
             Assert.IsTrue(unordinate1 == unordinate2);
-            Assert.AreEqual(unordinate1.X, 2);
-            Assert.AreEqual(unordinate1.Y, distribution);
-            Assert.AreEqual(unordinate3.X, 2);
+            Assert.AreEqual(2,unordinate1.X);
+            Assert.AreEqual(distribution, unordinate1.Y);
+            Assert.AreEqual(2,unordinate3.X );
             Assert.IsTrue(unordinate3.Y == distribution);
 
-            Assert.AreEqual(unordinate1.IsValid, true);
-            Assert.AreEqual(unordinate4.IsValid, false);
-            Assert.AreEqual(unordinate5.IsValid, false);
+            Assert.IsTrue(unordinate1.IsValid );
+            Assert.IsFalse(unordinate4.IsValid);
+            Assert.IsFalse(unordinate5.IsValid);
 
             Assert.IsTrue(unordinate1 != unordinate4);
             Assert.IsTrue(unordinate1 != unordinate5);

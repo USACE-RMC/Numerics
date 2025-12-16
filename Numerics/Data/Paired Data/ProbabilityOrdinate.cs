@@ -78,7 +78,7 @@ namespace Numerics.Data
         public event NotifyCollectionChangedEventHandler CollectionChanged;
 
         /// <summary>
-        /// Occurs when a property value changes, such as <see cref="Count"/>
+        /// Occurs when a property value changes/>
         /// or the indexer <c>Item[]</c>.
         /// </summary>
         public event PropertyChangedEventHandler PropertyChanged;
