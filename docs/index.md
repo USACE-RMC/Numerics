@@ -218,7 +218,3 @@ This software is provided under a BSD-3-Clause license. See the LICENSE file for
 [3] ter Braak, C. J. F., & Vrugt, J. A. (2008). Differential Evolution Markov Chain with snooker updater and fewer chains. *Statistics and Computing*, 18(4), 435-446.
 
 [4] Moriasi, D. N., et al. (2007). Model evaluation guidelines for systematic quantification of accuracy in watershed simulations. *Transactions of the ASABE*, 50(3), 885-900.
-
----
-
-*This documentation package is now **ABSOLUTELY COMPLETE** with ALL requested additions. 25 documentation files covering every major namespace including Machine Learning and Multivariate Distributions. All sections verified against source code. Production-ready professional documentation - 510+ KB total.*
