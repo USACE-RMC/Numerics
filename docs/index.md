@@ -1,9 +1,5 @@
 # Numerics Library Documentation
 
-**Version:** 1.0  
-**Author:** U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC)  
-**License:** BSD-3-Clause
-
 ## Overview
 
 ***Numerics*** is a comprehensive numerical computing library for .NET, developed by the U.S. Army Corps of Engineers Risk Management Center for quantitative risk assessment applications. The library provides robust implementations of probability distributions, statistical analysis, numerical methods, optimization algorithms, and Markov Chain Monte Carlo (MCMC) sampling techniques.
