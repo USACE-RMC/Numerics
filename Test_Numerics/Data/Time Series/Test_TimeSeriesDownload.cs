@@ -146,7 +146,7 @@ namespace Data.TimeSeriesAnalysis
         private static void AssertDailySeriesMonotonic(TimeSeries ts)
         {
             Assert.IsNotNull(ts, "Time series is null.");
-            Assert.IsTrue(ts.Count > 0, "Time series is empty.");
+            Assert.IsGreaterThan( 0, ts.Count);
 
             DateTime? prev = null;
             foreach (var pt in ts)
@@ -177,7 +177,7 @@ namespace Data.TimeSeriesAnalysis
             if (denom == 0)
                 Assert.IsLessThanOrEqualTo(absTol,diff);
             else
-                Assert.IsTrue(diff / denom <= relTol, $"Values differ: {a} vs {b}");
+                Assert.IsLessThanOrEqualTo(relTol, diff / denom);
         }
 
         #endregion
@@ -572,7 +572,7 @@ namespace Data.TimeSeriesAnalysis
                 startDate: WinStart, endDate: WinEnd);
 
             Assert.IsNotNull(ts, "Time series is null.");
-            Assert.IsTrue(ts.Count > 0, "Time series is empty.");
+            Assert.IsGreaterThan(0, ts.Count);
 
             // Verify data is within requested window (allowing for some timezone flexibility)
             var firstDate = ts.First().Index;

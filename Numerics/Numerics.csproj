@@ -34,8 +34,12 @@
     <AssemblyVersion>2.0.0.0</AssemblyVersion>
   </PropertyGroup>
 
-  
-  	<ItemGroup>
+	<PropertyGroup>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+
+	<ItemGroup>
 		<!--https://github.com/dotnet/reproducible-builds-->
 		<PackageReference Include="DotNet.ReproducibleBuilds" Version="1.2.25">
 			<PrivateAssets>all</PrivateAssets>

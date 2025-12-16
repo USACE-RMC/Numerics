@@ -66,7 +66,7 @@ namespace Data.PairedData
             _dataset1 = new OrderedPairedData(xVals, yVals, true, SortOrder.Ascending, true, SortOrder.Ascending);
             _dataset2 = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yVals, true, SortOrder.Descending, true, SortOrder.Ascending);
             _dataset3 = new OrderedPairedData(xVals, Enumerable.Reverse(yVals).ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
-            _dataset4 = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yVals.Reverse().ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
+            _dataset4 = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), Enumerable.Reverse(yVals).ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
         }
 
         /// <summary>

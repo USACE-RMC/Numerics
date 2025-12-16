@@ -826,11 +826,11 @@ namespace Data.Statistics
             double RSR = GoodnessOfFit.RSR(observed, modeled);
 
             // Good model expectations
-            Assert.IsTrue(NSE > 0.9, "NSE should be > 0.9 for a good model");
-            Assert.IsTrue(KGE > 0.9, "KGE should be > 0.9 for a good model");
-            Assert.IsTrue(RMSE < 5.0, "RMSE should be low for a good model");
-            Assert.IsTrue(Math.Abs(PBIAS) < 5.0, "PBIAS should be low for a good model");
-            Assert.IsTrue(RSR < 0.5, "RSR should be < 0.5 for a good model");
+            Assert.IsGreaterThan(0.9, NSE);
+            Assert.IsGreaterThan(0.9, KGE);
+            Assert.IsLessThan(5.0, RMSE);
+            Assert.IsLessThan(5.0, Math.Abs(PBIAS));
+            Assert.IsLessThan(0.5, RSR);
         }
 
         /// <summary>
@@ -854,12 +854,12 @@ namespace Data.Statistics
             // - RMSE equals the standard deviation of observations
             // - RSR should be exactly 1.0 (RMSE / StdDev)
 
-            Assert.IsTrue(NSE <= 0.05, $"NSE should be near 0 for constant-at-mean prediction, got {NSE}");
+            Assert.IsLessThanOrEqualTo(0.05, NSE);
 
             // KGE returns -10.0 for zero-variance predictions (degenerate case)
-            Assert.IsTrue(KGE < -5.0, $"KGE should be very poor for constant predictions (zero variance), got {KGE}");
+            Assert.IsLessThan(-5.0, KGE);
 
-            Assert.IsTrue(RMSE > 15.0, "RMSE should be high for a poor model");
+            Assert.IsGreaterThan(15.0, RMSE);
             Assert.IsTrue(RSR >= 0.95 && RSR <= 1.05, $"RSR should be approximately 1.0 for constant-at-mean prediction, got {RSR}");
         }
 

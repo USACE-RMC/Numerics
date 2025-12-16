@@ -259,7 +259,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(distributions, 1024);
 
             // Assert number of points
-            Assert.AreEqual(1024, convolved.XValues.Count, "Should have exactly 1024 points");
+            Assert.HasCount(1024, convolved.XValues);
 
             // Expected: Range ≈ [0, 10], Mean ≈ 5
             Assert.AreEqual(0.0, convolved.Minimum, 0.2, "Minimum should be approximately 0");
