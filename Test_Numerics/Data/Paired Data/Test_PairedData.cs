@@ -64,9 +64,9 @@ namespace Data.PairedData
             double[] xVals = new double[] { 230408, 288010, 345611, 403213, 460815, 518417, 576019, 633612, 691223, 748825, 806427, 864029, 921631, 1036834, 1152038 };
             double[] yVals = new double[] { 1519.7, 1520.5, 1520.9, 1521.7, 1523.5, 1525.9, 1528.4, 1530.9, 1533.2, 1534.7, 1535.9, 1538, 1541.3, 1547.7, 1552.7 };
             _dataset1 = new OrderedPairedData(xVals, yVals, true, SortOrder.Ascending, true, SortOrder.Ascending);
-            _dataset2 = new OrderedPairedData(xVals.Reverse().ToArray(), yVals, true, SortOrder.Descending, true, SortOrder.Ascending);
-            _dataset3 = new OrderedPairedData(xVals, yVals.Reverse().ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
-            _dataset4 = new OrderedPairedData(xVals.Reverse().ToArray(), yVals.Reverse().ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
+            _dataset2 = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yVals, true, SortOrder.Descending, true, SortOrder.Ascending);
+            _dataset3 = new OrderedPairedData(xVals, Enumerable.Reverse(yVals).ToArray(), true, SortOrder.Ascending, true, SortOrder.Descending);
+            _dataset4 = new OrderedPairedData(Enumerable.Reverse(xVals).ToArray(), yVals.Reverse().ToArray(), true, SortOrder.Descending, true, SortOrder.Descending);
         }
 
         /// <summary>
@@ -184,12 +184,12 @@ namespace Data.PairedData
 
             dataset11.Remove(ordinate);
             bool test4 = dataset11.Contains(ordinate);
-            Assert.AreEqual(false, test4);
+            Assert.IsFalse(test4);
 
             Ordinate newOrdinate = dataset11[4];
             dataset11.RemoveAt(4);
             bool test5 = dataset11.Contains(newOrdinate);
-            Assert.AreEqual(false, test5);
+            Assert.IsFalse(test5);
 
             Ordinate newOrdinate2 = new Ordinate(1243177, 1563.8);
             dataset11.Add(newOrdinate2);

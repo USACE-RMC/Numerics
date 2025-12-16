@@ -175,7 +175,7 @@ namespace Data.TimeSeriesAnalysis
 
             double denom = Math.Max(Math.Abs(a), Math.Abs(b));
             if (denom == 0)
-                Assert.IsTrue(diff <= absTol);
+                Assert.IsLessThanOrEqualTo(absTol,diff);
             else
                 Assert.IsTrue(diff / denom <= relTol, $"Values differ: {a} vs {b}");
         }
