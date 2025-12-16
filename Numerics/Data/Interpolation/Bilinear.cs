@@ -28,6 +28,7 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+
 using Numerics.Distributions;
 using System;
 using System.Linq;
@@ -56,6 +57,7 @@ namespace Numerics.Data
     /// <see href="https://en.wikipedia.org/wiki/Bilinear_interpolation"/>
     /// </para>
     /// </remarks>
+   
     [Serializable]
     public class Bilinear
     {
