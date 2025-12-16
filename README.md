@@ -19,3 +19,4 @@ The repository contains a unit testing library with more than 1,000 tests. These
 
 ## Installation Instructions
 We recommend using [NuGet](https://www.nuget.org/) for convenient installation of the [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) package.
+
