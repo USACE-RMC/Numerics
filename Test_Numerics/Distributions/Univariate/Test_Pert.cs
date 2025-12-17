@@ -90,9 +90,9 @@ namespace Distributions.Univariate
             var p = P.CDF(-0.5);
             var q = P.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.5273438, 1E-5);
-            Assert.AreEqual(p, 0.1035156, 1E-5);
-            Assert.AreEqual(q, -0.5, 1E-5);
+            Assert.AreEqual(0.5273438, d,  1E-5);
+            Assert.AreEqual(0.1035156, p,  1E-5);
+            Assert.AreEqual(-0.5, q,  1E-5);
 
         }
 
@@ -152,9 +152,9 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Min, 0);
-            Assert.AreEqual(p.Max, 1);
-            Assert.AreEqual(p.Mode, 0.5);
+            Assert.AreEqual(0,p.Min);
+            Assert.AreEqual(1, p.Max);
+            Assert.AreEqual(0.5, p.Mode);
         }
 
         /// <summary>
@@ -183,12 +183,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var p = new Pert();
-            Assert.AreEqual(p.ParametersToString[0, 0], "Min (a)");
-            Assert.AreEqual(p.ParametersToString[1,0], "Most Likely (c)");
-            Assert.AreEqual(p.ParametersToString[2, 0], "Max (b)");
-            Assert.AreEqual(p.ParametersToString[0, 1], "0");
-            Assert.AreEqual(p.ParametersToString[1, 1], "0.5");
-            Assert.AreEqual(p.ParametersToString[2, 1], "1");
+            Assert.AreEqual("Min (a)",p.ParametersToString[0, 0]);
+            Assert.AreEqual("Most Likely (c)", p.ParametersToString[1, 0]);
+            Assert.AreEqual("Max (b)", p.ParametersToString[2, 0]);
+            Assert.AreEqual("0", p.ParametersToString[0, 1]);
+            Assert.AreEqual("0.5", p.ParametersToString[1, 1]);
+            Assert.AreEqual("1", p.ParametersToString[2, 1]);
         }
 
         /// <summary>
@@ -212,10 +212,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Mean, 0.5);
+            Assert.AreEqual(0.5, p.Mean);
 
             var p2 = new Pert(0, 0, 0);
-            Assert.AreEqual(p2.Mean, 0);
+            Assert.AreEqual(0, p2.Mean);
         }
 
         /// <summary>
@@ -225,10 +225,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Median, 0.5);
+            Assert.AreEqual(0.5, p.Median);
 
             var p2 = new Pert(0,0,0);
-            Assert.AreEqual(p2.Median, 0);
+            Assert.AreEqual(0, p2.Median);
         }
 
         /// <summary>
@@ -238,7 +238,7 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Mode, 0.5);        
+            Assert.AreEqual(0.5, p.Mode);        
         }
 
         /// <summary>
@@ -248,7 +248,7 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var p = new Pert();
-            Assert.AreEqual(p.StandardDeviation, 0.1889, 1e-04);
+            Assert.AreEqual(0.1889, p.StandardDeviation, 1e-04);
         }
 
         /// <summary>
@@ -258,7 +258,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Skewness, 0);
+            Assert.AreEqual(0, p.Skewness);
         }
 
         /// <summary>
@@ -268,7 +268,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Kurtosis, 2.3333,1e-04);
+            Assert.AreEqual(2.3333, p.Kurtosis,1e-04);
         }
 
         /// <summary>
@@ -278,12 +278,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var p = new Pert();
-            Assert.AreEqual(p.Minimum, 0);
-            Assert.AreEqual(p.Maximum, 1);
+            Assert.AreEqual(0, p.Minimum);
+            Assert.AreEqual(1, p.Maximum);
 
             var p2 = new Pert(1, 1.5, 2);
-            Assert.AreEqual(p2.Minimum, 1);
-            Assert.AreEqual(p2.Maximum, 2);
+            Assert.AreEqual(1, p2.Minimum);
+            Assert.AreEqual(2, p2.Maximum);
         }
     }
 }

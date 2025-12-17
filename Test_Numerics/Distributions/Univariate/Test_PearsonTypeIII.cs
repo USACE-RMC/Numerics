@@ -94,15 +94,15 @@ namespace Distributions.Univariate
             double true_mean = 191.31739d;
             double true_stDev = 47.96161d;
             double true_skew = 0.86055d;
-            Assert.AreEqual((xi - true_xi) / true_xi < 0.01d, true);
-            Assert.AreEqual((beta - true_beta) / true_beta < 0.01d, true);
-            Assert.AreEqual((alpha - true_alpha) / true_alpha < 0.01d, true);
-            Assert.AreEqual((mu - true_mu) / true_mu < 0.01d, true);
-            Assert.AreEqual((sigma - true_sigma) / true_sigma < 0.01d, true);
-            Assert.AreEqual((gamma - true_gamma) / true_gamma < 0.01d, true);
-            Assert.AreEqual((mean - true_mean) / true_mean < 0.01d, true);
-            Assert.AreEqual((stDev - true_stDev) / true_stDev < 0.01d, true);
-            Assert.AreEqual((skew - true_skew) / true_skew < 0.01d, true);
+            Assert.IsLessThan(0.01d, (xi - true_xi) / true_xi );
+            Assert.IsLessThan(0.01d, (beta - true_beta) / true_beta );
+            Assert.IsLessThan(0.01d, (alpha - true_alpha) / true_alpha);
+            Assert.IsLessThan(0.01d, (mu - true_mu) / true_mu);
+            Assert.IsLessThan(0.01d, (sigma - true_sigma) / true_sigma);
+            Assert.IsLessThan(0.01d, (gamma - true_gamma) / true_gamma);
+            Assert.IsLessThan(0.01d, (mean - true_mean) / true_mean);
+            Assert.IsLessThan(0.01d, (stDev - true_stDev) / true_stDev);
+            Assert.IsLessThan(0.01d, (skew - true_skew) / true_skew);
         }
 
         /// <summary>
@@ -124,10 +124,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(a, true_a, 0.001d);
             Assert.AreEqual(b, true_b, 0.001d);
             var lmom = P3.LinearMomentsFromParameters(P3.GetParameters);
-            Assert.AreEqual(lmom[0], 1648.806d, 0.001d);
-            Assert.AreEqual(lmom[1], 138.2366d, 0.001d);
-            Assert.AreEqual(lmom[2], 0.1033889d, 0.001d);
-            Assert.AreEqual(lmom[3], 0.1258521d, 0.001d);
+            Assert.AreEqual(1648.806d, lmom[0],  0.001d);
+            Assert.AreEqual(138.2366d, lmom[1],  0.001d);
+            Assert.AreEqual(0.1033889d, lmom[2],  0.001d);
+            Assert.AreEqual(0.1258521d, lmom[3],  0.001d);
         }
 
         /// <summary>
@@ -164,15 +164,15 @@ namespace Distributions.Univariate
             double true_mean = 191.31739d;
             double true_stDev = 47.01925d;
             double true_skew = 0.61897d;
-            Assert.AreEqual((xi - true_xi) / true_xi < 0.01d, true);
-            Assert.AreEqual((beta - true_beta) / true_beta < 0.01d, true);
-            Assert.AreEqual((alpha - true_alpha) / true_alpha < 0.01d, true);
-            Assert.AreEqual((mu - true_mu) / true_mu < 0.01d, true);
-            Assert.AreEqual((sigma - true_sigma) / true_sigma < 0.01d, true);
-            Assert.AreEqual((gamma - true_gamma) / true_gamma < 0.01d, true);
-            Assert.AreEqual((mean - true_mean) / true_mean < 0.01d, true);
-            Assert.AreEqual((stDev - true_stDev) / true_stDev < 0.01d, true);
-            Assert.AreEqual((skew - true_skew) / true_skew < 0.01d, true);
+            Assert.IsLessThan(0.01d, (xi - true_xi) / true_xi);
+            Assert.IsLessThan(0.01d, (beta - true_beta) / true_beta);
+            Assert.IsLessThan(0.01d, (alpha - true_alpha) / true_alpha);
+            Assert.IsLessThan(0.01d, (mu - true_mu) / true_mu);
+            Assert.IsLessThan(0.01d, (sigma - true_sigma) / true_sigma);
+            Assert.IsLessThan(0.01d, (gamma - true_gamma) / true_gamma);
+            Assert.IsLessThan(0.01d, (mean - true_mean) / true_mean);
+            Assert.IsLessThan(0.01d, (stDev - true_stDev) / true_stDev);
+            Assert.IsLessThan(0.01d, (skew - true_skew) / true_skew);
         }
 
         /// <summary>
@@ -192,7 +192,7 @@ namespace Distributions.Univariate
             var P3 = new PearsonTypeIII(191.31739d, 47.01925d, -0.61897d);
             double q999 = P3.InverseCDF(0.99d);
             double true_q999 = 321.48d;
-            Assert.AreEqual((q999 - true_q999) / true_q999 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q999 - true_q999) / true_q999);
         }
 
         /// <summary>
@@ -214,13 +214,13 @@ namespace Distributions.Univariate
             var P3 = new PearsonTypeIII(191.31739d, 47.96161d, 0.86055d);
             double qVar999 = Math.Sqrt(P3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MethodOfMoments));
             double true_qVar999 = 27.175d;
-            Assert.AreEqual((qVar999 - true_qVar999) / true_qVar999 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999);
 
             // Maximum Likelihood
             P3 = new PearsonTypeIII(191.31739d, 47.01925d, 0.61897d);
             qVar999 = Math.Sqrt(P3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MaximumLikelihood));
             true_qVar999 = 20.045d;
-            Assert.AreEqual((qVar999 - true_qVar999) / true_qVar999 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999 );
         }
 
         /// <summary>
@@ -230,14 +230,14 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Mu, 100);
-            Assert.AreEqual(P3.Sigma, 10);
-            Assert.AreEqual(P3.Gamma, 0);
+            Assert.AreEqual(100,P3.Mu);
+            Assert.AreEqual(10,P3.Sigma);
+            Assert.AreEqual(0, P3.Gamma);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3ii.Mu, 1);
-            Assert.AreEqual(P3ii.Sigma, 1);
-            Assert.AreEqual(P3ii.Gamma, 1);
+            Assert.AreEqual(1,P3ii.Mu);
+            Assert.AreEqual(1, P3ii.Sigma);
+            Assert.AreEqual(1, P3ii.Gamma);
         }
 
         /// <summary>
@@ -263,12 +263,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.ParametersToString[0, 0], "Mean (µ)");
-            Assert.AreEqual(P3.ParametersToString[1, 0], "Std Dev (σ)");
-            Assert.AreEqual(P3.ParametersToString[2, 0], "Skew (γ)");
-            Assert.AreEqual(P3.ParametersToString[0, 1], "100");
-            Assert.AreEqual(P3.ParametersToString[1, 1], "10");
-            Assert.AreEqual(P3.ParametersToString[2, 1], "0");
+            Assert.AreEqual("Mean (µ)",P3.ParametersToString[0, 0]);
+            Assert.AreEqual("Std Dev (σ)", P3.ParametersToString[1, 0]);
+            Assert.AreEqual("Skew (γ)", P3.ParametersToString[2, 0]);
+            Assert.AreEqual("100", P3.ParametersToString[0, 1]);
+            Assert.AreEqual("10", P3.ParametersToString[1, 1]);
+            Assert.AreEqual("0", P3.ParametersToString[2, 1]);
         }
 
         /// <summary>
@@ -292,10 +292,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Mean, 100);
+            Assert.AreEqual(100, P3.Mean);
 
             var P3ii = new PearsonTypeIII(100, 1, 1);
-            Assert.AreEqual(P3ii.Mean, 100);
+            Assert.AreEqual(100, P3ii.Mean);
         }
 
         /// <summary>
@@ -305,7 +305,7 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Median, 100);
+            Assert.AreEqual(100, P3.Median);
         }
 
         /// <summary>
@@ -315,10 +315,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Mode, 100);
+            Assert.AreEqual(100, P3.Mode);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3ii.Mode, 0.5);
+            Assert.AreEqual(0.5, P3ii.Mode);
         }
 
         /// <summary>
@@ -328,10 +328,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.StandardDeviation, 10);
+            Assert.AreEqual(10, P3.StandardDeviation);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3ii.StandardDeviation, 1);
+            Assert.AreEqual(1, P3ii.StandardDeviation);
         }
 
         /// <summary>
@@ -341,10 +341,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Skewness, 0);
+            Assert.AreEqual(0, P3.Skewness);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3.Skewness, 0);
+            Assert.AreEqual(0, P3.Skewness);
         }
 
         /// <summary>
@@ -354,10 +354,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Kurtosis, 3);
+            Assert.AreEqual(3, P3.Kurtosis);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3ii.Kurtosis, 4.5);
+            Assert.AreEqual(4.5, P3ii.Kurtosis);
         }
 
         /// <summary>
@@ -367,10 +367,10 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Minimum,double.NegativeInfinity);
+            Assert.AreEqual(double.NegativeInfinity,P3.Minimum);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3ii.Minimum, -1);
+            Assert.AreEqual(-1, P3ii.Minimum);
         }
 
         /// <summary>
@@ -380,10 +380,10 @@ namespace Distributions.Univariate
         public void Test_Maximum() 
         {
             var P3 = new PearsonTypeIII();
-            Assert.AreEqual(P3.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(double.PositiveInfinity, P3.Maximum);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(P3ii.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(double.PositiveInfinity, P3ii.Maximum);
         }
 
     }

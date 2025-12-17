@@ -78,10 +78,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(h, true_h, 0.0001d);
 
             var lmom = kappa4.LinearMomentsFromParameters(kappa4.GetParameters);
-            Assert.AreEqual(lmom[0], 9.95751634d, 0.0001d);
-            Assert.AreEqual(lmom[1], 1.98224114d, 0.0001d);
-            Assert.AreEqual(lmom[2], 0.06380885d, 0.0001d);
-            Assert.AreEqual(lmom[3], 0.12442297d, 0.0001d);
+            Assert.AreEqual(9.95751634d, lmom[0],  0.0001d);
+            Assert.AreEqual(1.98224114d, lmom[1],  0.0001d);
+            Assert.AreEqual(0.06380885d, lmom[2],  0.0001d);
+            Assert.AreEqual(0.12442297d, lmom[3],  0.0001d);
         }
 
         /// <summary>
@@ -159,16 +159,16 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var k4 = new KappaFour();
-            Assert.AreEqual(k4.Xi, 100);
-            Assert.AreEqual(k4.Alpha, 10);
-            Assert.AreEqual(k4.Kappa, 0);
-            Assert.AreEqual(k4.Hondo, 0);
+            Assert.AreEqual(100,k4.Xi);
+            Assert.AreEqual(10, k4.Alpha);
+            Assert.AreEqual(0, k4.Kappa);
+            Assert.AreEqual(0, k4.Hondo);
 
             var k4ii = new KappaFour(100, 10, 1, 1);
-            Assert.AreEqual(k4ii.Xi, 100);
-            Assert.AreEqual(k4ii.Alpha, 10);
-            Assert.AreEqual(k4ii.Kappa, 1);
-            Assert.AreEqual(k4ii.Hondo, 1);
+            Assert.AreEqual(100, k4ii.Xi);
+            Assert.AreEqual(10, k4ii.Alpha);
+            Assert.AreEqual(1, k4ii.Kappa);
+            Assert.AreEqual(1, k4ii.Hondo);
         }
 
         /// <summary>
@@ -194,14 +194,14 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var k4 = new KappaFour();
-            Assert.AreEqual(k4.ParametersToString[0, 0], "Location (ξ)");
-            Assert.AreEqual(k4.ParametersToString[1, 0], "Scale (α)");
-            Assert.AreEqual(k4.ParametersToString[2, 0], "Shape (κ)");
-            Assert.AreEqual(k4.ParametersToString[3, 0], "Shape (h)");
-            Assert.AreEqual(k4.ParametersToString[0, 1], "100");
-            Assert.AreEqual(k4.ParametersToString[1, 1], "10");
-            Assert.AreEqual(k4.ParametersToString[2, 1], "0");
-            Assert.AreEqual(k4.ParametersToString[3, 1], "0");
+            Assert.AreEqual("Location (ξ)",k4.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (α)", k4.ParametersToString[1, 0]);
+            Assert.AreEqual("Shape (κ)", k4.ParametersToString[2, 0]);
+            Assert.AreEqual("Shape (h)", k4.ParametersToString[3, 0]);
+            Assert.AreEqual("100", k4.ParametersToString[0, 1]);
+            Assert.AreEqual("10", k4.ParametersToString[1, 1]);
+            Assert.AreEqual("0", k4.ParametersToString[2, 1]);
+            Assert.AreEqual("0", k4.ParametersToString[3, 1]);
         }
      }
 }

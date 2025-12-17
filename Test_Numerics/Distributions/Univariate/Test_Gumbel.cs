@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double a = GUM.Alpha;
             double true_x = 8074.4d;
             double true_a = 4441.4d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
         }
 
         /// <summary>
@@ -100,10 +100,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(x, true_x, 0.001d);
             Assert.AreEqual(a, true_a, 0.001d);
             var lmom = GUM.LinearMomentsFromParameters(GUM.GetParameters);
-            Assert.AreEqual(lmom[0], 1648.806d, 0.001d);
-            Assert.AreEqual(lmom[1], 138.2366d, 0.001d);
-            Assert.AreEqual(lmom[2], 0.169925d, 0.001d);
-            Assert.AreEqual(lmom[3], 0.150375d, 0.001d);
+            Assert.AreEqual(1648.806d, lmom[0],  0.001d);
+            Assert.AreEqual(138.2366d, lmom[1],  0.001d);
+            Assert.AreEqual(0.169925d, lmom[2], 0.001d);
+            Assert.AreEqual(0.150375d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -126,8 +126,8 @@ namespace Distributions.Univariate
             double a = GUM.Alpha;
             double true_x = 8049.6d;
             double true_a = 4478.6d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
         }
 
         /// <summary>
@@ -147,10 +147,10 @@ namespace Distributions.Univariate
             var GUM = new Gumbel(8049.6d, 4478.6d);
             double q100 = GUM.InverseCDF(0.99d);
             double true_q100 = 28652d;
-            Assert.AreEqual((q100 - true_q100) / true_q100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_q100) / true_q100);
             double p = GUM.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual((p - true_p) / true_p < 0.01d, true);
+            Assert.IsLessThan(0.01d, (p - true_p) / true_p);
 
         }
 
@@ -173,7 +173,7 @@ namespace Distributions.Univariate
             var GUM = new Gumbel(8049.6d, 4478.6d);
             double qVar99 = Math.Sqrt(GUM.QuantileVariance(0.99d, 53, ParameterEstimationMethod.MaximumLikelihood));
             double true_qVar99 = 2486.5d;
-            Assert.AreEqual((qVar99 - true_qVar99) / true_qVar99 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
         }
 
         /// <summary>
@@ -183,12 +183,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Xi, 100);
-            Assert.AreEqual(GUM.Alpha, 10);
+            Assert.AreEqual(100,GUM.Xi);
+            Assert.AreEqual(10,GUM.Alpha);
 
             var GUM2 = new Gumbel(-100, 1);
-            Assert.AreEqual(GUM2.Xi, -100);
-            Assert.AreEqual(GUM2.Alpha, 1);
+            Assert.AreEqual(-100,GUM2.Xi);
+            Assert.AreEqual(1,GUM2.Alpha);
         }
 
         /// <summary>
@@ -214,10 +214,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.ParametersToString[0, 0], "Location (ξ)");
-            Assert.AreEqual(GUM.ParametersToString[1, 0], "Scale (α)");
-            Assert.AreEqual(GUM.ParametersToString[0, 1], "100");
-            Assert.AreEqual(GUM.ParametersToString[1, 1], "10");
+            Assert.AreEqual("Location (ξ)",GUM.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (α)", GUM.ParametersToString[1, 0]);
+            Assert.AreEqual("100", GUM.ParametersToString[0, 1]);
+            Assert.AreEqual("10", GUM.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -241,10 +241,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Mean, 105.77215, 1e-04);
+            Assert.AreEqual(105.77215, GUM.Mean,  1e-04);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.Mean, 10.577215, 1e-04);
+            Assert.AreEqual(10.577215, GUM2.Mean,  1e-04);
         }
 
         /// <summary>
@@ -254,10 +254,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Median, 103.66512, 1e-05);
+            Assert.AreEqual(103.66512, GUM.Median,  1e-05);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.Median, 10.366512, 1e-04);
+            Assert.AreEqual(10.366512, GUM2.Median,  1e-04);
         }
 
         /// <summary>
@@ -267,10 +267,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.StandardDeviation, 12.82549, 1e-04);
+            Assert.AreEqual(12.82549, GUM.StandardDeviation,  1e-04);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.StandardDeviation, 1.28254, 1e-04);
+            Assert.AreEqual(1.28254, GUM2.StandardDeviation,  1e-04);
         }
 
         /// <summary>
@@ -280,10 +280,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Skewness, 1.1396);
+            Assert.AreEqual(1.1396, GUM.Skewness);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.Skewness, 1.1396);
+            Assert.AreEqual(1.1396, GUM2.Skewness);
         }
 
         /// <summary>
@@ -293,10 +293,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Kurtosis, 5.4);
+            Assert.AreEqual(5.4, GUM.Kurtosis);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.Kurtosis, 5.4);
+            Assert.AreEqual(5.4, GUM2.Kurtosis);
         }
 
         /// <summary>
@@ -306,12 +306,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Minimum, double.NegativeInfinity);
-            Assert.AreEqual(GUM.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity,GUM.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, GUM.Maximum);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.Minimum, double.NegativeInfinity);
-            Assert.AreEqual(GUM2.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity, GUM2.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, GUM2.Maximum);
         }
 
         /// <summary>
@@ -321,12 +321,12 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.PDF(100), 0.0367879, 1e-04);
-            Assert.AreEqual(GUM.PDF(0), 0);
-            Assert.AreEqual(GUM.PDF(200), 4.5397e-06, 1e-10);
+            Assert.AreEqual(0.0367879, GUM.PDF(100),  1e-04);
+            Assert.AreEqual(0, GUM.PDF(0));
+            Assert.AreEqual(4.5397e-06, GUM.PDF(200),  1e-10);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(GUM2.PDF(17), 9.1105e-04, 1e-09);
+            Assert.AreEqual(9.1105e-04, GUM2.PDF(17),  1e-09);
         }
 
         /// <summary>
@@ -336,12 +336,12 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.CDF(100), 0.36787, 1e-04);
-            Assert.AreEqual(GUM.CDF(50), 3.5073e-65, 1e-68);
-            Assert.AreEqual(GUM.CDF(-10), 0);
+            Assert.AreEqual(0.36787, GUM.CDF(100),  1e-04);
+            Assert.AreEqual(3.5073e-65, GUM.CDF(50),  1e-68);
+            Assert.AreEqual(0,GUM.CDF(-10));
 
             var GUM2 = new Gumbel(10, 2);
-            Assert.AreEqual(GUM2.CDF(5), 5.11929e-06, 1e-10);
+            Assert.AreEqual(5.11929e-06, GUM2.CDF(5),  1e-10);
         }
 
         /// <summary>
@@ -351,10 +351,10 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.InverseCDF(0), double.NegativeInfinity);
-            Assert.AreEqual(GUM.InverseCDF(1), double.PositiveInfinity);
-            Assert.AreEqual(GUM.InverseCDF(0.3), 98.14373, 1e-04);
-            Assert.AreEqual(GUM.InverseCDF(0.7), 110.309304, 1e-04);
+            Assert.AreEqual(double.NegativeInfinity, GUM.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity, GUM.InverseCDF(1));
+            Assert.AreEqual(98.14373, GUM.InverseCDF(0.3),  1e-04);
+            Assert.AreEqual(110.309304, GUM.InverseCDF(0.7),  1e-04);
         }
     }
 }

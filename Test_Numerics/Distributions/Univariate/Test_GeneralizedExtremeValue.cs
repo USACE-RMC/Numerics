@@ -84,9 +84,9 @@ namespace Distributions.Univariate
             double true_x = 11012d;
             double true_a = 6209.4d;
             double true_k = 0.0736d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
-            Assert.AreEqual((k - true_k) / true_k < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
+            Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
         /// <summary>
@@ -116,10 +116,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(a, true_a, 0.001d);
             Assert.AreEqual(k, true_k, 0.001d);
             var lmom = GEV.LinearMomentsFromParameters(GEV.GetParameters);
-            Assert.AreEqual(lmom[0], 1648.806d, 0.001d);
-            Assert.AreEqual(lmom[1], 138.2366d, 0.001d);
-            Assert.AreEqual(lmom[2], 0.1030703d, 0.001d);
-            Assert.AreEqual(lmom[3], 0.1277244d, 0.001d);
+            Assert.AreEqual(1648.806d, lmom[0],  0.001d);
+            Assert.AreEqual(138.2366d, lmom[1],  0.001d);
+            Assert.AreEqual(0.1030703d, lmom[2],  0.001d);
+            Assert.AreEqual(0.1277244d, lmom[3],  0.001d);
         }
 
         /// <summary>
@@ -144,9 +144,9 @@ namespace Distributions.Univariate
             double true_x = 10849d;
             double true_a = 5745.6d;
             double true_k = 0.005d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
-            Assert.AreEqual((k - true_k) / true_k < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
+            Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
         /// <summary>
@@ -166,10 +166,10 @@ namespace Distributions.Univariate
             var GEV = new GeneralizedExtremeValue(10849d, 5745.6d, 0.005d);
             double q100 = GEV.InverseCDF(0.99d);
             double true_q100 = 36977d;
-            Assert.AreEqual((q100 - true_q100) / true_q100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_q100) / true_q100);
             double p = GEV.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual((p - true_p) / true_p < 0.01d, true);
+            Assert.IsLessThan(0.01d, (p - true_p) / true_p);
         }
 
         /// <summary>
@@ -205,17 +205,17 @@ namespace Distributions.Univariate
             var covar = GEV.ParameterCovariance(sample.Length, ParameterEstimationMethod.MaximumLikelihood);
             double qVar = GEV.QuantileVariance(0.99d, sample.Length, ParameterEstimationMethod.MaximumLikelihood);
             double qSigma = Math.Sqrt(qVar);
-            Assert.AreEqual((partials[0] - true_dXdU) / true_dXdU < 0.01d, true);
-            Assert.AreEqual((partials[1] - true_dxdA) / true_dxdA < 0.01d, true);
-            Assert.AreEqual((partials[2] - true_dxdK) / true_dxdK < 0.01d, true);
-            Assert.AreEqual((covar[0, 0] - true_VarU) / true_VarU < 0.01d, true);
-            Assert.AreEqual((covar[1, 1] - true_VarA) / true_VarA < 0.01d, true);
-            Assert.AreEqual((covar[2, 2] - true_VarK) / true_VarK < 0.01d, true);
-            Assert.AreEqual((covar[0, 1] - true_CovarUA) / true_CovarUA < 0.01d, true);
-            Assert.AreEqual((covar[0, 2] - true_CovarUK) / true_CovarUK < 0.01d, true);
-            Assert.AreEqual((covar[1, 2] - true_CovarAK) / true_CovarAK < 0.01d, true);
-            Assert.AreEqual((qVar - true_QVar) / true_QVar < 0.01d, true);
-            Assert.AreEqual((qSigma - true_QSigma) / true_QSigma < 0.01d, true);
+            Assert.IsLessThan( 0.01d, (partials[0] - true_dXdU) / true_dXdU );
+            Assert.IsLessThan(0.01d, (partials[1] - true_dxdA) / true_dxdA);
+            Assert.IsLessThan(0.01d, (partials[2] - true_dxdK) / true_dxdK);
+            Assert.IsLessThan(0.01d, (covar[0, 0] - true_VarU) / true_VarU);
+            Assert.IsLessThan(0.01d, (covar[1, 1] - true_VarA) / true_VarA);
+            Assert.IsLessThan(0.01d, (covar[2, 2] - true_VarK) / true_VarK);
+            Assert.IsLessThan(0.01d, (covar[0, 1] - true_CovarUA) / true_CovarUA);
+            Assert.IsLessThan(0.01d, (covar[0, 2] - true_CovarUK) / true_CovarUK);
+            Assert.IsLessThan(0.01d, (covar[1, 2] - true_CovarAK) / true_CovarAK);
+            Assert.IsLessThan(0.01d, (qVar - true_QVar) / true_QVar);
+            Assert.IsLessThan(0.01d, (qSigma - true_QSigma) / true_QSigma);
         }
 
         /// <summary>
@@ -225,14 +225,14 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Xi, 100);
-            Assert.AreEqual(GEV.Alpha, 10);
-            Assert.AreEqual(GEV.Kappa, 0);
+            Assert.AreEqual(100,GEV.Xi);
+            Assert.AreEqual(10,GEV.Alpha);
+            Assert.AreEqual(0,GEV.Kappa);
 
             var GEV2 = new GeneralizedExtremeValue(-100, 1, 1);
-            Assert.AreEqual(GEV2.Xi, -100);
-            Assert.AreEqual(GEV2.Alpha, 1);
-            Assert.AreEqual(GEV2.Kappa, 1);
+            Assert.AreEqual(-100,GEV2.Xi);
+            Assert.AreEqual(1, GEV2.Alpha);
+            Assert.AreEqual(1, GEV2.Kappa);
         }
 
         /// <summary>
@@ -258,12 +258,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.ParametersToString[0, 0], "Location (ξ)");
-            Assert.AreEqual(GEV.ParametersToString[1, 0], "Scale (α)");
-            Assert.AreEqual(GEV.ParametersToString[2, 0], "Shape (κ)");
-            Assert.AreEqual(GEV.ParametersToString[0, 1], "100");
-            Assert.AreEqual(GEV.ParametersToString[1, 1], "10");
-            Assert.AreEqual(GEV.ParametersToString[2, 1], "0");
+            Assert.AreEqual("Location (ξ)", GEV.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (α)", GEV.ParametersToString[1, 0]);
+            Assert.AreEqual("Shape (κ)", GEV.ParametersToString[2, 0]);
+            Assert.AreEqual("100", GEV.ParametersToString[0, 1]);
+            Assert.AreEqual("10", GEV.ParametersToString[1, 1]);
+            Assert.AreEqual("0", GEV.ParametersToString[2, 1]);
         }
 
         /// <summary>
@@ -288,13 +288,13 @@ namespace Distributions.Univariate
         {
             var GEV = new GeneralizedExtremeValue();
             var true_val = 100 + 10 * Tools.Euler;
-            Assert.AreEqual(GEV.Mean, true_val);
+            Assert.AreEqual(true_val, GEV.Mean);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.9);
-            Assert.AreEqual(GEV2.Mean, 100.42482,1e-04);
+            Assert.AreEqual(100.42482, GEV2.Mean, 1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 10);
-            Assert.AreEqual(GEV3.Mean,double.NaN);
+            Assert.AreEqual(double.NaN, GEV3.Mean);
         }
 
         /// <summary>
@@ -304,10 +304,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Median, 103.66512, 1e-04);
+            Assert.AreEqual(103.66512, GEV.Median,  1e-04);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.9);
-            Assert.AreEqual(GEV2.Median, 104.3419519, 1e-04);
+            Assert.AreEqual(104.3419519, GEV2.Median,  1e-04);
         }
 
         /// <summary>
@@ -317,10 +317,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Mode, 100);
+            Assert.AreEqual(100, GEV.Mode);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV2.Mode, 95);
+            Assert.AreEqual(95, GEV2.Mode);
         }
 
         /// <summary>
@@ -330,13 +330,13 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.StandardDeviation, 12.825498, 1e-05);
+            Assert.AreEqual(12.825498, GEV.StandardDeviation,  1e-05);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.49);
-            Assert.AreEqual(GEV2.StandardDeviation, 9.280898, 1e-04);
+            Assert.AreEqual(9.280898, GEV2.StandardDeviation,  1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV3.StandardDeviation, double.NaN);
+            Assert.AreEqual(double.NaN, GEV3.StandardDeviation);
         }
 
         /// <summary>
@@ -346,13 +346,13 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Skewness, 1.1396);
+            Assert.AreEqual(1.1396,GEV.Skewness );
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.3);
-            Assert.AreEqual(GEV2.Skewness, -0.0690175, 1e-03);
+            Assert.AreEqual(-0.0690175, GEV2.Skewness,  1e-03);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV3.Skewness, double.NaN);
+            Assert.AreEqual(double.NaN,GEV3.Skewness);
         }
 
         /// <summary>
@@ -362,13 +362,13 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Kurtosis, 3 + 12d / 5d);
+            Assert.AreEqual(3 + 12d / 5d, GEV.Kurtosis);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.24);
-            Assert.AreEqual(GEV2.Kurtosis, 2.7659607, 1e-04);
+            Assert.AreEqual(2.7659607, GEV2.Kurtosis,  1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV3.Kurtosis,double.NaN);
+            Assert.AreEqual(double.NaN, GEV3.Kurtosis);
         }
 
         /// <summary>
@@ -378,10 +378,10 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Minimum,double.NegativeInfinity);
+            Assert.AreEqual(double.NegativeInfinity,GEV.Minimum);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, -5);
-            Assert.AreEqual(GEV2.Minimum, 98);
+            Assert.AreEqual(98, GEV2.Minimum);
         }
 
         /// <summary>
@@ -391,10 +391,10 @@ namespace Distributions.Univariate
         public void Test_Maximum()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(double.PositiveInfinity, GEV.Maximum);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV2.Maximum, 110);
+            Assert.AreEqual(110, GEV2.Maximum);
         }
 
         /// <summary>
@@ -404,11 +404,11 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.PDF(0), 0);
-            Assert.AreEqual(GEV.PDF(1), 0);
+            Assert.AreEqual(0,GEV.PDF(0));
+            Assert.AreEqual(0,GEV.PDF(1));
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV2.PDF(0), 1.67017007902456E-06,1e-10);
+            Assert.AreEqual(1.67017007902456E-06, GEV2.PDF(0), 1e-10);
         }
 
         /// <summary>
@@ -418,12 +418,12 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.CDF(100), 0.367879, 1e-04);
-            Assert.AreEqual(GEV.CDF(200), 0.9999546, 1e-07);
+            Assert.AreEqual(0.367879, GEV.CDF(100),  1e-04);
+            Assert.AreEqual(0.9999546, GEV.CDF(200),  1e-07);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(GEV2.CDF(100), 0.367879, 1e-05);
-            Assert.AreEqual(GEV2.CDF(200), 1);
+            Assert.AreEqual(0.367879, GEV2.CDF(100),  1e-05);
+            Assert.AreEqual(1, GEV2.CDF(200));
         }
 
         /// <summary>
@@ -433,9 +433,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(GEV.InverseCDF(0), double.NegativeInfinity);
-            Assert.AreEqual(GEV.InverseCDF(0.5), 103.66512, 1e-05);
-            Assert.AreEqual(GEV.InverseCDF(1), double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity, GEV.InverseCDF(0));
+            Assert.AreEqual(103.66512, GEV.InverseCDF(0.5),  1e-05);
+            Assert.AreEqual(double.PositiveInfinity,GEV.InverseCDF(1));
         }
     }
 }

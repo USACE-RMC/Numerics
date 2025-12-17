@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double u2 = LogN.Sigma;
             double true_u1 = 10.716952223744224d;
             double true_u2 = 0.45007398831588075d;
-            Assert.AreEqual((u1 - true_u1) / true_u1 < 0.01d, true);
-            Assert.AreEqual((u2 - true_u2) / true_u2 < 0.01d, true);
+            Assert.IsLessThan( 0.01d, (u1 - true_u1) / true_u1 );
+            Assert.IsLessThan(0.01d, (u2 - true_u2) / true_u2 );
         }
 
         /// <summary>
@@ -101,10 +101,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(u1, true_u1, 0.0001d);
             Assert.AreEqual(u2, true_u2, 0.0001d);
             var lmom = norm.LinearMomentsFromParameters(norm.GetParameters);
-            Assert.AreEqual(lmom[0], 0.96723909d, 0.0001d);
-            Assert.AreEqual(lmom[1], 0.09452119d, 0.0001d);
-            Assert.AreEqual(lmom[2], 0.00000000d, 0.0001d);
-            Assert.AreEqual(lmom[3], 0.12260172d, 0.0001d);
+            Assert.AreEqual(0.96723909d, lmom[0],  0.0001d);
+            Assert.AreEqual(0.09452119d, lmom[1],  0.0001d);
+            Assert.AreEqual(0.00000000d, lmom[2], 0.0001d);
+            Assert.AreEqual(0.12260172d, lmom[3], 0.0001d);
         }
 
         /// <summary>
@@ -127,8 +127,8 @@ namespace Distributions.Univariate
             double u2 = LogN.Sigma;
             double true_u1 = 10.716950857801747d;
             double true_u2 = 0.44742859657407796d;
-            Assert.AreEqual((u1 - true_u1) / true_u1 < 0.01d, true);
-            Assert.AreEqual((u2 - true_u2) / true_u2 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (u1 - true_u1) / true_u1);
+            Assert.IsLessThan(0.01d, (u2 - true_u2) / true_u2);
             var LN = new LnNormal();
             LN.Estimate(sample, ParameterEstimationMethod.MaximumLikelihood);
         }
@@ -150,10 +150,10 @@ namespace Distributions.Univariate
             var LogN = new LogNormal() { Mu = 10.7676d, Sigma = 0.4544d, Base = Math.E };
             double q100 = LogN.InverseCDF(0.99d);
             double true_q100 = 136611d;
-            Assert.AreEqual((q100 - true_q100) / true_q100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_q100) / true_q100);
             double p = LogN.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual((p - true_p) / true_p < 0.01d, true);
+            Assert.IsLessThan(0.01d, (p - true_p) / true_p);
         }
 
         /// <summary>
@@ -175,7 +175,7 @@ namespace Distributions.Univariate
             var LogN = new LogNormal() { Mu = 10.7711d, Sigma = 0.4562d, Base = Math.E };
             double qVar99 = Math.Sqrt(LogN.QuantileVariance(0.99d, 85, ParameterEstimationMethod.MaximumLikelihood));
             double true_qVar99 = 13113d;
-            Assert.AreEqual((qVar99 - true_qVar99) / true_qVar99 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
         }
 
         /// <summary>
@@ -185,12 +185,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var LogN = new LogNormal();
-            Assert.AreEqual(LogN.Mu, 3);
-            Assert.AreEqual(LogN.Sigma, 0.5);
+            Assert.AreEqual(3,LogN.Mu);
+            Assert.AreEqual(0.5,LogN.Sigma);
 
             var LogN2 = new LogNormal(1, 1);
-            Assert.AreEqual(LogN2.Mu, 1);
-            Assert.AreEqual(LogN2.Sigma, 1);
+            Assert.AreEqual(1,LogN2.Mu);
+            Assert.AreEqual(1,LogN2.Sigma);
         }
 
         /// <summary>
@@ -216,10 +216,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var LogN = new LogNormal();
-            Assert.AreEqual(LogN.ParametersToString[0, 0], "Mean (of log) (µ)");
-            Assert.AreEqual(LogN.ParametersToString[1, 0], "Std Dev (of log) (σ)");
-            Assert.AreEqual(LogN.ParametersToString[0, 1], "3");
-            Assert.AreEqual(LogN.ParametersToString[1, 1], "0.5");
+            Assert.AreEqual("Mean (of log) (µ)",LogN.ParametersToString[0, 0] );
+            Assert.AreEqual("Std Dev (of log) (σ)",LogN.ParametersToString[1, 0]);
+            Assert.AreEqual("3",LogN.ParametersToString[0, 1]);
+            Assert.AreEqual("0.5", LogN.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -243,12 +243,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var LogN = new LogNormal();
-            Assert.AreEqual(LogN.Minimum, 0);
-            Assert.AreEqual(LogN.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(0,LogN.Minimum);
+            Assert.AreEqual(double.PositiveInfinity,LogN.Maximum );
 
             var LogN2 = new LogNormal(1, 1);
-            Assert.AreEqual(LogN2.Minimum, 0);
-            Assert.AreEqual(LogN2.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(0, LogN2.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, LogN2.Maximum);
         }
 
         /// <summary>
@@ -258,10 +258,10 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var LogN = new LogNormal(1.5,0.1);
-            Assert.AreEqual(LogN.PDF(0.1), 3.32e-135,1e-04);
+            Assert.AreEqual(3.32e-135, LogN.PDF(0.1), 1e-04);
 
             var LogN2 = new LogNormal(-0.1, 0.1);
-            Assert.AreEqual(LogN.PDF(0.8), 9.12888e-56, 1e-04);
+            Assert.AreEqual(9.12888e-56, LogN.PDF(0.8),  1e-04);
         }
 
         /// <summary>
@@ -271,10 +271,10 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var LogN = new LogNormal(1.5, 0.1);
-            Assert.AreEqual(LogN.CDF(0.1), 0);
+            Assert.AreEqual(0, LogN.CDF(0.1));
 
             var LogN2 = new LogNormal(1.5, 1.5);
-            Assert.AreEqual(LogN2.CDF(0.5), 0.11493, 1e-05);
+            Assert.AreEqual(0.11493, LogN2.CDF(0.5),  1e-05);
         }
 
         /// <summary>
@@ -284,10 +284,10 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var LogN = new LogNormal(2.5, 2.5);
-            Assert.AreEqual(LogN.InverseCDF(0.8), 40183.99248, 1e-04);
+            Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8),  1e-04);
 
             var LogN2 = new LogNormal(1.5, 2.5);
-            Assert.AreEqual(LogN.InverseCDF(0.8), 40183.99248, 1e-05);
+            Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-05);
         }
     }
 }

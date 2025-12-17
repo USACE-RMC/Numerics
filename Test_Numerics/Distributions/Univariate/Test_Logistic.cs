@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double a = LO.Alpha;
             double true_x = 12665d;
             double true_a = 2596.62d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
         }
 
         /// <summary>
@@ -104,8 +104,8 @@ namespace Distributions.Univariate
             double a = LO.Alpha;
             double true_x = 12628.59d;
             double true_a = 2708.64d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
         }
 
         /// <summary>
@@ -125,10 +125,10 @@ namespace Distributions.Univariate
             var LO = new Logistic(12665d, 2596.62d);
             double q100 = LO.InverseCDF(0.99d);
             double true_100 = 24597d;
-            Assert.AreEqual((q100 - true_100) / true_100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_100) / true_100);
             double p = LO.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual(p == true_p, true);
+            Assert.AreEqual(p, true_p);
         }
 
         /// <summary>
@@ -150,13 +150,13 @@ namespace Distributions.Univariate
             var LO = new Logistic(12665d, 2596.62d);
             double se100 = Math.Sqrt(LO.QuantileVariance(0.99d, 48, ParameterEstimationMethod.MethodOfMoments));
             double true_se100 = 1684d;
-            Assert.AreEqual((se100 - true_se100) / true_se100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (se100 - true_se100) / true_se100);
 
             // Maximum Likelihood
             LO = new Logistic(12628.59d, 2708.64d);
             se100 = Math.Sqrt(LO.QuantileVariance(0.99d, 48, ParameterEstimationMethod.MaximumLikelihood));
             true_se100 = 1648d;
-            Assert.AreEqual((se100 - true_se100) / true_se100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (se100 - true_se100) / true_se100);
         }
 
         /// <summary>
@@ -166,12 +166,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Xi, 0);
-            Assert.AreEqual(LO.Alpha, 0.1);
+            Assert.AreEqual(0, LO.Xi);
+            Assert.AreEqual(0.1, LO.Alpha);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.Xi, 1);
-            Assert.AreEqual(LO2.Alpha, 1);
+            Assert.AreEqual(1,LO2.Xi);
+            Assert.AreEqual(1, LO2.Alpha);
         }
 
         /// <summary>
@@ -197,10 +197,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.ParametersToString[0, 0], "Location (ξ)");
-            Assert.AreEqual(LO.ParametersToString[1, 0], "Scale (α)");
-            Assert.AreEqual(LO.ParametersToString[0, 1], "0");
-            Assert.AreEqual(LO.ParametersToString[1, 1], "0.1");
+            Assert.AreEqual("Location (ξ)", LO.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (α)", LO.ParametersToString[1, 0]);
+            Assert.AreEqual("0", LO.ParametersToString[0, 1]);
+            Assert.AreEqual("0.1", LO.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -224,10 +224,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Mean, 0);
+            Assert.AreEqual(0, LO.Mean);
 
             var LO2 = new Logistic(1,1);
-            Assert.AreEqual(LO2.Mean, 1);
+            Assert.AreEqual(1, LO2.Mean);
         }
 
         /// <summary>
@@ -237,10 +237,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Median,0);
+            Assert.AreEqual(0, LO.Median);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.Median, 1);
+            Assert.AreEqual(1, LO2.Median);
         }
 
         /// <summary>
@@ -250,10 +250,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Mode, 0);
+            Assert.AreEqual(0, LO.Mode);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.Mode, 1);
+            Assert.AreEqual(1, LO2.Mode);
         }
 
         /// <summary>
@@ -263,10 +263,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.StandardDeviation, 0.18137, 1E-04);
+            Assert.AreEqual(0.18137, LO.StandardDeviation,  1E-04);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.StandardDeviation, 1.81379, 1e-04);
+            Assert.AreEqual(1.81379, LO2.StandardDeviation,  1e-04);
         }
 
         /// <summary>
@@ -276,10 +276,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Skewness, 0);
+            Assert.AreEqual(0, LO.Skewness);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.Skewness, 0);
+            Assert.AreEqual(0, LO2.Skewness);
         }
 
         /// <summary>
@@ -289,10 +289,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Kurtosis, 4.2);
+            Assert.AreEqual(4.2, LO.Kurtosis);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.Kurtosis, 4.2);
+            Assert.AreEqual(4.2, LO2.Kurtosis);
         }
 
         /// <summary>
@@ -302,12 +302,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var LO = new Logistic();
-            Assert.AreEqual(LO.Minimum, double.NegativeInfinity);
-            Assert.AreEqual(LO.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity,LO.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, LO.Maximum);
 
             var LO2 = new Logistic(1, 1);
-            Assert.AreEqual(LO2.Minimum, double.NegativeInfinity);
-            Assert.AreEqual(LO2.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity, LO2.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, LO2.Maximum);
         }
 
         /// <summary>
@@ -317,9 +317,9 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var LO = new Logistic(5,2);
-            Assert.AreEqual(LO.PDF(-5), 0.00332, 1e-04);
-            Assert.AreEqual(LO.PDF(0), 0.03505, 1e-04);
-            Assert.AreEqual(LO.PDF(5), 0.125);
+            Assert.AreEqual(0.00332, LO.PDF(-5),  1e-04);
+            Assert.AreEqual(0.03505, LO.PDF(0),  1e-04);
+            Assert.AreEqual(0.125, LO.PDF(5));
         }
 
         /// <summary>
@@ -329,9 +329,9 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var LO = new Logistic(5,2);
-            Assert.AreEqual(LO.CDF(-5), 0.00669, 1e-05);
-            Assert.AreEqual(LO.CDF(0), 0.07585, 1e-04);
-            Assert.AreEqual(LO.CDF(5), 0.5);
+            Assert.AreEqual(0.00669, LO.CDF(-5),  1e-05);
+            Assert.AreEqual(0.07585, LO.CDF(0),  1e-04);
+            Assert.AreEqual(0.5, LO.CDF(5));
         }
 
         /// <summary>
@@ -341,9 +341,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var LO = new Logistic(5, 2);
-            Assert.AreEqual(LO.InverseCDF(0), double.NegativeInfinity);
-            Assert.AreEqual(LO.InverseCDF(1),double.PositiveInfinity);
-            Assert.AreEqual(LO.InverseCDF(0.3), 3.3054, 1e-04);
+            Assert.AreEqual(double.NegativeInfinity, LO.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity, LO.InverseCDF(1));
+            Assert.AreEqual(3.3054, LO.InverseCDF(0.3),  1e-04);
         }
     }
 }

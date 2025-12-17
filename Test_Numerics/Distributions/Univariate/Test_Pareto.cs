@@ -95,12 +95,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Xm, 1);
-            Assert.AreEqual(p.Alpha, 10);
+            Assert.AreEqual(1, p.Xm);
+            Assert.AreEqual(10, p.Alpha);
 
             var p2 = new Pareto(1, 1);
-            Assert.AreEqual(p2.Xm, 1);
-            Assert.AreEqual(p2.Alpha, 1);
+            Assert.AreEqual(1, p2.Xm);
+            Assert.AreEqual(1, p2.Alpha);
         }
 
         /// <summary>
@@ -126,10 +126,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.ParametersToString[0, 0], "Scale (Xm)");
-            Assert.AreEqual(p.ParametersToString[1, 0], "Shape (α)");
-            Assert.AreEqual(p.ParametersToString[0, 1], "1");
-            Assert.AreEqual(p.ParametersToString[1, 1], "10");
+            Assert.AreEqual("Scale (Xm)", p.ParametersToString[0, 0]);
+            Assert.AreEqual("Shape (α)", p.ParametersToString[1, 0]);
+            Assert.AreEqual("1", p.ParametersToString[0, 1]);
+            Assert.AreEqual("10", p.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -153,10 +153,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Mean, 1.1111, 1e-04);
+            Assert.AreEqual(1.1111, p.Mean,  1e-04);
 
             var p2 = new Pareto(1,1);
-            Assert.AreEqual(p2.Mean, double.PositiveInfinity);
+            Assert.AreEqual(double.PositiveInfinity, p2.Mean);
         }
 
         /// <summary>
@@ -166,10 +166,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Median, 1.07177, 1e-04);
+            Assert.AreEqual(1.07177, p.Median,  1e-04);
 
             var p2 = new Pareto(1, 1);
-            Assert.AreEqual(p2.Median, 2);
+            Assert.AreEqual(2, p2.Median);
         }
 
         /// <summary>
@@ -179,10 +179,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Mode, 1);
+            Assert.AreEqual(1, p.Mode);
 
             var p2 = new Pareto(2, 1);
-            Assert.AreEqual(p2.Mode, 2);
+            Assert.AreEqual(2, p2.Mode);
         }
 
         /// <summary>
@@ -192,10 +192,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.StandardDeviation, 0.12422, 1e-04);
+            Assert.AreEqual(0.12422, p.StandardDeviation,  1e-04);
 
             var p2 = new Pareto(1, 2);
-            Assert.AreEqual(p2.StandardDeviation, double.PositiveInfinity);
+            Assert.AreEqual(double.PositiveInfinity, p2.StandardDeviation);
         }
 
         /// <summary>
@@ -205,10 +205,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Skewness, 2.81105, 1e-04);
+            Assert.AreEqual(2.81105, p.Skewness, 1e-04);
 
             var p2 = new Pareto(1, 3);
-            Assert.AreEqual(p2.Skewness, double.NaN);
+            Assert.AreEqual(double.NaN, p2.Skewness);
         }
 
         /// <summary>
@@ -218,10 +218,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Kurtosis, 17.82857, 1e-04);
+            Assert.AreEqual(17.82857, p.Kurtosis, 1e-04);
 
             var p2 = new Pareto(1, 4);
-            Assert.AreEqual(p2.Kurtosis,double.NaN);
+            Assert.AreEqual(double.NaN, p2.Kurtosis);
         }
 
         /// <summary>
@@ -231,12 +231,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.Minimum, 1);
-            Assert.AreEqual(p.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(1, p.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, p.Maximum);
 
             var p2 = new Pareto(2,3);
-            Assert.AreEqual(p2.Minimum, 2);
-            Assert.AreEqual(p2.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(2, p2.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, p2.Maximum);
         }
 
         /// <summary>
@@ -246,12 +246,12 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var p = new Pareto(1,1);
-            Assert.AreEqual(p.PDF(1), 1);
-            Assert.AreEqual(p.PDF(1.5), 4d / 9d);
+            Assert.AreEqual(1, p.PDF(1));
+            Assert.AreEqual(4d / 9d,p.PDF(1.5) );
 
             var p2 = new Pareto(3, 2);
-            Assert.AreEqual(p2.PDF(3), 2d / 3d);
-            Assert.AreEqual(p2.PDF(5), 18d / 125d);
+            Assert.AreEqual(2d / 3d,p2.PDF(3) );
+            Assert.AreEqual(18d / 125d,p2.PDF(5) );
         }
 
         /// <summary>
@@ -261,8 +261,8 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.CDF(0), 0);
-            Assert.AreEqual(p.CDF(2), 0.9990, 1e-04);
+            Assert.AreEqual(0, p.CDF(0));
+            Assert.AreEqual(0.9990, p.CDF(2),  1e-04);
         }
 
         /// <summary>
@@ -272,8 +272,8 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var p = new Pareto();
-            Assert.AreEqual(p.InverseCDF(0), 1);
-            Assert.AreEqual(p.InverseCDF(0.3), 1.0363, 1e-04);
+            Assert.AreEqual(1, p.InverseCDF(0));
+            Assert.AreEqual(1.0363, p.InverseCDF(0.3),  1e-04);
         }
     }
 }

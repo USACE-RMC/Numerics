@@ -234,7 +234,7 @@ namespace Utilities
             List<double> values = new List<double> { 1.4, 2.3, 3.2, 3.3d };
             List<int> predictors = new List<int> { 1, 1, 1, 0 };
             var result = Tools.Sum(values,predictors);
-            Assert.AreEqual(result, 6.9);
+            Assert.AreEqual(6.9, result);
         }
 
         /// <summary>
@@ -247,7 +247,7 @@ namespace Utilities
             List<double> list2 = new List<double> { 4, 5, 6 };
 
             var result = Tools.SumProduct(list1, list2);
-            Assert.AreEqual(result, 32);
+            Assert.AreEqual(32, result);
         }
 
         /// <summary>
@@ -258,7 +258,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.Mean(values);
-            Assert.AreEqual(result, 2);
+            Assert.AreEqual(2, result);
         }
 
         /// <summary>
@@ -270,7 +270,7 @@ namespace Utilities
             List<double> values = new List<double> { 1, 2, 3,4 };
             List<int> indicators = new List<int> { 1, 1, 1, 0 };
             var result = Tools.Mean(values,indicators);
-            Assert.AreEqual(result, 2);
+            Assert.AreEqual(2, result);
         }
 
         /// <summary>
@@ -281,7 +281,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.Product(values);
-            Assert.AreEqual(result, 6);
+            Assert.AreEqual(6, result);
         }
 
         /// <summary>
@@ -293,7 +293,7 @@ namespace Utilities
             List<double> values = new List<double> { 1, 2, 3,4 };
             List<int> indicators = new List<int> { 1,1,1,0 };
             var result = Tools.Product(values,indicators);
-            Assert.AreEqual(result, 6);
+            Assert.AreEqual(6, result);
         }
 
         /// <summary>
@@ -304,7 +304,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.Min(values);
-            Assert.AreEqual(result, 1);
+            Assert.AreEqual(1, result);
         }
 
         /// <summary>
@@ -315,7 +315,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.ArgMin(values);
-            Assert.AreEqual(result, 0);
+            Assert.AreEqual(0, result);
         }
 
         /// <summary>
@@ -326,7 +326,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.Max(values);
-            Assert.AreEqual(result, 3);
+            Assert.AreEqual(3, result);
         }
 
 
@@ -338,7 +338,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.ArgMax(values);
-            Assert.AreEqual(result, 2);
+            Assert.AreEqual(2, result);
         }
 
         /// <summary>
@@ -350,7 +350,7 @@ namespace Utilities
             List<double> values = new List<double> { 1, 2, 3, 4};
             List<int> indicators = new List<int> { 0, 1, 1, 1 };
             var result = Tools.Min(values,indicators);
-            Assert.AreEqual(result, 2);
+            Assert.AreEqual(2, result);
         }
 
         /// <summary>
@@ -362,7 +362,7 @@ namespace Utilities
             List<double> values = new List<double> { 1, 2, 3 };
             List<int> indicators = new List<int> { 1, 0, 0 };
             var result = Tools.Max(values, indicators);
-            Assert.AreEqual(result, 1);
+            Assert.AreEqual(1, result);
         }
 
         /// <summary>
@@ -380,8 +380,8 @@ namespace Utilities
 
             var result = Tools.LogSumExp(u, v);
             var result2 = Tools.LogSumExp(values);
-            Assert.AreEqual(result, 1000.70815, 1E-04);
-            Assert.AreEqual(result2, 1000.70815, 1E-04);
+            Assert.AreEqual(1000.70815,result, 1E-04);
+            Assert.AreEqual(1000.70815,result2, 1E-04);
         }
 
         /// <summary>
@@ -411,7 +411,7 @@ namespace Utilities
             data[1] = 128;
             data[2] = 255;
             var result = Tools.Compress(data);
-            Assert.IsTrue(data.Length <= result.Length);
+            Assert.IsLessThanOrEqualTo(result.Length, data.Length);
         }
 
         /// <summary>
@@ -425,7 +425,7 @@ namespace Utilities
             data[1] = 128;
             data[2] = 255;
             var result = Tools.Decompress(data);
-            Assert.IsTrue(data.Length >= result.Length);
+            Assert.IsGreaterThanOrEqualTo(result.Length, data.Length);
         }
     }
     

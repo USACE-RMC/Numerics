@@ -201,10 +201,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var b = new GeneralizedBeta(2, 2, 0, 1);
-            Assert.AreEqual(b.Mean, 0.5);
+            Assert.AreEqual(0.5, b.Mean);
 
             var b2 = new GeneralizedBeta(2, 2, -10, 10);
-            Assert.AreEqual(b2.Mean, 0);
+            Assert.AreEqual(0, b2.Mean);
         }
 
         /// <summary>
@@ -224,10 +224,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var b = new GeneralizedBeta();
-            Assert.AreEqual(b.Mode, 0.5);
+            Assert.AreEqual(0.5, b.Mode);
 
             var b2 = new GeneralizedBeta(2, 2, -10, 10);
-            Assert.AreEqual(b2.Mode, 0);
+            Assert.AreEqual(0, b2.Mode);
         }
 
         /// <summary>
@@ -237,10 +237,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var b = new GeneralizedBeta();
-            Assert.AreEqual(b.StandardDeviation, 0.223606, 1e-04);
+            Assert.AreEqual(0.223606, b.StandardDeviation,  1e-04);
 
             var b2 = new GeneralizedBeta(2, 2, -10, 10);
-            Assert.AreEqual(b2.StandardDeviation, 4.47213,1e-04);
+            Assert.AreEqual(4.47213, b2.StandardDeviation, 1e-04);
         }
 
         /// <summary>
@@ -250,10 +250,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var b = new GeneralizedBeta();
-            Assert.AreEqual(b.Skewness, 0);
+            Assert.AreEqual(0, b.Skewness);
 
             var b2 = new GeneralizedBeta(2, 10);
-            Assert.AreEqual(b2.Skewness, 0.92140088,1e-04);
+            Assert.AreEqual(0.92140088, b2.Skewness, 1e-04);
         }
 
         /// <summary>
@@ -279,12 +279,12 @@ namespace Distributions.Univariate
         public void Test_MinimumMaximum()
         {
             var b = new GeneralizedBeta();
-            Assert.AreEqual(b.Minimum, 0);
-            Assert.AreEqual(b.Maximum, 1);
+            Assert.AreEqual(0, b.Minimum);
+            Assert.AreEqual(1, b.Maximum);
 
             var b2 = new GeneralizedBeta(2, 2, -10, 10);
-            Assert.AreEqual(b2.Minimum, -10);
-            Assert.AreEqual(b2.Maximum, 10);
+            Assert.AreEqual(-10, b2.Minimum);
+            Assert.AreEqual(10, b2.Maximum);
         }
 
         /// <summary>
@@ -313,8 +313,8 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var b = new GeneralizedBeta(2,2,-10,10);
-            Assert.AreEqual(b.CDF(-11), 0);
-            Assert.AreEqual(b.CDF(11),1);
+            Assert.AreEqual(0,b.CDF(-11));
+            Assert.AreEqual(1, b.CDF(11));
 
             var b2 = new GeneralizedBeta(9, 1);
             Assert.AreEqual(0, b2.CDF(0));

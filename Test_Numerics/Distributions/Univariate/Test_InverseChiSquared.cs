@@ -83,12 +83,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.DegreesOfFreedom, 10);
-            Assert.AreEqual(IX.Sigma, 1);
+            Assert.AreEqual(10, IX.DegreesOfFreedom);
+            Assert.AreEqual(1, IX.Sigma);
 
             var IX2 = new InverseChiSquared(2, 1);
-            Assert.AreEqual(IX2.DegreesOfFreedom, 2);
-            Assert.AreEqual(IX2.Sigma, 1);
+            Assert.AreEqual(2, IX2.DegreesOfFreedom);
+            Assert.AreEqual(1, IX2.Sigma);
         }
 
         /// <summary>
@@ -114,10 +114,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.ParametersToString[0, 0], "Degrees of Freedom (ν)");
-            Assert.AreEqual(IX.ParametersToString[1, 0], "Scale (σ)");
-            Assert.AreEqual(IX.ParametersToString[0, 1], "10");
-            Assert.AreEqual(IX.ParametersToString[1, 1], "1");
+            Assert.AreEqual("Degrees of Freedom (ν)", IX.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (σ)", IX.ParametersToString[1, 0]);
+            Assert.AreEqual("10", IX.ParametersToString[0, 1]);
+            Assert.AreEqual("1", IX.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -127,10 +127,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.Mean, 1.25);
+            Assert.AreEqual(1.25, IX.Mean);
 
             var IX2 = new InverseChiSquared(2, 2);
-            Assert.AreEqual(IX2.Mean, double.NaN);
+            Assert.AreEqual(double.NaN, IX2.Mean);
         }
 
         /// <summary>
@@ -140,10 +140,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.Median, 0.93418,1e-04);
+            Assert.AreEqual(0.93418, IX.Median, 1e-04);
 
             var IX2 = new InverseChiSquared(7, 1);
-            Assert.AreEqual(IX2.Median, 0.906544, 1e-04);
+            Assert.AreEqual(0.906544, IX2.Median,  1e-04);
         }
 
         /// <summary>
@@ -153,10 +153,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.Mode, 0.8333, 1e-04);
+            Assert.AreEqual(0.8333, IX.Mode,  1e-04);
 
             var IX2 = new InverseChiSquared(2, 2);
-            Assert.AreEqual(IX2.Mode, 1);
+            Assert.AreEqual(1, IX2.Mode);
         }
 
         /// <summary>
@@ -166,10 +166,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.StandardDeviation, 0.72168, 1e-04);
+            Assert.AreEqual(0.72168, IX.StandardDeviation,  1e-04);
 
             var IX2 = new InverseChiSquared(2, 2);
-            Assert.AreEqual(IX2.StandardDeviation, double.NaN);
+            Assert.AreEqual(double.NaN, IX2.StandardDeviation);
         }
 
         /// <summary>
@@ -179,10 +179,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.Skewness, 3.46410, 1e-04);
+            Assert.AreEqual(3.46410, IX.Skewness,  1e-04);
 
             var IX2 = new InverseChiSquared(2, 2);
-            Assert.AreEqual(IX2.Skewness, double.NaN);
+            Assert.AreEqual(double.NaN, IX2.Skewness);
         }
 
         /// <summary>
@@ -192,10 +192,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.Kurtosis, 45);
+            Assert.AreEqual(45, IX.Kurtosis);
 
             var IX2 = new InverseChiSquared(2,2);
-            Assert.AreEqual(IX2.Kurtosis, double.NaN);
+            Assert.AreEqual(double.NaN, IX2.Kurtosis);
         }
 
         /// <summary>
@@ -205,8 +205,8 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.Minimum, 0);
-            Assert.AreEqual(IX.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(0, IX.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, IX.Maximum);
         }
 
         /// <summary>
@@ -216,13 +216,13 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var IX = new InverseChiSquared(1, 1);
-            Assert.AreEqual(IX.PDF(1), 0.2419,1e-04);
+            Assert.AreEqual(0.2419, IX.PDF(1),1e-04);
 
             var IX2 = new InverseChiSquared(2, 1);
-            Assert.AreEqual(IX2.PDF(2), 0.15163, 1e-04);
+            Assert.AreEqual(0.15163, IX2.PDF(2),  1e-04);
 
             var IX3 = new InverseChiSquared();
-            Assert.AreEqual(IX3.PDF(2), 0.16700, 1e-04);
+            Assert.AreEqual(0.16700, IX3.PDF(2),  1e-04);
         }
 
         /// <summary>
@@ -232,7 +232,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var IX = new InverseChiSquared(7,1);
-            Assert.AreEqual(IX.CDF(5), 1.1184e-05, 1e-09);
+            Assert.AreEqual(1.1184e-05, IX.CDF(5),  1e-09);
         }
 
         /// <summary>
@@ -242,9 +242,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var IX = new InverseChiSquared();
-            Assert.AreEqual(IX.InverseCDF(0), 0);
-            Assert.AreEqual(IX.InverseCDF(1), double.PositiveInfinity);
-            Assert.AreEqual(IX.InverseCDF(0.3), 1.17807,1e-04);
+            Assert.AreEqual(0, IX.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity,IX.InverseCDF(1));
+            Assert.AreEqual(1.17807, IX.InverseCDF(0.3), 1e-04);
         }
     }
 }
