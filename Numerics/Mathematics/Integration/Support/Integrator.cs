@@ -150,7 +150,7 @@ namespace Numerics.Mathematics.Integration
         /// </summary>
         /// <param name="status">Optimization status.</param>
         /// <param name="exception">Inner exception.</param>
-        protected virtual void UpdateStatus(IntegrationStatus status, Exception exception = null)
+        protected virtual void UpdateStatus(IntegrationStatus status, Exception? exception = null)
         {
             Status = status;
             if (status == IntegrationStatus.Failure)

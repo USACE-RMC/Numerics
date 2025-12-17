@@ -427,8 +427,8 @@ namespace Numerics.Mathematics
         public static double[,] Jacobian(
             Func<double[], double[]> g,
             double[] theta,
-            double[] lowerBounds = null,
-            double[] upperBounds = null,
+            double[]? lowerBounds = null,
+            double[]? upperBounds = null,
             double relStep = 1e-5,
             double absStep = 1e-7,
             int maxBacktrack = 5)
@@ -619,8 +619,8 @@ namespace Numerics.Mathematics
         public static double[] Gradient(
             Func<double[], double> f,
             double[] theta,
-            double[] lowerBounds = null,
-            double[] upperBounds = null,
+            double[]? lowerBounds = null,
+            double[]? upperBounds = null,
             double relStep = 1e-5,
             double absStep = 1e-7,
             int maxBacktrack = 5)
@@ -798,8 +798,8 @@ namespace Numerics.Mathematics
         public static double[,] Hessian(
             Func<double[], double> f,
             double[] theta,
-            double[] lowerBounds = null,
-            double[] upperBounds = null,
+            double[]? lowerBounds = null,
+            double[]? upperBounds = null,
             double relStep = 1e-4,
             double absStep = 1e-6,
             int maxBacktrack = 6)
@@ -1206,7 +1206,7 @@ namespace Numerics.Mathematics
         /// <param name="v">Vector to clamp (modified in place).</param>
         /// <param name="lowerBounds">Optional lower bounds for each element.</param>
         /// <param name="upperBounds">Optional upper bounds for each element.</param>
-        private static void ClampInPlace(double[] v, double[] lowerBounds, double[] upperBounds)
+        private static void ClampInPlace(double[] v, double[]? lowerBounds, double[]? upperBounds)
         {
             if (lowerBounds == null && upperBounds == null)
                 return;
@@ -1228,7 +1228,7 @@ namespace Numerics.Mathematics
         /// <param name="j">Index of the parameter to check.</param>
         /// <param name="lowerBounds">Optional lower bounds.</param>
         /// <returns>Distance to lower bound, or positive infinity if unbounded.</returns>
-        private static double AvailableLeft(double[] x, int j, double[] lowerBounds)
+        private static double AvailableLeft(double[] x, int j, double[]? lowerBounds)
         {
             return lowerBounds == null ? double.PositiveInfinity : x[j] - lowerBounds[j];
         }
@@ -1240,7 +1240,7 @@ namespace Numerics.Mathematics
         /// <param name="j">Index of the parameter to check.</param>
         /// <param name="upperBounds">Optional upper bounds.</param>
         /// <returns>Distance to upper bound, or positive infinity if unbounded.</returns>
-        private static double AvailableRight(double[] x, int j, double[] upperBounds)
+        private static double AvailableRight(double[] x, int j, double[]? upperBounds)
         {
             return upperBounds == null ? double.PositiveInfinity : upperBounds[j] - x[j];
         }

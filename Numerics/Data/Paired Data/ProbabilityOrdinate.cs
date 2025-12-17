@@ -75,13 +75,13 @@ namespace Numerics.Data
         /// <summary>
         /// Occurs when the collection changes, for example when items are added or removed.
         /// </summary>
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         /// <summary>
         /// Occurs when a property value changes/>
         /// or the indexer <c>Item[]</c>.
         /// </summary>
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ProbabilityOrdinates"/> class

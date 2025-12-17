@@ -80,7 +80,7 @@ namespace Numerics.Sampling.MCMC
         /// <param name="stepSize">Optional. The leapfrog step size. Default = 0.1.</param>
         /// <param name="steps">Optional. The number of leapfrog steps. Default = 50.</param>
         /// <param name="gradientFunction">Optional. The function for evaluating the gradient of the log-likelihood. Numerical finite difference will be used by default.</param>
-        public HMC(List<IUnivariateDistribution> priorDistributions, LogLikelihood logLikelihoodFunction, Vector mass = null, double stepSize = 0.1, int steps = 50, Gradient gradientFunction = null) : base(priorDistributions, logLikelihoodFunction)
+        public HMC(List<IUnivariateDistribution> priorDistributions, LogLikelihood logLikelihoodFunction, Vector? mass = null, double stepSize = 0.1, int steps = 50, Gradient? gradientFunction = null) : base(priorDistributions, logLikelihoodFunction)
         {
 
             InitialIterations = 100 * NumberOfParameters;

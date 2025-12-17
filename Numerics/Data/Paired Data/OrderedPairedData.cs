@@ -105,7 +105,7 @@ namespace Numerics.Data
         private List<Ordinate> _ordinates;
 
         /// <inheritdoc/>
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         /// <summary>
         /// Represents if the paired dataset has valid ordinates and order.
@@ -612,7 +612,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is OrderedPairedData other)
             {

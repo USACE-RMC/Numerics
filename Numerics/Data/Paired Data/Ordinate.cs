@@ -79,8 +79,9 @@ namespace Numerics.Data
         public Ordinate(XElement xElement)
         {
             double x = 0, y = 0;
-            if (xElement.Attribute(nameof(X)) != null) double.TryParse(xElement.Attribute(nameof(X)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
-            if (xElement.Attribute(nameof(Y)) != null) double.TryParse(xElement.Attribute(nameof(Y)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out y);
+
+            if (xElement.Attribute(nameof(X)) != null) double.TryParse(xElement.Attribute(nameof(X))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
+            if (xElement.Attribute(nameof(Y)) != null) double.TryParse(xElement.Attribute(nameof(Y))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out y);
             X = x;
             Y = y;
             IsValid = true;
@@ -367,7 +368,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is Ordinate other)
             {
