@@ -68,7 +68,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Function(testX[i]);
-                Assert.AreEqual(Math.Abs(testValid[i] - testResults[i]) / testValid[i] < 0.01, true);
+                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -85,7 +85,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Lanczos(testX[i]);
-                Assert.AreEqual(Math.Abs(testValid[i] - testResults[i]) / testValid[i] < 0.01, true);
+                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -157,7 +157,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Trigamma(testX[i]);
-                Assert.AreEqual(Math.Abs(testValid[i] - testResults[i]) / testValid[i] < 0.01, true);
+                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -187,7 +187,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.LogGamma(testX[i]);
-                Assert.AreEqual(Math.Abs(testValid[i] - testResults[i]) / testValid[i] < 0.01, true);
+                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -227,7 +227,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Incomplete(testX[i], testA[i]);
-                Assert.AreEqual(Math.Abs(testValid[i] - testResults[i]) / testValid[i] < 0.01, true);
+                Assert.IsLessThan(0.01,Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
 
         }
@@ -460,7 +460,7 @@ namespace Mathematics.SpecialFunctions
                     double x = Gamma.UpperIncomplete(lambda, i);
                     double j = Gamma.InverseUpperIncomplete(lambda, x);
 
-                    Assert.IsTrue(Math.Abs(i - j) < 1e-2 * Math.Abs(j));
+                    Assert.IsLessThan(1e-2 * Math.Abs(j),Math.Abs(i - j) );
                 }
             }
         }

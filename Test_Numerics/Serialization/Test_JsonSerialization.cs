@@ -99,14 +99,14 @@ namespace Serialization
 
             // Assert
             Assert.IsNotNull(deserialized.ModeCurve);
-            Assert.AreEqual(original.ModeCurve.Length, deserialized.ModeCurve.Length);
+            Assert.HasCount(original.ModeCurve.Length, deserialized.ModeCurve);
             for (int i = 0; i < original.ModeCurve.Length; i++)
             {
                 Assert.AreEqual(original.ModeCurve[i], deserialized.ModeCurve[i], 1e-10);
             }
 
             Assert.IsNotNull(deserialized.MeanCurve);
-            Assert.AreEqual(original.MeanCurve.Length, deserialized.MeanCurve.Length);
+            Assert.HasCount(original.MeanCurve.Length, deserialized.MeanCurve);
             for (int i = 0; i < original.MeanCurve.Length; i++)
             {
                 Assert.AreEqual(original.MeanCurve[i], deserialized.MeanCurve[i], 1e-10);
@@ -161,9 +161,11 @@ namespace Serialization
             byte[] serialized = UncertaintyAnalysisResults.ToByteArray(original);
             var deserialized = UncertaintyAnalysisResults.FromByteArray(serialized);
 
+            var origLen = original.ParameterSets.Length;
+            var desLen = deserialized.ParameterSets.Length;
             // Assert
             Assert.IsNotNull(deserialized.ParameterSets);
-            Assert.AreEqual(original.ParameterSets.Length, deserialized.ParameterSets.Length);
+            Assert.AreEqual(origLen, desLen);
 
             for (int i = 0; i < original.ParameterSets.Length; i++)
             {
@@ -173,7 +175,7 @@ namespace Serialization
                 if (original.ParameterSets[i].Values != null)
                 {
                     Assert.IsNotNull(deserialized.ParameterSets[i].Values);
-                    Assert.AreEqual(original.ParameterSets[i].Values.Length, deserialized.ParameterSets[i].Values.Length);
+                    Assert.HasCount(original.ParameterSets[i].Values.Length, deserialized.ParameterSets[i].Values);
 
                     for (int j = 0; j < original.ParameterSets[i].Values.Length; j++)
                     {
@@ -246,11 +248,11 @@ namespace Serialization
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.ParameterSets);
-            Assert.AreEqual(0, deserialized.ParameterSets.Length);
+            Assert.IsEmpty( deserialized.ParameterSets);
             Assert.IsNotNull(deserialized.ModeCurve);
-            Assert.AreEqual(0, deserialized.ModeCurve.Length);
+            Assert.IsEmpty(deserialized.ModeCurve);
             Assert.IsNotNull(deserialized.MeanCurve);
-            Assert.AreEqual(0, deserialized.MeanCurve.Length);
+            Assert.IsEmpty(deserialized.MeanCurve);
         }
 
         /// <summary>
@@ -293,10 +295,12 @@ namespace Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.AcceptanceRates.Length;
+            var desLen = deserialized.AcceptanceRates.Length;
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.AcceptanceRates);
-            Assert.AreEqual(original.AcceptanceRates.Length, deserialized.AcceptanceRates.Length);
+            Assert.AreEqual(origLen, desLen);
 
             for (int i = 0; i < original.AcceptanceRates.Length; i++)
             {
@@ -323,14 +327,16 @@ namespace Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.MarkovChains.Length;
+            var desLen = deserialized.MarkovChains.Length;
             // Assert
             Assert.IsNotNull(deserialized.MarkovChains);
-            Assert.AreEqual(original.MarkovChains.Length, deserialized.MarkovChains.Length);
+            Assert.AreEqual(origLen, desLen);
 
             for (int i = 0; i < original.MarkovChains.Length; i++)
             {
                 Assert.IsNotNull(deserialized.MarkovChains[i]);
-                Assert.AreEqual(original.MarkovChains[i].Count, deserialized.MarkovChains[i].Count);
+                Assert.HasCount(original.MarkovChains[i].Count, deserialized.MarkovChains[i]);
 
                 for (int j = 0; j < original.MarkovChains[i].Count; j++)
                 {
@@ -368,7 +374,7 @@ namespace Serialization
 
             // Assert
             Assert.IsNotNull(deserialized.Output);
-            Assert.AreEqual(original.Output.Count, deserialized.Output.Count);
+            Assert.HasCount(original.Output.Count, deserialized.Output);
 
             for (int i = 0; i < original.Output.Count; i++)
             {
@@ -423,7 +429,7 @@ namespace Serialization
 
             // Assert
             Assert.IsNotNull(deserialized.MeanLogLikelihood);
-            Assert.AreEqual(original.MeanLogLikelihood.Count, deserialized.MeanLogLikelihood.Count);
+            Assert.HasCount(original.MeanLogLikelihood.Count, deserialized.MeanLogLikelihood);
 
             for (int i = 0; i < original.MeanLogLikelihood.Count; i++)
             {
@@ -461,9 +467,9 @@ namespace Serialization
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.MarkovChains);
-            Assert.AreEqual(2, deserialized.MarkovChains.Length);
-            Assert.AreEqual(0, deserialized.MarkovChains[0].Count);
-            Assert.AreEqual(0, deserialized.MarkovChains[1].Count);
+            Assert.HasCount(2, deserialized.MarkovChains);
+            Assert.HasCount(0, deserialized.MarkovChains[0]);
+            Assert.HasCount(0, deserialized.MarkovChains[1]);
         }
 
         /// <summary>
@@ -486,9 +492,11 @@ namespace Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.MarkovChains.Length;
+            var deserializedLen = deserialized.MarkovChains.Length;
             // Assert
             Assert.IsNotNull(deserialized);
-            Assert.AreEqual(original.MarkovChains.Length, deserialized.MarkovChains.Length);
+            Assert.AreEqual(origLen, deserializedLen);
 
             // Verify first and last elements to ensure proper serialization
             var firstOriginal = original.MarkovChains[0][0];
@@ -531,15 +539,15 @@ namespace Serialization
 
             // Assert
             // Verify that WriteIndented is false (no formatting whitespace)
-            Assert.IsFalse(jsonString.Contains("\n"));
-            Assert.IsFalse(jsonString.Contains("  ")); // No indentation
+            Assert.DoesNotContain(jsonString,("\n"));
+            Assert.DoesNotContain(jsonString, ("  ")); // No indentation
 
             // Verify that null values are not included (DefaultIgnoreCondition)
-            Assert.IsFalse(jsonString.Contains("\"ParentDistribution\":null"));
+            Assert.DoesNotContain(jsonString,  ("\"ParentDistribution\":null"));
 
             // Verify that fields are included (IncludeFields = true)
-            Assert.IsTrue(jsonString.Contains("\"AIC\":"));
-            Assert.IsTrue(jsonString.Contains("\"BIC\":"));
+            Assert.DoesNotContain(jsonString, ("\"AIC\":"));
+            Assert.DoesNotContain(jsonString, ("\"BIC\":"));
         }
 
         #endregion

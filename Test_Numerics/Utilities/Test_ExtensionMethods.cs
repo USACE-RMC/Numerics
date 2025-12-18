@@ -84,7 +84,7 @@ namespace Utilities
         {
             var random = new Random();
             var result = random.NextIntegers(5);
-            Assert.AreEqual(5, result.Length);
+            Assert.HasCount(5, result);
         }
 
         /// <summary>
@@ -95,7 +95,7 @@ namespace Utilities
         {
             var random = new Random();
             var result = random.NextIntegers(0, 10, 5);
-            Assert.AreEqual(5, result.Length);
+            Assert.HasCount(5, result);
             for (int i = 0; i < result.Length; i++)
                 Assert.IsTrue(result[i] >= 0 && result[i] < 10);
         }
@@ -134,7 +134,7 @@ namespace Utilities
         {
             var random = new Random();
             var result = random.NextDoubles(5);
-            Assert.AreEqual(5, result.Length);
+            Assert.HasCount(5, result);
             for (int i = 0; i < result.Length; i++)
                 Assert.IsTrue(result[i] >= 0 && result[i] < 1);
         }
@@ -275,7 +275,7 @@ namespace Utilities
             var array = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
             var result = array.RandomSubset(5);          
             CollectionAssert.IsSubsetOf(result, array);
-            Assert.AreEqual(5, result.Length);
+            Assert.HasCount(5, result);
         }
 
         /// <summary>
@@ -420,7 +420,7 @@ namespace Utilities
             var vector = new Vector(new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 });
             var result = vector.RandomSubset(5).Array;
             CollectionAssert.IsSubsetOf(result, vector.Array);
-            Assert.AreEqual(5, result.Length);
+            Assert.HasCount(5, result);
         }
 
         /// <summary>

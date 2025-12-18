@@ -209,12 +209,12 @@ namespace Mathematics.Integration
 
             // Analytical approximation: P(Sum > mean + 3σ) = P(Z > 3) ≈ 0.00135
             // We expect something in the ballpark of 1e-3 to 2e-3
-            Assert.IsTrue(failureProbability > 5E-4, $"Probability too small: {failureProbability:E6}");
-            Assert.IsTrue(failureProbability < 5E-3, $"Probability too large: {failureProbability:E6}");
+            Assert.IsGreaterThan(5E-4, failureProbability );
+            Assert.IsLessThan(5E-3, failureProbability );
 
             // Standard error should be reasonable (less than 50% of estimate)
             double relativeError = vegas.StandardError / Math.Abs(failureProbability);
-            Assert.IsTrue(relativeError < 0.5, $"Relative error too large: {relativeError:P1}");
+            Assert.IsLessThan(0.5, relativeError);
         }
 
         /// <summary>
@@ -255,14 +255,14 @@ namespace Mathematics.Integration
             var failureProbability = vegas.Result;
 
             // Should be in ballpark of 1e-6 to 1e-5
-            Assert.IsTrue(failureProbability > 1E-7, $"Probability too small: {failureProbability:E2}");
-            Assert.IsTrue(failureProbability < 1E-4, $"Probability too large: {failureProbability:E2}");
+            Assert.IsGreaterThan(1E-7, failureProbability);
+            Assert.IsLessThan(1E-4, failureProbability);
 
             // For very rare events, relative error can be higher but should be finite
             double relativeError = vegas.StandardError / Math.Abs(failureProbability);
-            Assert.IsTrue(relativeError < 1.0, $"Relative error too large: {relativeError:P1}");
-            Assert.IsTrue(!double.IsNaN(failureProbability), "Result should not be NaN");
-            Assert.IsTrue(!double.IsInfinity(failureProbability), "Result should not be infinite");
+            Assert.IsLessThan(1.0, relativeError);
+            Assert.IsFalse(double.IsNaN(failureProbability), "Result should not be NaN");
+            Assert.IsFalse(double.IsInfinity(failureProbability), "Result should not be infinite");
         }
 
         /// <summary>
@@ -311,13 +311,13 @@ namespace Mathematics.Integration
             vegas.Integrate();
 
             // Verify samples were generated
-            Assert.IsTrue(sampleCount > 0, "No samples generated");
+            Assert.IsGreaterThan( 0, sampleCount );
 
             // With γ=4, should see strong tail focus (many samples near 1.0)
-            Assert.IsTrue(maxObserved > 0.99, $"Max probability too low: {maxObserved}");
+            Assert.IsGreaterThan(0.99, maxObserved );
 
             // Should still have some diversity (not all at 1.0)
-            Assert.IsTrue(minObserved < 0.5, $"Min probability too high: {minObserved}");
+            Assert.IsLessThan(0.5, minObserved );
 
         }
 
