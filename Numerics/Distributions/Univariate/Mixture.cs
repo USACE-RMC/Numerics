@@ -161,11 +161,11 @@ namespace Numerics.Distributions
                 var parmString = new string[2, 2];
                 string Wstring = "{";
                 string Dstring = "{";
-                for (int i = 1; i < Weights.Count() - 1; i++)
+                for (int i = 0; i < Weights.Count(); i++)
                 {
                     Wstring += Weights[i].ToString();
                     Dstring += Distributions[i].DisplayName;
-                    if (i < Weights.Count() - 2)
+                    if (i < Weights.Count() - 1)
                     {
                         Wstring += ",";
                         Dstring += ",";
