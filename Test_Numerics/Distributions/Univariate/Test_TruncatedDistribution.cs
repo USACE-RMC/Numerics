@@ -59,27 +59,27 @@ namespace Distributions.Univariate
             var p = tn.CDF(1.5);
             var q = tn.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.9786791, 1E-5);
-            Assert.AreEqual(p, 0.3460251, 1E-5);
-            Assert.AreEqual(q, 1.5, 1E-5);
+            Assert.AreEqual(0.9786791, d, 1E-5);
+            Assert.AreEqual(0.3460251, p, 1E-5);
+            Assert.AreEqual(1.5, q, 1E-5);
 
             tn = new TruncatedDistribution(new Normal(10, 3), 8, 25);
             d = tn.PDF(12.75);
             p = tn.CDF(12.75);
             q = tn.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.1168717, 1E-5);
-            Assert.AreEqual(p, 0.7596566, 1E-5);
-            Assert.AreEqual(q, 12.75, 1E-5);
+            Assert.AreEqual(0.1168717, d, 1E-5);
+            Assert.AreEqual(0.7596566, p, 1E-5);
+            Assert.AreEqual(12.75, q, 1E-5);
 
             tn = new TruncatedDistribution(new Normal(0, 3), 0, 9);
             d = tn.PDF(4.5);
             p = tn.CDF(4.5);
             q = tn.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.08657881, 1E-5);
-            Assert.AreEqual(p, 0.868731, 1E-5);
-            Assert.AreEqual(q, 4.5, 1E-5);
+            Assert.AreEqual(0.08657881, d, 1E-5);
+            Assert.AreEqual(0.868731, p, 1E-5);
+            Assert.AreEqual(4.5, q, 1E-5);
 
         }
 
@@ -127,10 +127,10 @@ namespace Distributions.Univariate
         {
             var dist = new TruncatedDistribution(new Normal(10, 3), 8, 25);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>

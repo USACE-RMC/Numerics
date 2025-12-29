@@ -74,13 +74,13 @@ namespace Distributions.Univariate
             double true_cdf = 0.69358638272337991d;
             double true_icdf = 0.27d;
             
-            Assert.AreEqual(B.Mean, true_mean, 0.0001d);
-            Assert.AreEqual(B.Median, true_median, 0.0001d);
-            Assert.AreEqual(B.Mode, true_mode, 0.0001d);
-            Assert.AreEqual(B.Variance, true_var, 0.0001d);
-            Assert.AreEqual(B.PDF(0.27d), true_pdf, 0.0001d);
-            Assert.AreEqual(B.CDF(0.27d), true_cdf, 0.0001d);
-            Assert.AreEqual(B.InverseCDF(B.CDF(0.27d)), true_icdf, 0.0001d);
+            Assert.AreEqual(true_mean, B.Mean, 0.0001d);
+            Assert.AreEqual(true_median, B.Median, 0.0001d);
+            Assert.AreEqual(true_mode, B.Mode, 0.0001d);
+            Assert.AreEqual(true_var, B.Variance, 0.0001d);
+            Assert.AreEqual(true_pdf, B.PDF(0.27d), 0.0001d);
+            Assert.AreEqual(true_cdf, B.CDF(0.27d), 0.0001d);
+            Assert.AreEqual(true_icdf, B.InverseCDF(B.CDF(0.27d)), 0.0001d);
 
 
         }
@@ -188,10 +188,10 @@ namespace Distributions.Univariate
         {
             var dist = new GeneralizedBeta(2, 2, 0, 1);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>

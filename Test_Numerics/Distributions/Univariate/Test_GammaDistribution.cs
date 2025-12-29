@@ -90,8 +90,8 @@ namespace Distributions.Univariate
             double shape = G.Kappa;
             double true_scale = 1.280143d;
             double true_shape = 7.778442d;
-            Assert.AreEqual(scale, true_scale, 0.0001d);
-            Assert.AreEqual(shape, true_shape, 0.0001d);
+            Assert.AreEqual(true_scale, scale, 0.0001d);
+            Assert.AreEqual(true_shape, shape, 0.0001d);
             var lmom = G.LinearMomentsFromParameters(G.GetParameters);
             Assert.AreEqual(9.9575163d, lmom[0],  0.0001d);
             Assert.AreEqual(1.9822363d, lmom[1],  0.0001d);
@@ -143,7 +143,7 @@ namespace Distributions.Univariate
             Assert.IsLessThan(0.01d, (q1000 - true_1000) / true_1000);
             double p = G.CDF(q1000);
             double true_p = 0.99d;
-            Assert.AreEqual(p,true_p);
+            Assert.AreEqual(true_p, p);
         }
 
         /// <summary>
@@ -243,10 +243,10 @@ namespace Distributions.Univariate
         {
             var dist = new GammaDistribution();
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>

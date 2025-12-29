@@ -69,12 +69,12 @@ namespace Distributions.Univariate
             double true_cdf = 0.49139966433823956d;
             double true_icdf = 6.27d;
             var CHI = new ChiSquared(7);
-            Assert.AreEqual(CHI.Mean, true_mean, 0.0001d);
-            Assert.AreEqual(CHI.Median, true_median, 0.0001d);
-            Assert.AreEqual(CHI.StandardDeviation, true_stdDev, 0.0001d);
-            Assert.AreEqual(CHI.PDF(6.27d), true_pdf, 0.0001d);
-            Assert.AreEqual(CHI.CDF(6.27d), true_cdf, 0.0001d);
-            Assert.AreEqual(CHI.InverseCDF(true_cdf), true_icdf, 0.0001d);
+            Assert.AreEqual(true_mean, CHI.Mean, 0.0001d);
+            Assert.AreEqual(true_median, CHI.Median, 0.0001d);
+            Assert.AreEqual(true_stdDev, CHI.StandardDeviation, 0.0001d);
+            Assert.AreEqual(true_pdf, CHI.PDF(6.27d), 0.0001d);
+            Assert.AreEqual(true_cdf, CHI.CDF(6.27d), 0.0001d);
+            Assert.AreEqual(true_icdf, CHI.InverseCDF(true_cdf), 0.0001d);
         }
 
         /// <summary>
@@ -125,10 +125,10 @@ namespace Distributions.Univariate
         {
             var dist = new ChiSquared(2);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>
@@ -152,7 +152,7 @@ namespace Distributions.Univariate
         {
             var x = new ChiSquared(2);
             var approx_median = x.DegreesOfFreedom * Math.Pow(1d - 2d / (9d * x.DegreesOfFreedom), 3d);
-            Assert.AreEqual(x.Median, approx_median, 1E-1);
+            Assert.AreEqual(approx_median, x.Median, 1E-1);
         }
 
         /// <summary>

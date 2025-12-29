@@ -69,12 +69,12 @@ namespace Distributions.Univariate
             double true_cdf = 0.99613407986052716d;
             double true_icdf = 1.4d;
             var R = new Rayleigh(0.42);
-            Assert.AreEqual(R.Mean, true_mean, 0.0001d);
-            Assert.AreEqual(R.Median, true_median, 0.0001d);
-            Assert.AreEqual(R.StandardDeviation, true_stdDev, 0.0001d);
-            Assert.AreEqual(R.PDF(1.4d), true_pdf, 0.0001d);
-            Assert.AreEqual(R.CDF(1.4d), true_cdf, 0.0001d);
-            Assert.AreEqual(R.InverseCDF(true_cdf), true_icdf, 0.0001d);
+            Assert.AreEqual(true_mean, R.Mean, 0.0001d);
+            Assert.AreEqual(true_median, R.Median, 0.0001d);
+            Assert.AreEqual(true_stdDev, R.StandardDeviation, 0.0001d);
+            Assert.AreEqual(true_pdf, R.PDF(1.4d), 0.0001d);
+            Assert.AreEqual(true_cdf, R.CDF(1.4d), 0.0001d);
+            Assert.AreEqual(true_icdf, R.InverseCDF(true_cdf), 0.0001d);
         }
 
         /// <summary>
@@ -125,10 +125,10 @@ namespace Distributions.Univariate
         {
             var dist = new Rayleigh(1);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>

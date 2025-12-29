@@ -97,8 +97,8 @@ namespace Distributions.Univariate
             double a = GUM.Alpha;
             double true_x = 1533.69d;
             double true_a = 199.4332d;
-            Assert.AreEqual(x, true_x, 0.001d);
-            Assert.AreEqual(a, true_a, 0.001d);
+            Assert.AreEqual(true_x, x, 0.001d);
+            Assert.AreEqual(true_a, a, 0.001d);
             var lmom = GUM.LinearMomentsFromParameters(GUM.GetParameters);
             Assert.AreEqual(1648.806d, lmom[0],  0.001d);
             Assert.AreEqual(138.2366d, lmom[1],  0.001d);
@@ -183,12 +183,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(100,GUM.Xi);
-            Assert.AreEqual(10,GUM.Alpha);
+            Assert.AreEqual(GUM.Xi, 100);
+            Assert.AreEqual(GUM.Alpha, 10);
 
             var GUM2 = new Gumbel(-100, 1);
-            Assert.AreEqual(-100,GUM2.Xi);
-            Assert.AreEqual(1,GUM2.Alpha);
+            Assert.AreEqual(GUM2.Xi, -100);
+            Assert.AreEqual(GUM2.Alpha, 1);
         }
 
         /// <summary>
@@ -228,10 +228,10 @@ namespace Distributions.Univariate
         {
             var dist = new Gumbel(10, 1);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>
