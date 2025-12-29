@@ -206,7 +206,7 @@ namespace Numerics.Data
 
             // Extrapolate
             // Check for division by zero
-            if ((y2 - y1) == 0)
+            if ((x2 - x1) == 0)
             {
                 y = y1;
             }

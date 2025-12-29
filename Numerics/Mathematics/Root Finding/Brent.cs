@@ -210,8 +210,6 @@ namespace Numerics.Mathematics.RootFinding
             if (lowerBound == upperBound) throw new Exception("Bad initial range in bracket.");
             f1 = f(lowerBound);
             f2 = f(upperBound);
-
-            if (lowerBound == upperBound) throw new Exception("Bad initial range in bracket.");
             
             for (int j = 0; j < maxIterations; j++)
             {

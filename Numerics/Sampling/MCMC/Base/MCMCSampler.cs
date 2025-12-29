@@ -249,6 +249,11 @@ namespace Numerics.Sampling.MCMC
         protected bool _mapSuccessful = false;
 
         /// <summary>
+        /// Indicates whether MAP initialization was attempted but failed, resulting in a fallback to random initialization.
+        /// </summary>
+        public bool MAPInitializationFailed { get; protected set; } = false;
+
+        /// <summary>
         /// The Multivariate Normal proposal distribution set from the MAP estimate.
         /// </summary>
         protected MultivariateNormal _MVN;
@@ -425,10 +430,11 @@ namespace Numerics.Sampling.MCMC
                         return initials;
 
                     }
-                    catch (Exception) 
+                    catch (Exception)
                     {
                         // If this fails go to naive initialization below
                         Initialize = InitializationType.Randomize;
+                        MAPInitializationFailed = true;
                     }
                 }
             }
@@ -607,6 +613,7 @@ namespace Numerics.Sampling.MCMC
         public void Reset()
         {
             _simulations = 0;
+            MAPInitializationFailed = false;
             // Clear old memory and re-instantiate the result storage
             _masterPRNG = new Random(PRNGSeed);
             _chainPRNGs = new Random[NumberOfChains];
@@ -622,7 +629,7 @@ namespace Numerics.Sampling.MCMC
             AcceptCount = new int[NumberOfChains];
             SampleCount = new int[NumberOfChains];
             MeanLogLikelihood = new List<double>();
-            MAP = new ParameterSet([], double.MinValue);        
+            MAP = new ParameterSet([], double.MinValue);
         }
 
         #endregion
