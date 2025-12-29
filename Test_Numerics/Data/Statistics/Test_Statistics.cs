@@ -70,7 +70,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Minimum(_sample1);
             double trueVal = 98.8d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -81,7 +81,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Maximum(_sample1);
             double trueVal = 337.0d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -92,7 +92,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Mean(_sample1);
             double trueVal = 191.317391304348d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -108,7 +108,7 @@ namespace Data.Statistics
             double test = Numerics.Data.Statistics.Statistics.ParallelMean(_sample1);
             double regMean = Numerics.Data.Statistics.Statistics.Mean(_sample1);
             Assert.AreEqual(valid, test, 1E-6);
-            Assert.AreEqual(test, regMean, 1E-6);
+            Assert.AreEqual(regMean, test, 1E-6);
         }
 
         /// <summary>
@@ -124,7 +124,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.GeometricMean(_sample1);
             double trueVal = 185.685629284673d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -140,7 +140,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.HarmonicMean(_sample1);
             double trueVal = 180.183870381546d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -151,7 +151,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Variance(_sample1);
             double trueVal = 2300.31616368286d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -163,7 +163,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.PopulationVariance(_sample1);
             double trueVal = 2266.97824826717d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -174,19 +174,19 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.StandardDeviation(_sample1);
             double trueVal = 47.9616113541118d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
-        /// Test the PopulationStandardDeviation method against R by taking the square root of the population variance, calculated by multiplying the 
-        /// "var()" method by (n-1) / n 
+        /// Test the PopulationStandardDeviation method against R by taking the square root of the population variance, calculated by multiplying the
+        /// "var()" method by (n-1) / n
         /// </summary>
         [TestMethod]
         public void Test_PopulationStandardDeviation()
         {
             double val = Numerics.Data.Statistics.Statistics.PopulationStandardDeviation(_sample1);
             double trueVal = 47.6127950058298d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -246,7 +246,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Skewness(_sample1);
             double trueVal = 0.8605451107461d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -254,7 +254,7 @@ namespace Data.Statistics
         /// </summary>
         /// <remarks>
         /// <b> References: </b>
-        /// original S, StatLib f, Leisch. bRTRpbF (2019). bootstrap: Functions for the Book "An Introduction to the Bootstrap". 
+        /// original S, StatLib f, Leisch. bRTRpbF (2019). bootstrap: Functions for the Book "An Introduction to the Bootstrap".
         /// R package version 2019.6, <see href="https://CRAN.R-project.org/package=bootstrap"/>
         /// </remarks>
         [TestMethod]
@@ -262,7 +262,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.JackKnifeStandardError(_jackKnifeSample, Numerics.Data.Statistics.Statistics.Mean);
             double trueVal = 0.0372182162668589d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -297,7 +297,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Kurtosis(_sample1);
             double trueVal = 1.3434868130194d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -308,7 +308,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.Covariance(_sample1, _sample2);
             double trueVal = -253.54405370844d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -319,7 +319,7 @@ namespace Data.Statistics
         {
             double val = Numerics.Data.Statistics.Statistics.PopulationCovariance(_sample1, _sample2);
             double trueVal = -249.869502205419d;
-            Assert.AreEqual(val, trueVal, 1E-10);
+            Assert.AreEqual(trueVal, val, 1E-10);
         }
 
         /// <summary>
@@ -335,10 +335,10 @@ namespace Data.Statistics
             double trueVal3 = 0.8605451107461d;
             double trueVal4 = 1.3434868130194d;
 
-            Assert.AreEqual(vals[0], trueVal1, 1E-10);
-            Assert.AreEqual(vals[1], trueVal2, 1E-10);
-            Assert.AreEqual(vals[2], trueVal3, 1E-10);
-            Assert.AreEqual(vals[3], trueVal4, 1E-10);
+            Assert.AreEqual(trueVal1, vals[0], 1E-10);
+            Assert.AreEqual(trueVal2, vals[1], 1E-10);
+            Assert.AreEqual(trueVal3, vals[2], 1E-10);
+            Assert.AreEqual(trueVal4, vals[3], 1E-10);
         }
 
         /// <summary>
@@ -358,10 +358,10 @@ namespace Data.Statistics
             double trueVal3 = 0.1033903d;
             double trueVal4 = 0.1940943d;
 
-            Assert.AreEqual(lmoms[0], trueVal1, 1E-7);
-            Assert.AreEqual(lmoms[1], trueVal2, 1E-7);
-            Assert.AreEqual(lmoms[2], trueVal3, 1E-7);
-            Assert.AreEqual(lmoms[3], trueVal4, 1E-7);
+            Assert.AreEqual(trueVal1, lmoms[0], 1E-7);
+            Assert.AreEqual(trueVal2, lmoms[1], 1E-7);
+            Assert.AreEqual(trueVal3, lmoms[2], 1E-7);
+            Assert.AreEqual(trueVal4, lmoms[3], 1E-7);
         }
 
         /// <summary>
@@ -372,39 +372,39 @@ namespace Data.Statistics
         {
             double val0 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0);
             double trueVal0 = 98.8d;
-            Assert.AreEqual(val0, trueVal0, 1E-2);
+            Assert.AreEqual(trueVal0, val0, 1E-2);
 
             double val1 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.01d);
             double trueVal1 = 99.004d;
-            Assert.AreEqual(val1, trueVal1, 1E-2);
+            Assert.AreEqual(trueVal1, val1, 1E-2);
 
             double val2 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.05d);
             double trueVal2 = 123.2d;
-            Assert.AreEqual(val2, trueVal2, 1E-2);
+            Assert.AreEqual(trueVal2, val2, 1E-2);
 
             double val3 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.25d);
             double trueVal3 = 164.0d;
-            Assert.AreEqual(val3, trueVal3, 1E-2);
+            Assert.AreEqual(trueVal3, val3, 1E-2);
 
             double val4 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.5d);
             double trueVal4 = 183.0d;
-            Assert.AreEqual(val4, trueVal4, 1E-2);
+            Assert.AreEqual(trueVal4, val4, 1E-2);
 
             double val5 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.75d);
             double trueVal5 = 216.0d;
-            Assert.AreEqual(val5, trueVal5, 1E-2);
+            Assert.AreEqual(trueVal5, val5, 1E-2);
 
             double val6 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.95d);
             double trueVal6 = 262.6d;
-            Assert.AreEqual(val6, trueVal6, 1E-2);
+            Assert.AreEqual(trueVal6, val6, 1E-2);
 
             double val7 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 0.99d);
             double trueVal7 = 332.92d;
-            Assert.AreEqual(val7, trueVal7, 1E-2);
+            Assert.AreEqual(trueVal7, val7, 1E-2);
 
             double val8 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 1);
             double trueVal8 = 337d;
-            Assert.AreEqual(val8, trueVal8, 1E-2);
+            Assert.AreEqual(trueVal8, val8, 1E-2);
         }
 
         /// <summary>
