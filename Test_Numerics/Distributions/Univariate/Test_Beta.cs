@@ -74,17 +74,17 @@ namespace Distributions.Univariate
             double true_icdf05 = 0.000459d;
             double true_icdf95 = 0.7238d;
             var B = new BetaDistribution(0.42d, 1.57d);
-            Assert.AreEqual(B.Mean, true_mean, 0.0001d);
-            Assert.AreEqual(B.Median, true_median, 0.0001d);
-            Assert.AreEqual(B.Mode, true_mode, 0.0001d);
-            Assert.AreEqual(B.StandardDeviation, true_stdDev, 0.0001d);
-            Assert.AreEqual(B.Skewness, true_skew, 0.0001d);
-            Assert.AreEqual(B.Kurtosis, true_kurt, 0.0001d);
-            Assert.AreEqual(B.PDF(0.27d), true_pdf, 0.0001d);
-            Assert.AreEqual(B.CDF(0.27d), true_cdf, 0.0001d);
-            Assert.AreEqual(B.InverseCDF(B.CDF(0.27d)), true_icdf, 0.0001d);
-            Assert.AreEqual(B.InverseCDF(0.05d), true_icdf05, 0.0001d);
-            Assert.AreEqual(B.InverseCDF(0.95d), true_icdf95, 0.0001d);
+            Assert.AreEqual(true_mean, B.Mean, 0.0001d);
+            Assert.AreEqual(true_median, B.Median, 0.0001d);
+            Assert.AreEqual(true_mode, B.Mode, 0.0001d);
+            Assert.AreEqual(true_stdDev, B.StandardDeviation, 0.0001d);
+            Assert.AreEqual(true_skew, B.Skewness, 0.0001d);
+            Assert.AreEqual(true_kurt, B.Kurtosis, 0.0001d);
+            Assert.AreEqual(true_pdf, B.PDF(0.27d), 0.0001d);
+            Assert.AreEqual(true_cdf, B.CDF(0.27d), 0.0001d);
+            Assert.AreEqual(true_icdf, B.InverseCDF(B.CDF(0.27d)), 0.0001d);
+            Assert.AreEqual(true_icdf05, B.InverseCDF(0.05d), 0.0001d);
+            Assert.AreEqual(true_icdf95, B.InverseCDF(0.95d), 0.0001d);
         }
 
         /// <summary>
@@ -171,10 +171,10 @@ namespace Distributions.Univariate
         {
             var dist = new BetaDistribution(9, 1);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>

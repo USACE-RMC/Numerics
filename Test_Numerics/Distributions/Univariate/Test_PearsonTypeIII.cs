@@ -120,9 +120,9 @@ namespace Distributions.Univariate
             double true_x = 863.4104d;
             double true_a = 10.02196d;
             double true_b = 78.36751d;
-            Assert.AreEqual(x, true_x, 0.001d);
-            Assert.AreEqual(a, true_a, 0.001d);
-            Assert.AreEqual(b, true_b, 0.001d);
+            Assert.AreEqual(true_x, x, 0.001d);
+            Assert.AreEqual(true_a, a, 0.001d);
+            Assert.AreEqual(true_b, b, 0.001d);
             var lmom = P3.LinearMomentsFromParameters(P3.GetParameters);
             Assert.AreEqual(1648.806d, lmom[0],  0.001d);
             Assert.AreEqual(138.2366d, lmom[1],  0.001d);
@@ -279,10 +279,10 @@ namespace Distributions.Univariate
         {
             var dist = new PearsonTypeIII();
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>
