@@ -452,15 +452,10 @@ namespace Numerics.Distributions
             {
                 return Min + Math.Sqrt(probability * (Max - Min) * (MostLikely - Min));
             }
-            else if (probability >= (MostLikely - Min) / (Max - Min))
+            else
             {
                 return Max - Math.Sqrt((1.0d - probability) * (Max - Min) * (Max - MostLikely));
             }
-            else if (Max - Min == 0d)
-            {
-                return MostLikely;
-            }
-            return double.NaN;
         }
 
         /// <inheritdoc/>
