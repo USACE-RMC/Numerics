@@ -211,7 +211,9 @@ namespace Numerics.Data.Statistics
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2) return null;
             var acf = Covariance(data, lagMax);
+
             if (acf == null) return null;
+
             double den = acf[0, 1];
             for (int i = 0; i < acf.GetLength(0); i++)
                 acf[i, 1] /= den;
@@ -232,8 +234,10 @@ namespace Numerics.Data.Statistics
             int n = timeSeries.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2) return null;
+
             var acf = Covariance(timeSeries, lagMax);
             if (acf == null) return null;
+
             double den = acf[0, 1];
             for (int i = 0; i < acf.GetLength(0); i++)
                 acf[i, 1] /= den;

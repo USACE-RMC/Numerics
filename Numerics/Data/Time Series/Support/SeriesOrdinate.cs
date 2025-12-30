@@ -50,7 +50,11 @@ namespace Numerics.Data
         /// <summary>
         /// Constructs a new series ordinate.
         /// </summary>
-        public SeriesOrdinate() { }
+        public SeriesOrdinate() 
+        {
+            _index = default!;
+            _value = default!;
+        }
 
         /// <summary>
         /// Constructs a new series ordinate. 
@@ -66,12 +70,12 @@ namespace Numerics.Data
         /// <summary>
         /// Protected index property.
         /// </summary>
-        protected TIndex _index = default!;
+        protected TIndex _index;
 
         /// <summary>
         /// Protected value property.
         /// </summary>
-        protected TValue _value = default!;
+        protected TValue _value;
 
         /// <inheritdoc/>
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -118,7 +122,7 @@ namespace Numerics.Data
         }
 
         /// <inheritdoc/>
-        public override bool Equals(object? obj) => Equals(obj as SeriesOrdinate<TIndex, TValue>);
+        public override bool Equals(object? obj) => Equals((SeriesOrdinate<TIndex, TValue>?)obj);
 
         /// <summary>
         /// Equality operator overload. 
@@ -143,8 +147,8 @@ namespace Numerics.Data
             unchecked
             {
                 int hash = 17;
-                hash = hash * 23 + EqualityComparer<TIndex>.Default.GetHashCode(_index!);
-                hash = hash * 23 + EqualityComparer<TValue>.Default.GetHashCode(_value!);
+                hash = hash * 23 + (_index is null ? 0 : EqualityComparer<TIndex>.Default.GetHashCode(_index));
+                hash = hash * 23 + (_value is null ? 0 : EqualityComparer<TValue>.Default.GetHashCode(_value));
                 return hash;
             }
         }

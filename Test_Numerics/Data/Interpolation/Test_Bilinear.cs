@@ -93,7 +93,7 @@ namespace Data.Interpolation
             double x1 = 350d;
             double x2 = 75d;
             double y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(874.84d, y, 1E-6);
+            Assert.AreEqual(874.84d, y,  1E-6);
         }
 
         /// <summary>
@@ -136,7 +136,7 @@ namespace Data.Interpolation
 
             var LogLinLin = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.Logarithmic };
             double y1 = LogLinLin.Interpolate(x1, x2);
-            Assert.AreEqual(874.909523653025d, y1, 1E-6);
+            Assert.AreEqual(874.909523653025d, y1,  1E-6);
 
             var LinLogLin = new Bilinear(x1Array, x2Array, yArray) { X2Transform = Transform.Logarithmic };
             double y2 = LinLogLin.Interpolate(x1, x2);
@@ -144,7 +144,7 @@ namespace Data.Interpolation
 
             var LinLinLog = new Bilinear(x1Array, x2Array, yArray) { YTransform = Transform.Logarithmic };
             double y3 = LinLinLog.Interpolate(x1, x2);
-            Assert.AreEqual(874.8164, y3, 1E-4);
+            Assert.AreEqual(874.8164, y3,  1E-4);
 
             var LinLogLog = new Bilinear(x1Array, x2Array, yArray) { X2Transform = Transform.Logarithmic, YTransform = Transform.Logarithmic };
             double y4 = LinLogLog.Interpolate(x1, x2);

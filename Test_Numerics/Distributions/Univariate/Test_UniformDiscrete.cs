@@ -72,15 +72,15 @@ namespace Distributions.Univariate
             double true_icdf05 = 2.0d;
             double true_icdf95 = 6.0d;
             var U = new UniformDiscrete(2d, 6d);
-            Assert.AreEqual(true_mean, U.Mean, 0.0001d);
-            Assert.AreEqual(true_median, U.Median, 0.0001d);
-            Assert.AreEqual(true_stdDev, U.StandardDeviation, 0.0001d);
-            Assert.AreEqual(true_skew, U.Skewness, 0.0001d);
-            Assert.AreEqual(true_kurt, U.Kurtosis, 0.0001d);
-            Assert.AreEqual(true_pdf, U.PDF(4.0d), 0.0001d);
-            Assert.AreEqual(true_cdf, U.CDF(2.0d), 0.0001d);
-            Assert.AreEqual(true_icdf05, U.InverseCDF(0.17d), 0.0001d);
-            Assert.AreEqual(true_icdf95, U.InverseCDF(0.87d), 0.0001d);
+            Assert.AreEqual(U.Mean, true_mean, 0.0001d);
+            Assert.AreEqual(U.Median, true_median, 0.0001d);
+            Assert.AreEqual(U.StandardDeviation, true_stdDev, 0.0001d);
+            Assert.AreEqual(U.Skewness, true_skew, 0.0001d);
+            Assert.AreEqual(U.Kurtosis, true_kurt, 0.0001d);
+            Assert.AreEqual(U.PDF(4.0d), true_pdf, 0.0001d);
+            Assert.AreEqual(U.CDF(2.0d), true_cdf, 0.0001d);
+            Assert.AreEqual(U.InverseCDF(0.17d), true_icdf05, 0.0001d);
+            Assert.AreEqual(U.InverseCDF(0.87d), true_icdf95, 0.0001d);
         }
         
         /// <summary>
@@ -90,8 +90,8 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(0, U.Min);
-            Assert.AreEqual(1, U.Max);
+            Assert.AreEqual(0,U.Min);
+            Assert.AreEqual(1,U.Max);
 
             var U2 = new UniformDiscrete(2, 10);
             Assert.AreEqual(2, U2.Min);
@@ -127,7 +127,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual("Min", U.ParametersToString[0, 0]);
+            Assert.AreEqual("Min",U.ParametersToString[0, 0] );
             Assert.AreEqual("Max", U.ParametersToString[1, 0]);
             Assert.AreEqual("0", U.ParametersToString[0, 1]);
             Assert.AreEqual("1", U.ParametersToString[1, 1]);
@@ -166,7 +166,7 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(double.NaN, U.Mode);
+            Assert.AreEqual(double.NaN,U.Mode);
 
             var U2 = new UniformDiscrete(2, 10);
             Assert.AreEqual(double.NaN, U2.Mode);
@@ -179,10 +179,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(0.288675, U.StandardDeviation, 1e-05);
+            Assert.AreEqual(0.288675, U.StandardDeviation,  1e-05);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(2.3094, U2.StandardDeviation, 1e-04);
+            Assert.AreEqual(2.3094, U2.StandardDeviation,  1e-04);
         }
 
         /// <summary>
@@ -258,8 +258,8 @@ namespace Distributions.Univariate
         {
             var U = new UniformDiscrete();
             Assert.AreEqual(0, U.InverseCDF(0));
-            Assert.AreEqual(1, U.InverseCDF(1));
-            Assert.AreEqual(0, U.InverseCDF(0.3));
+            Assert.AreEqual(1,U.InverseCDF(1));
+            Assert.AreEqual(0,U.InverseCDF(0.3));
         }
     }
 

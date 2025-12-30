@@ -108,10 +108,10 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public virtual IUnivariateDistribution? MarginalDistributionX { get; set; }
+        public virtual IUnivariateDistribution MarginalDistributionX { get; set; } = null!;
 
         /// <inheritdoc/>
-        public virtual IUnivariateDistribution? MarginalDistributionY { get; set; }
+        public virtual IUnivariateDistribution MarginalDistributionY { get; set; } = null!;
 
         /// <inheritdoc/>
         public abstract string DisplayName { get; }
@@ -144,19 +144,10 @@ namespace Numerics.Distributions.Copulas
         public abstract double[] InverseCDF(double u, double v);
 
         /// <inheritdoc/>
-        public abstract int NumberOfCopulaParameters { get; }
+        public abstract double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
 
         /// <inheritdoc/>
-        public abstract double[] GetCopulaParameters { get; }
-
-        /// <inheritdoc/>
-        public abstract void SetCopulaParameters(double[] parameters);
-
-        /// <inheritdoc/>
-        public abstract double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
-
-        /// <inheritdoc/>
-        public abstract ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException);
+        public abstract ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException);
 
         /// <summary>
         /// Create a deep copy of the copula.

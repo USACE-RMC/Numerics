@@ -173,7 +173,6 @@ namespace Numerics.Distributions
                 // On fail, set to null
                 if (failed == true) bootDistributions[idx] = null!;
 
-
             });
             return bootDistributions;
         }
@@ -182,7 +181,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap an array of distribution parameters.
         /// </summary>
-        public double[,] Parameters(IUnivariateDistribution[]? distributions = null)
+        public double[,] Parameters(IUnivariateDistribution[] distributions = null!)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
             var bootParameters = new double[bootDistributions.Count(), Distribution.NumberOfParameters];
@@ -207,7 +206,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap an array of distribution parameter sets.
         /// </summary>
-        public ParameterSet[] ParameterSets(IUnivariateDistribution[]? distributions = null)
+        public ParameterSet[] ParameterSets(IUnivariateDistribution[] distributions = null!)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
             var bootParameters = new ParameterSet[bootDistributions.Count()];
@@ -294,7 +293,7 @@ namespace Numerics.Distributions
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
         /// <param name="recordParameterSets">Optional. Determines whether to record parameter sets. Default = true.</param>
-        public UncertaintyAnalysisResults Estimate(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null, bool recordParameterSets = true)
+        public UncertaintyAnalysisResults Estimate(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!, bool recordParameterSets = true)
         {
             var results = new UncertaintyAnalysisResults();
             results.ParentDistribution = (UnivariateDistributionBase)Distribution;
@@ -345,7 +344,7 @@ namespace Numerics.Distributions
         /// <param name="quantiles">List quantile values.</param>
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[] ExpectedProbabilities(IList<double> quantiles, IList<double> probabilities, IUnivariateDistribution[]? distributions = null)
+        public double[] ExpectedProbabilities(IList<double> quantiles, IList<double> probabilities, IUnivariateDistribution[] distributions = null!)
         {
             var quants = quantiles.ToArray();
             var probs = probabilities.ToArray();
@@ -397,7 +396,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="quantiles">List quantile values.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[] ExpectedProbabilities(IList<double> quantiles, IUnivariateDistribution[]? distributions = null)
+        public double[] ExpectedProbabilities(IList<double> quantiles, IUnivariateDistribution[] distributions = null!)
         {
             var quants = quantiles.ToArray();
             Array.Sort(quants);
@@ -428,18 +427,15 @@ namespace Numerics.Distributions
         public double[] ComputeMinMaxQuantiles(double minProbability, double maxProbability, IUnivariateDistribution[] distributions)
         {
             var output = new double[] { double.MaxValue, double.MinValue };
-            object lockObject = new object();
             Parallel.For(0, distributions.Count(), j =>
             {
                 if (distributions[j] != null)
                 {
                     var minX = distributions[j].InverseCDF(minProbability);
+                    if (minX < output[0]) output[0] = minX;
+
                     var maxX = distributions[j].InverseCDF(maxProbability);
-                    lock (lockObject)
-                    {
-                        if (minX < output[0]) output[0] = minX;
-                        if (maxX > output[1]) output[1] = maxX;
-                    }
+                    if (maxX > output[1]) output[1] = maxX;
                 }
             });
             return output;
@@ -451,7 +447,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] PercentileQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
+        public double[,] PercentileQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!)
         {
             var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
             var Output = new double[probabilities.Count, 2];
@@ -461,19 +457,8 @@ namespace Numerics.Distributions
                 var XValues = new double[bootDistributions.Count()];
                 Parallel.For(0, bootDistributions.Count(), idx => { XValues[idx] = bootDistributions[idx] != null ? bootDistributions[idx].InverseCDF(probabilities[i]) : double.NaN; });
 
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
+                // sort X values
+                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
                 Array.Sort(validValues);
 
                 // Record percentiles for CIs
@@ -489,7 +474,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
+        public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!)
         {
             // Create list of original X values given probability values
             var populationXValues = new double[probabilities.Count];
@@ -513,19 +498,8 @@ namespace Numerics.Distributions
                 // get proportion
                 P0 = P0 / (bootDistributions.Count() + 1);
 
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
+                // sort X values
+                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
                 Array.Sort(validValues);
 
                 // Record percentiles for CIs
@@ -546,7 +520,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] NormalQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
+        public double[,] NormalQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!)
         {
 
             // Create list of original X values given probability values
@@ -563,21 +537,8 @@ namespace Numerics.Distributions
                 var XValues = new double[bootDistributions.Count()];
                 Parallel.For(0, bootDistributions.Count(), idx => { XValues[idx] = bootDistributions[idx] != null ? Math.Pow(bootDistributions[idx].InverseCDF(probabilities[i]), 1d / 3d) : double.NaN; });
 
-                // Filter valid values
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
-
                 // Get Standard error
+                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
                 double SE = Statistics.StandardDeviation(validValues);
 
                 // Record percentiles for CIs
@@ -631,19 +592,8 @@ namespace Numerics.Distributions
                 // get proportion
                 P0 = (P0 + 1) / (Replications + 1);
 
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
+                // sort X values
+                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
                 Array.Sort(validValues);
 
                 // Record percentiles for CIs
@@ -776,25 +726,8 @@ namespace Numerics.Distributions
 
             for (int i = 0; i < probabilities.Count; i++)
             {
-                var rawX = xValues.GetColumn(i);
-                var rawT = studentT.GetColumn(i);
-                int validCount = 0;
-                for (int k = 0; k < rawX.Length; k++)
-                {
-                    if (!double.IsNaN(rawX[k])) validCount++;
-                }
-                var XValues = new double[validCount];
-                var TValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < rawX.Length; k++)
-                {
-                    if (!double.IsNaN(rawX[k]))
-                    {
-                        XValues[writeIdx] = rawX[k];
-                        TValues[writeIdx] = rawT[k];
-                        writeIdx++;
-                    }
-                }
+                var XValues = xValues.GetColumn(i).Where(x => !double.IsNaN(x)).ToArray();
+                var TValues = studentT.GetColumn(i).Where(x => !double.IsNaN(x)).ToArray();
 
                 // Get Standard error
                 double SE = Statistics.StandardDeviation(XValues);

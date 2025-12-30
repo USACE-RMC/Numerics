@@ -70,12 +70,12 @@ namespace Distributions.Univariate
             double true_cdf = GB.CDF(1.27);
             double true_icdf = 1.27d;
 
-            Assert.AreEqual(true_mean, P.Mean, 0.0001d);
-            Assert.AreEqual(true_median, P.Median, 0.0001d);
-            Assert.AreEqual(true_mode, P.Mode, 0.0001d);
-            Assert.AreEqual(true_pdf, P.PDF(1.27d), 0.0001d);
-            Assert.AreEqual(true_cdf, P.CDF(1.27d), 0.0001d);
-            Assert.AreEqual(true_icdf, P.InverseCDF(P.CDF(1.27d)), 0.0001d);
+            Assert.AreEqual(P.Mean, true_mean, 0.0001d);
+            Assert.AreEqual(P.Median, true_median, 0.0001d);
+            Assert.AreEqual(P.Mode, true_mode, 0.0001d);
+            Assert.AreEqual(P.PDF(1.27d), true_pdf, 0.0001d);
+            Assert.AreEqual(P.CDF(1.27d), true_cdf, 0.0001d);
+            Assert.AreEqual(P.InverseCDF(P.CDF(1.27d)), true_icdf, 0.0001d);
 
         }
 
@@ -183,7 +183,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var p = new Pert();
-            Assert.AreEqual("Min (a)",p.ParametersToString[0, 0]);
+            Assert.AreEqual("Min (a)",p.ParametersToString[0, 0] );
             Assert.AreEqual("Most Likely (c)", p.ParametersToString[1, 0]);
             Assert.AreEqual("Max (b)", p.ParametersToString[2, 0]);
             Assert.AreEqual("0", p.ParametersToString[0, 1]);
@@ -199,10 +199,10 @@ namespace Distributions.Univariate
         {
             var dist = new Pert(-2, 10, 35);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
-            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
-            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
-            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
+            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
+            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
+            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
+            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
         }
 
         /// <summary>
@@ -258,7 +258,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var p = new Pert();
-            Assert.AreEqual(0, p.Skewness);
+            Assert.AreEqual(0,p.Skewness);
         }
 
         /// <summary>
@@ -278,7 +278,7 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var p = new Pert();
-            Assert.AreEqual(0, p.Minimum);
+            Assert.AreEqual(0,p.Minimum);
             Assert.AreEqual(1, p.Maximum);
 
             var p2 = new Pert(1, 1.5, 2);

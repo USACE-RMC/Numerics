@@ -151,15 +151,22 @@ namespace Numerics.Data
                 // Try to parse the invariant date string using TryParseExact
                 // If it fails, do a regular try parse.
                 DateTime index = default;
-                double value = double.NaN;
-                var indexAttr = ordinate.Attribute("Index");
-                var valueAttr = ordinate.Attribute("Value");
-                if (indexAttr != null && !DateTime.TryParseExact(indexAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
+                var ordAttr = ordinate.Attribute("Index");
+                if (ordAttr != null)
                 {
-                    DateTime.TryParse(indexAttr.Value, out index);
+                    if (!DateTime.TryParseExact(ordAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
+                    {
+                        DateTime.TryParse(ordAttr.Value, out index);
+                    }
                 }
-                if (valueAttr != null)
-                    double.TryParse(valueAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
+
+                double value = 0.0;
+                var ordVal = ordinate.Attribute("Value");
+                if (ordVal != null)
+                {
+                    double.TryParse(ordVal.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
+                }
+                
                 Add(new SeriesOrdinate<DateTime, double>(index, value));
             }
         }
@@ -1472,8 +1479,12 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries? smoothedSeries = null;
+            if (smoothingFunction == SmoothingFunctionType.None)
+            {
+                smoothedSeries = Clone();
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1487,6 +1498,7 @@ namespace Numerics.Data
             }
 
             // Then, perform block function
+            if (smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
                 var blockData = smoothedSeries.Where(x => x.Index.Year == i).ToList();
@@ -1562,8 +1574,12 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries? smoothedSeries = null;
+            if (smoothingFunction == SmoothingFunctionType.None)
+            {
+                smoothedSeries = Clone();
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1577,6 +1593,7 @@ namespace Numerics.Data
             }
 
             // Then, shift the dates
+            if( smoothedSeries == null) return result;
             int shift = startMonth != 1 ? 12 - startMonth + 1 : 0;
             smoothedSeries = startMonth != 1 ? smoothedSeries.ShiftDatesByMonth(shift) : smoothedSeries;
 
@@ -1664,8 +1681,12 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries? smoothedSeries = null;
+            if (smoothingFunction == SmoothingFunctionType.None)
+            {
+                smoothedSeries = Clone();
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1679,6 +1700,7 @@ namespace Numerics.Data
             }
 
             // Then, perform block function
+            if(smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1772,8 +1794,12 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries? smoothedSeries = null;
+            if (smoothingFunction == SmoothingFunctionType.None)
+            {
+                smoothedSeries = Clone();
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1786,6 +1812,7 @@ namespace Numerics.Data
                 smoothedSeries = Difference(period);
             }
 
+            if(smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1864,8 +1891,12 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries? smoothedSeries = null;
+            if (smoothingFunction == SmoothingFunctionType.None)
+            {
+                smoothedSeries = Clone();
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1878,6 +1909,7 @@ namespace Numerics.Data
                 smoothedSeries = Difference(period);
             }
 
+            if (smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1972,8 +2004,12 @@ namespace Numerics.Data
         public TimeSeries PeaksOverThresholdSeries(double threshold, int minStepsBetweenEvents = 1, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             // Create smoothed time series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries? smoothedSeries = null;
+            if (smoothingFunction == SmoothingFunctionType.None)
+            {
+                smoothedSeries = Clone();
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1990,6 +2026,7 @@ namespace Numerics.Data
             int i = 0, idx, idxMax;
             var clusters = new List<int[]>();
 
+            if(smoothedSeries == null) return new TimeSeries(TimeInterval.Irregular);
             while (i < smoothedSeries.Count)
             {
                 if (!double.IsNaN(smoothedSeries[i].Value) && smoothedSeries[i].Value > threshold)
@@ -2080,7 +2117,6 @@ namespace Numerics.Data
             {
                 double val = (currentValue - mean) / stdDev;
                 var kNearest = kNN.GetNeighbors([val]);
-                if (kNearest == null) continue;
                 int selectedIdx = kNearest[prng.Next(k)];
                 currentValue = this[selectedIdx].Value;
                 currentDate = TimeSeries.AddTimeInterval(currentDate, TimeInterval);

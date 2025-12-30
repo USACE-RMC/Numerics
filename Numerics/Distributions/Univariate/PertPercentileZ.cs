@@ -302,7 +302,7 @@ namespace Numerics.Distributions
         /// <param name="fiftieth">The 50th percentile value of the distribution.</param>
         /// <param name="ninetyFifth">The 95th percentile value of the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        private ArgumentOutOfRangeException? ValidateParameters(double fifth, double fiftieth, double ninetyFifth, bool throwException)
+        private ArgumentOutOfRangeException ValidateParameters(double fifth, double fiftieth, double ninetyFifth, bool throwException)
         {
             if (double.IsNaN(fifth) || double.IsInfinity(fifth) ||
                 double.IsNaN(ninetyFifth) || double.IsInfinity(ninetyFifth) || fifth > ninetyFifth)
@@ -330,11 +330,11 @@ namespace Numerics.Distributions
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Percentile95th), "The percentiles must be between 0 and 1.");
                 return new ArgumentOutOfRangeException(nameof(Percentile95th), "The percentiles must be between 0 and 1.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }
@@ -501,22 +501,22 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new mixture distribution.</returns>
-        public static PertPercentileZ? FromXElement(XElement xElement)
+        public static PertPercentileZ FromXElement(XElement xElement)
         {
             UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
-            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
-            if (typeAttr != null)
+            var xUnivAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if ( xUnivAttr != null)
             {
-                Enum.TryParse(typeAttr.Value, out type);
+                Enum.TryParse(xUnivAttr.Value, out type);
 
             }
             if (type == UnivariateDistributionType.PertPercentileZ)
             {
                 bool parametersSolved = false;
-                var paramsSolvedAttr = xElement.Attribute("ParametersSolved");
-                if (paramsSolvedAttr != null)
+                var xParamSolvedAttr = xElement.Attribute("ParametersSolved");
+                if (xParamSolvedAttr != null)
                 {
-                    bool.TryParse(paramsSolvedAttr.Value, out parametersSolved);
+                    bool.TryParse(xParamSolvedAttr.Value, out parametersSolved);
                 }
                 else
                 {
@@ -527,10 +527,10 @@ namespace Numerics.Distributions
                     var vals = new double[dist.NumberOfParameters];
                     for (int i = 0; i < dist.NumberOfParameters; i++)
                     {
-                        var nameAttr = xElement.Attribute(names[i]);
-                        if (nameAttr != null)
+                        var xAttr = xElement.Attribute(names[i]);
+                        if (xAttr != null)
                         {
-                            double.TryParse(nameAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out vals[i]);
+                            double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out vals[i]);
                         }
                     }
                     dist.SetParameters(vals);
@@ -539,10 +539,10 @@ namespace Numerics.Distributions
                 }
 
                 var beta = new GeneralizedBeta();
-                var betaParamsAttr = xElement.Attribute("BetaParameters");
-                if (betaParamsAttr != null)
+                var xBetaAttr = xElement.Attribute("BetaParameters");
+                if (xBetaAttr != null)
                 {
-                    var vals = betaParamsAttr.Value.Split('|');
+                    var vals = xBetaAttr.Value.Split('|');
                     var parameters = new List<double>();
                     for (int i = 0; i < vals.Length; i++)
                     {
@@ -552,10 +552,10 @@ namespace Numerics.Distributions
                     beta.SetParameters(parameters);
                 }
                 double _5th = 0, _50th = 0, _95th = 0;
-                var paramsAttr = xElement.Attribute("Parameters");
-                if (paramsAttr != null)
+                var xParamAttr = xElement.Attribute("Parameters");
+                if (xParamAttr != null)
                 {
-                    var vals = paramsAttr.Value.Split('|');
+                    var vals = xParamAttr.Value.Split('|');
                     double.TryParse(vals[0], NumberStyles.Any, CultureInfo.InvariantCulture, out _5th);
                     double.TryParse(vals[1], NumberStyles.Any, CultureInfo.InvariantCulture, out _50th);
                     double.TryParse(vals[2], NumberStyles.Any, CultureInfo.InvariantCulture, out _95th);
@@ -574,7 +574,7 @@ namespace Numerics.Distributions
             }
             else
             {
-                return null;
+                return null!;
             }
         }
 

@@ -147,7 +147,9 @@ namespace Numerics.Sampling
         /// </returns>
         public int CompareTo(StratificationBin? other)
         {
-            if (other is null) return 1;
+            if (other == null)
+                throw new ArgumentNullException(nameof(other), "The stratification bin to compare to cannot be null.");
+
             if (UpperBound > other.LowerBound && LowerBound < other.UpperBound)
                 throw new ArgumentException("The bins cannot be overlapping.", nameof(other));
 

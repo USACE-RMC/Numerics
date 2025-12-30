@@ -94,15 +94,15 @@ namespace Distributions.Univariate
             double true_mean = 191.38768d;
             double true_stDev = 47.62977d;
             double true_skew = 0.71589d;
-            Assert.IsLessThan(0.01d, (xi - true_xi) / true_xi );
-            Assert.IsLessThan(0.01d, (beta - true_beta) / true_beta );
+            Assert.IsLessThan(0.01d,(xi - true_xi) / true_xi);
+            Assert.IsLessThan(0.01d,(beta - true_beta) / true_beta);
             Assert.IsLessThan(0.01d, (alpha - true_alpha) / true_alpha);
             Assert.IsLessThan(0.01d, (meanOfLog - true_meanOfLog) / true_meanOfLog);
             Assert.IsLessThan(0.01d, (stDevOfLog - true_stDevOfLog) / true_stDevOfLog);
             Assert.IsLessThan(0.01d, (skewOfLog - true_skewOfLog) / true_skewOfLog);
             Assert.IsLessThan(0.01d, (mean - true_mean) / true_mean);
             Assert.IsLessThan(0.01d, (stDev - true_stDev) / true_stDev);
-            Assert.IsLessThan(0.01d, (skew - true_skew) / true_skew);
+            Assert.IsLessThan(0.01d, (skew - true_skew) / true_skew );
         }
 
         /// <summary>
@@ -190,15 +190,15 @@ namespace Distributions.Univariate
 
             // Method of Moments
             var LP3 = new LogPearsonTypeIII(2.26878d, 0.10699d, -0.04061d);
-            double qVar99 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MethodOfMoments));
-            double true_qVar99 = 25.053d;
-            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
+            double qVar999 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MethodOfMoments));
+            double true_qVar999 = 25.053d;
+            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999);
 
             // Maximum Likelihood
             LP3 = new LogPearsonTypeIII(2.26878d, 0.10621d, -0.02925d);
-            qVar99 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MaximumLikelihood));
-            true_qVar99 = 25d;
-            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99 );
+            qVar999 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MaximumLikelihood));
+            true_qVar999 = 25d;
+            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999);
 
         }
 
@@ -234,7 +234,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var LP3 = new LogPearsonTypeIII();
-            Assert.AreEqual("Mean (of log) (µ)", LP3.ParametersToString[0, 0]);
+            Assert.AreEqual("Mean (of log) (µ)",LP3.ParametersToString[0, 0] );
             Assert.AreEqual("Std Dev (of log) (σ)", LP3.ParametersToString[1, 0]);
             Assert.AreEqual("Skew (of log) (γ)", LP3.ParametersToString[2, 0]);
             Assert.AreEqual("3", LP3.ParametersToString[0, 1]);
@@ -286,13 +286,13 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var LP3 = new LogPearsonTypeIII();
-            Assert.AreEqual(0, LP3.Minimum );
+            Assert.AreEqual(0, LP3.Minimum);
 
             var LP3ii = new LogPearsonTypeIII(1,1,1);
             Assert.AreEqual(0.1, LP3ii.Minimum,  1e-05);
 
             var LP3iii = new LogPearsonTypeIII(1, -1, 1);
-            Assert.AreEqual(0,LP3iii.Minimum);
+            Assert.AreEqual(0, LP3iii.Minimum);
         }
 
         /// <summary>
@@ -329,7 +329,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var LP3 = new LogPearsonTypeIII();
-            Assert.AreEqual(0,LP3.CDF(-1));
+            Assert.AreEqual(0, LP3.CDF(-1));
             Assert.AreEqual(9.8658e-10, LP3.CDF(1), 1e-13);
         }
 
@@ -341,7 +341,7 @@ namespace Distributions.Univariate
         {
             var LP3 = new LogPearsonTypeIII();
             Assert.AreEqual(0,LP3.InverseCDF(0));
-            Assert.AreEqual(double.PositiveInfinity,LP3.InverseCDF(1));
+            Assert.AreEqual(double.PositiveInfinity,LP3.InverseCDF(1) );
             Assert.AreEqual(546.7637, LP3.InverseCDF(0.3), 1e-04);
         }
 
@@ -354,7 +354,7 @@ namespace Distributions.Univariate
             var LP3 = new LogPearsonTypeIII();
             Assert.AreEqual(0, LP3.WilsonHilfertyInverseCDF(0));
             Assert.AreEqual(double.PositiveInfinity, LP3.WilsonHilfertyInverseCDF(1));
-            Assert.AreEqual(747.01005, LP3.WilsonHilfertyInverseCDF(0.4), 1e-05);
+            Assert.AreEqual(747.01005, LP3.WilsonHilfertyInverseCDF(0.4),1e-05);
         }
     }
 }

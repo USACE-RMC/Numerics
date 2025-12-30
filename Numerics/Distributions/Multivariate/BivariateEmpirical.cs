@@ -60,6 +60,9 @@ namespace Numerics.Distributions
             X1Transform = x1Transform;
             X2Transform = x2Transform;
             ProbabilityTransform = probabilityTransform;
+            X1Values = Array.Empty<double>();
+            X2Values = Array.Empty<double>();
+            ProbabilityValues = new double[0, 0];
         }
 
         /// <summary>
@@ -91,13 +94,13 @@ namespace Numerics.Distributions
         /// Return the array of X1 values (distribution 1). Points On the cumulative curve are specified
         /// with increasing value and increasing probability.
         /// </summary>
-        public double[] X1Values { get; private set; } = null!;
+        public double[] X1Values { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// Return the array of X2 values (distribution 2). Points on the cumulative curve are specified
         /// with increasing value and increasing probability.
         /// </summary>
-        public double[] X2Values { get; private set; } = null!;
+        public double[] X2Values { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// Return the array of probability values. Points on the cumulative curve are specified

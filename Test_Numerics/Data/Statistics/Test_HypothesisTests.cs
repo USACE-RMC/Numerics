@@ -73,14 +73,14 @@ namespace Data.Statistics
             var data = new double[] { 8.782932, 10.64199, -1.63955, -6.802458, 9.088312, -27.26934, 9.451478, -4.142762, -4.262396, -13.78983, -1.743717, 27.259681, 5.559418, 7.803247, -11.25798, 12.253498, -13.295363, -4.973664, 16.81069, 4.480855, 11.694329, 21.836776, -9.664926, -23.297061, -23.965643, 27.076463, -7.22471, 9.305697, 9.181852, -2.434665 };
             var p = HypothesisTests.OneSampleTtest(data);
             double true_p = 0.6489;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
 
             p = HypothesisTests.OneSampleTtest(data, 10);
             true_p = 0.001823;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
 
             var t = HypothesisTests.OneSampleTtest(new double[] { 23, 15, -5, 7, 1, -10, 12, -8, 20, 8, -2, -5 });
-            Assert.AreEqual(0.087585 * 2, t, 1E-6);
+            Assert.AreEqual(0.087585 * 2, t,  1E-6);
         }
 
         /// <summary>
@@ -94,7 +94,7 @@ namespace Data.Statistics
 
             var p = HypothesisTests.EqualVarianceTtest(data1, data2);
             double true_p = 0.0185;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
         }
 
         /// <summary>
@@ -108,7 +108,7 @@ namespace Data.Statistics
 
             var p = HypothesisTests.UnequalVarianceTtest(data1, data2);
             double true_p = 0.02043;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
         }
 
         /// <summary>
@@ -122,7 +122,7 @@ namespace Data.Statistics
 
             var p = HypothesisTests.PairedTtest(data1, data2);
             double true_p = 6.2E-9;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
         }
 
         /// <summary>
@@ -136,7 +136,7 @@ namespace Data.Statistics
 
             var p = HypothesisTests.Ftest(data1, data2);
             double true_p = 0.1825;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
         }
 
         /// <summary>
@@ -183,7 +183,7 @@ namespace Data.Statistics
             // R is different because it estimates moments differently.
             var p = HypothesisTests.JarqueBeraTest(data);
             double true_p = 3.444E-05 / 2;
-            Assert.AreEqual(true_p, p, 1E-5);
+            Assert.AreEqual(p, true_p, 1E-5);
 
             // known example
             var JB = HypothesisTests.JarqueBeraTest(new double[] { 4, 5, 5, 6, 9, 12, 13, 14, 14, 19, 22, 24, 25 });
@@ -202,7 +202,7 @@ namespace Data.Statistics
 
             var p = HypothesisTests.WaldWolfowitzTest(data);
             double true_p = (1 - Normal.StandardCDF(1.167)) * 2d; // See page 5 of reference.
-            Assert.AreEqual(true_p, p, 1E-3);
+            Assert.AreEqual(p, true_p, 1E-3);
         }
 
         /// <summary>
@@ -215,11 +215,11 @@ namespace Data.Statistics
 
             var p = HypothesisTests.LjungBoxTest(data,5);
             double true_p = 0.2314;
-            Assert.AreEqual(true_p, p, 1E-4);
+            Assert.AreEqual(p, true_p, 1E-4);
 
             var p2 = HypothesisTests.LjungBoxTest(data, 30);
             var true_p2 = 0.7548;
-            Assert.AreEqual(true_p2, p2, 1E-4);
+            Assert.AreEqual(p2, true_p2, 1E-4);
         }
 
 
@@ -235,7 +235,7 @@ namespace Data.Statistics
 
             var p = HypothesisTests.MannWhitneyTest(data2, data1);
             double true_p = (1 - Normal.StandardCDF(0.54)) * 2d; // See page 7 of reference.
-            Assert.AreEqual(true_p, p, 1E-2);
+            Assert.AreEqual(p, true_p, 1E-2);
         }
 
         /// <summary>
@@ -252,8 +252,8 @@ namespace Data.Statistics
             var data = new double[] { 122d, 244d, 214d, 173d, 229d, 156d, 212d, 263d, 146d, 183d, 161d, 205d, 135d, 331d, 225d, 174d, 98.8d, 149d, 238d, 262d, 132d, 235d, 216d, 240d, 230d, 192d, 195d, 172d, 173d, 172d, 153d, 142d, 317d, 161d, 201d, 204d, 194d, 164d, 183d, 161d, 167d, 179d, 185d, 117d, 192d, 337d, 125d, 166d, 99.1d, 202d, 230d, 158d, 262d, 154d, 164d, 182d, 164d, 183d, 171d, 250d, 184d, 205d, 237d, 177d, 239d, 187d, 180d, 173d, 174d };
 
             var p = HypothesisTests.MannKendallTest(data);
-            double true_p = 0.7757;
-            Assert.AreEqual(true_p, p, 1E-4);
+            double true_p = 0.7757;  
+            Assert.AreEqual(p, true_p, 1E-4);
         }
 
         /// <summary>
@@ -287,8 +287,8 @@ namespace Data.Statistics
             MultipleGrubbsBeckTest.GrubbsBeckTest(data, out xHi, out xLo);
 
             double true_xHi = 378.2, true_xLo = 91.2; // page 9 of reference.
-            Assert.AreEqual(true_xHi, xHi, 1E-1);
-            Assert.AreEqual(true_xLo, xLo, 1E-1);
+            Assert.AreEqual(xHi, true_xHi, 1E-1);
+            Assert.AreEqual(xLo, true_xLo, 1E-1);
         }
 
         /// <summary>
@@ -320,21 +320,21 @@ namespace Data.Statistics
             int Samp_True = 0;
             int LO;
             LO = MultipleGrubbsBeckTest.Function(BLU);
-            Assert.AreEqual(BLU_True, LO);
+            Assert.AreEqual(LO, BLU_True);
             LO = MultipleGrubbsBeckTest.Function(CGR);
-            Assert.AreEqual(CGR_True, LO);
+            Assert.AreEqual(LO, CGR_True);
             LO = MultipleGrubbsBeckTest.Function(FCK);
-            Assert.AreEqual(FCK_True, LO);
+            Assert.AreEqual(LO, FCK_True);
             LO = MultipleGrubbsBeckTest.Function(FOS);
-            Assert.AreEqual(FOS_True, LO);
+            Assert.AreEqual(LO, FOS_True);
             LO = MultipleGrubbsBeckTest.Function(GPV);
-            Assert.AreEqual(GPV_True, LO);
+            Assert.AreEqual(LO, GPV_True);
             LO = MultipleGrubbsBeckTest.Function(HCK);
-            Assert.AreEqual(HCK_True, LO);
+            Assert.AreEqual(LO, HCK_True);
             LO = MultipleGrubbsBeckTest.Function(LOP);
-            Assert.AreEqual(LOP_True, LO);
+            Assert.AreEqual(LO, LOP_True);
             LO = MultipleGrubbsBeckTest.Function(sample);
-            Assert.AreEqual(Samp_True, LO);
+            Assert.AreEqual(LO, Samp_True);
         }
 
 

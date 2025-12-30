@@ -75,7 +75,7 @@ namespace Numerics.Sampling.MCMC
         }
 
 
-        private Matrix sigmaIdentity = null!;
+        private Matrix sigmaIdentity;
         private RunningCovarianceMatrix[] sigma = null!;
         private MultivariateNormal[] mvn = null!;
 
@@ -127,7 +127,7 @@ namespace Numerics.Sampling.MCMC
                 mvn[i] = new MultivariateNormal(NumberOfParameters);
                 sigma[i] = new RunningCovarianceMatrix(NumberOfParameters);
 
-                if (Initialize == InitializationType.MAP && _mapSuccessful && _MVN != null)
+                if (Initialize == InitializationType.MAP && _mapSuccessful)
                 {
                     // Hot start the covariance matrix
                     for (int j = 0; j < NumberOfParameters; j++)

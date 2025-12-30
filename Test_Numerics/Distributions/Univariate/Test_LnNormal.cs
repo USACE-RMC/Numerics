@@ -81,8 +81,8 @@ namespace Distributions.Univariate
             double u2 = LN.Sigma;
             double true_u1 = 10.7676d;
             double true_u2 = 0.4544d;
-            Assert.IsLessThan(0.01d, (u1 - true_u1) / true_u1 );
-            Assert.IsLessThan( 0.01d, (u2 - true_u2) / true_u2 );
+            Assert.IsLessThan(0.01d,(u1 - true_u1) / true_u1);
+            Assert.IsLessThan(0.01d,(u2 - true_u2) / true_u2 );
         }
 
         /// <summary>
@@ -167,7 +167,7 @@ namespace Distributions.Univariate
 
             double CE = LN.ConditionalExpectedValue(alpha);
             double true_CE = Math.Exp(LN.Mu + 0.5 * LN.Sigma * LN.Sigma) / (1d - alpha) * (1 - Normal.StandardCDF(Normal.StandardZ(alpha) - LN.Sigma));
-            Assert.AreEqual(true_CE, CE, 1E-4);
+            Assert.AreEqual(CE, true_CE, 1E-4);
 
         }
 
@@ -210,10 +210,10 @@ namespace Distributions.Univariate
         {
             var dist = new LnNormal(10, 5);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
-            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
-            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
-            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
+            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
+            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
+            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
+            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
         }
 
         /// <summary>
@@ -303,7 +303,7 @@ namespace Distributions.Univariate
 
             var LN2 = new LnNormal(1, 1);
             Assert.AreEqual(0,LN2.Minimum);
-            Assert.AreEqual(double.PositiveInfinity,LN2.Maximum);
+            Assert.AreEqual(double.PositiveInfinity,LN2.Maximum );
         }
 
         /// <summary>
@@ -314,10 +314,10 @@ namespace Distributions.Univariate
         {
             var LN = new LnNormal();
             Assert.AreEqual(0.03033, LN.PDF(1),  1e-04);
-            Assert.AreEqual(0, LN.PDF(-1));
+            Assert.AreEqual(0,LN.PDF(-1));
 
             var LN2 = new LnNormal(2.5, 2.5);
-            Assert.AreEqual(0.303322, LN2.PDF(0.5), 1e-04);
+            Assert.AreEqual(0.303322, LN2.PDF(0.5),  1e-04);
         }
 
         /// <summary>

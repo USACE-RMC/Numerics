@@ -35,6 +35,7 @@ using System.Collections.Specialized;
 using System.Data;
 using System.Linq;
 using System.Xml.Linq;
+using System.Xml.Serialization;
 using Numerics.Distributions;
 
 namespace Numerics.Data
@@ -102,22 +103,10 @@ namespace Numerics.Data
         private bool _strictY;
         private SortOrder _orderX;
         private SortOrder _orderY;
-        private List<Ordinate> _ordinates;
+        private readonly List<Ordinate> _ordinates;
 
         /// <inheritdoc/>
         public event NotifyCollectionChangedEventHandler? CollectionChanged;
-
-        /// <summary>
-        /// Gets or sets a value indicating whether collection changed events are suppressed.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Set this to <c>true</c> before performing a batch of mutations and then
-        /// call <see cref="RaiseCollectionChangedReset"/> when the batch is complete.
-        /// This avoids firing an event for every individual mutation.
-        /// </para>
-        /// </remarks>
-        public bool SuppressCollectionChanged { get; set; } = false;
 
         /// <summary>
         /// Represents if the paired dataset has valid ordinates and order.
@@ -316,22 +305,6 @@ namespace Numerics.Data
         #region Methods
 
         /// <summary>
-        /// Raises a <see cref="NotifyCollectionChangedAction.Reset"/> event
-        /// unconditionally, regardless of the <see cref="SuppressCollectionChanged"/> flag.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Call this after a bulk operation once <see cref="SuppressCollectionChanged"/>
-        /// has been set back to <c>false</c> (or while still <c>true</c> if desired)
-        /// to notify listeners that the collection has changed.
-        /// </para>
-        /// </remarks>
-        public void RaiseCollectionChangedReset()
-        {
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
-        }
-
-        /// <summary>
         /// Get or set the ordinate at a specified index.
         /// </summary>
         /// <param name="index">Index of ordinate in the collection to manipulate.</param>
@@ -353,11 +326,14 @@ namespace Numerics.Data
                     {
                         if (OrdinateValid(index) == true) { Validate(); }
                     }
-                    if (SuppressCollectionChanged == false)
-                    {
-                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldValue, index));
-                    }
+                    //
+                    //We might need to add this check if performance suffers
+                    //if (SupressCollectionChanged == false)
+                    //{
+                    CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldValue));
+                    //}
                 }
+
             }
         }
 
@@ -456,8 +432,7 @@ namespace Numerics.Data
             if (itemIndex == -1) return false;
             _ordinates.RemoveAt(itemIndex);
             Validate();
-            if (SuppressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
             return true;
         }
 
@@ -471,8 +446,7 @@ namespace Numerics.Data
             var item = _ordinates[index];
             _ordinates.RemoveAt(index);
             Validate();
-            if (SuppressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
         }
 
         /// <summary>
@@ -487,8 +461,7 @@ namespace Numerics.Data
             for (int i = index; i < count; i++) { items.Add(_ordinates[i]); }
             _ordinates.RemoveRange(index, count);
             Validate();
-            if (SuppressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, items, index));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, items, index));
         }
 
         /// <summary>
@@ -499,8 +472,7 @@ namespace Numerics.Data
         {
             _ordinates.Add(item);
             IsValid = OrdinateValid(_ordinates.Count - 1);
-            if (SuppressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
         }
 
         /// <summary>
@@ -513,8 +485,7 @@ namespace Numerics.Data
             _ordinates.Insert(index, item);
             // only need to set valid state if it is true. if it is already false then inserting can't make it true.
             if (IsValid) IsValid = OrdinateValid(index);
-            if (SuppressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
         /// <summary>
@@ -522,17 +493,9 @@ namespace Numerics.Data
         /// </summary>
         public void Clear()
         {
-            if (_ordinates.Count == 0)
-                return;
-
-            bool wasSuppressed = SuppressCollectionChanged;
-            SuppressCollectionChanged = true;
             _ordinates.Clear();
-            SuppressCollectionChanged = wasSuppressed;
-
             IsValid = true;
-            if (SuppressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 
         /// <summary>
@@ -1474,15 +1437,14 @@ namespace Numerics.Data
         /// and number of points in the search region.</returns>
         public OrderedPairedData LangSimplify(double tolerance, int lookAhead)
         {
-            if (_ordinates == null || lookAhead <= 1 || tolerance <= 0)
-                return this;
+            if (lookAhead <= 1 | tolerance <= 0) { return this; }
 
             List<Ordinate> ordinates = new List<Ordinate>();
 
             int count = _ordinates.Count;
             int offset;
-            if (lookAhead > count - 1)
-                lookAhead = count - 1;
+            if (lookAhead > count - 1) { lookAhead = count - 1; }
+
             ordinates.Add(_ordinates[0]);
 
             for (int i = 0; i < count; i++)

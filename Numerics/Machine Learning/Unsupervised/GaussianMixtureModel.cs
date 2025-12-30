@@ -157,7 +157,7 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The likelihood of each data point (row) and for each cluster (column).
         /// </summary>
-        public double[,] LikelihoodMatrix { get; private set; } = new double[0, 0];
+        public double[,] LikelihoodMatrix { get; private set; } = null!;
 
         /// <summary>
         /// The total log-likelihood of the fit.
