@@ -81,8 +81,8 @@ namespace Distributions.Univariate
             double u2 = LN.Sigma;
             double true_u1 = 10.7676d;
             double true_u2 = 0.4544d;
-            Assert.IsLessThan(0.01d,(u1 - true_u1) / true_u1);
-            Assert.IsLessThan(0.01d,(u2 - true_u2) / true_u2 );
+            Assert.IsLessThan(0.01d, (u1 - true_u1) / true_u1 );
+            Assert.IsLessThan( 0.01d, (u2 - true_u2) / true_u2 );
         }
 
         /// <summary>
@@ -303,7 +303,7 @@ namespace Distributions.Univariate
 
             var LN2 = new LnNormal(1, 1);
             Assert.AreEqual(0,LN2.Minimum);
-            Assert.AreEqual(double.PositiveInfinity,LN2.Maximum );
+            Assert.AreEqual(double.PositiveInfinity,LN2.Maximum);
         }
 
         /// <summary>
@@ -314,10 +314,10 @@ namespace Distributions.Univariate
         {
             var LN = new LnNormal();
             Assert.AreEqual(0.03033, LN.PDF(1),  1e-04);
-            Assert.AreEqual(0,LN.PDF(-1));
+            Assert.AreEqual(0, LN.PDF(-1));
 
             var LN2 = new LnNormal(2.5, 2.5);
-            Assert.AreEqual(0.303322, LN2.PDF(0.5),  1e-04);
+            Assert.AreEqual(0.303322, LN2.PDF(0.5), 1e-04);
         }
 
         /// <summary>

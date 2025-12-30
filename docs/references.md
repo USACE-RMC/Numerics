@@ -156,8 +156,6 @@ This is a consolidated bibliography of all references cited throughout the ***Nu
 
 [51] Vrugt, J. A. (2016). Markov chain Monte Carlo simulation using the DREAM software package: Theory, concepts, and MATLAB implementation. *Environmental Modelling & Software*, 75, 273-316.
 
-[65] Hoffman, M. D., & Gelman, A. (2014). The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. *Journal of Machine Learning Research*, 15(47), 1593-1623.
-
 ---
 
 ## Uncertainty Analysis
@@ -179,8 +177,6 @@ This is a consolidated bibliography of all references cited throughout the ***Nu
 [57] McLachlan, G., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
 
 [58] Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall.
-
-[66] Mardia, K. V., & Jupp, P. E. (2000). *Directional Statistics*. Wiley.
 
 ---
 

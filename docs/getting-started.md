@@ -9,13 +9,13 @@ This guide will help you get up and running with the ***Numerics*** library quic
 The easiest way to install ***Numerics*** is via NuGet:
 
 ```bash
-dotnet add package RMC.Numerics
+dotnet add package Numerics
 ```
 
 Or add the following to your `.csproj` file:
 
 ```xml
-<PackageReference Include="RMC.Numerics" Version="2.0.0" />
+<PackageReference Include="Numerics" Version="1.0.0" />
 ```
 
 ### Manual Installation

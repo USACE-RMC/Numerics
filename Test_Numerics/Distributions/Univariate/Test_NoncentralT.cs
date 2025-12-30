@@ -114,7 +114,7 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(10,t.DegreesOfFreedom );
+            Assert.AreEqual(10,t.DegreesOfFreedom);
             Assert.AreEqual(0, t.Noncentrality);
 
             var t2 = new NoncentralT(1, 1);
@@ -220,7 +220,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(4.0, t.Kurtosis,  1E-4);
+            Assert.AreEqual(4.0, t.Kurtosis, 1E-4);
         }
 
         /// <summary>
@@ -245,7 +245,7 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(0.38910, t.PDF(0),1e-04);
+            Assert.AreEqual(0.38910, t.PDF(0), 1e-04);
             Assert.AreEqual(0.23036, t.PDF(1),1e-04);
         }
 
@@ -256,7 +256,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(0.82955, t.CDF(1),1e-04);
+            Assert.AreEqual(0.82955, t.CDF(1), 1e-04);
         }
 
         /// <summary>

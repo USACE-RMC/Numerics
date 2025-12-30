@@ -94,8 +94,8 @@ namespace Distributions.Univariate
             double true_mean = 191.31739d;
             double true_stDev = 47.96161d;
             double true_skew = 0.86055d;
-            Assert.IsLessThan(0.01d,(xi - true_xi) / true_xi);
-            Assert.IsLessThan(0.01d,(beta - true_beta) / true_beta);
+            Assert.IsLessThan(0.01d, (xi - true_xi) / true_xi );
+            Assert.IsLessThan(0.01d, (beta - true_beta) / true_beta );
             Assert.IsLessThan(0.01d, (alpha - true_alpha) / true_alpha);
             Assert.IsLessThan(0.01d, (mu - true_mu) / true_mu);
             Assert.IsLessThan(0.01d, (sigma - true_sigma) / true_sigma);

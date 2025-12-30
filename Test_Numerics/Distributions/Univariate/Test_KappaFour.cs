@@ -159,7 +159,7 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var k4 = new KappaFour();
-            Assert.AreEqual(100,k4.Xi );
+            Assert.AreEqual(100,k4.Xi);
             Assert.AreEqual(10, k4.Alpha);
             Assert.AreEqual(0, k4.Kappa);
             Assert.AreEqual(0, k4.Hondo);
@@ -194,7 +194,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var k4 = new KappaFour();
-            Assert.AreEqual("Location (ξ)",k4.ParametersToString[0, 0] );
+            Assert.AreEqual("Location (ξ)",k4.ParametersToString[0, 0]);
             Assert.AreEqual("Scale (α)", k4.ParametersToString[1, 0]);
             Assert.AreEqual("Shape (κ)", k4.ParametersToString[2, 0]);
             Assert.AreEqual("Shape (h)", k4.ParametersToString[3, 0]);

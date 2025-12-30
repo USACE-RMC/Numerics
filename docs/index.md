@@ -15,11 +15,11 @@ The library is designed for engineers, scientists, and researchers who need reli
 ## Key Features
 
 ### Probability Distributions
-- 43 univariate probability distributions with PDF, CDF, and inverse CDF (including Von Mises for circular data)
+- 40+ univariate probability distributions with PDF, CDF, and inverse CDF
 - Multiple parameter estimation methods (Method of Moments, L-Moments, Maximum Likelihood)
 - Uncertainty analysis via bootstrap resampling
-- 7 bivariate copulas for dependency modeling (Normal, Student-t, Clayton, Gumbel, Joe, Frank, AMH)
-- Multivariate distributions (Normal, Student-t, Dirichlet, Multinomial)
+- Bivariate copulas for dependency modeling
+- Multivariate normal distribution
 
 ### Statistical Analysis
 - Comprehensive goodness-of-fit metrics (NSE, KGE, RMSE, PBIAS, AIC/BIC)
@@ -44,7 +44,6 @@ The library is designed for engineers, scientists, and researchers who need reli
 - Adaptive Random Walk Metropolis-Hastings (ARWMH)
 - Differential Evolution MCMC (DE-MCz, DE-MCzs)
 - Hamiltonian Monte Carlo (HMC)
-- No-U-Turn Sampler (NUTS) with dual averaging step size adaptation
 - Gibbs sampling
 - Convergence diagnostics (Gelman-Rubin, Effective Sample Size)
 
@@ -141,11 +140,11 @@ var results = sampler.Output;
 | [Optimization](mathematics/optimization.md) | ✅ | Local and global optimization algorithms |
 | [Root Finding](mathematics/root-finding.md) | ✅ | Equation solving methods |
 | [Linear Algebra](mathematics/linear-algebra.md) | ✅ | Matrix and vector operations |
-| [Special Functions](mathematics/special-functions.md) | ✅ | Gamma, Beta, Error, Bessel functions |
+| [Special Functions](mathematics/special-functions.md) | ✅ | Gamma, Beta, Error functions |
 | [ODE Solvers](mathematics/ode-solvers.md) | ✅ | Runge-Kutta methods |
 | **Distributions** | | |
 | [Univariate Distributions](distributions/univariate.md) | ✅ | Complete reference for univariate distributions |
-| [Multivariate Distributions](distributions/multivariate.md) | ✅ | Multivariate Normal, Student-t, Dirichlet, Multinomial |
+| [Multivariate Distributions](distributions/multivariate.md) | ✅ | Multivariate Normal distribution |
 | [Parameter Estimation](distributions/parameter-estimation.md) | ✅ | Fitting distributions to data |
 | [Uncertainty Analysis](distributions/uncertainty-analysis.md) | ✅ | Bootstrap and confidence intervals |
 | [Copulas](distributions/copulas.md) | ✅ | Dependency modeling with copulas |

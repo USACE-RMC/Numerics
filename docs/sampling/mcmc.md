@@ -13,7 +13,6 @@ Markov Chain Monte Carlo (MCMC) methods sample from complex posterior distributi
 | **DEMCz** | Differential Evolution MCMC | High dimensions, multimodal | Population-based, efficient |
 | **DEMCzs** | DE-MCMC with snooker update | Very high dimensions | Enhanced DE-MCMC |
 | **HMC** | Hamiltonian Monte Carlo | Smooth posteriors | Uses gradient information |
-| **NUTS** | No-U-Turn Sampler | General smooth posteriors | Auto-tuning HMC |
 | **Gibbs** | Gibbs Sampler | Conditional distributions available | No rejections |
 
 ## Common MCMC Interface
@@ -273,48 +272,6 @@ Console.WriteLine($"Generated {samples.Length} high-quality samples");
 - Less robust to discontinuities
 - More complex to tune
 
-## No-U-Turn Sampler (NUTS)
-
-NUTS automatically tunes the trajectory length that HMC requires as a manual setting, making it the recommended gradient-based sampler for most problems [[6]](#6):
-
-```cs
-var nuts = new NUTS(priors, logLikelihood);
-
-// NUTS-specific settings
-nuts.NumberOfChains = 4;
-nuts.WarmupIterations = 1000;       // Step size adapts during warmup
-nuts.Iterations = 2000;
-
-// Optional: set step size and max tree depth
-// nuts = new NUTS(priors, logLikelihood, stepSize: 0.5, maxTreeDepth: 10);
-
-Console.WriteLine("Running No-U-Turn Sampler...");
-nuts.Sample();
-
-// Analyze results using MCMCResults
-var results = new MCMCResults(nuts);
-
-Console.WriteLine($"Parameter 0 - Mean: {results.ParameterResults[0].SummaryStatistics.Mean:F3}");
-Console.WriteLine($"Parameter 0 - Median: {results.ParameterResults[0].SummaryStatistics.Median:F3}");
-```
-
-**When to use NUTS:**
-- Smooth, differentiable posteriors (same as HMC)
-- When you don't want to tune the number of leapfrog steps
-- Default gradient-based sampler for most applications
-- Medium to high dimensions
-
-**Advantages over HMC:**
-- No manual tuning of trajectory length
-- Adapts step size automatically via dual averaging
-- Eliminates wasteful U-turns in the trajectory
-- Generally more efficient per computation
-
-**Key settings:**
-- `stepSize`: Initial leapfrog step size (adapted during warmup)
-- `maxTreeDepth`: Maximum binary tree depth (default 10, caps trajectory at 2^10 = 1024 steps)
-- `gradientFunction`: Optional analytical gradient (numerical gradient used if not provided)
-
 ## Gibbs Sampler
 
 Samples each parameter conditionally given others:
@@ -573,7 +530,6 @@ sampler.Iterations = 5000;           // Kept samples
 - **ARWMH**: 2000-3000 (adapts during warmup)
 - **DEMCz**: 1500-3000 (converges faster)
 - **HMC**: 1000-2000 (efficient exploration)
-- **NUTS**: 1000-2000 (step size adapts during warmup)
 - **Rule of thumb**: Warmup ≥ 50% of main iterations
 
 ## Best Practices
@@ -608,7 +564,7 @@ sampler.Iterations = 5000;
 // Low dimensions (< 5): RWMH or ARWMH
 // Medium (5-20): ARWMH (default choice)
 // High (20+): DEMCz or DEMCzs
-// Smooth posteriors: NUTS (preferred) or HMC
+// Smooth posteriors: HMC
 // Conjugate models: Gibbs
 ```
 
@@ -670,8 +626,6 @@ foreach (var (name, sampler) in samplers)
 <a id="4">[4]</a> ter Braak, C. J., & Vrugt, J. A. (2008). Differential evolution Markov chain with snooker updater and fewer chains. *Statistics and Computing*, 18(4), 435-446.
 
 <a id="5">[5]</a> Neal, R. M. (2011). MCMC using Hamiltonian dynamics. *Handbook of Markov Chain Monte Carlo*, 2(11), 2.
-
-<a id="6">[6]</a> Hoffman, M. D., & Gelman, A. (2014). The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. *Journal of Machine Learning Research*, 15(47), 1593-1623.
 
 ---
 

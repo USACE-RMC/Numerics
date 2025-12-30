@@ -183,7 +183,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var p = new Pert();
-            Assert.AreEqual("Min (a)",p.ParametersToString[0, 0] );
+            Assert.AreEqual("Min (a)",p.ParametersToString[0, 0]);
             Assert.AreEqual("Most Likely (c)", p.ParametersToString[1, 0]);
             Assert.AreEqual("Max (b)", p.ParametersToString[2, 0]);
             Assert.AreEqual("0", p.ParametersToString[0, 1]);
@@ -258,7 +258,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var p = new Pert();
-            Assert.AreEqual(0,p.Skewness);
+            Assert.AreEqual(0, p.Skewness);
         }
 
         /// <summary>
@@ -278,7 +278,7 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var p = new Pert();
-            Assert.AreEqual(0,p.Minimum);
+            Assert.AreEqual(0, p.Minimum);
             Assert.AreEqual(1, p.Maximum);
 
             var p2 = new Pert(1, 1.5, 2);

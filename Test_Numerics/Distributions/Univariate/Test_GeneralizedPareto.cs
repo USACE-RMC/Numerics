@@ -84,8 +84,8 @@ namespace Distributions.Univariate
             double true_x = 50169.23d;
             double true_a = 55443d;
             double true_k = 0.0956d;
-            Assert.IsLessThan(0.01d,(x - true_x) / true_x );
-            Assert.IsLessThan(0.01d,(a - true_a) / true_a );
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
             Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
@@ -364,13 +364,13 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(2,GPA.Skewness);
+            Assert.AreEqual(2, GPA.Skewness);
 
             var GPA2 = new GeneralizedPareto(100, 10, 0.3);
             Assert.AreEqual(0.932039, GPA2.Skewness,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(double.NaN,GPA3.Skewness );
+            Assert.AreEqual(double.NaN, GPA3.Skewness);
         }
 
         /// <summary>
@@ -424,7 +424,7 @@ namespace Distributions.Univariate
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
             Assert.AreEqual(0,GPA2.PDF(200));
-            Assert.AreEqual(0,GPA2.PDF(50));
+            Assert.AreEqual(0, GPA2.PDF(50));
         }
 
         /// <summary>

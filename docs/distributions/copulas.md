@@ -21,38 +21,39 @@ This allows us to:
 
 The library provides common copula families:
 
-### Normal (Gaussian) Copula
+### Gaussian Copula
 
 Models linear correlation with normal dependence structure:
 
 ```cs
 using Numerics.Distributions.Copulas;
 
-// Normal copula with correlation coefficient
-double rho = 0.7;
-var normalCopula = new NormalCopula(rho);
+// Correlation matrix for 2D Gaussian copula
+double rho = 0.7;  // Correlation coefficient
+var corrMatrix = new double[,] { { 1.0, rho }, { rho, 1.0 } };
+
+var gaussianCopula = new GaussianCopula(corrMatrix);
 
 // Evaluate copula density
 double u1 = 0.3, u2 = 0.7;
-double density = normalCopula.PDF(u1, u2);
+double density = gaussianCopula.PDF(new double[] { u1, u2 });
 
-Console.WriteLine($"Normal copula density: {density:F4}");
+Console.WriteLine($"Gaussian copula density: {density:F4}");
 ```
 
 ### Student's t Copula
 
-Similar to Normal but with symmetric tail dependence:
+Similar to Gaussian but with tail dependence:
 
 ```cs
-// t-copula with correlation 0.7 and 5 degrees of freedom
-double rho = 0.7;
+// t-copula with 5 degrees of freedom
 int nu = 5;
-var tCopula = new StudentTCopula(rho, nu);
+var tCopula = new StudentTCopula(corrMatrix, nu);
 
-double density = tCopula.PDF(u1, u2);
+double density = tCopula.PDF(new double[] { u1, u2 });
 
 Console.WriteLine($"t-copula density: {density:F4}");
-Console.WriteLine($"Tail dependence: {tCopula.TailDependence:F4}");
+Console.WriteLine("t-copula has stronger tail dependence than Gaussian");
 ```
 
 ### Archimedean Copulas
@@ -85,11 +86,12 @@ var margin2 = new Gumbel(100, 20);      // Peak stage
 
 // Step 2: Define dependence via copula
 double rho = 0.8;  // Strong positive correlation
-var copula = new NormalCopula(rho);
+var corrMatrix = new double[,] { { 1.0, rho }, { rho, 1.0 } };
+var copula = new GaussianCopula(corrMatrix);
 
 // Step 3: Sample from joint distribution
 int n = 1000;
-var samples = copula.GenerateRandomValues(n);
+var samples = copula.Sample(n);
 
 // Transform uniforms to actual distributions
 double[] flow = new double[n];
@@ -126,28 +128,36 @@ double u1 = margin1.CDF(flowThreshold);
 double u2 = margin2.CDF(stageThreshold);
 
 // P(Flow > threshold AND Stage > threshold)
-double jointExceedance = copula.ORJointExceedanceProbability(u1, u2);
+double jointExceedance = copula.Survival(new double[] { u1, u2 });
 
 Console.WriteLine($"Joint exceedance probability: {jointExceedance:E4}");
 Console.WriteLine($"Return period: {1.0 / jointExceedance:F1} years");
 ```
 
-### Conditional Sampling
+### Conditional Distributions
 
-Generate stage values conditional on an observed flow using the copula inverse CDF:
+Given flow, what is the conditional distribution of stage?
 
 ```cs
 // Observed flow
 double observedFlow = 12000;
 double uFlow = margin1.CDF(observedFlow);
 
-// Conditional sample: given u1 = uFlow, sample u2
-var rng = new Random(42);
-double[] conditionalSample = copula.InverseCDF(uFlow, rng.NextDouble());
-double conditionalStage = margin2.InverseCDF(conditionalSample[1]);
+// Conditional CDF for stage | flow
+Func<double, double> conditionalCDF = (stage) =>
+{
+    double uStage = margin2.CDF(stage);
+    return copula.ConditionalCDF(uFlow, uStage, conditionIndex: 0);
+};
 
+// Find conditional quantiles
+double[] condProbs = { 0.5, 0.9, 0.95 };
 Console.WriteLine($"Given flow = {observedFlow:F0} cfs:");
-Console.WriteLine($"  Conditional stage sample: {conditionalStage:F1} feet");
+foreach (var p in condProbs)
+{
+    // This would require numerical solution
+    Console.WriteLine($"  {p:P0} quantile of stage");
+}
 ```
 
 ## Tail Dependence
@@ -189,6 +199,19 @@ var v = y.Select(yi => (double)Array.FindIndex(y.OrderBy(w => w).ToArray(), w =>
 var candidates = new[] { "Gaussian", "t", "Clayton", "Gumbel", "Frank" };
 
 Console.WriteLine("Fit each candidate copula and select best by AIC");
+```
+
+## Vine Copulas
+
+For higher dimensions, vine copulas decompose multivariate dependence:
+
+```cs
+// C-vine, D-vine, and R-vine structures available
+// Allow flexible modeling of high-dimensional dependence
+// Construct from pairwise bivariate copulas
+
+Console.WriteLine("Vine copulas enable flexible high-dimensional modeling");
+Console.WriteLine("Use for systems with > 2 correlated variables");
 ```
 
 ## Best Practices

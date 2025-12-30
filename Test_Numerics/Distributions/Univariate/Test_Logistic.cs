@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double a = LO.Alpha;
             double true_x = 12665d;
             double true_a = 2596.62d;
-            Assert.IsLessThan(0.01d,(x - true_x) / true_x );
-            Assert.IsLessThan(0.01d,(a - true_a) / true_a);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
         }
 
         /// <summary>
@@ -125,7 +125,7 @@ namespace Distributions.Univariate
             var LO = new Logistic(12665d, 2596.62d);
             double q100 = LO.InverseCDF(0.99d);
             double true_100 = 24597d;
-            Assert.IsLessThan(0.01d, (q100 - true_100) / true_100 );
+            Assert.IsLessThan(0.01d, (q100 - true_100) / true_100);
             double p = LO.CDF(q100);
             double true_p = 0.99d;
             Assert.AreEqual(p, true_p);
@@ -150,13 +150,13 @@ namespace Distributions.Univariate
             var LO = new Logistic(12665d, 2596.62d);
             double se100 = Math.Sqrt(LO.QuantileVariance(0.99d, 48, ParameterEstimationMethod.MethodOfMoments));
             double true_se100 = 1684d;
-            Assert.IsLessThan(0.01d,(se100 - true_se100) / true_se100);
+            Assert.IsLessThan(0.01d, (se100 - true_se100) / true_se100);
 
             // Maximum Likelihood
             LO = new Logistic(12628.59d, 2708.64d);
             se100 = Math.Sqrt(LO.QuantileVariance(0.99d, 48, ParameterEstimationMethod.MaximumLikelihood));
             true_se100 = 1648d;
-            Assert.IsLessThan(0.01d,(se100 - true_se100) / true_se100);
+            Assert.IsLessThan(0.01d, (se100 - true_se100) / true_se100);
         }
 
         /// <summary>
@@ -166,8 +166,8 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var LO = new Logistic();
-            Assert.AreEqual(0,LO.Xi);
-            Assert.AreEqual(0.1,LO.Alpha);
+            Assert.AreEqual(0, LO.Xi);
+            Assert.AreEqual(0.1, LO.Alpha);
 
             var LO2 = new Logistic(1, 1);
             Assert.AreEqual(1,LO2.Xi);
@@ -197,7 +197,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var LO = new Logistic();
-            Assert.AreEqual("Location (ξ)",LO.ParametersToString[0, 0] );
+            Assert.AreEqual("Location (ξ)", LO.ParametersToString[0, 0]);
             Assert.AreEqual("Scale (α)", LO.ParametersToString[1, 0]);
             Assert.AreEqual("0", LO.ParametersToString[0, 1]);
             Assert.AreEqual("0.1", LO.ParametersToString[1, 1]);
@@ -302,7 +302,7 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var LO = new Logistic();
-            Assert.AreEqual(double.NegativeInfinity,LO.Minimum );
+            Assert.AreEqual(double.NegativeInfinity,LO.Minimum);
             Assert.AreEqual(double.PositiveInfinity, LO.Maximum);
 
             var LO2 = new Logistic(1, 1);
@@ -319,7 +319,7 @@ namespace Distributions.Univariate
             var LO = new Logistic(5,2);
             Assert.AreEqual(0.00332, LO.PDF(-5),  1e-04);
             Assert.AreEqual(0.03505, LO.PDF(0),  1e-04);
-            Assert.AreEqual(0.125,LO.PDF(5) );
+            Assert.AreEqual(0.125, LO.PDF(5));
         }
 
         /// <summary>
@@ -331,7 +331,7 @@ namespace Distributions.Univariate
             var LO = new Logistic(5,2);
             Assert.AreEqual(0.00669, LO.CDF(-5),  1e-05);
             Assert.AreEqual(0.07585, LO.CDF(0),  1e-04);
-            Assert.AreEqual(0.5,LO.CDF(5) );
+            Assert.AreEqual(0.5, LO.CDF(5));
         }
 
         /// <summary>

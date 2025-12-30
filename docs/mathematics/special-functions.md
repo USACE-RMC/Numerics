@@ -2,7 +2,7 @@
 
 [← Previous: Linear Algebra](linear-algebra.md) | [Back to Index](../index.md) | [Next: ODE Solvers →](ode-solvers.md)
 
-The ***Numerics*** library provides essential special functions commonly used in statistical distributions, numerical analysis, and scientific computing. These include Gamma, Beta, Error, Bessel, and combinatorial functions.
+The ***Numerics*** library provides essential special functions commonly used in statistical distributions, numerical analysis, and scientific computing. These include Gamma, Beta, Error functions, and combinatorial functions.
 
 ## Gamma Function
 
@@ -250,72 +250,6 @@ int count = combinations.Count();
 Console.WriteLine($"Total: {count} combinations");
 ```
 
-## Bessel Functions
-
-Bessel functions arise in problems with cylindrical symmetry and in directional statistics (e.g., the Von Mises distribution). The library provides modified Bessel functions of the first kind.
-
-### Modified Bessel Functions of the First Kind
-
-```cs
-using Numerics.Mathematics.SpecialFunctions;
-
-// I₀(x) - Modified Bessel function of the first kind, order 0
-double i0 = Bessel.I0(2.5);
-Console.WriteLine($"I₀(2.5) = {i0:F6}");  // ≈ 3.289839
-
-// I₁(x) - Modified Bessel function of the first kind, order 1
-double i1 = Bessel.I1(2.5);
-Console.WriteLine($"I₁(2.5) = {i1:F6}");  // ≈ 2.516716
-
-// Iν(x) - Modified Bessel function of the first kind, arbitrary order
-double iv = Bessel.Iv(2, 3.0);  // I₂(3.0)
-Console.WriteLine($"I₂(3.0) = {iv:F6}");
-```
-
-### Log-Space Bessel Functions
-
-For large arguments where the Bessel function overflows, use log-space variants:
-
-```cs
-// Log I₀(x) - avoids overflow for large x
-double logI0 = Bessel.LogI0(500.0);
-Console.WriteLine($"ln(I₀(500)) = {logI0:F4}");
-
-// Log I₁(x)
-double logI1 = Bessel.LogI1(500.0);
-Console.WriteLine($"ln(I₁(500)) = {logI1:F4}");
-```
-
-### Bessel Function Ratios
-
-Ratios of Bessel functions appear in maximum likelihood estimation for the Von Mises distribution:
-
-```cs
-// I₁(x)/I₀(x) ratio - used in Von Mises MLE
-double ratio = Bessel.I1(5.0) / Bessel.I0(5.0);
-Console.WriteLine($"I₁(5)/I₀(5) = {ratio:F6}");
-
-// For large kappa, this ratio approaches 1
-double ratioLarge = Bessel.I1(100.0) / Bessel.I0(100.0);
-Console.WriteLine($"I₁(100)/I₀(100) = {ratioLarge:F8}");
-```
-
-### Modified Bessel Functions of the Second Kind
-
-```cs
-// K₀(x) - Modified Bessel function of the second kind, order 0
-double k0 = Bessel.K0(1.0);
-Console.WriteLine($"K₀(1.0) = {k0:F6}");  // ≈ 0.421024
-
-// K₁(x) - Order 1
-double k1 = Bessel.K1(1.0);
-Console.WriteLine($"K₁(1.0) = {k1:F6}");  // ≈ 0.601907
-
-// Kν(x) - Arbitrary order
-double kv = Bessel.Kv(2, 1.5);
-Console.WriteLine($"K₂(1.5) = {kv:F6}");
-```
-
 ## Practical Applications
 
 ### Example 1: Gamma Distribution Moments
@@ -441,7 +375,6 @@ Console.WriteLine($"  Relative error = {relativeError:P4}");
 | **Beta** | Beta distribution | `Function()`, `Incomplete()` |
 | **Error** | Normal distribution | `Function()`, `Erfc()`, `InverseErf()` |
 | **Factorial** | Combinatorics | `Function()`, `BinomialCoefficient()` |
-| **Bessel** | Cylindrical, directional stats | `I0()`, `I1()`, `Iv()`, `K0()`, `K1()`, `Kv()` |
 
 ## Implementation Notes
 

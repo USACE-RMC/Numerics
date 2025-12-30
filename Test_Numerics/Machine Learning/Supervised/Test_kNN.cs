@@ -162,7 +162,7 @@ namespace MachineLearning
             var lmR2 = GoodnessOfFit.RSquared(Y_test.Array, lmPredict);
             
             // kNN is better
-            Assert.IsGreaterThan(lmR2,knnR2 );
+            Assert.IsGreaterThan(lmR2, knnR2 );
 
         }
 

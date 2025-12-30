@@ -156,7 +156,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(1.1111, p.Mean,  1e-04);
 
             var p2 = new Pareto(1,1);
-            Assert.AreEqual(double.PositiveInfinity,p2.Mean );
+            Assert.AreEqual(double.PositiveInfinity, p2.Mean);
         }
 
         /// <summary>
@@ -195,7 +195,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.12422, p.StandardDeviation,  1e-04);
 
             var p2 = new Pareto(1, 2);
-            Assert.AreEqual(double.PositiveInfinity,p2.StandardDeviation );
+            Assert.AreEqual(double.PositiveInfinity, p2.StandardDeviation);
         }
 
         /// <summary>
@@ -208,7 +208,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(2.81105, p.Skewness, 1e-04);
 
             var p2 = new Pareto(1, 3);
-            Assert.AreEqual(double.NaN,p2.Skewness);
+            Assert.AreEqual(double.NaN, p2.Skewness);
         }
 
         /// <summary>
@@ -218,10 +218,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var p = new Pareto();
-            Assert.AreEqual(17.82857, p.Kurtosis,  1e-04);
+            Assert.AreEqual(17.82857, p.Kurtosis, 1e-04);
 
             var p2 = new Pareto(1, 4);
-            Assert.AreEqual(double.NaN,p2.Kurtosis);
+            Assert.AreEqual(double.NaN, p2.Kurtosis);
         }
 
         /// <summary>
@@ -246,7 +246,7 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var p = new Pareto(1,1);
-            Assert.AreEqual(1,p.PDF(1));
+            Assert.AreEqual(1, p.PDF(1));
             Assert.AreEqual(4d / 9d,p.PDF(1.5) );
 
             var p2 = new Pareto(3, 2);

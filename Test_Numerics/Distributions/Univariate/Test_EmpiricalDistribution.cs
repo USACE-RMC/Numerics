@@ -145,7 +145,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(dist1, dist2, 1000);
 
             // Assert number of points
-            Assert.HasCount(1000, convolved.XValues);
+            Assert.HasCount(1000, convolved.XValues, "Should have exactly 1000 points");
 
             // Expected: Min ≈ 0, Max ≈ 2, Mean ≈ 1
             Assert.AreEqual(0.0, convolved.Minimum, 0.05, "Minimum should be approximately 0");
@@ -191,7 +191,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(dist1, dist2, 2048);
 
             // Assert number of points
-            Assert.HasCount(2048, convolved.XValues);
+            Assert.HasCount(2048, convolved.XValues, "Should have exactly 2048 points");
 
             // Expected: For N(0,1) + N(0,1) = N(0, sqrt(2)) 
             // Mean ≈ 0, StdDev ≈ 1.414
@@ -227,7 +227,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(dist1, dist2, 500);
 
             // Assert number of points
-            Assert.HasCount(500, convolved.XValues);
+            Assert.HasCount(500, convolved.XValues, "Should have exactly 500 points");
 
             // Expected: Range ≈ [5, 25], Mean ≈ 15
             Assert.AreEqual(5.0, convolved.Minimum, 0.5, "Minimum should be approximately 5");
