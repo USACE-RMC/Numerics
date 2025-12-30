@@ -82,8 +82,8 @@ namespace Distributions.Univariate
             double u2 = norm.Sigma;
             double true_u1 = 12665d;
             double true_u2 = 4710d;
-            Assert.IsLessThan(0.01d,(u1 - true_u1) / true_u1);
-            Assert.IsLessThan(0.01d,(u2 - true_u2) / true_u2 );
+            Assert.IsLessThan( 0.01d, (u1 - true_u1) / true_u1 );
+            Assert.IsLessThan( 0.01d, (u2 - true_u2) / true_u2 );
 
         }
 
@@ -323,7 +323,7 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var N = new Normal();
-            Assert.AreEqual(double.NegativeInfinity,N.Minimum );
+            Assert.AreEqual(double.NegativeInfinity,N.Minimum);
             Assert.AreEqual(double.PositiveInfinity, N.Maximum);
 
             var N2 = new Normal(5, 9);
@@ -354,7 +354,7 @@ namespace Distributions.Univariate
             var N = new Normal(5,2);
             Assert.AreEqual(0.006209, N.CDF(0),  1e-04);
             Assert.AreEqual(0.30853, N.CDF(4),  1e-04);
-            Assert.AreEqual(0.5,N.CDF(5));
+            Assert.AreEqual(0.5, N.CDF(5));
         }
     }
 }

@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double a = GUM.Alpha;
             double true_x = 8074.4d;
             double true_a = 4441.4d;
-            Assert.IsLessThan(0.01d,(x - true_x) / true_x);
-            Assert.IsLessThan(0.01d,(a - true_a) / true_a );
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
         }
 
         /// <summary>
@@ -102,8 +102,8 @@ namespace Distributions.Univariate
             var lmom = GUM.LinearMomentsFromParameters(GUM.GetParameters);
             Assert.AreEqual(1648.806d, lmom[0],  0.001d);
             Assert.AreEqual(138.2366d, lmom[1],  0.001d);
-            Assert.AreEqual(0.169925d, lmom[2],  0.001d);
-            Assert.AreEqual(0.150375d, lmom[3],  0.001d);
+            Assert.AreEqual(0.169925d, lmom[2], 0.001d);
+            Assert.AreEqual(0.150375d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -214,7 +214,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual("Location (ξ)",GUM.ParametersToString[0, 0] );
+            Assert.AreEqual("Location (ξ)",GUM.ParametersToString[0, 0]);
             Assert.AreEqual("Scale (α)", GUM.ParametersToString[1, 0]);
             Assert.AreEqual("100", GUM.ParametersToString[0, 1]);
             Assert.AreEqual("10", GUM.ParametersToString[1, 1]);
@@ -280,7 +280,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(1.1396,GUM.Skewness);
+            Assert.AreEqual(1.1396, GUM.Skewness);
 
             var GUM2 = new Gumbel(10, 1);
             Assert.AreEqual(1.1396, GUM2.Skewness);
@@ -322,7 +322,7 @@ namespace Distributions.Univariate
         {
             var GUM = new Gumbel();
             Assert.AreEqual(0.0367879, GUM.PDF(100),  1e-04);
-            Assert.AreEqual(0,GUM.PDF(0));
+            Assert.AreEqual(0, GUM.PDF(0));
             Assert.AreEqual(4.5397e-06, GUM.PDF(200),  1e-10);
 
             var GUM2 = new Gumbel(10, 1);

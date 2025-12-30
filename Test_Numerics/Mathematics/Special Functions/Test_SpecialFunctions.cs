@@ -207,6 +207,7 @@ namespace Mathematics.SpecialFunctions
             // Total number of possible combinations
             double possible = Math.Pow(2, 5) - 1;
 
+            var ccLen = cc.Length;
             // Length of cc should be the possible number of combinations * the number of elements in each combination (5)
             Assert.HasCount((int)possible * 5, cc);
 

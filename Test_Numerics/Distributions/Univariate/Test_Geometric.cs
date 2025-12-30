@@ -126,7 +126,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var G = new Geometric();
-            Assert.AreEqual("Probability (p)",G.ParametersToString[0, 0]);
+            Assert.AreEqual("Probability (p)", G.ParametersToString[0, 0]);
             Assert.AreEqual("0.5", G.ParametersToString[0, 1]);
         }
 
@@ -150,7 +150,7 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var G = new Geometric(0.0001);
-            Assert.AreEqual(6931,G.Median);
+            Assert.AreEqual(6931, G.Median);
 
             var G2 = new Geometric(0.1);
             Assert.AreEqual(6, G2.Median);
@@ -195,7 +195,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(2.12132, G.Skewness,  1e-04);
 
             var G2 = new Geometric(0.3);
-            Assert.AreEqual(2.03188, G2.Skewness,  1e-04);
+            Assert.AreEqual(2.03188, G2.Skewness, 1e-04);
         }
 
         /// <summary>
@@ -205,7 +205,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var G = new Geometric();
-            Assert.AreEqual(9.5,G.Kurtosis);
+            Assert.AreEqual(9.5, G.Kurtosis);
 
             var G2 = new Geometric(0.3);
             Assert.AreEqual(9.12857, G2.Kurtosis,  1e-04);
@@ -218,7 +218,7 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var G = new Geometric();
-            Assert.AreEqual(0,G.Minimum);
+            Assert.AreEqual(0, G.Minimum);
             Assert.AreEqual(double.PositiveInfinity,G.Maximum);
 
             var G2 = new Geometric(0.3);
@@ -233,8 +233,8 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var G = new Geometric();
-            Assert.AreEqual(0.5,G.PDF(0));
-            Assert.AreEqual(0.125,G.PDF(2));
+            Assert.AreEqual(0.5, G.PDF(0));
+            Assert.AreEqual(0.125, G.PDF(2));
             Assert.AreEqual(0, G.PDF(-1));
 
             var G2 = new Geometric(0.3);
@@ -256,7 +256,7 @@ namespace Distributions.Univariate
 
             var G2 = new Geometric(0.3);
             Assert.AreEqual(0.657, G2.CDF(2));
-            Assert.AreEqual(1,G2.CDF(100), 1e-04);
+            Assert.AreEqual(1, G2.CDF(100), 1e-04);
         }
 
         /// <summary>
@@ -266,11 +266,11 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var G = new Geometric();
-            Assert.AreEqual(0,G.InverseCDF(0.3));
-            Assert.AreEqual(1,G.InverseCDF(0.7),  1e-04);
+            Assert.AreEqual(0, G.InverseCDF(0.3));
+            Assert.AreEqual(1, G.InverseCDF(0.7),  1e-04);
 
             var G2 = new Geometric(0.3);
-            Assert.AreEqual(1,G2.InverseCDF(0.5),  1e-04);
+            Assert.AreEqual(1, G2.InverseCDF(0.5),  1e-04);
             Assert.AreEqual(6,G2.InverseCDF(0.9));
         }
     }

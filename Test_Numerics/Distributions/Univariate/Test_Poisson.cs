@@ -92,7 +92,7 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var P = new Poisson();
-            Assert.AreEqual(1,P.Lambda);
+            Assert.AreEqual(1, P.Lambda);
 
             var P2 = new Poisson(10);
             Assert.AreEqual(10,P2.Lambda);
@@ -121,7 +121,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var P = new Poisson();
-            Assert.AreEqual("Rate (λ)",P.ParametersToString[0, 0] );
+            Assert.AreEqual("Rate (λ)",P.ParametersToString[0, 0]);
             Assert.AreEqual("1",P.ParametersToString[0, 1]);
         }
 
@@ -149,7 +149,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(1,P.Mean);
 
             var P2 = new Poisson(10);
-            Assert.AreEqual(10,P2.Mean );
+            Assert.AreEqual(10,P2.Mean);
         }
 
         /// <summary>
@@ -172,7 +172,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(1, P.Mode);
 
             var P2 = new Poisson(2.4);
-            Assert.AreEqual(2,P2.Mode);
+            Assert.AreEqual(2, P2.Mode);
         }
 
         /// <summary>
@@ -182,7 +182,7 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var P = new Poisson();
-            Assert.AreEqual(1,P.StandardDeviation);
+            Assert.AreEqual(1, P.StandardDeviation);
 
             var P2 = new Poisson(4);
             Assert.AreEqual(2, P2.StandardDeviation);
@@ -266,8 +266,8 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var P = new Poisson();
-            Assert.AreEqual(0,P.InverseCDF(0));
-            Assert.AreEqual(double.PositiveInfinity,P.InverseCDF(1));
+            Assert.AreEqual(0, P.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity,P.InverseCDF(1) );
         }
     }
 }

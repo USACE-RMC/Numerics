@@ -10,6 +10,7 @@ jobs:
     with:
       dotnet-version: '9.0.x'
       project-names: 'Numerics'
+      version: '1.0.0'
       run-tests: true
       nuget-source: 'https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/'
     secrets:

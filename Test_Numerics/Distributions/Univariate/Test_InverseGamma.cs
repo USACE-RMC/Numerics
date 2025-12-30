@@ -125,7 +125,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.5, IG.Mean);
 
             var IG2 = new InverseGamma(1, 1);
-            Assert.AreEqual(double.NaN,IG2.Mean );
+            Assert.AreEqual(double.NaN,IG2.Mean);
         }
 
         /// <summary>
@@ -184,7 +184,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var IG = new InverseGamma();
-            Assert.AreEqual(double.NaN,IG.Kurtosis );
+            Assert.AreEqual(double.NaN, IG.Kurtosis);
 
             var IG2 = new InverseGamma(0.5, 5);
             Assert.AreEqual(45, IG2.Kurtosis);
@@ -212,12 +212,12 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var IG = new InverseGamma(2,4);
-            Assert.AreEqual(0,IG.PDF(-2));
-            Assert.AreEqual(0.00057200, IG.PDF(5), 1e-07);
+            Assert.AreEqual(0, IG.PDF(-2));
+            Assert.AreEqual(0.00057200, IG.PDF(5),  1e-07);
             Assert.AreEqual(1.74443, IG.PDF(0.42),  1e-04);
 
             var IG2 = new InverseGamma(0.42,2.4);
-            Assert.AreEqual(double.NaN,IG2.PDF(0) );
+            Assert.AreEqual(double.NaN, IG2.PDF(0));
             Assert.AreEqual(1.48386, IG2.PDF(0.3),  1e-05);
         }
 
@@ -228,7 +228,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var IG = new InverseGamma();
-            Assert.AreEqual(0,IG.CDF(-1));
+            Assert.AreEqual(0, IG.CDF(-1));
             Assert.AreEqual(1, IG.CDF(double.PositiveInfinity));
 
             var IG2 = new InverseGamma(2, 2);

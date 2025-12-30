@@ -135,7 +135,7 @@ namespace MachineLearning
             var lmR2 = GoodnessOfFit.RSquared(Y_test.Array, lmPredict);
 
             // Linear regress is better
-            Assert.IsLessThan(lmR2,treeR2 );
+            Assert.IsLessThan(lmR2,treeR2);
 
         }
 

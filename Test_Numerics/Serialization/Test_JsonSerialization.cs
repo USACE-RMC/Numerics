@@ -163,6 +163,8 @@ namespace Serialization
             byte[] serialized = UncertaintyAnalysisResults.ToByteArray(original);
             var deserialized = UncertaintyAnalysisResults.FromByteArray(serialized);
 
+            var origLen = original.ParameterSets.Length;
+            var desLen = deserialized.ParameterSets.Length;
             // Assert
             Assert.IsNotNull(deserialized.ParameterSets);
             var parameterSetsLen = original.ParameterSets.Length;
@@ -297,6 +299,8 @@ namespace Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.AcceptanceRates.Length;
+            var desLen = deserialized.AcceptanceRates.Length;
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.AcceptanceRates);
@@ -328,6 +332,8 @@ namespace Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.MarkovChains.Length;
+            var desLen = deserialized.MarkovChains.Length;
             // Assert
             Assert.IsNotNull(deserialized.MarkovChains);
             var markovChainsLen = original.MarkovChains.Length;
@@ -495,6 +501,8 @@ namespace Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.MarkovChains.Length;
+            var deserializedLen = deserialized.MarkovChains.Length;
             // Assert
             Assert.IsNotNull(deserialized);
             var origChainsLen = original.MarkovChains.Length;

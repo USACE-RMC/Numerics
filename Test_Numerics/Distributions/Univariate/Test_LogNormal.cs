@@ -216,9 +216,9 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var LogN = new LogNormal();
-            Assert.AreEqual("Mean (of log) (µ)",LogN.ParametersToString[0, 0]);
-            Assert.AreEqual("Std Dev (of log) (σ)",LogN.ParametersToString[1, 0] );
-            Assert.AreEqual("3",LogN.ParametersToString[0, 1] );
+            Assert.AreEqual("Mean (of log) (µ)",LogN.ParametersToString[0, 0] );
+            Assert.AreEqual("Std Dev (of log) (σ)",LogN.ParametersToString[1, 0]);
+            Assert.AreEqual("3",LogN.ParametersToString[0, 1]);
             Assert.AreEqual("0.5", LogN.ParametersToString[1, 1]);
         }
 
@@ -271,7 +271,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var LogN = new LogNormal(1.5, 0.1);
-            Assert.AreEqual(0,LogN.CDF(0.1));
+            Assert.AreEqual(0, LogN.CDF(0.1));
 
             var LogN2 = new LogNormal(1.5, 1.5);
             Assert.AreEqual(0.11493, LogN2.CDF(0.5), 1e-05);
@@ -287,7 +287,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-04);
 
             var LogN2 = new LogNormal(1.5, 2.5);
-            Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8),  1e-05);
+            Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-05);
         }
     }
 }

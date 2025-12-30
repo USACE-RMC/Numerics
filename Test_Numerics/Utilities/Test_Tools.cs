@@ -338,7 +338,7 @@ namespace Utilities
         {
             List<double> values = new List<double> { 1, 2, 3 };
             var result = Tools.ArgMax(values);
-            Assert.AreEqual(2, result  );
+            Assert.AreEqual(2, result);
         }
 
         /// <summary>
@@ -350,7 +350,7 @@ namespace Utilities
             List<double> values = new List<double> { 1, 2, 3, 4};
             List<int> indicators = new List<int> { 0, 1, 1, 1 };
             var result = Tools.Min(values,indicators);
-            Assert.AreEqual(2,result);
+            Assert.AreEqual(2, result);
         }
 
         /// <summary>
@@ -362,7 +362,7 @@ namespace Utilities
             List<double> values = new List<double> { 1, 2, 3 };
             List<int> indicators = new List<int> { 1, 0, 0 };
             var result = Tools.Max(values, indicators);
-            Assert.AreEqual(1,result);
+            Assert.AreEqual(1, result);
         }
 
         /// <summary>
@@ -380,8 +380,8 @@ namespace Utilities
 
             var result = Tools.LogSumExp(u, v);
             var result2 = Tools.LogSumExp(values);
-            Assert.AreEqual(1000.70815, result,  1E-04);
-            Assert.AreEqual(1000.70815, result2,  1E-04);
+            Assert.AreEqual(1000.70815,result, 1E-04);
+            Assert.AreEqual(1000.70815,result2, 1E-04);
         }
 
         /// <summary>
@@ -411,7 +411,7 @@ namespace Utilities
             data[1] = 128;
             data[2] = 255;
             var result = Tools.Compress(data);
-            Assert.IsLessThanOrEqualTo(result.Length,data.Length );
+            Assert.IsLessThanOrEqualTo(result.Length, data.Length);
         }
 
         /// <summary>
@@ -425,7 +425,7 @@ namespace Utilities
             data[1] = 128;
             data[2] = 255;
             var result = Tools.Decompress(data);
-            Assert.IsGreaterThanOrEqualTo(result.Length,data.Length);
+            Assert.IsGreaterThanOrEqualTo(result.Length, data.Length);
         }
     }
     

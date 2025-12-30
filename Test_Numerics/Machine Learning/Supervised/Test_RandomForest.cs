@@ -89,7 +89,7 @@ namespace MachineLearning
             var accuracy = GoodnessOfFit.Accuracy(Y_test.Array, prediction.GetColumn(1));
 
             // Accuracy should be greater than or equal to 90%
-            Assert.IsGreaterThanOrEqualTo(90,accuracy);
+            Assert.IsGreaterThanOrEqualTo(90, accuracy);
 
         }
 

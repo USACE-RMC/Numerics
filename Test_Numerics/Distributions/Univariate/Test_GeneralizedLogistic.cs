@@ -84,8 +84,8 @@ namespace Distributions.Univariate
             double true_x = 31892d;
             double true_a = 9030d;
             double true_k = -0.05515d;
-            Assert.IsLessThan(0.01d,(x - true_x) / true_x);
-            Assert.IsLessThan(0.01d,(a - true_a) / true_a);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x );
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a );
             Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
@@ -230,7 +230,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var l = new GeneralizedLogistic();
-            Assert.AreEqual("Location (ξ)",l.ParametersToString[0, 0] );
+            Assert.AreEqual("Location (ξ)", l.ParametersToString[0, 0]);
             Assert.AreEqual("Scale (α)", l.ParametersToString[1, 0]);
             Assert.AreEqual("Shape (κ)", l.ParametersToString[2, 0]);
             Assert.AreEqual("100", l.ParametersToString[0, 1]);
@@ -265,7 +265,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(9.44703, l2.Mean,  1e-04);
 
             var l3 = new GeneralizedLogistic(100, 10, 1);
-            Assert.AreEqual(double.NaN,l3.Mean );
+            Assert.AreEqual(double.NaN, l3.Mean);
         }
 
         /// <summary>
@@ -307,7 +307,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(39.76482, l2.StandardDeviation,  1e-04);
 
             var l3 = new GeneralizedLogistic(100, 10, 1);
-            Assert.AreEqual(double.NaN,l3.StandardDeviation );
+            Assert.AreEqual(double.NaN, l3.StandardDeviation);
         }
 
         /// <summary>
@@ -333,13 +333,13 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var l = new GeneralizedLogistic();
-            Assert.AreEqual(21d / 5d,l.Kurtosis);
+            Assert.AreEqual(21d / 5d, l.Kurtosis);
 
             var l2 = new GeneralizedLogistic(100, 10, 0.24);
             Assert.AreEqual(199.733369, l2.Kurtosis, 1e-04);
 
             var l3 = new GeneralizedLogistic(100, 10, 0.25);
-            Assert.AreEqual(double.NaN,l3.Kurtosis );
+            Assert.AreEqual(double.NaN, l3.Kurtosis);
         }
 
         /// <summary>
@@ -375,7 +375,7 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var l = new GeneralizedLogistic();
-            Assert.AreEqual(0.025,l.PDF(100) );
+            Assert.AreEqual(0.025,l.PDF(100));
             Assert.AreEqual(4.5395e-06, l.PDF(0), 1e-10);
 
             var l2 = new GeneralizedLogistic(100, 10, 1);

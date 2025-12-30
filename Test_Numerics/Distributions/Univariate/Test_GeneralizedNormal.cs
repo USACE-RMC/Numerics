@@ -202,7 +202,7 @@ namespace Distributions.Univariate
             Assert.AreEqual("Scale (α)", n.ParametersToString[1, 0]);
             Assert.AreEqual("Shape (κ)", n.ParametersToString[2, 0]);
             Assert.AreEqual("100", n.ParametersToString[0, 1]);
-            Assert.AreEqual("10",n.ParametersToString[1, 1]);
+            Assert.AreEqual("10", n.ParametersToString[1, 1]);
             Assert.AreEqual("0", n.ParametersToString[2, 1]);
         }
 
