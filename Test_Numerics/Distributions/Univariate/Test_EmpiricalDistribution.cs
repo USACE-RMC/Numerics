@@ -145,7 +145,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(dist1, dist2, 1000);
 
             // Assert number of points
-            Assert.AreEqual(1000, convolved.XValues.Count, "Should have exactly 1000 points");
+            Assert.HasCount(1000, convolved.XValues);
 
             // Expected: Min ≈ 0, Max ≈ 2, Mean ≈ 1
             Assert.AreEqual(0.0, convolved.Minimum, 0.05, "Minimum should be approximately 0");
@@ -191,7 +191,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(dist1, dist2, 2048);
 
             // Assert number of points
-            Assert.AreEqual(2048, convolved.XValues.Count, "Should have exactly 2048 points");
+            Assert.HasCount(2048, convolved.XValues);
 
             // Expected: For N(0,1) + N(0,1) = N(0, sqrt(2)) 
             // Mean ≈ 0, StdDev ≈ 1.414
@@ -227,7 +227,7 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(dist1, dist2, 500);
 
             // Assert number of points
-            Assert.AreEqual(500, convolved.XValues.Count, "Should have exactly 500 points");
+            Assert.HasCount(500, convolved.XValues);
 
             // Expected: Range ≈ [5, 25], Mean ≈ 15
             Assert.AreEqual(5.0, convolved.Minimum, 0.5, "Minimum should be approximately 5");
@@ -270,8 +270,8 @@ namespace Distributions.Univariate
             Assert.AreEqual(convolved.Mean, convolved.Median, 0.5, "Median should be close to mean for symmetric distribution");
 
             // Verify CDF properties
-            Assert.IsTrue(convolved.CDF(convolved.Minimum) <= 0.01, "CDF at minimum should be close to 0");
-            Assert.IsTrue(convolved.CDF(convolved.Maximum) >= 0.99, "CDF at maximum should be close to 1");
+            Assert.IsLessThanOrEqualTo(0.01,convolved.CDF(convolved.Minimum), "CDF at minimum should be close to 0");
+            Assert.IsGreaterThanOrEqualTo(0.99,convolved.CDF(convolved.Maximum), "CDF at maximum should be close to 1");
         }
 
         /// <summary>
@@ -311,14 +311,14 @@ namespace Distributions.Univariate
             var convolved = EmpiricalDistribution.Convolve(distributions, 1000);
 
             // Assert number of points
-            Assert.AreEqual(1000, convolved.XValues.Count, "Should have exactly 1000 points");
+            Assert.HasCount(1000, convolved.XValues, "Should have exactly 1000 points");
 
             // Compare with expected (allow for numerical error)
             double meanError = Math.Abs(convolved.Mean - expectedMean) / expectedMean;
             double stdDevError = Math.Abs(convolved.StandardDeviation - expectedStdDev) / expectedStdDev;
 
-            Assert.IsTrue(meanError < 0.05, $"Mean error {meanError:P2} should be less than 5%");
-            Assert.IsTrue(stdDevError < 0.15, $"StdDev error {stdDevError:P2} should be less than 15%");
+            Assert.IsLessThan(0.05,meanError, $"Mean error {meanError:P2} should be less than 5%");
+            Assert.IsLessThan(0.15,stdDevError, $"StdDev error {stdDevError:P2} should be less than 15%");
 
             // Verify range is reasonable
             double expectedMin = distributions.Sum(d => d.Minimum);
@@ -347,7 +347,7 @@ namespace Distributions.Univariate
                 var convolved = EmpiricalDistribution.Convolve(dist1, dist2, size);
 
                 // Assert correct number of points
-                Assert.AreEqual(size, convolved.XValues.Count, $"Should have exactly {size} points");
+                Assert.HasCount(size, convolved.XValues, $"Should have exactly {size} points");
 
                 // Assert reasonable properties
                 Assert.AreEqual(1.0, convolved.Mean, 0.1, $"Mean should be approximately 1 for size {size}");

@@ -112,7 +112,7 @@ namespace Numerics.Mathematics.Integration
 
         }
 
-        private double[] _region;
+        private double[] _region = null!;
         private int _numberOfBins = 50;
         private double _standardError;
         private double _chiSquared;
@@ -129,16 +129,16 @@ namespace Numerics.Mathematics.Integration
         private double totalErrorEstimate, weight, jacobianDeterminant, randomBinIndex, normalizedBinCount, binSpacingDelta, sumChiSquared, sumWeightedResults, sumIntegrationWeights;
 
 
-        private int[] binIndexes;
-        private int[] regionBinCounts;
-        private double[] dimensionContributions;
-        private double[] dx;
-        private double[] binDensities;
-        private double[] randomPoint;
-        private double[] binEdges;
-        private double[,] binContributions;
-        private double[,] refinedBinContributions;
-        private double[,] stratificationGrid;
+        private int[] binIndexes = null!;
+        private int[] regionBinCounts = null!;
+        private double[] dimensionContributions = null!;
+        private double[] dx = null!;
+        private double[] binDensities = null!;
+        private double[] randomPoint = null!;
+        private double[] binEdges = null!;
+        private double[,] binContributions = null!;
+        private double[,] refinedBinContributions = null!;
+        private double[,] stratificationGrid = null!;
 
 
         /// <summary>

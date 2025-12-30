@@ -59,7 +59,7 @@ namespace Mathematics.LinearAlgebra
             for (int i = 0; i < A.NumberOfRows; i++)
             {
                 for (int j = 0; j < A.NumberOfColumns - 1; j++)
-                    Assert.AreEqual(A[i, j] == true_IA[i, j], true);
+                    Assert.AreEqual(A[i, j],true_IA[i, j]);
             }
 
             /// Recreated Gauss Jordan test in R to compare the inverted A matrices.

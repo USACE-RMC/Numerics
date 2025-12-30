@@ -136,8 +136,8 @@ namespace Numerics.Sampling
                 reader.ReadLine();
 
                 int index = 1;
-                string line = null;
-                while ((line = reader.ReadLine()) != null)
+                string? line;
+                while ((line = reader.ReadLine()) is not null)
                 {
                     var st = line.Split(' ');
 

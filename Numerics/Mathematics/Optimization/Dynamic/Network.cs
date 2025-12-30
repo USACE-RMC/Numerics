@@ -166,7 +166,7 @@ namespace Numerics.Mathematics.Optimization
                 }
             }
             // if n = 0, then no roads to escape to
-            if (heap.Count == 0) return null;
+            if (heap.Count == 0) return null!;
 
             float tempWeight;
             int tempIndex;
@@ -345,7 +345,7 @@ namespace Numerics.Mathematics.Optimization
 
                 return UpdatedPath;
             }
-            else return null;
+            else return null!;
         }
 
         public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
@@ -407,7 +407,7 @@ namespace Numerics.Mathematics.Optimization
             }
 
             //if n = 0 then no roads to escape to
-            if (heap.Count == 0) return null;
+            if (heap.Count == 0) return null!;
 
             float tempWeight;
             int tempIndex;

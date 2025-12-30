@@ -114,12 +114,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.DegreesOfFreedom, 10);
-            Assert.AreEqual(t.Noncentrality, 0);
+            Assert.AreEqual(10,t.DegreesOfFreedom );
+            Assert.AreEqual(0, t.Noncentrality);
 
             var t2 = new NoncentralT(1, 1);
-            Assert.AreEqual(t2.DegreesOfFreedom, 1);
-            Assert.AreEqual(t2.Noncentrality, 1);
+            Assert.AreEqual(1, t2.DegreesOfFreedom);
+            Assert.AreEqual(1, t2.Noncentrality);
         }
 
         /// <summary>
@@ -145,10 +145,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.ParametersToString[0, 0], "Degrees of Freedom (ν)");
-            Assert.AreEqual(t.ParametersToString[1, 0], "Noncentrality (μ)");
-            Assert.AreEqual(t.ParametersToString[0, 1], "10");
-            Assert.AreEqual(t.ParametersToString[1, 1], "0");
+            Assert.AreEqual("Degrees of Freedom (ν)", t.ParametersToString[0, 0]);
+            Assert.AreEqual("Noncentrality (μ)", t.ParametersToString[1, 0]);
+            Assert.AreEqual("10", t.ParametersToString[0, 1]);
+            Assert.AreEqual("0", t.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -158,10 +158,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.Mean, 0);
+            Assert.AreEqual(0, t.Mean);
 
             var t2 = new NoncentralT(0, 1);
-            Assert.AreEqual(t2.Mean, double.NaN);
+            Assert.AreEqual(double.NaN, t2.Mean);
         }
 
         /// <summary>
@@ -171,10 +171,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.Median, 0,1e-04);
+            Assert.AreEqual(0, t.Median, 1e-04);
 
             var t2 = new NoncentralT(1, 1);
-            Assert.AreEqual(t2.Median, 1.3202,1e-04);
+            Assert.AreEqual(1.3202, t2.Median, 1e-04);
         }
 
         /// <summary>
@@ -184,10 +184,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.Mode, 0, 1E-4);
+            Assert.AreEqual(0, t.Mode,  1E-4);
 
             var t3 = new NoncentralT(10, 1);
-            Assert.AreEqual(t3.Mode, 0.9329, 1e-04);
+            Assert.AreEqual(0.9329, t3.Mode, 1e-04);
         }
 
         /// <summary>
@@ -197,10 +197,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.StandardDeviation,1.1180,1e-04);
+            Assert.AreEqual(1.1180, t.StandardDeviation,1e-04);
 
             var t2 = new NoncentralT(1, 0);
-            Assert.AreEqual(t2.StandardDeviation, double.NaN);
+            Assert.AreEqual(double.NaN,t2.StandardDeviation);
         }
 
         /// <summary>
@@ -210,7 +210,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.Skewness, 0.0, 1E-4);
+            Assert.AreEqual(0.0, t.Skewness,  1E-4);
         }
 
         /// <summary>
@@ -220,7 +220,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.Kurtosis, 4.0, 1E-4);
+            Assert.AreEqual(4.0, t.Kurtosis,  1E-4);
         }
 
         /// <summary>
@@ -230,12 +230,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.Minimum,double.NegativeInfinity);
-            Assert.AreEqual(t.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity,t.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, t.Maximum);
 
             var t2 = new NoncentralT(1, 1);
-            Assert.AreEqual(t2.Minimum, double.NegativeInfinity);
-            Assert.AreEqual(t2.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity, t2.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, t2.Maximum);
         }
 
         /// <summary>
@@ -245,8 +245,8 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.PDF(0), 0.38910,1e-04);
-            Assert.AreEqual(t.PDF(1),0.23036,1e-04);
+            Assert.AreEqual(0.38910, t.PDF(0),1e-04);
+            Assert.AreEqual(0.23036, t.PDF(1),1e-04);
         }
 
         /// <summary>
@@ -256,7 +256,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.CDF(1), 0.82955,1e-04);
+            Assert.AreEqual(0.82955, t.CDF(1),1e-04);
         }
 
         /// <summary>
@@ -266,9 +266,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(t.InverseCDF(0), double.NegativeInfinity);
-            Assert.AreEqual(t.InverseCDF(1),double.PositiveInfinity);
-            Assert.AreEqual(t.InverseCDF(0.4), -0.26018,1e-04);
+            Assert.AreEqual(double.NegativeInfinity,t.InverseCDF(0) );
+            Assert.AreEqual(double.PositiveInfinity, t.InverseCDF(1));
+            Assert.AreEqual(-0.26018, t.InverseCDF(0.4), 1e-04);
         }
     }
 }

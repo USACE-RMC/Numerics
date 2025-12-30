@@ -152,14 +152,14 @@ namespace Numerics.Distributions
             Uniform
         }
 
-        private double[] _sampleData;
+        private double[] _sampleData = Array.Empty<double>();
         private double _bandwidth;
         private KernelType _kernelDistribution;
-        private IKernel _kernel;
+        private IKernel _kernel = null!;
         private bool _cdfCreated = false;
-        private OrderedPairedData opd;
+        private OrderedPairedData opd = null!;
         private double u1, u2, u3, u4;
-        private double[] _weights;     // one weight per sample (unnormalised)
+        private double[] _weights = null!;     // one weight per sample (unnormalised)
         private double _sumW = 1.0;  // Σ wᵢ   (defaults to 1 for un‑weighted case)
 
 
@@ -549,7 +549,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sample">Sample of data, no sorting is assumed.</param>
         /// <param name="w">A list of weights.</param>
-        public double BandwidthRule(IList<double> sample, IList<double> w = null)
+        public double BandwidthRule(IList<double> sample, IList<double> w = null!)
         {
             w ??= Enumerable.Repeat(1.0, sample.Count).ToArray();
             double m = w.Zip(sample, (wi, xi) => wi * xi).Sum() / w.Sum();
@@ -574,7 +574,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
         {
-            return null;
+            return null!;
         }
 
         /// <summary>
@@ -588,7 +588,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Bandwidth), "The bandwidth must be a positive number!");
                 return new ArgumentOutOfRangeException(nameof(Bandwidth), "The bandwidth must be a positive number!");
             }
-            return null;
+            return null!;
         }
 
         /// <summary>

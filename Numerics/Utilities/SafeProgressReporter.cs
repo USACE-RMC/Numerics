@@ -79,12 +79,12 @@ namespace Numerics.Utilities
         private double _previousProgress = -0.0000000000001d;
         private string _previousMessage = "";
         private MessageType _previousMessageType = MessageType.Status;
-        private Process _externalProcess;
+        private Process _externalProcess = null!;
         private List<SafeProgressReporter> _subProgReporterCollection = new List<SafeProgressReporter>();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         protected readonly SendOrPostCallback _invokeProgressHandlers;
         protected readonly SendOrPostCallback _invokeMessageHandlers;
-        protected SynchronizationContext _synchronizationContext;
+        protected SynchronizationContext? _synchronizationContext;
 
         /// <summary>
         /// Returns the most recent progress.
@@ -104,7 +104,7 @@ namespace Numerics.Utilities
         /// <summary>
         /// Returns the task name.
         /// </summary>
-        public string TaskName { get; private set; }
+        public string TaskName { get; private set; } = null!;
 
         /// <summary>
         /// Returns the most recent message type.
@@ -132,7 +132,7 @@ namespace Numerics.Utilities
         /// <summary>
         /// Event is raised when the progress is reported.
         /// </summary>
-        public event ProgressReportedEventHandler ProgressReported;
+        public event ProgressReportedEventHandler ProgressReported = null!;
 
         /// <summary>
         /// Delegate for handling progress reported events.
@@ -145,7 +145,7 @@ namespace Numerics.Utilities
         /// <summary>
         /// Event is raised when a message is reported.
         /// </summary>
-        public event MessageReportedEventHandler MessageReported;
+        public event MessageReportedEventHandler MessageReported = null!;
 
         /// <summary>
         /// Delegate for handling message reported events.
@@ -156,7 +156,7 @@ namespace Numerics.Utilities
         /// <summary>
         /// Event is raised when the task starts.
         /// </summary>
-        public event TaskStartedEventHandler TaskStarted;
+        public event TaskStartedEventHandler TaskStarted = null!;
 
         /// <summary>
         /// Delegate for handling task started events.
@@ -166,7 +166,7 @@ namespace Numerics.Utilities
         /// <summary>
         /// Event is raised when the task ended.
         /// </summary>
-        public event TaskEndedEventHandler TaskEnded;
+        public event TaskEndedEventHandler TaskEnded = null!;
 
         /// <summary>
         /// Delegate for handling task ended events.
@@ -176,7 +176,7 @@ namespace Numerics.Utilities
         /// <summary>
         /// Event is raised when a child reporter is created.
         /// </summary>
-        public event ChildReporterCreatedEventHandler ChildReporterCreated;
+        public event ChildReporterCreatedEventHandler ChildReporterCreated = null!;
 
         /// <summary>
         /// Delegate for handling child reporter created events.
@@ -287,9 +287,9 @@ namespace Numerics.Utilities
         /// Invokes the progress handlers.
         /// </summary>
         /// <param name="state">The object.</param>
-        private void InvokeProgressHandlers(object state)
+        private void InvokeProgressHandlers(object? state)
         {
-            double prog = ((double[])state)[0];
+            double prog = ((double[])state!)[0];
             double prevProg = ((double[])state)[1];
             if (prevProg < 0d)
                 prevProg = 0d;
@@ -301,9 +301,9 @@ namespace Numerics.Utilities
         /// Invokes the message handlers.
         /// </summary>
         /// <param name="state">The object.</param>
-        private void InvokeMessageHandlers(object state)
+        private void InvokeMessageHandlers(object? state)
         {
-            MessageContentStruct prog = (MessageContentStruct)state;
+            MessageContentStruct prog = (MessageContentStruct)state!;
             OnMessageReported(prog);
             MessageReported?.Invoke(prog);
         }
@@ -353,7 +353,7 @@ namespace Numerics.Utilities
             if (string.IsNullOrEmpty(subTaskName))
                 subTaskName = TaskName;
             var child = new SafeProgressReporter(subTaskName);
-            child.SetContext(_synchronizationContext);
+            child.SetContext(_synchronizationContext!);
             child._previousProgress = 0d;
             child.ProgressReported += (reporter, prog, progDelta) => ReportProgress(_previousProgress + progDelta * fractionOfTotal);
             child.MessageReported += msg => ReportMessage(msg);

@@ -83,21 +83,24 @@ namespace Numerics.Sampling
         public StratificationBin(XElement element)
         {
             // Get required data
-            if (element.Attribute(nameof(LowerBound)) != null)
+            var lowerBoundAttr = element.Attribute(nameof(LowerBound));
+            if (lowerBoundAttr != null)
             {
-                double.TryParse(element.Attribute(nameof(LowerBound)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var lower);
+                double.TryParse(lowerBoundAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var lower);
                 LowerBound = lower;
             }
 
-            if (element.Attribute(nameof(UpperBound)) != null)
+            var upperBoundAttr = element.Attribute(nameof(UpperBound));
+            if (upperBoundAttr != null)
             {
-                double.TryParse(element.Attribute(nameof(UpperBound)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var upper);
+                double.TryParse(upperBoundAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var upper);
                 UpperBound = upper;
             }
 
-            if (element.Attribute(nameof(Weight)) != null)
+            var weightAttr = element.Attribute(nameof(Weight));
+            if (weightAttr != null)
             {
-                double.TryParse(element.Attribute(nameof(Weight)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight);
+                double.TryParse(weightAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight);
                 Weight = weight;
             }
         }
@@ -142,8 +145,11 @@ namespace Numerics.Sampling
         /// +1 if this bin is lower than the compared bin.
         /// -1 otherwise.
         /// </returns>
-        public int CompareTo(StratificationBin other)
+        public int CompareTo(StratificationBin? other)
         {
+            if (other == null)
+                throw new ArgumentNullException(nameof(other), "The stratification bin to compare to cannot be null.");
+
             if (UpperBound > other.LowerBound && LowerBound < other.UpperBound)
                 throw new ArgumentException("The bins cannot be overlapping.", nameof(other));
 
@@ -164,7 +170,7 @@ namespace Numerics.Sampling
         /// <summary>
         /// Checks whether two stratification bins are equal.
         /// </summary>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (!(obj is StratificationBin))
                 return false;

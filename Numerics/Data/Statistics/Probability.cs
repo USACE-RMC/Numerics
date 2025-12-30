@@ -184,7 +184,7 @@ namespace Numerics.Data.Statistics
         /// <param name="correlationMatrix">The correlation matrix defining the dependency. Default = null.</param>
         /// <param name="dependency">The dependency type. Default = Correlation matrix.</param>
         /// <returns>The joint probability.</returns>
-        public static double JointProbability(IList<double> probabilities, int[] indicators, double[,] correlationMatrix = null, DependencyType dependency = DependencyType.CorrelationMatrix)
+        public static double JointProbability(IList<double> probabilities, int[] indicators, double[,]? correlationMatrix = null, DependencyType dependency = DependencyType.CorrelationMatrix)
         {
             if (dependency == DependencyType.CorrelationMatrix && correlationMatrix != null)
             {
@@ -312,7 +312,7 @@ namespace Numerics.Data.Statistics
         /// <remarks>
         /// This method utilizes a modified version of Pandey's PCM method.
         /// </remarks>
-        public static double JointProbabilityHPCM(IList<double> probabilities, int[] indicators, double[,] correlationMatrix, double[] conditionalProbabilities = null)
+        public static double JointProbabilityHPCM(IList<double> probabilities, int[] indicators, double[,] correlationMatrix, double[]? conditionalProbabilities = null)
         {
             // Validation Checks
             if (probabilities == null || probabilities.Count == 0)
@@ -431,7 +431,7 @@ namespace Numerics.Data.Statistics
         /// <returns>
         /// The joint probability of the events, adjusted for dependencies as defined by the correlation matrix. The return value is between 0 and 1.
         /// </returns>
-        public static double JointProbabilityPCM(IList<double> probabilities, int[] indicators, double[,] correlationMatrix, double[] conditionalProbabilities = null)
+        public static double JointProbabilityPCM(IList<double> probabilities, int[] indicators, double[,] correlationMatrix, double[]? conditionalProbabilities = null)
         {
             // Validation Checks
             if (probabilities == null || probabilities.Count == 0)
@@ -1899,7 +1899,7 @@ namespace Numerics.Data.Statistics
         /// <param name="correlationMatrix">The correlation matrix defining the dependency.</param>
         /// <param name="dependency">The dependency type. Default = Correlation matrix.</param>
         /// <returns>The common cause adjustment factor.</returns>
-        public static double CommonCauseAdjustment(IList<double> probabilities, double[,] correlationMatrix = null, DependencyType dependency = DependencyType.CorrelationMatrix)
+        public static double CommonCauseAdjustment(IList<double> probabilities, double[,]? correlationMatrix = null, DependencyType dependency = DependencyType.CorrelationMatrix)
         {
             // Validation Checks
             if (probabilities == null || probabilities.Count == 0)

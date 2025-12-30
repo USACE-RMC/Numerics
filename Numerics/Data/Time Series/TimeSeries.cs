@@ -141,20 +141,32 @@ namespace Numerics.Data
         public TimeSeries(XElement xElement)
         {
             // Get time interval
-            if (xElement.Attribute(nameof(TimeInterval)) != null)
-                Enum.TryParse(xElement.Attribute(nameof(TimeInterval)).Value, out _timeInterval);
+            var timeIntervalAttr = xElement.Attribute(nameof(TimeInterval));
+            if (timeIntervalAttr != null)
+                Enum.TryParse(timeIntervalAttr.Value, out _timeInterval);
 
             // Get Ordinates
             foreach (XElement ordinate in xElement.Elements("SeriesOrdinate"))
             {
                 // Try to parse the invariant date string using TryParseExact
                 // If it fails, do a regular try parse.
-                DateTime index;
-                if (!DateTime.TryParseExact(ordinate.Attribute("Index").Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
+                DateTime index = default;
+                var ordAttr = ordinate.Attribute("Index");
+                if (ordAttr != null)
                 {
-                    DateTime.TryParse(ordinate.Attribute("Index").Value, out index);
+                    if (!DateTime.TryParseExact(ordAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
+                    {
+                        DateTime.TryParse(ordAttr.Value, out index);
+                    }
                 }
-                double.TryParse(ordinate.Attribute("Value").Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var value);
+
+                double value = 0.0;
+                var ordVal = ordinate.Attribute("Value");
+                if (ordVal != null)
+                {
+                    double.TryParse(ordVal.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
+                }
+                
                 Add(new SeriesOrdinate<DateTime, double>(index, value));
             }
         }
@@ -1115,7 +1127,7 @@ namespace Numerics.Data
         /// <param name="timeInterval">The new time interval.</param>
         /// <param name="average">Optional. Determines if values should be averaged (true) or cumulated (false) for larger time steps. Default = true.</param>
         /// <returns>A new TimeSeries object with the new interval.</returns>
-        public TimeSeries ConvertTimeInterval(TimeInterval timeInterval, bool average = true)
+        public TimeSeries? ConvertTimeInterval(TimeInterval timeInterval, bool average = true)
         {
             var TS = TimeSeries.TimeIntervalInHours(TimeInterval); // The time step in hours
             var newTS = TimeSeries.TimeIntervalInHours(timeInterval); // The new time step in hours
@@ -1467,7 +1479,7 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = null;
+            TimeSeries? smoothedSeries = null;
             if (smoothingFunction == SmoothingFunctionType.None)
             {
                 smoothedSeries = Clone();
@@ -1486,6 +1498,7 @@ namespace Numerics.Data
             }
 
             // Then, perform block function
+            if (smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
                 var blockData = smoothedSeries.Where(x => x.Index.Year == i).ToList();
@@ -1561,7 +1574,7 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = null;
+            TimeSeries? smoothedSeries = null;
             if (smoothingFunction == SmoothingFunctionType.None)
             {
                 smoothedSeries = Clone();
@@ -1580,6 +1593,7 @@ namespace Numerics.Data
             }
 
             // Then, shift the dates
+            if( smoothedSeries == null) return result;
             int shift = startMonth != 1 ? 12 - startMonth + 1 : 0;
             smoothedSeries = startMonth != 1 ? smoothedSeries.ShiftDatesByMonth(shift) : smoothedSeries;
 
@@ -1667,7 +1681,7 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = null;
+            TimeSeries? smoothedSeries = null;
             if (smoothingFunction == SmoothingFunctionType.None)
             {
                 smoothedSeries = Clone();
@@ -1686,6 +1700,7 @@ namespace Numerics.Data
             }
 
             // Then, perform block function
+            if(smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1779,7 +1794,7 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries smoothedSeries = null;
+            TimeSeries? smoothedSeries = null;
             if (smoothingFunction == SmoothingFunctionType.None)
             {
                 smoothedSeries = Clone();
@@ -1797,6 +1812,7 @@ namespace Numerics.Data
                 smoothedSeries = Difference(period);
             }
 
+            if(smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1875,7 +1891,7 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries smoothedSeries = null;
+            TimeSeries? smoothedSeries = null;
             if (smoothingFunction == SmoothingFunctionType.None)
             {
                 smoothedSeries = Clone();
@@ -1893,6 +1909,7 @@ namespace Numerics.Data
                 smoothedSeries = Difference(period);
             }
 
+            if (smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1987,7 +2004,7 @@ namespace Numerics.Data
         public TimeSeries PeaksOverThresholdSeries(double threshold, int minStepsBetweenEvents = 1, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             // Create smoothed time series
-            TimeSeries smoothedSeries = null;
+            TimeSeries? smoothedSeries = null;
             if (smoothingFunction == SmoothingFunctionType.None)
             {
                 smoothedSeries = Clone();
@@ -2009,6 +2026,7 @@ namespace Numerics.Data
             int i = 0, idx, idxMax;
             var clusters = new List<int[]>();
 
+            if(smoothedSeries == null) return new TimeSeries(TimeInterval.Irregular);
             while (i < smoothedSeries.Count)
             {
                 if (!double.IsNaN(smoothedSeries[i].Value) && smoothedSeries[i].Value > threshold)

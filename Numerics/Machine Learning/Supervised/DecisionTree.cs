@@ -456,7 +456,7 @@ namespace Numerics.MachineLearning
         /// <param name="X">The matrix of predictors.</param>
         public double[] Predict(Matrix X)
         {
-            if (!IsTrained || X.NumberOfColumns != Dimensions) return null;
+            if (!IsTrained || X.NumberOfColumns != Dimensions) return null!;
             var result = new double[X.NumberOfRows];
             for (int i = 0; i < X.NumberOfRows; i++)
             {

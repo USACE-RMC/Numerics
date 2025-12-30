@@ -81,7 +81,7 @@ namespace Numerics.Distributions
                                           double maxProbability = 1 - 1e-9,
                                           bool recordParameterSets = false)
         {
-            if (parentDistribution == null)
+            if (parentDistribution == null!)
                 throw new ArgumentNullException(nameof(parentDistribution));
             if (sampledDistributions == null || sampledDistributions.Length == 0)
                 throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
@@ -106,27 +106,27 @@ namespace Numerics.Distributions
         /// <summary>
         /// The parent probability distribution.
         /// </summary>
-        public UnivariateDistributionBase ParentDistribution { get; set; }
+        public UnivariateDistributionBase ParentDistribution { get; set; } = null!;
 
         /// <summary>
         /// The array of parameter sets.
         /// </summary>
-        public ParameterSet[] ParameterSets { get; set; }
+        public ParameterSet[] ParameterSets { get; set; } = null!;
 
         /// <summary>
         /// The confidence intervals. 
         /// </summary>
-        public double[,] ConfidenceIntervals { get; set; }
+        public double[,] ConfidenceIntervals { get; set; } = null!;
 
         /// <summary>
         /// The mode (or computed) curve from the parent distribution. 
         /// </summary>
-        public double[] ModeCurve { get; set; }
+        public double[] ModeCurve { get; set; } = null!;
 
         /// <summary>
         /// The mean (or predictive) curve. 
         /// </summary>
-        public double[] MeanCurve { get; set; }
+        public double[] MeanCurve { get; set; } = null!;
 
         /// <summary>
         /// Gets or sets the Akaike information criteria (AIC) of the fit.
@@ -189,7 +189,8 @@ namespace Numerics.Distributions
                 options.Converters.Add(new Double2DArrayConverter());
                 options.Converters.Add(new String2DArrayConverter());
                 options.Converters.Add(new UnivariateDistributionConverter());
-                return JsonSerializer.Deserialize<UncertaintyAnalysisResults>(bytes, options);
+                var result = JsonSerializer.Deserialize<UncertaintyAnalysisResults>(bytes, options);
+                return result ?? FromByteArrayLegacy(bytes);
             }
             catch (Exception)
             {
@@ -226,7 +227,7 @@ namespace Numerics.Distributions
                 // If there is an error, just catch it and force the user to rerun the
                 // uncertainty analysis. 
             }
-            return null;
+            return null!;
         }
 
         /// <summary>
@@ -235,7 +236,7 @@ namespace Numerics.Distributions
         public XElement ToXElement()
         {
             var result = new XElement(nameof(UncertaintyAnalysisResults));         
-            if (ParentDistribution != null) result.Add(ParentDistribution.ToXElement());
+            if (ParentDistribution != null!) result.Add(ParentDistribution.ToXElement());
             result.SetAttributeValue(nameof(AIC), AIC.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(BIC), BIC.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(DIC), DIC.ToString("G17", CultureInfo.InvariantCulture));
@@ -268,44 +269,62 @@ namespace Numerics.Distributions
         {
             var ua = new UncertaintyAnalysisResults();    
             // Parent distribution
-            if (xElement.Element("Distribution") != null)
-                ua.ParentDistribution = UnivariateDistributionFactory.CreateDistribution(xElement.Element("Distribution"));
+            var distElement = xElement.Element("Distribution");
+            if (distElement != null)
+            {
+                var parentDist = UnivariateDistributionFactory.CreateDistribution(distElement);
+                if (parentDist is not null)
+                {
+                    ua.ParentDistribution = parentDist;
+                }
+                else
+                {
+                    throw new InvalidDataException("Unable to deserialize parent distribution from XElement.");
+                }    
+            }
+                
 
             // AIC
-            if (xElement.Attribute(nameof(AIC)) != null)
+            var aicElement = xElement.Attribute(nameof(AIC));
+            if (aicElement != null)
             {
-                double.TryParse(xElement.Attribute(nameof(AIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var aic);
+                double.TryParse(aicElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var aic);
                 ua.AIC = aic;
             }
             // BIC
-            if (xElement.Attribute(nameof(BIC)) != null)
+            var bicElement = xElement.Attribute(nameof(BIC));
+            if (bicElement != null)
             {
-                double.TryParse(xElement.Attribute(nameof(BIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var bic);
+                double.TryParse(bicElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var bic);
                 ua.BIC = bic;
             }
             // DIC
-            if (xElement.Attribute(nameof(DIC)) != null)
+            var dicElement = xElement.Attribute(nameof(DIC));
+            if (dicElement != null)
             {
-                double.TryParse(xElement.Attribute(nameof(DIC)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var dic);
+                double.TryParse(dicElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var dic);
                 ua.DIC = dic;
             }
             // RMSE
-            if (xElement.Attribute(nameof(RMSE)) != null)
+            var rmseElement = xElement.Attribute(nameof(RMSE));
+            if (rmseElement != null)
             {
-                double.TryParse(xElement.Attribute(nameof(RMSE)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var rmse);
+                double.TryParse(rmseElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var rmse);
                 ua.RMSE = rmse;
             }
             // ERL
-            if (xElement.Attribute(nameof(ERL)) != null)
+            var erlElement = xElement.Attribute(nameof(ERL));
+            if (erlElement != null)
             {
-                double.TryParse(xElement.Attribute(nameof(ERL)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var erl);
+                double.TryParse(erlElement.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var erl);
                 ua.ERL = erl;
             }
 
             // Mode Curve
-            if (xElement.Attribute(nameof(ua.ModeCurve)) != null)
+            var modeAttr = xElement.Attribute(nameof(ua.ModeCurve));
+            if (modeAttr != null)
             {
-                var vals = xElement.Attribute(nameof(ua.ModeCurve)).Value.Split('|');
+                var vals = modeAttr.Value.Split('|');
                 if (vals.Length > 0)
                 {
                     ua.ModeCurve = new double[vals.Length];
@@ -316,9 +335,10 @@ namespace Numerics.Distributions
                 }
             }
             // Mean Curve
-            if (xElement.Attribute(nameof(ua.MeanCurve)) != null)
+            var meanAttr = xElement.Attribute(nameof(ua.MeanCurve));
+            if (meanAttr != null)
             {
-                var vals = xElement.Attribute(nameof(ua.MeanCurve)).Value.Split('|');
+                var vals = meanAttr.Value.Split('|');
                 if (vals.Length > 0)
                 {
                     ua.MeanCurve = new double[vals.Length];
@@ -329,9 +349,10 @@ namespace Numerics.Distributions
                 }
             }
             // Confidence Intervals
-            if (xElement.Attribute(nameof(ua.ConfidenceIntervals)) != null)
+            var ciAttr = xElement.Attribute(nameof(ua.ConfidenceIntervals));
+            if (ciAttr != null)
             {
-                var vals = xElement.Attribute(nameof(ua.ConfidenceIntervals)).Value.Split('|');
+                var vals = ciAttr.Value.Split('|');
                 if (vals.Length > 0)
                 {
                     ua.ConfidenceIntervals = new double[vals.Length, vals[0].Split(',').Length];
@@ -355,7 +376,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">Array of non-exceedance probabilities.</param>
         public void ProcessModeCurve(UnivariateDistributionBase parentDistribution, double[] probabilities)
         {
-            if (parentDistribution == null)
+            if (parentDistribution == null!)
                 throw new ArgumentNullException(nameof(parentDistribution));
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
@@ -442,7 +463,7 @@ namespace Numerics.Distributions
 
             Parallel.For(0, B, j =>
             {
-                if (sampledDistributions[j] != null)
+                if (sampledDistributions[j] != null!)
                 {
                     var innerMin = sampledDistributions[j].InverseCDF(minProbability);
                     var innerMax = sampledDistributions[j].InverseCDF(maxProbability);
@@ -478,7 +499,7 @@ namespace Numerics.Distributions
                 double total = 0d;
                 Parallel.For(0, B, () => 0d, (j, loop, sum) =>
                 {
-                    if (sampledDistributions[j] != null)
+                    if (sampledDistributions[j] != null!)
                     {
                         sum += sampledDistributions[j].CDF(quantiles[i]);
                     }
@@ -530,7 +551,7 @@ namespace Numerics.Distributions
 
             Parallel.For(0, B, idx =>
             {
-                if (sampledDistributions[idx] != null)
+                if (sampledDistributions[idx] != null!)
                 {
                     ParameterSets[idx] = new ParameterSet(sampledDistributions[idx].GetParameters, double.NaN);
                 }

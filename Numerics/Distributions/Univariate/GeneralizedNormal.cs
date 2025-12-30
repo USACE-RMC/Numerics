@@ -368,7 +368,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Kappa), "The shape parameter κ (kappa) must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Kappa), "The shape parameter κ (kappa) must be a number.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

@@ -238,7 +238,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Probability), "The point value must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Probability), "The point value must be a number.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

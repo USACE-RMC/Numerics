@@ -35,6 +35,7 @@ using System.Collections.Specialized;
 using System.Data;
 using System.Linq;
 using System.Xml.Linq;
+using System.Xml.Serialization;
 using Numerics.Distributions;
 
 namespace Numerics.Data
@@ -102,10 +103,10 @@ namespace Numerics.Data
         private bool _strictY;
         private SortOrder _orderX;
         private SortOrder _orderY;
-        private List<Ordinate> _ordinates;
+        private readonly List<Ordinate> _ordinates;
 
         /// <inheritdoc/>
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         /// <summary>
         /// Represents if the paired dataset has valid ordinates and order.
@@ -265,20 +266,24 @@ namespace Numerics.Data
         {
             // Get Strictness
             bool strict = false;
-            if (el.Attribute(nameof(StrictX)) != null) { bool.TryParse(el.Attribute(nameof(StrictX)).Value, out strict); }
+            var strictXAttr = el.Attribute(nameof(StrictX));
+            if (strictXAttr != null) { bool.TryParse(strictXAttr.Value, out strict); }
             StrictX = strict;
 
             strict = false;
-            if (el.Attribute(nameof(StrictY)) != null) { bool.TryParse(el.Attribute(nameof(StrictY)).Value, out strict); }
+            var strictYAttr = el.Attribute(nameof(StrictY));
+            if (strictYAttr != null) { bool.TryParse(strictYAttr.Value, out strict); }
             StrictY = strict;
 
             // Get Order
             SortOrder order = SortOrder.None;
-            if (el.Attribute(nameof(OrderX)) != null) { Enum.TryParse(el.Attribute(nameof(OrderX)).Value, out order); }
+            var orderXAttr = el.Attribute(nameof(OrderX));
+            if (orderXAttr != null) { Enum.TryParse(orderXAttr.Value, out order); }
             OrderX = order;
 
             order = SortOrder.None;
-            if (el.Attribute(nameof(OrderY)) != null) { Enum.TryParse(el.Attribute(nameof(OrderY)).Value, out order); }
+            var orderYAttr = el.Attribute(nameof(OrderY));
+            if (orderYAttr != null) { Enum.TryParse(orderYAttr.Value, out order); }
             OrderY = order;
 
             // Ordinates
@@ -612,7 +617,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is OrderedPairedData other)
             {
@@ -1432,15 +1437,14 @@ namespace Numerics.Data
         /// and number of points in the search region.</returns>
         public OrderedPairedData LangSimplify(double tolerance, int lookAhead)
         {
-            if (_ordinates == null | lookAhead <= 1 | tolerance <= 0)
-                return this;
+            if (lookAhead <= 1 | tolerance <= 0) { return this; }
 
             List<Ordinate> ordinates = new List<Ordinate>();
 
             int count = _ordinates.Count;
             int offset;
-            if (lookAhead > count - 1)
-                lookAhead = count - 1;
+            if (lookAhead > count - 1) { lookAhead = count - 1; }
+
             ordinates.Add(_ordinates[0]);
 
             for (int i = 0; i < count; i++)

@@ -118,7 +118,7 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The list of estimated parameter values.
         /// </summary>
-        public double[] Parameters { get; private set; }
+        public double[] Parameters { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// The list of the estimated parameter names. 
@@ -128,27 +128,27 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The list of the estimated parameter standard errors. 
         /// </summary>
-        public double[] ParameterStandardErrors { get; private set; }
+        public double[] ParameterStandardErrors { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// The list of the estimated parameter z-scores.
         /// </summary>
-        public double[] ParameterZScores { get; private set; }
+        public double[] ParameterZScores { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// The list of the estimated parameter p-values.
         /// </summary>
-        public double[] ParameterPValues { get; private set; }
+        public double[] ParameterPValues { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// The estimate parameter covariance matrix. 
         /// </summary>
-        public Matrix Covariance { get; private set; }
+        public Matrix Covariance { get; private set; } = new Matrix(1, 1);
 
         /// <summary>
         /// The residuals of the fitted linear model. 
         /// </summary>
-        public double[] Residuals { get; private set; }
+        public double[] Residuals { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// The model standard error.
@@ -188,7 +188,7 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Gets the optimizer used to train the model. Default = Nelder-Mead.
         /// </summary>
-        public Optimizer Optimizer { get; private set; }
+        public Optimizer Optimizer { get; private set; } = null!;
 
         /// <summary>
         /// Gets the link function type. 

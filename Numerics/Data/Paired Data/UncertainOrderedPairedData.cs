@@ -32,6 +32,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Data;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
@@ -171,7 +172,7 @@ namespace Numerics.Data
         /// <summary>
         /// Handles the event of CollectionChanged
         /// </summary>
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         #endregion
 
@@ -243,7 +244,12 @@ namespace Numerics.Data
             _orderY = yOrder;
             _uncertainOrdinates = new List<UncertainOrdinate>(data.Count);
             for (int i = 0; i < data.Count; i++)
-                _uncertainOrdinates.Add(new UncertainOrdinate(data[i].X, data[i].Y.Clone()));
+            {
+                var o = data[i];
+                UnivariateDistributionBase? yValue = o.Y?.Clone();
+                if (yValue is not null) { _uncertainOrdinates.Add(new UncertainOrdinate(o.X, yValue)); }
+            }
+    
             Validate();
         }
 
@@ -266,8 +272,12 @@ namespace Numerics.Data
             _orderY = yOrder;
             _uncertainOrdinates = new List<UncertainOrdinate>(data.Count);
             for (int i = 0; i < data.Count; i++)
-                _uncertainOrdinates.Add(new UncertainOrdinate(data[i].X, data[i].Y.Clone()));
-
+            {
+                var o = data[i];
+                UnivariateDistributionBase? yValue = o.Y?.Clone();
+                if (yValue is not null) { _uncertainOrdinates.Add(new UncertainOrdinate(o.X, yValue)); }
+            }
+                
             _isValid = dataValid;
         }
 
@@ -277,34 +287,44 @@ namespace Numerics.Data
         /// <param name="el">The XElement the UncertainOrderPairedData object is being created from.</param>
         public UncertainOrderedPairedData(XElement el)
         {
+            var strictX = el.Attribute("X_Strict");
             // Get Order
-            if (el.Attribute("X_Strict") != null)
-                bool.TryParse(el.Attribute("X_Strict").Value, out _strictX);
-            if (el.Attribute("Y_Strict") != null)
-                bool.TryParse(el.Attribute("Y_Strict").Value, out _strictY);
+            if (strictX != null) { bool.TryParse(strictX.Value, out _strictX); }
+
+            var strictY = el.Attribute("Y_Strict");
+            if (strictY != null) { bool.TryParse(strictY.Value, out _strictY); }
+
             // Get Strictness
-            if (el.Attribute("X_Order") != null)
-                Enum.TryParse(el.Attribute("X_Order").Value, out _orderX);
-            if (el.Attribute("Y_Order") != null)
-                Enum.TryParse(el.Attribute("Y_Order").Value, out _orderY);
+            var orderX = el.Attribute("X_Order");
+            if (orderX != null) { Enum.TryParse(orderX.Value, out _orderX); }
+
+            var orderY = el.Attribute("Y_Order");
+            if (orderY != null) { Enum.TryParse(orderY.Value, out _orderY); }
+
             // Distribution type
             Distribution = UnivariateDistributionType.Deterministic;
-            if (el.Attribute("Distribution") != null)
+            var distributionAttr = el.Attribute("Distribution");
+            if (distributionAttr != null)
             {
                 var argresult = Distribution;
-                Enum.TryParse(el.Attribute("Distribution").Value, out argresult);
+                Enum.TryParse(distributionAttr.Value, out argresult);
                 Distribution = argresult;
             }
             // new prop
-
-            if (el.Attribute(nameof(AllowDifferentDistributionTypes)) != null)
+            var allowDiffAtr = el.Attribute(nameof(AllowDifferentDistributionTypes));
+            if (allowDiffAtr != null)
             {
-                bool.TryParse(el.Attribute(nameof(AllowDifferentDistributionTypes)).Value, out _allowDifferentDistributionTypes);
+                bool.TryParse(allowDiffAtr.Value, out _allowDifferentDistributionTypes);
                 // Get Ordinates
                 var curveEl = el.Element("Ordinates");
                 _uncertainOrdinates = new List<UncertainOrdinate>();
-                foreach (XElement ord in curveEl.Elements(nameof(UncertainOrdinate)))
-                    _uncertainOrdinates.Add(new UncertainOrdinate(ord));
+
+                if (curveEl != null)
+                {
+                    foreach (XElement ord in curveEl.Elements(nameof(UncertainOrdinate)))
+                        _uncertainOrdinates.Add(new UncertainOrdinate(ord));
+                }
+               
             }
             else
             {
@@ -315,15 +335,19 @@ namespace Numerics.Data
                 {
                     foreach (XElement o in curveEl.Elements("Ordinate"))
                     {
-                        double.TryParse(o.Attribute("X").Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var xout);
-                        xData.Add(xout);
+                        var xAttr = o.Attribute("X");
+                        if ( xAttr != null && double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var xout)) { xData.Add(xout); }
+                        else { xData.Add(0.0); }
+
                         var dist = UnivariateDistributionFactory.CreateDistribution(Distribution);
                         var props = dist.GetParameterPropertyNames;
                         var paramVals = new double[(props.Count())];
+
                         for (int i = 0; i < props.Count(); i++)
                         {
-                            double.TryParse(o.Attribute(props[i]).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result);
-                            paramVals[i] = result;
+                            var pAttr = o.Attribute(props[i]);
+                            if ( pAttr != null && double.TryParse(pAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)) { paramVals[i] = result; }
+                            else { paramVals[i] = 0.0; }
                         }
 
                         dist.SetParameters(paramVals);
@@ -488,7 +512,14 @@ namespace Numerics.Data
             {
                 if (left._uncertainOrdinates[i].X != right._uncertainOrdinates[i].X)
                     return false;
-                if (left._uncertainOrdinates[i].Y == right._uncertainOrdinates[i].Y == false)
+
+                var leftY = left._uncertainOrdinates[i].Y;
+                var rightY = right._uncertainOrdinates[i].Y;
+                if (leftY is null && rightY is null)
+                    continue;
+                if (leftY is null || rightY is null)
+                    return false;
+                if (!leftY.Equals(rightY))
                     return false;
             }
             return true;
@@ -510,7 +541,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is UncertainOrderedPairedData other)
             {

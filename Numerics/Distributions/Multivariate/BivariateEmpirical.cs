@@ -60,6 +60,9 @@ namespace Numerics.Distributions
             X1Transform = x1Transform;
             X2Transform = x2Transform;
             ProbabilityTransform = probabilityTransform;
+            X1Values = Array.Empty<double>();
+            X2Values = Array.Empty<double>();
+            ProbabilityValues = new double[0, 0];
         }
 
         /// <summary>
@@ -84,26 +87,26 @@ namespace Numerics.Distributions
         // ...
         // X1n P(n,1)   P(n,n)        
 
-        private Bilinear bilinear = null;
+        private Bilinear? bilinear = null;
         private bool _parametersValid = true;
 
         /// <summary>
         /// Return the array of X1 values (distribution 1). Points On the cumulative curve are specified
         /// with increasing value and increasing probability.
         /// </summary>
-        public double[] X1Values { get; private set; }
+        public double[] X1Values { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// Return the array of X2 values (distribution 2). Points on the cumulative curve are specified
         /// with increasing value and increasing probability.
         /// </summary>
-        public double[] X2Values { get; private set; }
+        public double[] X2Values { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// Return the array of probability values. Points on the cumulative curve are specified
         /// with increasing value and increasing probability.
         /// </summary>
-        public double[,] ProbabilityValues { get; private set; }
+        public double[,] ProbabilityValues { get; private set; } = new double[0, 0];
 
         /// <summary>
         /// Determines the interpolation transform for the X1-values.
@@ -183,7 +186,7 @@ namespace Numerics.Distributions
         /// <param name="x2Values">Array of X2 values. The X2-values represent the secondary values. There are columns in the table of probability values.</param>
         /// <param name="pValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(IList<double> x1Values, IList<double> x2Values, double[,] pValues, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(IList<double> x1Values, IList<double> x2Values, double[,] pValues, bool throwException)
         {
 
             if (x1Values.Count < 2)

@@ -235,7 +235,7 @@ namespace Numerics.Mathematics.Optimization
             /// The velocity determines how the particle moves through the search space.
             /// It is updated based on the particle's personal best and the global best.
             /// </remarks>
-            public double[] Velocity { get; set; }
+            public double[] Velocity { get; set; } = null!;
         }
     }
 }

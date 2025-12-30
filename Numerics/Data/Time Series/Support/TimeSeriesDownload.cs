@@ -403,7 +403,7 @@ namespace Numerics.Data
                         using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
                         using (StreamReader reader = new StreamReader(decompressionStream))
                         {
-                            string line;
+                            string? line;
                             bool isHeader = true;
 
                             while ((line = await reader.ReadLineAsync()) != null)
@@ -770,7 +770,7 @@ namespace Numerics.Data
                 $"&station_no={Uri.EscapeDataString(stationNumber)}" +
                 $"&parametertype_name={Uri.EscapeDataString(parameterType)}";
 
-            string tsId = null;
+            string? tsId = null;
 
             // Create HttpClientHandler with automatic decompression
             var handler = new HttpClientHandler
@@ -840,7 +840,7 @@ namespace Numerics.Data
 
                 for (int i = 0; i < headers.GetArrayLength(); i++)
                 {
-                    string header = headers[i].GetString();
+                    string? header = headers[i].GetString();
                     if (header == "ts_id") tsIdIndex = i;
                     if (header == "ts_name") tsNameIndex = i;
                 }
@@ -852,8 +852,9 @@ namespace Numerics.Data
                 for (int i = 1; i < root.GetArrayLength(); i++)
                 {
                     var row = root[i];
-                    string tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() : "";
+                    string? tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() : "";
 
+                    if (tsName == null) continue;
                     // Prioritize: DMQaQc.Merged.DailyMean.24HR or similar daily mean series
                     if (tsName.Contains("DailyMean") || tsName.Contains("Daily Mean"))
                     {
@@ -940,7 +941,7 @@ namespace Numerics.Data
                     if (point.GetArrayLength() < 2) continue;
 
                     // Parse timestamp
-                    string timestampStr = point[0].GetString();
+                    string? timestampStr = point[0].GetString();
                     if (!DateTime.TryParse(timestampStr, out DateTime date))
                         continue;
 

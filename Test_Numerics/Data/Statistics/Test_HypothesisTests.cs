@@ -80,7 +80,7 @@ namespace Data.Statistics
             Assert.AreEqual(p, true_p, 1E-4);
 
             var t = HypothesisTests.OneSampleTtest(new double[] { 23, 15, -5, 7, 1, -10, 12, -8, 20, 8, -2, -5 });
-            Assert.AreEqual(t, 0.087585 * 2, 1E-6);
+            Assert.AreEqual(0.087585 * 2, t,  1E-6);
         }
 
         /// <summary>
@@ -187,7 +187,7 @@ namespace Data.Statistics
 
             // known example
             var JB = HypothesisTests.JarqueBeraTest(new double[] { 4, 5, 5, 6, 9, 12, 13, 14, 14, 19, 22, 24, 25 });
-            Assert.AreEqual(JB, 0.592128, 1E-6);
+            Assert.AreEqual(0.592128, JB, 1E-6);
         }
 
 

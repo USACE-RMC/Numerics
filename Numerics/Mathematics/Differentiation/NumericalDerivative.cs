@@ -427,8 +427,8 @@ namespace Numerics.Mathematics
         public static double[,] Jacobian(
             Func<double[], double[]> g,
             double[] theta,
-            double[] lowerBounds = null,
-            double[] upperBounds = null,
+            double[] lowerBounds = null!,
+            double[] upperBounds = null!,
             double relStep = 1e-5,
             double absStep = 1e-7,
             int maxBacktrack = 5)
@@ -619,8 +619,8 @@ namespace Numerics.Mathematics
         public static double[] Gradient(
             Func<double[], double> f,
             double[] theta,
-            double[] lowerBounds = null,
-            double[] upperBounds = null,
+            double[] lowerBounds = null!,
+            double[] upperBounds = null!,
             double relStep = 1e-5,
             double absStep = 1e-7,
             int maxBacktrack = 5)
@@ -798,8 +798,8 @@ namespace Numerics.Mathematics
         public static double[,] Hessian(
             Func<double[], double> f,
             double[] theta,
-            double[] lowerBounds = null,
-            double[] upperBounds = null,
+            double[] lowerBounds = null!,
+            double[] upperBounds = null!,
             double relStep = 1e-4,
             double absStep = 1e-6,
             int maxBacktrack = 6)

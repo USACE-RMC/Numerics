@@ -82,8 +82,8 @@ namespace Distributions.Univariate
             double u2 = norm.Sigma;
             double true_u1 = 12665d;
             double true_u2 = 4710d;
-            Assert.AreEqual((u1 - true_u1) / true_u1 < 0.01d, true);
-            Assert.AreEqual((u2 - true_u2) / true_u2 < 0.01d, true);
+            Assert.IsLessThan(0.01d,(u1 - true_u1) / true_u1);
+            Assert.IsLessThan(0.01d,(u2 - true_u2) / true_u2 );
 
         }
 
@@ -104,10 +104,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(u1, true_u1, 0.0001d);
             Assert.AreEqual(u2, true_u2, 0.0001d);
             var lmom = norm.LinearMomentsFromParameters(norm.GetParameters);
-            Assert.AreEqual(lmom[0], 9.9575163d, 0.0001d);
-            Assert.AreEqual(lmom[1], 1.9822411d, 0.0001d);
-            Assert.AreEqual(lmom[2], 0.0000000d, 0.0001d);
-            Assert.AreEqual(lmom[3], 0.1226017d, 0.0001d);
+            Assert.AreEqual(9.9575163d, lmom[0],  0.0001d);
+            Assert.AreEqual(1.9822411d, lmom[1], 0.0001d);
+            Assert.AreEqual(0.0000000d, lmom[2], 0.0001d);
+            Assert.AreEqual(0.1226017d, lmom[3], 0.0001d);
         }
 
         /// <summary>
@@ -148,10 +148,10 @@ namespace Distributions.Univariate
             var N = new Normal(12665d, 4710d);
             double q100 = N.InverseCDF(0.99d);
             double true_q100 = 23624d;
-            Assert.AreEqual((q100 - true_q100) / true_q100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_q100) / true_q100);
             double p = N.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual((p - true_p) / true_p < 0.01d, true);
+            Assert.IsLessThan(0.01d, (p - true_p) / true_p);
         }
 
         /// <summary>
@@ -174,7 +174,7 @@ namespace Distributions.Univariate
             var N = new Normal(12665d, 4710d);
             double qVar99 = Math.Sqrt(N.QuantileVariance(0.99d, 48, ParameterEstimationMethod.MaximumLikelihood));
             double true_qVar99 = 1309d;
-            Assert.AreEqual((qVar99 - true_qVar99) / true_qVar99 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
         }
 
         /// <summary>
@@ -184,12 +184,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Mu, 0);
-            Assert.AreEqual(N.Sigma, 1);
+            Assert.AreEqual(0,N.Mu);
+            Assert.AreEqual(1,N.Sigma);
 
             var N2 = new Normal(1, 1);
-            Assert.AreEqual(N2.Mu, 1);
-            Assert.AreEqual(N2.Sigma,1);
+            Assert.AreEqual(1,N2.Mu);
+            Assert.AreEqual(1,N2.Sigma);
         }
 
         /// <summary>
@@ -218,10 +218,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var N = new Normal();
-            Assert.AreEqual(N.ParametersToString[0, 0], "Mean (µ)");
-            Assert.AreEqual(N.ParametersToString[1, 0], "Std Dev (σ)");
-            Assert.AreEqual(N.ParametersToString[0, 1], "0");
-            Assert.AreEqual(N.ParametersToString[1,1], "1");
+            Assert.AreEqual("Mean (µ)",N.ParametersToString[0, 0]);
+            Assert.AreEqual("Std Dev (σ)",N.ParametersToString[1, 0] );
+            Assert.AreEqual("0",N.ParametersToString[0, 1]);
+            Assert.AreEqual("1",N.ParametersToString[1,1] );
         }
 
         /// <summary>
@@ -245,10 +245,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Mean, 0);
+            Assert.AreEqual(0,N.Mean);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.Mean, 5);
+            Assert.AreEqual(5, N2.Mean);
         }
 
         /// <summary>
@@ -258,10 +258,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Median, 0);
+            Assert.AreEqual(0, N.Median);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.Median, 5);
+            Assert.AreEqual(5, N2.Median);
         }
 
         /// <summary>
@@ -271,10 +271,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Mode, 0);
+            Assert.AreEqual(0, N.Mode);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.Mode, 5);
+            Assert.AreEqual(5, N2.Mode);
         }
 
         /// <summary>
@@ -284,10 +284,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var N = new Normal();
-            Assert.AreEqual(N.StandardDeviation, 1);
+            Assert.AreEqual(1, N.StandardDeviation);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.StandardDeviation, 9);
+            Assert.AreEqual(9, N2.StandardDeviation);
         }
 
         /// <summary>
@@ -297,10 +297,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Skewness, 0);
+            Assert.AreEqual(0, N.Skewness);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.Skewness, 0);
+            Assert.AreEqual(0, N2.Skewness);
         }
 
         /// <summary>
@@ -310,10 +310,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Kurtosis, 3);
+            Assert.AreEqual(3, N.Kurtosis);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.Kurtosis, 3);
+            Assert.AreEqual(3, N2.Kurtosis);
         }
 
         /// <summary>
@@ -323,12 +323,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var N = new Normal();
-            Assert.AreEqual(N.Minimum, double.NegativeInfinity);
-            Assert.AreEqual(N.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity,N.Minimum );
+            Assert.AreEqual(double.PositiveInfinity, N.Maximum);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.Minimum,double.NegativeInfinity);
-            Assert.AreEqual(N2.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(double.NegativeInfinity, N2.Minimum);
+            Assert.AreEqual(double.PositiveInfinity, N2.Maximum);
         }
 
         /// <summary>
@@ -338,11 +338,11 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var N = new Normal();
-            Assert.AreEqual(N.PDF(0), 0.39894, 1e-04);
-            Assert.AreEqual(N.PDF(1), 0.24197, 1e-04);
+            Assert.AreEqual(0.39894, N.PDF(0),  1e-04);
+            Assert.AreEqual(0.24197, N.PDF(1), 1e-04);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(N2.PDF(-1), 0.03549, 1e-04);
+            Assert.AreEqual(0.03549, N2.PDF(-1), 1e-04);
         }
 
         /// <summary>
@@ -352,9 +352,9 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var N = new Normal(5,2);
-            Assert.AreEqual(N.CDF(0), 0.006209, 1e-04);
-            Assert.AreEqual(N.CDF(4), 0.30853, 1e-04);
-            Assert.AreEqual(N.CDF(5), 0.5);
+            Assert.AreEqual(0.006209, N.CDF(0),  1e-04);
+            Assert.AreEqual(0.30853, N.CDF(4),  1e-04);
+            Assert.AreEqual(0.5,N.CDF(5));
         }
     }
 }

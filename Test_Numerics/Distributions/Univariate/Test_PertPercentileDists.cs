@@ -82,9 +82,9 @@ namespace Distributions.Univariate
             Assert.AreEqual(pert.StandardDeviation, true_stdDev, 1E-3);
             Assert.AreEqual(pert.Skewness, true_skew, 1E-3);
             Assert.AreEqual(pert.Kurtosis, true_kurt, 1E-3);
-            Assert.AreEqual(pert.CDF(true_icdf05), 0.05, 1E-3);
-            Assert.AreEqual(pert.CDF(true_icdf50), 0.5, 1E-3);
-            Assert.AreEqual(pert.CDF(true_icdf95), 0.95, 1E-3);
+            Assert.AreEqual(0.05,pert.CDF(true_icdf05), 1E-3);
+            Assert.AreEqual(0.5, pert.CDF(true_icdf50),  1E-3);
+            Assert.AreEqual(0.95, pert.CDF(true_icdf95), 1E-3);
             Assert.AreEqual(pert.InverseCDF(0.05d), true_icdf05, 1E-3);
             Assert.AreEqual(pert.InverseCDF(0.5d), true_icdf50, 1E-3);
             Assert.AreEqual(pert.InverseCDF(0.95d), true_icdf95, 1E-3);
@@ -111,9 +111,9 @@ namespace Distributions.Univariate
             Assert.AreEqual(pert.Mean, true_mean, 1E-2);
             Assert.AreEqual(pert.Median, true_median, 1E-2);
             Assert.AreEqual(pert.Mode, true_mode, 1E-2);
-            Assert.AreEqual(pert.CDF(true_icdf05), 0.05, 1E-2);
-            Assert.AreEqual(pert.CDF(true_icdf50), 0.5, 1E-2);
-            Assert.AreEqual(pert.CDF(true_icdf95), 0.95, 1E-2);
+            Assert.AreEqual(0.05, pert.CDF(true_icdf05), 1E-2);
+            Assert.AreEqual(0.5, pert.CDF(true_icdf50),  1E-2);
+            Assert.AreEqual(0.95, pert.CDF(true_icdf95),  1E-2);
             Assert.AreEqual(pert.InverseCDF(0.05d), true_icdf05, 1E-2);
             Assert.AreEqual(pert.InverseCDF(0.5d), true_icdf50, 1E-2);
             Assert.AreEqual(pert.InverseCDF(0.95d), true_icdf95, 1E-2);
@@ -134,9 +134,9 @@ namespace Distributions.Univariate
             var p2 = pert.CDF(fiftieth);
             var p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth),  1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -149,9 +149,9 @@ namespace Distributions.Univariate
             p2 = pert.CDF(fiftieth);
             p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -164,9 +164,9 @@ namespace Distributions.Univariate
             p2 = pert.CDF(fiftieth);
             p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -180,9 +180,9 @@ namespace Distributions.Univariate
             p2 = pert.CDF(fiftieth);
             p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -205,9 +205,9 @@ namespace Distributions.Univariate
             var p2 = pert.CDF(fiftieth);
             var p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -220,9 +220,9 @@ namespace Distributions.Univariate
             p2 = pert.CDF(fiftieth);
             p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -235,9 +235,9 @@ namespace Distributions.Univariate
             p2 = pert.CDF(fiftieth);
             p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);
@@ -251,9 +251,9 @@ namespace Distributions.Univariate
             p2 = pert.CDF(fiftieth);
             p3 = pert.CDF(ninetyfifth);
 
-            Assert.AreEqual(pert.CDF(fifth), 0.05, 1E-1);
-            Assert.AreEqual(pert.CDF(fiftieth), 0.5, 1E-1);
-            Assert.AreEqual(pert.CDF(ninetyfifth), 0.95, 1E-1);
+            Assert.AreEqual(0.05, pert.CDF(fifth), 1E-1);
+            Assert.AreEqual(0.5, pert.CDF(fiftieth), 1E-1);
+            Assert.AreEqual(0.95, pert.CDF(ninetyfifth), 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.05d), fifth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.5d), fiftieth, 1E-1);
             Assert.AreEqual(pert.InverseCDF(0.95d), ninetyfifth, 1E-1);

@@ -94,31 +94,31 @@ namespace Numerics.Sampling.MCMC
         /// The list of sampled Markov Chains.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet>[] MarkovChains { get; private set; }
+        public List<ParameterSet>[] MarkovChains { get; private set; } = null!;
 
         /// <summary>
         /// Output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet> Output { get; private set; }
+        public List<ParameterSet> Output { get; private set; } = null!;
 
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
         [JsonInclude]
-        public List<double> MeanLogLikelihood { get; private set; }
+        public List<double> MeanLogLikelihood { get; private set; } = null!;
 
         /// <summary>
         /// The acceptance rate for each chain.
         /// </summary>
         [JsonInclude]
-        public double[] AcceptanceRates { get; private set; }
+        public double[] AcceptanceRates { get; private set; } = null!;
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public ParameterResults[] ParameterResults { get; private set; }
+        public ParameterResults[] ParameterResults { get; private set; } = null!;
 
         /// <summary>
         /// The output parameter set that produced the maximum likelihood.
@@ -210,7 +210,8 @@ namespace Numerics.Sampling.MCMC
             };
             try
             {
-                return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
+                return JsonSerializer.Deserialize<MCMCResults>(bytes, options)
+                    ?? throw new JsonException("Deserialized MCMCResults was null");
             }
             catch
             {

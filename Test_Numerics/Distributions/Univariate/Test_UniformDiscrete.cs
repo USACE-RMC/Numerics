@@ -90,12 +90,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Min, 0);
-            Assert.AreEqual(U.Max, 1);
+            Assert.AreEqual(0,U.Min);
+            Assert.AreEqual(1,U.Max);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Min, 2);
-            Assert.AreEqual(U2.Max, 10);
+            Assert.AreEqual(2, U2.Min);
+            Assert.AreEqual(10, U2.Max);
         }
 
         /// <summary>
@@ -127,10 +127,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.ParametersToString[0, 0], "Min");
-            Assert.AreEqual(U.ParametersToString[1, 0], "Max");
-            Assert.AreEqual(U.ParametersToString[0, 1], "0");
-            Assert.AreEqual(U.ParametersToString[1, 1], "1");
+            Assert.AreEqual("Min",U.ParametersToString[0, 0] );
+            Assert.AreEqual("Max", U.ParametersToString[1, 0]);
+            Assert.AreEqual("0", U.ParametersToString[0, 1]);
+            Assert.AreEqual("1", U.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -140,10 +140,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Mean, 0.5);
+            Assert.AreEqual(0.5, U.Mean);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Mean, 6);
+            Assert.AreEqual(6, U2.Mean);
         }
 
         /// <summary>
@@ -153,10 +153,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Median, 0.5);
+            Assert.AreEqual(0.5, U.Median);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Median, 6);
+            Assert.AreEqual(6, U2.Median);
         }
 
         /// <summary>
@@ -166,10 +166,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Mode, double.NaN);
+            Assert.AreEqual(double.NaN,U.Mode);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Mode, double.NaN);
+            Assert.AreEqual(double.NaN, U2.Mode);
         }
 
         /// <summary>
@@ -179,10 +179,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.StandardDeviation, 0.288675, 1e-05);
+            Assert.AreEqual(0.288675, U.StandardDeviation,  1e-05);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.StandardDeviation, 2.3094, 1e-04);
+            Assert.AreEqual(2.3094, U2.StandardDeviation,  1e-04);
         }
 
         /// <summary>
@@ -192,10 +192,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Skewness, 0);
+            Assert.AreEqual(0, U.Skewness);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Skewness, 0);
+            Assert.AreEqual(0, U2.Skewness);
         }
 
         /// <summary>
@@ -205,10 +205,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Kurtosis, 1);
+            Assert.AreEqual(1, U.Kurtosis);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Kurtosis, 1.77);
+            Assert.AreEqual(1.77, U2.Kurtosis);
         }
 
         /// <summary>
@@ -218,12 +218,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.Minimum, 0);
-            Assert.AreEqual(U.Maximum, 1);
+            Assert.AreEqual(0, U.Minimum);
+            Assert.AreEqual(1, U.Maximum);
 
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(U2.Minimum, 2);
-            Assert.AreEqual(U2.Maximum, 10);
+            Assert.AreEqual(2, U2.Minimum);
+            Assert.AreEqual(10, U2.Maximum);
         }
 
         /// <summary>
@@ -233,9 +233,9 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.PDF(-1), 0);
-            Assert.AreEqual(U.PDF(2), 0);
-            Assert.AreEqual(U.PDF(1), 0.5);
+            Assert.AreEqual(0, U.PDF(-1));
+            Assert.AreEqual(0, U.PDF(2));
+            Assert.AreEqual(0.5, U.PDF(1));
         }
 
         /// <summary>
@@ -245,9 +245,9 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.CDF(0), 0.5);
-            Assert.AreEqual(U.CDF(1), 1);
-            Assert.AreEqual(U.CDF(0.5), 0.75);
+            Assert.AreEqual(0.5, U.CDF(0));
+            Assert.AreEqual(1, U.CDF(1));
+            Assert.AreEqual(0.75, U.CDF(0.5));
         }
 
         /// <summary>
@@ -257,9 +257,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(U.InverseCDF(0), 0);
-            Assert.AreEqual(U.InverseCDF(1), 1);
-            Assert.AreEqual(U.InverseCDF(0.3), 0);
+            Assert.AreEqual(0, U.InverseCDF(0));
+            Assert.AreEqual(1,U.InverseCDF(1));
+            Assert.AreEqual(0,U.InverseCDF(0.3));
         }
     }
 

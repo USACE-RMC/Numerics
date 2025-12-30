@@ -204,7 +204,10 @@ namespace Numerics.Distributions
             {
                 distribution = new Weibull();
             }
-
+            if (distribution is null)
+            {
+                throw new ArgumentException("Distribution is not found.");
+            }
             return distribution;
         }
 
@@ -215,13 +218,14 @@ namespace Numerics.Distributions
         /// <returns>
         /// A univariate distribution.
         /// </returns>
-        public static UnivariateDistributionBase CreateDistribution(XElement xElement)
+        public static UnivariateDistributionBase? CreateDistribution(XElement xElement)
         {
             UnivariateDistributionType type;
-            UnivariateDistributionBase dist = null;
-            if (xElement.Attribute(nameof(UnivariateDistributionBase.Type)) != null)
+            UnivariateDistributionBase? dist = null;
+            var xAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (xAttr != null)
             {
-                Enum.TryParse(xElement.Attribute(nameof(UnivariateDistributionBase.Type)).Value, out type);
+                Enum.TryParse(xAttr.Value, out type);
 
                 if (type == UnivariateDistributionType.Mixture)
                 {
@@ -249,14 +253,19 @@ namespace Numerics.Distributions
                 }
 
             }
+            if (dist is null)
+            {
+                throw new ArgumentException("Distribution is not found.");
+            }
             var names = dist.GetParameterPropertyNames;
             var parms = dist.GetParameters;
             var vals = new double[dist.NumberOfParameters];
             for (int i = 0; i < dist.NumberOfParameters; i++)
             {
-                if (xElement.Attribute(names[i]) != null)
+                var xAttrParm = xElement.Attribute(names[i]);
+                if (xAttrParm != null)
                 {
-                    double.TryParse(xElement.Attribute(names[i]).Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out vals[i]);
+                    double.TryParse(xAttrParm.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out vals[i]);
                 }
             }
             dist.SetParameters(vals);

@@ -84,10 +84,10 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Sigma, 10);
+            Assert.AreEqual(10,R.Sigma);
 
             var R2 = new Rayleigh(2);
-            Assert.AreEqual(R2.Sigma, 2);
+            Assert.AreEqual(2, R2.Sigma);
         }
 
         /// <summary>
@@ -113,8 +113,8 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.ParametersToString[0, 0], "Scale (σ)");
-            Assert.AreEqual(R.ParametersToString[0, 1], "10");
+            Assert.AreEqual("Scale (σ)", R.ParametersToString[0, 0]);
+            Assert.AreEqual("10", R.ParametersToString[0, 1]);
         }
 
         /// <summary>
@@ -138,10 +138,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Mean, 12.53314, 1e-04);
+            Assert.AreEqual(12.53314, R.Mean,  1e-04);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R2.Mean, 1.25331, 1e-04);
+            Assert.AreEqual(1.25331, R2.Mean,  1e-04);
         }
 
         /// <summary>
@@ -151,10 +151,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Median, 11.7741, 1e-04);
+            Assert.AreEqual(11.7741, R.Median,  1e-04);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R2.Median, 1.1774, 1e-04);
+            Assert.AreEqual(1.1774, R2.Median, 1e-04);
         }
 
         /// <summary>
@@ -164,10 +164,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Mode, 10);
+            Assert.AreEqual(10, R.Mode);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R2.Mode, 1);
+            Assert.AreEqual(1, R2.Mode);
         }
         
         /// <summary>
@@ -177,10 +177,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.StandardDeviation, 6.55136, 1e-05);
+            Assert.AreEqual(6.55136, R.StandardDeviation,  1e-05);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R2.StandardDeviation, 0.65513, 1e-04);
+            Assert.AreEqual(0.65513, R2.StandardDeviation, 1e-04);
         }
 
         /// <summary>
@@ -190,10 +190,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Skewness, 0.63111, 1e-04);
+            Assert.AreEqual(0.63111, R.Skewness,  1e-04);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R2.Skewness, 0.63111, 1e-04);
+            Assert.AreEqual(0.63111, R2.Skewness,  1e-04);
         }
 
         /// <summary>
@@ -203,10 +203,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Kurtosis, 3.24508,1e-05);
+            Assert.AreEqual(3.24508, R.Kurtosis, 1e-05);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R2.Kurtosis, 3.24508,1e-05);
+            Assert.AreEqual(3.24508, R2.Kurtosis,1e-05);
         }
 
         /// <summary>
@@ -216,8 +216,8 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.Minimum, 0);
-            Assert.AreEqual(R.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(0,R.Minimum);
+            Assert.AreEqual(double.PositiveInfinity,R.Maximum);
         }
 
         /// <summary>
@@ -227,11 +227,11 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.PDF(-1), 0);
-            Assert.AreEqual(R.PDF(1), 9.9501e-03, 1e-06);
+            Assert.AreEqual(0,R.PDF(-1));
+            Assert.AreEqual(9.9501e-03, R.PDF(1),  1e-06);
 
             var R2 = new Rayleigh(1);
-            Assert.AreEqual(R.PDF(2), 0.019603, 1e-05);
+            Assert.AreEqual(0.019603, R.PDF(2),  1e-05);
         }
 
         /// <summary>
@@ -241,8 +241,8 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.CDF(-1), 0);
-            Assert.AreEqual(R.CDF(1), 4.9875e-03,1e-04);
+            Assert.AreEqual(0, R.CDF(-1));
+            Assert.AreEqual(4.9875e-03, R.CDF(1),1e-04);
         }
 
         /// <summary>
@@ -252,9 +252,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var R = new Rayleigh();
-            Assert.AreEqual(R.InverseCDF(0), 0);
-            Assert.AreEqual(R.InverseCDF(1), double.PositiveInfinity);
-            Assert.AreEqual(R.InverseCDF(0.4), 10.1076, 1e-04);
+            Assert.AreEqual(0, R.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity,R.InverseCDF(1) );
+            Assert.AreEqual(10.1076, R.InverseCDF(0.4),  1e-04);
         }
     }
 }

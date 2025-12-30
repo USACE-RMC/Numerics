@@ -405,7 +405,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Hondo), "The shape parameter h (hondo) must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Hondo), "The shape parameter h (hondo) must be a number.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

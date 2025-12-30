@@ -406,7 +406,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>
@@ -814,7 +814,7 @@ namespace Numerics.Distributions
         private (bool stable, bool divisable) TryPearsonConditionalMoments(
             double a, double b, out double[] moments, double pMin)
         {
-            moments = null;
+            moments = null!;
 
             // ---- small math helpers -------------------------------------------------
             static double Phi(double x) => 0.5 * (1.0 + Mathematics.SpecialFunctions.Erf.Function(x / Math.Sqrt(2.0)));

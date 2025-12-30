@@ -176,17 +176,17 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The master pseudo random number generator (PRNG).
         /// </summary>
-        protected Random _masterPRNG;
+        protected Random _masterPRNG = null!;
 
         /// <summary>
         /// The PRNG for each Markov Chain.
         /// </summary>
-        protected Random[] _chainPRNGs;
+        protected Random[] _chainPRNGs = null!;
 
         /// <summary>
         /// The current states of each chain. 
         /// </summary>
-        protected ParameterSet[] _chainStates;
+        protected ParameterSet[] _chainStates = null!;
 
         /// <summary>
         /// The Log-Likelihood function to evaluate. 
@@ -251,12 +251,12 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The Multivariate Normal proposal distribution set from the MAP estimate.
         /// </summary>
-        protected MultivariateNormal _MVN;
+        protected MultivariateNormal _MVN = null!;
 
         /// <summary>
         /// Event is raised when the simulation progress changes.
         /// </summary>
-        public event ProgressChangedEventHandler ProgressChanged;
+        public event ProgressChangedEventHandler ProgressChanged = null!;
 
         /// <summary>
         /// Event is raised when the simulation progress changes.
@@ -273,7 +273,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Cancellation token source.
         /// </summary>
-        public CancellationTokenSource CancellationTokenSource { get; set; }
+        public CancellationTokenSource CancellationTokenSource { get; set; } = null!;
 
         #endregion
 
@@ -282,22 +282,22 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Gets the population matrix used for population-based samplers.
         /// </summary>
-        public List<ParameterSet> PopulationMatrix { get; protected set; }
+        public List<ParameterSet> PopulationMatrix { get; protected set; } = null!;
 
         /// <summary>
         /// Gets the list of sampled Markov Chains.
         /// </summary>
-        public List<ParameterSet>[] MarkovChains { get; protected set; }
+        public List<ParameterSet>[] MarkovChains { get; protected set; } = null!;
 
         /// <summary>
         /// Keeps track of the number of accepted samples per chain.
         /// </summary>
-        public int[] AcceptCount { get; protected set; }
+        public int[] AcceptCount { get; protected set; } = null!;
 
         /// <summary>
         /// Keeps track of the number of calls to the proposal sampler per chain.
         /// </summary>
-        public int[] SampleCount { get; protected set; }
+        public int[] SampleCount { get; protected set; } = null!;
 
         /// <summary>
         /// The acceptance rate per chain.
@@ -316,7 +316,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
-        public List<double>  MeanLogLikelihood { get; protected set; }
+        public List<double> MeanLogLikelihood { get; protected set; } = null!;
 
         /// <summary>
         /// Gets and sets the number of posterior parameter sets to output.
@@ -326,7 +326,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Output posterior parameter sets. These are recorded after the iterations have been completed. 
         /// </summary>
-        public List<ParameterSet>[] Output { get; protected set; }
+        public List<ParameterSet>[] Output { get; protected set; } = null!;
 
         /// <summary>
         /// The output parameter set that produced the maximum likelihood. 

@@ -368,7 +368,7 @@ namespace Numerics.Data.Statistics
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <param name="statistic">The statistic for estimating a sample.</param>
-        public static double[] JackKnifeSample(IList<double> data, Func<IList<double>, double> statistic)
+        public static double[]? JackKnifeSample(IList<double> data, Func<IList<double>, double> statistic)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             if (data.Count == 0) return null;

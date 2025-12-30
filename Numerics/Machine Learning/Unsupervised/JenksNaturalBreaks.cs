@@ -128,12 +128,12 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Gets the array of estimated clusters.
         /// </summary>
-        public JenksCluster[] Clusters { get; private set; }
+        public JenksCluster[] Clusters { get; private set; } = null!;
 
         /// <summary>
         /// The array of break points.
         /// </summary>
-        public double[] Breaks { get; private set; }
+        public double[] Breaks { get; private set; } = null!;
 
         /// <summary>
         /// The goodness of fit measure. The closer to 1, the better the fit.

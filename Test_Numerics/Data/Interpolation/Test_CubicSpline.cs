@@ -66,12 +66,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var spline = new CubicSpline(values, values);
             var lo = spline.SequentialSearch(872.5d);
-            Assert.AreEqual(lo, 871);
+            Assert.AreEqual(871,lo);
 
             Array.Reverse(values);
             var spline2 = new CubicSpline(values, values, SortOrder.Descending);
             lo = spline2.SequentialSearch(872.5);
-            Assert.AreEqual(lo, 127);
+            Assert.AreEqual(127, lo);
         }
 
         /// <summary>
@@ -85,12 +85,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var spline = new CubicSpline(values, values);
             var lo = spline.BisectionSearch(872.5d);
-            Assert.AreEqual(lo, 871);
+            Assert.AreEqual(871, lo);
 
             Array.Reverse(values);
             var spline2 = new CubicSpline(values, values, SortOrder.Descending);
             lo = spline2.BisectionSearch(872.5);
-            Assert.AreEqual(lo, 127);
+            Assert.AreEqual(127,lo);
         }
 
         /// <summary>
@@ -104,12 +104,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var spline = new CubicSpline(values, values);
             var lo = spline.HuntSearch(872.5d);
-            Assert.AreEqual(lo, 871);
+            Assert.AreEqual(871,lo);
 
             Array.Reverse(values);
             var spline2 = new CubicSpline(values, values, SortOrder.Descending);
             lo = spline2.HuntSearch(872.5);
-            Assert.AreEqual(lo, 127);
+            Assert.AreEqual(127, lo);
         }
 
         /// <summary>
@@ -123,7 +123,7 @@ namespace Data.Interpolation
             var spline = new CubicSpline(XArray, YArray);
             double X = 8d;
             double Y = spline.Interpolate(X);
-            Assert.AreEqual(Y, 11.4049889205445d, 1E-6);
+            Assert.AreEqual(11.4049889205445d, Y,  1E-6);
         }
 
         /// <summary>

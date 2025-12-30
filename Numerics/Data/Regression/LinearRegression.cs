@@ -117,32 +117,32 @@ namespace Numerics.Data
         /// <summary>
         /// The list of estimated parameter values.
         /// </summary>
-        public List<double> Parameters { get; private set; }
+        public List<double> Parameters { get; private set; } = Array.Empty<double>().ToList();
 
         /// <summary>
         /// The list of the estimated parameter names. 
         /// </summary>
-        public List<string> ParameterNames { get; private set; }
+        public List<string> ParameterNames { get; private set; } 
 
         /// <summary>
         /// The list of the estimated parameter standard errors. 
         /// </summary>
-        public List<double> ParameterStandardErrors { get; private set; }
+        public List<double> ParameterStandardErrors { get; private set; } = Array.Empty<double>().ToList();
 
         /// <summary>
         /// The list of the estimated parameter t-statistics.
         /// </summary>
-        public List<double> ParameterTStats { get; private set; }
+        public List<double> ParameterTStats { get; private set; } = Array.Empty<double>().ToList();
 
         /// <summary>
         /// The estimate parameter covariance matrix. 
         /// </summary>
-        public Matrix Covariance { get; private set; }
+        public Matrix Covariance { get; private set; } = new Matrix(0, 0);
 
         /// <summary>
         /// The residuals of the fitted linear model. 
         /// </summary>
-        public double[] Residuals { get; private set; }
+        public double[] Residuals { get; private set; } = Array.Empty<double>();
 
         /// <summary>
         /// The model standard error.

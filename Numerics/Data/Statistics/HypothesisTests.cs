@@ -245,6 +245,7 @@ namespace Numerics.Data.Statistics
             int n = sample.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             var acf = Autocorrelation.Function(sample, lagMax, Autocorrelation.Type.Correlation);
+            if (acf == null) throw new Exception("Autocorrelation function could not be calculated.");
             double Q = 0;
             for (int k = 1; k <= lagMax; k++)
                 Q += Tools.Sqr(acf[k, 1]) / (n - k);

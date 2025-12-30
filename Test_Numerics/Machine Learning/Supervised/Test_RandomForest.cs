@@ -89,7 +89,7 @@ namespace MachineLearning
             var accuracy = GoodnessOfFit.Accuracy(Y_test.Array, prediction.GetColumn(1));
 
             // Accuracy should be greater than or equal to 90%
-            Assert.IsTrue(accuracy >= 90);
+            Assert.IsGreaterThanOrEqualTo(90,accuracy);
 
         }
 
@@ -133,7 +133,7 @@ namespace MachineLearning
             var lmR2 = GoodnessOfFit.RSquared(Y_test.Array, lmPredict);
 
             // Random Forest is better
-            Assert.IsTrue(rfR2 > lmR2);
+            Assert.IsGreaterThan(lmR2,rfR2);
 
         }
     }

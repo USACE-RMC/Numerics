@@ -816,7 +816,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is UnivariateDistributionBase other)
             {
@@ -839,7 +839,7 @@ namespace Numerics.Distributions
                 if (Type == UnivariateDistributionType.Empirical)
                 {
                     var empirical = this as EmpiricalDistribution;
-                    if (empirical != null)
+                    if (empirical is not null)
                     {
                         foreach (var x in empirical.XValues)
                         {
@@ -871,9 +871,9 @@ namespace Numerics.Distributions
         /// <returns>
         /// A negative number if this instance's mean is less than the other; zero if equal; a positive number if greater.
         /// </returns>
-        public int CompareTo(UnivariateDistributionBase other)
+        public int CompareTo(UnivariateDistributionBase? other)
         {
-            if (other == null)
+            if (other is null)
                 return 1; // non-null instance is considered greater than null
 
             return this.Mean.CompareTo(other.Mean);

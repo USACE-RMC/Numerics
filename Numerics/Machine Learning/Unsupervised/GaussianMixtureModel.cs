@@ -152,12 +152,12 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The mixing weights 
         /// </summary>
-        public double[] Weights { get; private set; }
+        public double[] Weights { get; private set; } = null!;
 
         /// <summary>
         /// The likelihood of each data point (row) and for each cluster (column).
         /// </summary>
-        public double[,] LikelihoodMatrix { get; private set; }
+        public double[,] LikelihoodMatrix { get; private set; } = null!;
 
         /// <summary>
         /// The total log-likelihood of the fit.

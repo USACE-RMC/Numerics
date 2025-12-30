@@ -78,10 +78,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(k, true_k, 0.0001d);
 
             var lmom = gno.LinearMomentsFromParameters(gno.GetParameters);
-            Assert.AreEqual(lmom[0], 9.95751634, 0.0001d);
-            Assert.AreEqual(lmom[1], 1.98224114, 0.0001d);
-            Assert.AreEqual(lmom[2], 0.06380804, 0.0001d);
-            Assert.AreEqual(lmom[3], 0.1258014, 0.0001d);
+            Assert.AreEqual(9.95751634, lmom[0],  0.0001d);
+            Assert.AreEqual(1.98224114, lmom[1],  0.0001d);
+            Assert.AreEqual(0.06380804, lmom[2],  0.0001d);
+            Assert.AreEqual(0.1258014, lmom[3],  0.0001d);
 
         }
 
@@ -165,14 +165,14 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var n = new GeneralizedNormal();
-            Assert.AreEqual(n.Xi, 100);
-            Assert.AreEqual(n.Alpha, 10);
-            Assert.AreEqual(n.Kappa, 0);
+            Assert.AreEqual(100,n.Xi);
+            Assert.AreEqual(10, n.Alpha);
+            Assert.AreEqual(0, n.Kappa);
 
             var n2 = new GeneralizedNormal(-100, 1, 1);
-            Assert.AreEqual(n2.Xi, -100);
-            Assert.AreEqual(n2.Alpha, 1);
-            Assert.AreEqual(n2.Kappa, 1);
+            Assert.AreEqual(-100, n2.Xi);
+            Assert.AreEqual(1, n2.Alpha);
+            Assert.AreEqual(1, n2.Kappa);
         }
 
         /// <summary>
@@ -198,12 +198,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var n = new GeneralizedNormal();
-            Assert.AreEqual(n.ParametersToString[0, 0], "Location (ξ)");
-            Assert.AreEqual(n.ParametersToString[1, 0], "Scale (α)");
-            Assert.AreEqual(n.ParametersToString[2, 0], "Shape (κ)");
-            Assert.AreEqual(n.ParametersToString[0, 1], "100");
-            Assert.AreEqual(n.ParametersToString[1, 1], "10");
-            Assert.AreEqual(n.ParametersToString[2, 1], "0");
+            Assert.AreEqual("Location (ξ)", n.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (α)", n.ParametersToString[1, 0]);
+            Assert.AreEqual("Shape (κ)", n.ParametersToString[2, 0]);
+            Assert.AreEqual("100", n.ParametersToString[0, 1]);
+            Assert.AreEqual("10",n.ParametersToString[1, 1]);
+            Assert.AreEqual("0", n.ParametersToString[2, 1]);
         }
 
         /// <summary>

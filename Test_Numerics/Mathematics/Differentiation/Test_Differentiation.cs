@@ -242,7 +242,7 @@ namespace Mathematics.Differentiation
             double derivLargeStep = NumericalDerivative.ForwardDifference(FX, 2.0, 1E-2);
 
             // Small step should be more accurate
-            Assert.IsTrue(Math.Abs(derivSmallStep - 12.0) < Math.Abs(derivLargeStep - 12.0));
+            Assert.IsLessThan(Math.Abs(derivLargeStep - 12.0),Math.Abs(derivSmallStep - 12.0) );
         }
 
         #endregion
@@ -286,8 +286,8 @@ namespace Mathematics.Differentiation
             double errorBackward = Math.Abs(backward - expected);
             double errorCentral = Math.Abs(central - expected);
 
-            Assert.IsTrue(errorCentral < errorForward);
-            Assert.IsTrue(errorCentral < errorBackward);
+            Assert.IsLessThan(errorForward, errorCentral);
+            Assert.IsLessThan(errorBackward, errorCentral);
         }
 
         /// <summary>
@@ -439,7 +439,7 @@ namespace Mathematics.Differentiation
             // f(x) = x³, f'(2) = 12
             double derivFX = NumericalDerivative.RiddersMethod(FX, 2.0, out double errFX);
             Assert.AreEqual(12.0, derivFX, 1E-6);
-            Assert.IsTrue(errFX < 1E-4); // Error estimate should be small
+            Assert.IsLessThan(1E-4, errFX); // Error estimate should be small
 
             // f(x) = e^x, f'(4) = e⁴
             double derivEX = NumericalDerivative.RiddersMethod(EX, 4.0, out double errEX);
@@ -470,7 +470,7 @@ namespace Mathematics.Differentiation
 
             // For smooth transcendental functions, Ridders should be significantly better
             // Expect at least 10× improvement (often 100-1000× for exponentials)
-            Assert.IsTrue(errorRidders < errorCentral * 0.5);
+            Assert.IsLessThan(errorCentral * 0.5, errorRidders);
         }
 
         /// <summary>
@@ -485,8 +485,8 @@ namespace Mathematics.Differentiation
 
             // Error estimate should be in a reasonable range
             // For smooth polynomial functions, error estimate should be conservative
-            Assert.IsTrue(err >= 0);
-            Assert.IsTrue(err < 1.0); // Should be reasonably small for polynomial
+            Assert.IsGreaterThanOrEqualTo(0,err);
+            Assert.IsLessThan(1.0, err); // Should be reasonably small for polynomial
         }
 
         #endregion
@@ -547,8 +547,8 @@ namespace Mathematics.Differentiation
             var grad = NumericalDerivative.Gradient(FXY, point, lowerBounds);
 
             // Should still compute reasonable gradients
-            Assert.IsTrue(Math.Abs(grad[0]) < 1.0);
-            Assert.IsTrue(Math.Abs(grad[1]) < 1.0);
+            Assert.IsLessThan(1.0, Math.Abs(grad[0]));
+            Assert.IsLessThan(1.0, Math.Abs(grad[1]));
         }
 
         /// <summary>
@@ -651,8 +651,8 @@ namespace Mathematics.Differentiation
             var jac = NumericalDerivative.Jacobian(VectorFunction, point, lowerBounds);
 
             // Should compute reasonable values despite being near boundary
-            Assert.IsTrue(!double.IsNaN(jac[0, 0]));
-            Assert.IsTrue(!double.IsNaN(jac[1, 1]));
+            Assert.IsFalse(double.IsNaN(jac[0, 0]));
+            Assert.IsFalse(double.IsNaN(jac[1, 1]));
         }
 
         /// <summary>
@@ -667,8 +667,8 @@ namespace Mathematics.Differentiation
             var jac = NumericalDerivative.Jacobian(VectorFunction, point, upperBounds);
 
             // Should compute reasonable values despite being near boundary
-            Assert.IsTrue(!double.IsNaN(jac[0, 0]));
-            Assert.IsTrue(!double.IsNaN(jac[1, 1]));
+            Assert.IsFalse(double.IsNaN(jac[0, 0]));
+            Assert.IsFalse(double.IsNaN(jac[1, 1]));
         }
 
         /// <summary>
@@ -789,8 +789,8 @@ namespace Mathematics.Differentiation
             var hess = NumericalDerivative.Hessian(Rosenbrock, new[] { 1.0, 1.0 });
 
             // All diagonal elements should be positive at minimum
-            Assert.IsTrue(hess[0, 0] > 0);
-            Assert.IsTrue(hess[1, 1] > 0);
+            Assert.IsGreaterThan(0,hess[0, 0]);
+            Assert.IsGreaterThan(0,hess[1, 1]);
 
             // Hessian should be symmetric
             Assert.AreEqual(hess[0, 1], hess[1, 0], 1E-8);
@@ -808,8 +808,8 @@ namespace Mathematics.Differentiation
             var hess = NumericalDerivative.Hessian(FXY, point, lowerBounds);
 
             // Should compute without errors
-            Assert.IsTrue(!double.IsNaN(hess[0, 0]));
-            Assert.IsTrue(!double.IsNaN(hess[1, 1]));
+            Assert.IsFalse(double.IsNaN(hess[0, 0]));
+            Assert.IsFalse(double.IsNaN(hess[1, 1]));
         }
 
         /// <summary>
@@ -824,8 +824,8 @@ namespace Mathematics.Differentiation
             var hess = NumericalDerivative.Hessian(FXY, point, upperBounds);
 
             // Should compute without errors
-            Assert.IsTrue(!double.IsNaN(hess[0, 0]));
-            Assert.IsTrue(!double.IsNaN(hess[1, 1]));
+            Assert.IsFalse(double.IsNaN(hess[0, 0]));
+            Assert.IsFalse(double.IsNaN(hess[1, 1]));
         }
 
         #endregion
@@ -842,7 +842,7 @@ namespace Mathematics.Differentiation
             double h2 = NumericalDerivative.CalculateStepSize(10.0, 1);
 
             // Step size should scale with magnitude of input
-            Assert.IsTrue(h2 > h1);
+            Assert.IsGreaterThan(h1,h2);
 
             // Should be reasonable for finite differences
             Assert.IsTrue(h1 > 1E-10 && h1 < 1E-5);
@@ -858,7 +858,7 @@ namespace Mathematics.Differentiation
             double h2 = NumericalDerivative.CalculateStepSize(1.0, 2);
 
             // Second derivative needs larger step size
-            Assert.IsTrue(h2 > h1);
+            Assert.IsGreaterThan(h1, h2);
         }
 
         /// <summary>
@@ -870,8 +870,8 @@ namespace Mathematics.Differentiation
             double h = NumericalDerivative.CalculateStepSize(0.0);
 
             // Should return reasonable value even at zero
-            Assert.IsTrue(h > 0);
-            Assert.IsTrue(h < 1E-4);
+            Assert.IsGreaterThan(0, h );
+            Assert.IsLessThan(1E-4,h);
         }
 
         #endregion
@@ -889,7 +889,7 @@ namespace Mathematics.Differentiation
             double deriv = NumericalDerivative.Derivative(x => x * x, 1E6);
             double expected = 2E6;
             double relativeError = Math.Abs((deriv - expected) / expected);
-            Assert.IsTrue(relativeError < 1E-6); // 0.0001% relative error
+            Assert.IsLessThan(1E-6,relativeError); // 0.0001% relative error
         }
 
         /// <summary>

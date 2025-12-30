@@ -59,7 +59,7 @@ namespace Numerics.Sampling.MCMC
         /// <param name="priorDistributions">The list of prior distributions for the model parameters.</param>
         /// <param name="logLikelihoodFunction">The Log-Likelihood function to evaluate.</param>
         /// <param name="multivariateNormal">Optional. The multivariate Normal distribution is used for importance sampling. If null, naive Monte Carlo is performed.</param>
-        public SNIS(List<IUnivariateDistribution> priorDistributions, LogLikelihood logLikelihoodFunction, MultivariateNormal multivariateNormal = null) : base(priorDistributions, logLikelihoodFunction)
+        public SNIS(List<IUnivariateDistribution> priorDistributions, LogLikelihood logLikelihoodFunction, MultivariateNormal multivariateNormal = null!) : base(priorDistributions, logLikelihoodFunction)
         {
             mvn = multivariateNormal;
             useImportanceSampling = multivariateNormal != null ? true : false;
@@ -75,7 +75,7 @@ namespace Numerics.Sampling.MCMC
         }
 
         private bool useImportanceSampling = false;
-        private MultivariateNormal mvn = null;
+        private MultivariateNormal mvn = null!;
 
         /// <inheritdoc/>
         protected override void InitializeCustomSettings()

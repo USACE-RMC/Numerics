@@ -71,8 +71,8 @@ namespace Distributions.Univariate
             double kappa = W.Kappa;
             double true_L = 9.589d;
             double true_k = 1.907d;
-            Assert.AreEqual((lamda - true_L) / true_L < 0.01d, true);
-            Assert.AreEqual((kappa - true_k) / true_k < 0.01d, true);
+            Assert.IsLessThan(0.01d,(lamda - true_L) / true_L);
+            Assert.IsLessThan(0.01d,(kappa - true_k) / true_k);
         }
 
         /// <summary>
@@ -92,10 +92,10 @@ namespace Distributions.Univariate
             var W = new Weibull(9.589d, 1.907d);
             double q100 = W.InverseCDF(0.99d);
             double true_q100 = 21.358d;
-            Assert.AreEqual((q100 - true_q100) / true_q100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_q100) / true_q100);
             double p = W.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual((p - true_p) / true_p < 0.01d, true);
+            Assert.IsLessThan(0.01d, (p - true_p) / true_p);
         }
 
         /// <summary>
@@ -117,7 +117,7 @@ namespace Distributions.Univariate
             var GUM = new Gumbel(8049.6d, 4478.6d);
             double qVar99 = Math.Sqrt(GUM.QuantileVariance(0.99d, 53, ParameterEstimationMethod.MaximumLikelihood));
             double true_qVar99 = 2486.5d;
-            Assert.AreEqual((qVar99 - true_qVar99) / true_qVar99 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
         }
 
         /// <summary>
@@ -137,8 +137,8 @@ namespace Distributions.Univariate
                 modeled[i] = W.CDF(sample[i]);
             double true_AIC = 294.5878d;
             double true_BIC = 298.1566d;
-            Assert.AreEqual((AIC - true_AIC) / true_AIC < 0.01d, true);
-            Assert.AreEqual((BIC - true_BIC) / true_BIC < 0.01d, true);
+            Assert.IsLessThan(0.01d, (AIC - true_AIC) / true_AIC);
+            Assert.IsLessThan(0.01d, (BIC - true_BIC) / true_BIC);
         }
 
         /// <summary>
@@ -148,12 +148,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var W = new Weibull();
-            Assert.AreEqual(W.Lambda, 10);
-            Assert.AreEqual(W.Kappa, 2);
+            Assert.AreEqual(10,W.Lambda);
+            Assert.AreEqual(2, W.Kappa);
 
             var W2 = new Weibull(1, 1);
-            Assert.AreEqual(W2.Lambda, 1);
-            Assert.AreEqual(W2.Kappa, 1);
+            Assert.AreEqual(1, W2.Lambda);
+            Assert.AreEqual(1, W2.Kappa);
         }
 
         /// <summary>
@@ -182,10 +182,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var W = new Weibull();
-            Assert.AreEqual(W.ParametersToString[0, 0], "Scale (λ)");
-            Assert.AreEqual(W.ParametersToString[1, 0], "Shape (κ)");
-            Assert.AreEqual(W.ParametersToString[0, 1], "10");
-            Assert.AreEqual(W.ParametersToString[1, 1], "2");
+            Assert.AreEqual("Scale (λ)",W.ParametersToString[0, 0] );
+            Assert.AreEqual("Shape (κ)", W.ParametersToString[1, 0]);
+            Assert.AreEqual("10", W.ParametersToString[0, 1]);
+            Assert.AreEqual("2", W.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -209,10 +209,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var W = new Weibull(0.1, 1);
-            Assert.AreEqual(W.Mean, 0.1);
+            Assert.AreEqual(0.1, W.Mean);
 
             var W2 = new Weibull(1, 1);
-            Assert.AreEqual(W2.Mean, 1);
+            Assert.AreEqual(1, W2.Mean);
         }
 
         /// <summary>
@@ -222,10 +222,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var W = new Weibull(0.1, 1);
-            Assert.AreEqual(W.Median, 0.06931, 1e-04);
+            Assert.AreEqual(0.06931, W.Median,  1e-04);
 
             var W2 = new Weibull(1, 1);
-            Assert.AreEqual(W2.Median, 0.69314, 1e-04);
+            Assert.AreEqual(0.69314, W2.Median,  1e-04);
         }
 
         /// <summary>
@@ -235,10 +235,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var W = new Weibull(0.1, 1);
-            Assert.AreEqual(W.Mode, 0);
+            Assert.AreEqual(0, W.Mode);
 
             var W2 = new Weibull(10, 10);
-            Assert.AreEqual(W2.Mode, 9.89519, 1e-05);
+            Assert.AreEqual(9.89519, W2.Mode,  1e-05);
         }
 
         /// <summary>
@@ -248,10 +248,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var W = new Weibull(0.1, 1);
-            Assert.AreEqual(W.StandardDeviation, 0.1);
+            Assert.AreEqual(0.1, W.StandardDeviation);
 
             var W2 = new Weibull(1, 1);
-            Assert.AreEqual(W2.StandardDeviation, 1);
+            Assert.AreEqual(1, W2.StandardDeviation);
         }
 
         /// <summary>
@@ -261,10 +261,10 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var W = new Weibull(0.1, 1);
-            Assert.AreEqual(W.Skewness, 2,1e-04);
+            Assert.AreEqual(2, W.Skewness, 1e-04);
 
             var W2 = new Weibull(1, 1);
-            Assert.AreEqual(W2.Skewness, 2);
+            Assert.AreEqual(2, W2.Skewness);
         }
 
         /// <summary>
@@ -274,10 +274,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var W = new Weibull();
-            Assert.AreEqual(W.Kurtosis, 3.24508,1e-04);
+            Assert.AreEqual(3.24508, W.Kurtosis,1e-04);
 
             var W2 = new Weibull(1, 1);
-            Assert.AreEqual(W2.Kurtosis, 9);
+            Assert.AreEqual(9, W2.Kurtosis);
         }
 
         /// <summary>
@@ -287,8 +287,8 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var W = new Weibull();
-            Assert.AreEqual(W.Minimum, 0);
-            Assert.AreEqual(W.Maximum,double.PositiveInfinity);
+            Assert.AreEqual(0, W.Minimum);
+            Assert.AreEqual(double.PositiveInfinity,W.Maximum);
         }
 
         /// <summary>
@@ -298,9 +298,9 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var W = new Weibull(1, 1);
-            Assert.AreEqual(W.PDF(0), 1);
-            Assert.AreEqual(W.PDF(1), 0.36787, 1e-05);
-            Assert.AreEqual(W.PDF(10), 0.00004539, 1e-08);
+            Assert.AreEqual(1, W.PDF(0));
+            Assert.AreEqual(0.36787, W.PDF(1),  1e-05);
+            Assert.AreEqual(0.00004539, W.PDF(10), 1e-08);
         }
 
         /// <summary>
@@ -310,9 +310,9 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var W = new Weibull(1, 1);
-            Assert.AreEqual(W.CDF(0), 0);
-            Assert.AreEqual(W.CDF(1), 0.63212, 1e-05);
-            Assert.AreEqual(W.CDF(10), 0.99995, 1e-05);
+            Assert.AreEqual(0, W.CDF(0));
+            Assert.AreEqual(0.63212, W.CDF(1), 1e-05);
+            Assert.AreEqual(0.99995, W.CDF(10), 1e-05);
         }
 
         /// <summary>
@@ -322,9 +322,9 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var W = new Weibull();
-            Assert.AreEqual(W.InverseCDF(0),0);
-            Assert.AreEqual(W.InverseCDF(1),double.PositiveInfinity);
-            Assert.AreEqual(W.InverseCDF(0.4), 7.1472, 1e-04);
+            Assert.AreEqual(0,W.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity,W.InverseCDF(1));
+            Assert.AreEqual(7.1472, W.InverseCDF(0.4),  1e-04);
         }
     }
 }

@@ -155,14 +155,19 @@ namespace Numerics.Distributions
         {
             _xValues = sample.ToArray();
             Array.Sort(_xValues);
-            _pValues = PlottingPositions.Function(_xValues.Count(), plottingPostionType);
+            
+            var pValues = PlottingPositions.Function(_xValues.Count(), plottingPostionType);
+
+            if (pValues is null) { throw new InvalidOperationException("PlottingPositions.Function returned null."); }
+            _pValues = pValues;
+
             opd = new OrderedPairedData(_xValues, _pValues, true, SortOrder.Ascending, true, SortOrder.Ascending);
             _momentsComputed = false;
         }
 
-        private double[] _xValues;
-        private double[] _pValues;
-        private OrderedPairedData opd;
+        private double[] _xValues = Array.Empty<double>();
+        private double[] _pValues = Array.Empty<double>();
+        private OrderedPairedData opd = default!;
         private bool _momentsComputed = false;
         private double u1, u2, u3, u4;
 
@@ -407,7 +412,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
         {
-            return null;
+            return new ArgumentOutOfRangeException("The parameters are valid");
         }
 
         /// <inheritdoc/>
@@ -699,7 +704,7 @@ namespace Numerics.Distributions
                 throw new ArgumentException("Distribution list cannot be null or empty.", nameof(distributions));
 
             if (distributions.Count == 1)
-                return distributions[0].Clone() as EmpiricalDistribution;
+                return (EmpiricalDistribution) distributions[0].Clone();
 
             if (numberOfPoints < 2)
                 throw new ArgumentException("Number of points must be at least 2.", nameof(numberOfPoints));

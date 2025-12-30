@@ -399,7 +399,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Min), "The min cannot be greater than or equal to the max.");
                 return new ArgumentOutOfRangeException(nameof(Min), "The min cannot be greater than or equal to the max.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

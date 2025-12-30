@@ -84,9 +84,9 @@ namespace Distributions.Univariate
             double true_x = 50169.23d;
             double true_a = 55443d;
             double true_k = 0.0956d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
-            Assert.AreEqual((k - true_k) / true_k < 0.01d, true);
+            Assert.IsLessThan(0.01d,(x - true_x) / true_x );
+            Assert.IsLessThan(0.01d,(a - true_a) / true_a );
+            Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
         /// <summary>
@@ -108,10 +108,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(a, true_a, 0.001d);
             Assert.AreEqual(k, true_k, 0.001d);
             var lmom = GPA.LinearMomentsFromParameters(GPA.GetParameters);
-            Assert.AreEqual(lmom[0], 1648.806d, 0.001d);
-            Assert.AreEqual(lmom[1], 138.2366d, 0.001d);
-            Assert.AreEqual(lmom[2], 0.1033903d, 0.001d);
-            Assert.AreEqual(lmom[3], 0.03073215d, 0.001d);
+            Assert.AreEqual(1648.806d, lmom[0],  0.001d);
+            Assert.AreEqual(138.2366d, lmom[1],  0.001d);
+            Assert.AreEqual(0.1033903d, lmom[2], 0.001d);
+            Assert.AreEqual(0.03073215d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -136,9 +136,9 @@ namespace Distributions.Univariate
             double true_x = 50203.04d;
             double true_a = 55365.72d;
             double true_k = 0.0948d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
-            Assert.AreEqual((k - true_k) / true_k < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
+            Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
         /// <summary>
@@ -163,9 +163,9 @@ namespace Distributions.Univariate
             double true_x = 50400d;
             double true_a = 55142.29d;
             double true_k = 0.0945d;
-            Assert.AreEqual((x - true_x) / true_x < 0.01d, true);
-            Assert.AreEqual((a - true_a) / true_a < 0.01d, true);
-            Assert.AreEqual((k - true_k) / true_k < 0.01d, true);
+            Assert.IsLessThan(0.01d, (x - true_x) / true_x);
+            Assert.IsLessThan(0.01d, (a - true_a) / true_a);
+            Assert.IsLessThan(0.01d, (k - true_k) / true_k);
         }
 
         /// <summary>
@@ -185,10 +185,10 @@ namespace Distributions.Univariate
             var GPA = new GeneralizedPareto(50203.04d, 55365.72d, 0.0948d);
             double q100 = GPA.InverseCDF(0.99d);
             double true_q100 = 256803d;
-            Assert.AreEqual((q100 - true_q100) / true_q100 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (q100 - true_q100) / true_q100);
             double p = GPA.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual((p - true_p) / true_p < 0.01d, true);
+            Assert.IsLessThan(0.01d, (p - true_p) / true_p);
         }
 
         /// <summary>
@@ -204,9 +204,9 @@ namespace Distributions.Univariate
             double true_dLocation = 1.0d;
             double true_dScale = 3.7315488d;
             double true_dShape = -441209.53d;
-            Assert.AreEqual((dQdLocation - true_dLocation) / true_dLocation < 0.01d, true);
-            Assert.AreEqual((dQdScale - true_dScale) / true_dScale < 0.01d, true);
-            Assert.AreEqual((dQdShape - true_dShape) / true_dShape < 0.01d, true);
+            Assert.IsLessThan(0.01d, (dQdLocation - true_dLocation) / true_dLocation);
+            Assert.IsLessThan(0.01d, (dQdScale - true_dScale) / true_dScale);
+            Assert.IsLessThan(0.01d, (dQdShape - true_dShape) / true_dShape);
         }
 
         /// <summary>
@@ -228,13 +228,13 @@ namespace Distributions.Univariate
             var GPA = new GeneralizedPareto(50203.04d, 55365.72d, 0.0948d);
             double qVar99 = Math.Sqrt(GPA.QuantileVariance(0.99d, sample.Length, ParameterEstimationMethod.MethodOfMoments));
             double true_qVar99 = 16657d;
-            Assert.AreEqual((qVar99 - true_qVar99) / true_qVar99 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
 
             // Maximum Likelihood
             GPA = new GeneralizedPareto(50400d, 55142.29d, 0.0945d);
             qVar99 = Math.Sqrt(GPA.QuantileVariance(0.99d, sample.Length, ParameterEstimationMethod.MaximumLikelihood));
             true_qVar99 = 15938d;
-            Assert.AreEqual((qVar99 - true_qVar99) / true_qVar99 < 0.01d, true);
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
         }
 
         /// <summary>
@@ -244,14 +244,14 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Xi, 100);
-            Assert.AreEqual(GPA.Alpha, 10);
-            Assert.AreEqual(GPA.Kappa, 0);
+            Assert.AreEqual(100,GPA.Xi);
+            Assert.AreEqual(10,GPA.Alpha);
+            Assert.AreEqual(0, GPA.Kappa);
 
             var GPA2 = new GeneralizedExtremeValue(-100, 1, 1);
-            Assert.AreEqual(GPA2.Xi, -100);
-            Assert.AreEqual(GPA2.Alpha, 1);
-            Assert.AreEqual(GPA2.Kappa, 1);
+            Assert.AreEqual(-100,GPA2.Xi);
+            Assert.AreEqual(1, GPA2.Alpha);
+            Assert.AreEqual(1, GPA2.Kappa);
         }
 
         /// <summary>
@@ -277,12 +277,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.ParametersToString[0, 0], "Location (ξ)");
-            Assert.AreEqual(GPA.ParametersToString[1, 0], "Scale (α)");
-            Assert.AreEqual(GPA.ParametersToString[2, 0], "Shape (κ)");
-            Assert.AreEqual(GPA.ParametersToString[0, 1], "100");
-            Assert.AreEqual(GPA.ParametersToString[1, 1], "10");
-            Assert.AreEqual(GPA.ParametersToString[2, 1], "0");
+            Assert.AreEqual("Location (ξ)",GPA.ParametersToString[0, 0] );
+            Assert.AreEqual("Scale (α)", GPA.ParametersToString[1, 0]);
+            Assert.AreEqual("Shape (κ)", GPA.ParametersToString[2, 0]);
+            Assert.AreEqual("100", GPA.ParametersToString[0, 1]);
+            Assert.AreEqual("10", GPA.ParametersToString[1, 1]);
+            Assert.AreEqual("0", GPA.ParametersToString[2, 1]);
         }
 
         /// <summary>
@@ -306,13 +306,13 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Mean, 110);
+            Assert.AreEqual(110, GPA.Mean);
 
             var GPA2 = new GeneralizedPareto(100, 10, 0.9);
-            Assert.AreEqual(GPA2.Mean, 105.26315, 1e-04);
+            Assert.AreEqual(105.26315, GPA2.Mean,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA3.Mean, double.NaN);
+            Assert.AreEqual(double.NaN,GPA3.Mean);
         }
 
         /// <summary>
@@ -322,10 +322,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Median, 106.93147, 1e-04);
+            Assert.AreEqual(106.93147, GPA.Median,  1e-04);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA2.Median, 95);
+            Assert.AreEqual(95, GPA2.Median);
         }
 
         /// <summary>
@@ -335,10 +335,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Mode, 100);
+            Assert.AreEqual(100, GPA.Mode);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA2.Mode, 95);
+            Assert.AreEqual(95, GPA2.Mode);
         }
 
         /// <summary>
@@ -348,13 +348,13 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.StandardDeviation, 10);
+            Assert.AreEqual(10, GPA.StandardDeviation);
 
             var GPA2 = new GeneralizedPareto(100, 10, 0.25);
-            Assert.AreEqual(GPA2.StandardDeviation, 6.531972, 1e-04);
+            Assert.AreEqual(6.531972, GPA2.StandardDeviation,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA3.StandardDeviation, double.NaN);
+            Assert.AreEqual(double.NaN, GPA3.StandardDeviation);
         }
         
         /// <summary>
@@ -364,13 +364,13 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Skewness, 2);
+            Assert.AreEqual(2,GPA.Skewness);
 
             var GPA2 = new GeneralizedPareto(100, 10, 0.3);
-            Assert.AreEqual(GPA2.Skewness, 0.932039, 1e-04);
+            Assert.AreEqual(0.932039, GPA2.Skewness,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA3.Skewness, double.NaN);
+            Assert.AreEqual(double.NaN,GPA3.Skewness );
         }
 
         /// <summary>
@@ -380,13 +380,13 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Kurtosis, 9);
+            Assert.AreEqual(9, GPA.Kurtosis);
 
             var GPA2 = new GeneralizedPareto(100, 10, 0.24);
-            Assert.AreEqual(GPA2.Kurtosis, 3.786748, 1e-04);
+            Assert.AreEqual(3.786748, GPA2.Kurtosis,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA3.Kurtosis, double.NaN);
+            Assert.AreEqual(double.NaN, GPA3.Kurtosis);
         }
 
         /// <summary>
@@ -396,7 +396,7 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Minimum, 100);
+            Assert.AreEqual(100, GPA.Minimum);
         }
 
         /// <summary>
@@ -406,10 +406,10 @@ namespace Distributions.Univariate
         public void Test_Maximum() 
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.Maximum, double.PositiveInfinity);
+            Assert.AreEqual(double.PositiveInfinity, GPA.Maximum);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA2.Maximum, 110);
+            Assert.AreEqual(110, GPA2.Maximum);
         }
 
         /// <summary>
@@ -419,12 +419,12 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.PDF(100), 0.1);
-            Assert.AreEqual(GPA.PDF(200), 4.53999e-06, 1e-10);
+            Assert.AreEqual(0.1,GPA.PDF(100));
+            Assert.AreEqual(4.53999e-06, GPA.PDF(200),  1e-10);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA2.PDF(200), 0);
-            Assert.AreEqual(GPA2.PDF(50), 0);
+            Assert.AreEqual(0,GPA2.PDF(200));
+            Assert.AreEqual(0,GPA2.PDF(50));
         }
 
         /// <summary>
@@ -434,14 +434,14 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.CDF(100), 0);
-            Assert.AreEqual(GPA.CDF(0), 0, 1e-04);
-            Assert.AreEqual(GPA.CDF(200), 0.999954, 1e-06);
+            Assert.AreEqual(0, GPA.CDF(100));
+            Assert.AreEqual(0, GPA.CDF(0), 1e-04);
+            Assert.AreEqual(0.999954, GPA.CDF(200),  1e-06);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA2.CDF(50), 0);
-            Assert.AreEqual(GPA2.CDF(20), 0);
-            Assert.AreEqual(GPA2.CDF(200), 1);
+            Assert.AreEqual(0, GPA2.CDF(50));
+            Assert.AreEqual(0, GPA2.CDF(20));
+            Assert.AreEqual(1, GPA2.CDF(200));
         }
 
         /// <summary>
@@ -451,12 +451,12 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(GPA.InverseCDF(0), 100);
-            Assert.AreEqual(GPA.InverseCDF(1), double.PositiveInfinity);
-            Assert.AreEqual(GPA.InverseCDF(0.5), 106.93147, 1e-04);
+            Assert.AreEqual(100, GPA.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity,GPA.InverseCDF(1));
+            Assert.AreEqual(106.93147, GPA.InverseCDF(0.5),  1e-04);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(GPA2.InverseCDF(0.3), 103);
+            Assert.AreEqual(103,GPA2.InverseCDF(0.3));
         }
     }
 }

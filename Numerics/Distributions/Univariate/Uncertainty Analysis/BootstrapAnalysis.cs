@@ -141,7 +141,7 @@ namespace Numerics.Distributions
 
                 // MLE and certain L-moments methods can fail to find a solution
                 // On fail, set to null
-                if (failed == true) bootDistributions[idx] = null;
+                if (failed == true) bootDistributions[idx] = null!;
 
             });
             return bootDistributions;
@@ -171,7 +171,7 @@ namespace Numerics.Distributions
                 };
 
                 // On fail, set to null
-                if (failed == true) bootDistributions[idx] = null;
+                if (failed == true) bootDistributions[idx] = null!;
 
             });
             return bootDistributions;
@@ -181,7 +181,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap an array of distribution parameters.
         /// </summary>
-        public double[,] Parameters(IUnivariateDistribution[] distributions = null)
+        public double[,] Parameters(IUnivariateDistribution[] distributions = null!)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
             var bootParameters = new double[bootDistributions.Count(), Distribution.NumberOfParameters];
@@ -206,7 +206,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap an array of distribution parameter sets.
         /// </summary>
-        public ParameterSet[] ParameterSets(IUnivariateDistribution[] distributions = null)
+        public ParameterSet[] ParameterSets(IUnivariateDistribution[] distributions = null!)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
             var bootParameters = new ParameterSet[bootDistributions.Count()];
@@ -293,7 +293,7 @@ namespace Numerics.Distributions
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
         /// <param name="recordParameterSets">Optional. Determines whether to record parameter sets. Default = true.</param>
-        public UncertaintyAnalysisResults Estimate(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null, bool recordParameterSets = true)
+        public UncertaintyAnalysisResults Estimate(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!, bool recordParameterSets = true)
         {
             var results = new UncertaintyAnalysisResults();
             results.ParentDistribution = (UnivariateDistributionBase)Distribution;
@@ -344,7 +344,7 @@ namespace Numerics.Distributions
         /// <param name="quantiles">List quantile values.</param>
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[] ExpectedProbabilities(IList<double> quantiles, IList<double> probabilities, IUnivariateDistribution[] distributions = null)
+        public double[] ExpectedProbabilities(IList<double> quantiles, IList<double> probabilities, IUnivariateDistribution[] distributions = null!)
         {
             var quants = quantiles.ToArray();
             var probs = probabilities.ToArray();
@@ -396,7 +396,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="quantiles">List quantile values.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[] ExpectedProbabilities(IList<double> quantiles, IUnivariateDistribution[] distributions = null)
+        public double[] ExpectedProbabilities(IList<double> quantiles, IUnivariateDistribution[] distributions = null!)
         {
             var quants = quantiles.ToArray();
             Array.Sort(quants);
@@ -447,7 +447,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] PercentileQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null)
+        public double[,] PercentileQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!)
         {
             var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
             var Output = new double[probabilities.Count, 2];
@@ -474,7 +474,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null)
+        public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!)
         {
             // Create list of original X values given probability values
             var populationXValues = new double[probabilities.Count];
@@ -520,7 +520,7 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] NormalQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null)
+        public double[,] NormalQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[] distributions = null!)
         {
 
             // Create list of original X values given probability values
@@ -713,7 +713,7 @@ namespace Numerics.Distributions
                 {
                     // MLE and certain L-moments methods can fail to find a solution
                     // On fail, set to null
-                    bootDistributions[i] = null;
+                    bootDistributions[i] = null!;
                     for (int j = 0; j < probabilities.Count; j++)
                     {
                         xValues[i, j] = double.NaN;

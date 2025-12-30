@@ -89,24 +89,24 @@ namespace Numerics.Distributions
 
         private bool _parametersValid = true;
         private int _dimension = 0;
-        private double[] _mean;
-        private Matrix _covariance;
+        private double[] _mean = Array.Empty<double>();
+        private Matrix _covariance = Matrix.Identity(0);
         
-        private CholeskyDecomposition _cholesky;
+        private CholeskyDecomposition? _cholesky;
         private double _lnconstant;
-        private double[] _variance;
-        private double[] _standardDeviation;
+        private double[] _variance = Array.Empty<double>();
+        private double[] _standardDeviation = Array.Empty<double>();
 
         // variables required for the multivariate CDF
-        private Matrix _correlation;
-        private double[] _correl;
+        private Matrix _correlation = Matrix.Identity(0);
+        private double[] _correl = Array.Empty<double>();
         private Random _MVNUNI = new MersenneTwister();
         private int _maxEvaluations = 100000;
         private double _absoluteError = 1E-4;
         private double _relativeError = 1E-4;
-        private double[] _lower;
-        private double[] _upper;
-        private int[] _infin;
+        private double[] _lower = Array.Empty<double>();    
+        private double[] _upper = Array.Empty<double>();
+        private int[] _infin = Array.Empty<int>();
         private bool _correlationMatrixCreated = false;
         private bool _covSRTed = false;
 
@@ -250,7 +250,9 @@ namespace Numerics.Distributions
         /// <summary>
         /// Determines if the covariance matrix is positive definite.
         /// </summary>
-        public bool IsPositiveDefinite => _cholesky.IsPositiveDefinite;
+        /// var chol = _cholesky ?? throw new InvalidOperationException("Parameters not set.");
+
+        public bool IsPositiveDefinite => _cholesky != null && _cholesky.IsPositiveDefinite;
 
         /// <summary>
         /// Set the distribution parameters.
@@ -265,6 +267,16 @@ namespace Numerics.Distributions
             _dimension = mean.Length;      
             _mean = mean;
             _covariance = new Matrix(covariance);
+
+            _variance = new double[_dimension];
+            _standardDeviation = new double[_dimension];
+            for (int i = 0; i < _dimension; i++)
+            {
+                // assuming Matrix supports indexer [row,col]
+                _variance[i] = _covariance[i, i];
+                _standardDeviation[i] = Math.Sqrt(_variance[i]);
+            }
+
             _cholesky = new CholeskyDecomposition(_covariance);
             double lndet = _cholesky.LogDeterminant();
             _lnconstant = -(Math.Log(2d * Math.PI) * _mean.Length + lndet) * 0.5d;
@@ -349,7 +361,7 @@ namespace Numerics.Distributions
                 var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
                 if (throwException) throw ex; else return ex;
             }
-            return null;
+            return null!;
         }
 
         /// <summary>
@@ -384,6 +396,8 @@ namespace Numerics.Distributions
             var z = new double[_mean.Length];
             for (int i = 0; i < x.Length; i++)
                 z[i] = x[i] - _mean[i];
+            if(_cholesky == null)
+                throw new InvalidOperationException("Parameters not set.");
             var a = _cholesky.Solve(new Vector(z));
             double b = 0d;
             for (int i = 0; i < z.Length; i++)
@@ -475,7 +489,9 @@ namespace Numerics.Distributions
             var z = new double[Dimension];
             for (int j = 0; j < Dimension; j++)
                 z[j] = Normal.StandardZ(probabilities[j]);
-            // x = A*z + mu
+            
+            if (_cholesky == null)
+                throw new InvalidOperationException("Parameters not set.");
             var Az = _cholesky.L * z;
             for (int j = 0; j < Dimension; j++)
                 sample[j] = Az[j] + _mean[j];
@@ -538,6 +554,8 @@ namespace Numerics.Distributions
                 for (int j = 0; j < Dimension; j++)
                     z[j] = Normal.StandardZ(rnd.NextDouble());
                 // x = A*z + mu
+                if (_cholesky == null)
+                    throw new InvalidOperationException("Parameters not set.");
                 var Az = _cholesky.L * z;
                 for (int j = 0; j < Dimension; j++)
                     sample[i, j] = Az[j] + _mean[j];
@@ -566,6 +584,8 @@ namespace Numerics.Distributions
                 for (int j = 0; j < Dimension; j++)
                     z[j] = Normal.StandardZ(r[i, j]);
                 // x = A*z + mu
+                if(_cholesky == null)
+                    throw new InvalidOperationException("Parameters not set.");
                 var Az = _cholesky.L * z;
                 for (int j = 0; j < Dimension; j++)
                     sample[i, j] = Az[j] + _mean[j];
@@ -601,6 +621,8 @@ namespace Numerics.Distributions
                     }               
                 }               
                 // x = A*z + mu
+                if(_cholesky == null)
+                    throw new InvalidOperationException("Parameters not set.");
                 var Az = _cholesky.L * z;
                 for (int j = 0; j < Dimension; j++)
                     sample[i, j] = Az[j] + _mean[j];
