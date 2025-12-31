@@ -205,7 +205,7 @@ namespace Distributions.Univariate
             var covar = GEV.ParameterCovariance(sample.Length, ParameterEstimationMethod.MaximumLikelihood);
             double qVar = GEV.QuantileVariance(0.99d, sample.Length, ParameterEstimationMethod.MaximumLikelihood);
             double qSigma = Math.Sqrt(qVar);
-            Assert.IsLessThan( 0.01d, (partials[0] - true_dXdU) / true_dXdU );
+            Assert.IsLessThan(0.01d,(partials[0] - true_dXdU) / true_dXdU);
             Assert.IsLessThan(0.01d, (partials[1] - true_dxdA) / true_dxdA);
             Assert.IsLessThan(0.01d, (partials[2] - true_dxdK) / true_dxdK);
             Assert.IsLessThan(0.01d, (covar[0, 0] - true_VarU) / true_VarU);
@@ -333,7 +333,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(12.825498, GEV.StandardDeviation,  1e-05);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.49);
-            Assert.AreEqual(9.280898, GEV2.StandardDeviation,  1e-04);
+            Assert.AreEqual(9.280898, GEV2.StandardDeviation, 1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
             Assert.AreEqual(double.NaN, GEV3.StandardDeviation);
@@ -346,13 +346,13 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(1.1396,GEV.Skewness );
+            Assert.AreEqual(1.1396, GEV.Skewness);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.3);
             Assert.AreEqual(-0.0690175, GEV2.Skewness,  1e-03);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(double.NaN,GEV3.Skewness);
+            Assert.AreEqual(double.NaN, GEV3.Skewness);
         }
 
         /// <summary>
@@ -378,7 +378,7 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(double.NegativeInfinity,GEV.Minimum);
+            Assert.AreEqual(double.NegativeInfinity, GEV.Minimum);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, -5);
             Assert.AreEqual(98, GEV2.Minimum);

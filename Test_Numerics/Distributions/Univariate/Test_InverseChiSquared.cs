@@ -216,7 +216,7 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var IX = new InverseChiSquared(1, 1);
-            Assert.AreEqual(0.2419, IX.PDF(1),1e-04);
+            Assert.AreEqual(0.2419, IX.PDF(1), 1e-04);
 
             var IX2 = new InverseChiSquared(2, 1);
             Assert.AreEqual(0.15163, IX2.PDF(2),  1e-04);

@@ -173,11 +173,7 @@ namespace Numerics.Data
         /// <returns>A downloaded time series.</returns>
         public static async Task<TimeSeries> FromGHCN(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyPrecipitation, DepthUnit unit = DepthUnit.Inches)
         {
-            // Check internet connection
-            if (!await IsConnectedToInternet())
-            {
-                throw new InvalidOperationException("No internet connection.");
-            }
+            
 
             // Check site number
             if (siteNumber.Length != 11)
@@ -194,6 +190,12 @@ namespace Numerics.Data
             var timeSeries = new TimeSeries(TimeInterval.OneDay);
             DateTime? previousDate = null;
             string tempFilePath = Path.Combine(Path.GetTempPath(), $"{siteNumber}.dly");
+
+            // Check internet connection
+            if (!await IsConnectedToInternet())
+            {
+                throw new InvalidOperationException("No internet connection.");
+            }
 
             try
             {
@@ -353,11 +355,7 @@ namespace Numerics.Data
         /// <param name="timeSeriesType">The time series type.</param>
         public static async Task<(TimeSeries TimeSeries, string RawText)> FromUSGS(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge)
         {
-            // Check internet connection
-            if (!await IsConnectedToInternet())
-            {
-                throw new InvalidOperationException("No internet connection.");
-            }
+            
 
             // Check site number
             if (siteNumber.Length != 8)
@@ -369,6 +367,12 @@ namespace Numerics.Data
             if (timeSeriesType == TimeSeriesType.DailyPrecipitation || timeSeriesType == TimeSeriesType.DailySnow)
             {
                 throw new ArgumentException("The time series type cannot be daily precipitation or daily snow.", nameof(timeSeriesType));
+            }
+
+            // Check internet connection
+            if (!await IsConnectedToInternet())
+            {
+                throw new InvalidOperationException("No internet connection.");
             }
 
             var timeSeries = new TimeSeries();
@@ -403,7 +407,7 @@ namespace Numerics.Data
                         using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
                         using (StreamReader reader = new StreamReader(decompressionStream))
                         {
-                            string line;
+                            string? line;
                             bool isHeader = true;
 
                             while ((line = await reader.ReadLineAsync()) != null)
@@ -742,9 +746,7 @@ namespace Numerics.Data
             DateTime? startDate = null,
             DateTime? endDate = null)
         {
-            // Check connectivity
-            if (!await IsConnectedToInternet())
-                throw new InvalidOperationException("No internet connection.");
+            
 
             // Validate station number (BOM station numbers are typically 6 digits)
             if (string.IsNullOrWhiteSpace(stationNumber) || stationNumber.Length < 6)
@@ -753,6 +755,10 @@ namespace Numerics.Data
             // Validate time series type
             if (timeSeriesType != TimeSeriesType.DailyDischarge && timeSeriesType != TimeSeriesType.DailyStage)
                 throw new ArgumentException("BOM API supports DailyDischarge or DailyStage only.", nameof(timeSeriesType));
+
+            // Check connectivity
+            if (!await IsConnectedToInternet())
+                throw new InvalidOperationException("No internet connection.");
 
             // Set default dates
             DateTime sd = startDate ?? new DateTime(1800, 1, 1);
@@ -770,7 +776,7 @@ namespace Numerics.Data
                 $"&station_no={Uri.EscapeDataString(stationNumber)}" +
                 $"&parametertype_name={Uri.EscapeDataString(parameterType)}";
 
-            string tsId = null;
+            string? tsId = null;
 
             // Create HttpClientHandler with automatic decompression
             var handler = new HttpClientHandler
@@ -840,7 +846,7 @@ namespace Numerics.Data
 
                 for (int i = 0; i < headers.GetArrayLength(); i++)
                 {
-                    string header = headers[i].GetString();
+                    string? header = headers[i].GetString();
                     if (header == "ts_id") tsIdIndex = i;
                     if (header == "ts_name") tsNameIndex = i;
                 }
@@ -852,8 +858,9 @@ namespace Numerics.Data
                 for (int i = 1; i < root.GetArrayLength(); i++)
                 {
                     var row = root[i];
-                    string tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() : "";
+                    string? tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() : "";
 
+                    if (tsName == null) continue;
                     // Prioritize: DMQaQc.Merged.DailyMean.24HR or similar daily mean series
                     if (tsName.Contains("DailyMean") || tsName.Contains("Daily Mean"))
                     {
@@ -940,7 +947,7 @@ namespace Numerics.Data
                     if (point.GetArrayLength() < 2) continue;
 
                     // Parse timestamp
-                    string timestampStr = point[0].GetString();
+                    string? timestampStr = point[0].GetString();
                     if (!DateTime.TryParse(timestampStr, out DateTime date))
                         continue;
 

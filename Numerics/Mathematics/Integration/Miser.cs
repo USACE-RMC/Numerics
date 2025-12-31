@@ -340,7 +340,7 @@ namespace Numerics.Mathematics.Integration
         private void ranpt(double[] pt, double[] regn)
         {
             int j, n = pt.Length;
-            double[] rnd = null;
+            double[] rnd = null!;
             if (UseSobolSequence)
                 rnd = _sobol.NextDouble();
 

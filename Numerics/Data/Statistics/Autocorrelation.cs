@@ -94,7 +94,7 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the function evaluated at the given values.
         /// </returns>
-        public static double[,] Function(IList<double> data, int lagMax = -1, Type type = Type.Correlation)
+        public static double[,]? Function(IList<double> data, int lagMax = -1, Type type = Type.Correlation)
         {
             if (type == Type.Correlation)
             {
@@ -123,7 +123,7 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the function evaluated at the given values.
         /// </returns>
-        public static double[,] Function(TimeSeries timeSeries, int lagMax = -1, Type type = Type.Correlation)
+        public static double[,]? Function(TimeSeries timeSeries, int lagMax = -1, Type type = Type.Correlation)
         {
             if (type == Type.Correlation)
             {
@@ -150,7 +150,7 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the covariance of the given values.
         /// </returns>
-        private static double[,] Covariance(IList<double> data, int lagMax = -1)
+        private static double[,]? Covariance(IList<double> data, int lagMax = -1)
         {
             int n = data.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
@@ -177,7 +177,7 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the covariance of the given values.
         /// </returns>
-        private static double[,] Covariance(TimeSeries timeSeries, int lagMax = -1)
+        private static double[,]? Covariance(TimeSeries timeSeries, int lagMax = -1)
         {
             int n = timeSeries.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
@@ -205,12 +205,15 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the autocorrelation of the given values.
         /// </returns>
-        private static double[,] Correlation(IList<double> data, int lagMax = -1)
+        private static double[,]? Correlation(IList<double> data, int lagMax = -1)
         {
             int n = data.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2) return null;
             var acf = Covariance(data, lagMax);
+
+            if (acf == null) return null;
+
             double den = acf[0, 1];
             for (int i = 0; i < acf.GetLength(0); i++)
                 acf[i, 1] /= den;
@@ -226,12 +229,15 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the autocorrelation of the given values.
         /// </returns>
-        private static double[,] Correlation(TimeSeries timeSeries, int lagMax = -1)
+        private static double[,]? Correlation(TimeSeries timeSeries, int lagMax = -1)
         {
             int n = timeSeries.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2) return null;
+
             var acf = Covariance(timeSeries, lagMax);
+            if (acf == null) return null;
+
             double den = acf[0, 1];
             for (int i = 0; i < acf.GetLength(0); i++)
                 acf[i, 1] /= den;
@@ -247,13 +253,14 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the partial autocorrelation of the given values.
         /// </returns>
-        private static double[,] Partial(IList<double> data, int lagMax = -1)
+        private static double[,]? Partial(IList<double> data, int lagMax = -1)
         {
             int n = data.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2) return null;
             // First compute the ACVF
             var acvf = Covariance(data, lagMax);
+            if (acvf == null) return null;
             // Then compute PACF using the Durbin-Levinson algorithm
             int i, j;
             var phis = new double[lagMax + 1];
@@ -293,13 +300,14 @@ namespace Numerics.Data.Statistics
         /// A n x 2 matrix, with being the number of given input data points. The first column contains the lag and the 
         /// second column contains the partial autocorrelation of the given values.
         /// </returns>
-        private static double[,] Partial(TimeSeries timeSeries, int lagMax = -1)
+        private static double[,]? Partial(TimeSeries timeSeries, int lagMax = -1)
         {
             int n = timeSeries.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2) return null;
             // First compute the ACVF
             var acvf = Covariance(timeSeries, lagMax);
+            if (acvf == null) return null;
             // Then compute PACF using the Durbin-Levinson algorithm
             int i, j;
             var phis = new double[lagMax + 1];

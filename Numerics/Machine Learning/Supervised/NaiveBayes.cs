@@ -143,17 +143,17 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The means of each feature given each class. 
         /// </summary>
-        public double[,] Means { get; private set; }
+        public double[,] Means { get; private set; } = null!;
 
         /// <summary>
         /// The standard deviations of each feature given each class.
         /// </summary>
-        public double[,] StandardDeviations { get; private set; }
+        public double[,] StandardDeviations { get; private set; } = null!;
 
         /// <summary>
         /// The prior probability for each class.
         /// </summary>
-        public double[] Priors { get; private set; }
+        public double[] Priors { get; private set; } = null!;
 
         /// <summary>
         /// Determines if the classifier has been trained.
@@ -245,7 +245,7 @@ namespace Numerics.MachineLearning
         /// <param name="X">The matrix of predictors.</param>
         public double[] Predict(Matrix X)
         {
-            if (!IsTrained || X.NumberOfColumns != this.X.NumberOfColumns) return null;
+            if (!IsTrained || X.NumberOfColumns != this.X.NumberOfColumns) return null!;
             var result = new double[X.NumberOfRows];
             for (int i = 0; i < X.NumberOfRows; i++)
             {

@@ -76,8 +76,8 @@ namespace Numerics.Sampling.MCMC
 
 
         private Matrix sigmaIdentity;
-        private RunningCovarianceMatrix[] sigma;
-        private MultivariateNormal[] mvn;
+        private RunningCovarianceMatrix[] sigma = null!;
+        private MultivariateNormal[] mvn = null!;
 
         /// <summary>
         /// The scaling parameter used to scale the adaptive covariance matrix.

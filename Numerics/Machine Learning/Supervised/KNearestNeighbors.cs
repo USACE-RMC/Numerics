@@ -271,7 +271,7 @@ namespace Numerics.MachineLearning
         /// <param name="xTest">The test matrix of predictors</param>
         private int[] kNN(Matrix xTrain, Vector yTrain, Matrix xTest)
         {
-            if (NumberOfFeatures != xTrain.NumberOfColumns) return null;
+            if (NumberOfFeatures != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
             var result = new int[K];
             for (int i = 0; i < R; i++)
@@ -306,7 +306,7 @@ namespace Numerics.MachineLearning
         /// <param name="xTest">The test matrix of predictors</param>
         private double[] kNNPredict(Matrix xTrain, Vector yTrain, Matrix xTest)
         {
-            if (xTest.NumberOfColumns != xTrain.NumberOfColumns) return null;
+            if (xTest.NumberOfColumns != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
             var result = new double[R];
             for (int i = 0; i < R; i++)

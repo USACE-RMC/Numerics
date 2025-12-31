@@ -56,7 +56,7 @@ namespace Numerics.Data
         protected List<SeriesOrdinate<TIndex, TValue>> _seriesOrdinates = new List<SeriesOrdinate<TIndex, TValue>>();
 
         /// <inheritdoc/>
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         /// <inheritdoc/>
         public SeriesOrdinate<TIndex, TValue> this[int index]
@@ -75,11 +75,13 @@ namespace Numerics.Data
         }
 
         /// <inheritdoc/>
-        object IList.this[int index]
+        object? IList.this[int index]
         {
             get { return _seriesOrdinates[index]; }
             set
             {
+                if (value is null) { throw new ArgumentNullException(nameof(value)); }
+
                 if (value.GetType() != typeof(SeriesOrdinate<TIndex, TValue>))
                 {
                     if (_seriesOrdinates[index] != (SeriesOrdinate<TIndex, TValue>)value)
@@ -109,7 +111,7 @@ namespace Numerics.Data
         public bool IsFixedSize => false;
 
         /// <inheritdoc/>
-        public object SyncRoot => _seriesOrdinates.Count > 0 ? _seriesOrdinates[0] : null;
+        public object SyncRoot => _seriesOrdinates.Count > 0 ? _seriesOrdinates[0]! : new object();
 
         /// <inheritdoc/>
         public bool IsSynchronized => false;
@@ -117,14 +119,15 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public virtual void Add(SeriesOrdinate<TIndex, TValue> item)
         {
-            if (item == null) throw new ArgumentNullException(nameof(item));
+            if (item is null) throw new ArgumentNullException(nameof(item));
             _seriesOrdinates.Add(item);         
             RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _seriesOrdinates.Count - 1)); 
         }
 
         /// <inheritdoc/>
-        public int Add(object item)
+        public int Add(object? item)
         {
+            if (item is null) throw new ArgumentNullException(nameof(item));
             if (item.GetType() != typeof(SeriesOrdinate<TIndex, TValue>)) { return -1; }
             Add((SeriesOrdinate<TIndex, TValue>)item);
             return _seriesOrdinates.Count - 1;
@@ -133,14 +136,15 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public virtual void Insert(int index, SeriesOrdinate<TIndex, TValue> item)
         {
-            if (item == null) throw new ArgumentNullException(nameof(item));
+            if (item is null) throw new ArgumentNullException(nameof(item));
             _seriesOrdinates.Insert(index, item);
             RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
         /// <inheritdoc/>
-        public void Insert(int index, object item)
+        public void Insert(int index, object? item)
         {
+            if (item is null) throw new ArgumentNullException(nameof(item));
             if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>)) 
             { 
                 Insert(index, (SeriesOrdinate<TIndex, TValue>)item); 
@@ -160,8 +164,9 @@ namespace Numerics.Data
         }
 
         /// <inheritdoc/>
-        public void Remove(object item)
+        public void Remove(object? item)
         {
+            if (item is null) throw new ArgumentNullException(nameof(item));
             if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>))
             {
                 Remove((SeriesOrdinate<TIndex, TValue>)item);
@@ -195,8 +200,9 @@ namespace Numerics.Data
         }
 
         /// <inheritdoc/>
-        public bool Contains(object item)
+        public bool Contains(object? item)
         {
+            if (item is null) throw new ArgumentNullException(nameof(item));
             if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>))
             {
                 return Contains((SeriesOrdinate<TIndex, TValue>)item);
@@ -226,8 +232,9 @@ namespace Numerics.Data
         }
 
         /// <inheritdoc/>
-        public int IndexOf(object item)
+        public int IndexOf(object? item)
         {
+            if (item is null) throw new ArgumentNullException(nameof(item));
             if (item.GetType() == typeof(SeriesOrdinate<TIndex, TValue>))
             {
                 return _seriesOrdinates.IndexOf((SeriesOrdinate<TIndex, TValue>)item);

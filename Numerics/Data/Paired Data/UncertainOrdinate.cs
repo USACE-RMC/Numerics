@@ -68,9 +68,7 @@ namespace Numerics.Data
         {
             X = xValue;
             Y = yValue;
-            IsValid = true;
-            if (double.IsInfinity(X) || double.IsNaN(X) || Y == null || Y.ParametersValid == false)
-                IsValid = false;
+            IsValid = !(double.IsInfinity(X) || double.IsNaN(X) || Y is null || !Y.ParametersValid);
         }
 
         /// <summary>
@@ -79,16 +77,18 @@ namespace Numerics.Data
         /// <param name="xElement">The XElement to deserialize.</param>
         public UncertainOrdinate(XElement xElement)
         {
+            var xAttr = xElement.Attribute(nameof(X));
             double x = 0;
-            UnivariateDistributionBase dist = null;
-            if (xElement.Attribute(nameof(X)) != null) double.TryParse(xElement.Attribute(nameof(X)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
-            if (xElement.Element("Distribution") != null) { dist = UnivariateDistributionFactory.CreateDistribution(xElement.Element("Distribution")); }
+            UnivariateDistributionBase? dist = null;
+            if (xAttr != null) { double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x); }
+
+            var distEl = xElement.Element("Distribution");
+            if (distEl != null) { dist = UnivariateDistributionFactory.CreateDistribution(distEl); }
             //
             X = x;
             Y = dist;
-            IsValid = true;
-            if (double.IsInfinity(X) || double.IsNaN(X) || Y == null || Y.ParametersValid == false)
-                IsValid = false;
+
+            IsValid = !(double.IsInfinity(X) || double.IsNaN(X) || Y is null || !Y.ParametersValid);
         }
 
         /// <summary>
@@ -99,7 +99,8 @@ namespace Numerics.Data
         public UncertainOrdinate(XElement xElement, UnivariateDistributionType distributionType)
         {
             double x = 0;
-            if (xElement.Attribute(nameof(X)) != null) double.TryParse(xElement.Attribute(nameof(X)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
+            var xElAttr = xElement.Attribute(nameof(X));
+            if (xElAttr != null) double.TryParse(xElAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
             // backwards compatibility
             var dist = UnivariateDistributionFactory.CreateDistribution(distributionType);
             var props = dist.GetParameterPropertyNames;
@@ -107,7 +108,8 @@ namespace Numerics.Data
             for (int i = 0; i < props.Count(); i++)
             {
                 double p = 0;
-                if (xElement.Attribute(props[i]) != null) double.TryParse(xElement.Attribute(props[i]).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out p);
+                var xElPropsAttr = xElement.Attribute(props[i]);
+                if (xElPropsAttr != null) { double.TryParse(xElPropsAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out p); }
                 paramVals[i] = p;
             }
             dist.SetParameters(paramVals);
@@ -115,7 +117,7 @@ namespace Numerics.Data
             X = x;
             Y = dist;
             IsValid = true;
-            if (double.IsInfinity(X) || double.IsNaN(X) || Y == null || Y.ParametersValid == false)
+            if (double.IsInfinity(X) || double.IsNaN(X) || Y is null || Y.ParametersValid == false)
                 IsValid = false;
         }
 
@@ -132,7 +134,7 @@ namespace Numerics.Data
         /// <summary>
         /// Y distribution.
         /// </summary>
-        public UnivariateDistributionBase Y;
+        public UnivariateDistributionBase? Y;
 
         /// <summary>
         /// Boolean indicating if the ordinate has valid numeric values or not.
@@ -151,6 +153,10 @@ namespace Numerics.Data
         /// <returns>A 'sampled' ordinate value.</returns>
         public Ordinate GetOrdinate(double probability)
         {
+            if (Y is null)
+            {
+                throw new InvalidOperationException("Y distribution is not defined.");
+            }
             return new Ordinate(X, Y.InverseCDF(probability));
         }
 
@@ -160,6 +166,10 @@ namespace Numerics.Data
         /// <returns>A mean ordinate value.</returns>
         public Ordinate GetOrdinate()
         {
+            if (Y is null)
+            {
+                throw new InvalidOperationException("Y distribution is not defined.");
+            }
             return new Ordinate(X, Y.Mean);
         }
 
@@ -182,9 +192,11 @@ namespace Numerics.Data
             if (ordinateToCompare.IsValid == false)
                 return false;
             // Check for equivalent distribution types
-            if (allowDifferentTypes == false && ordinateToCompare.Y.Type != Y.Type)
+            if (allowDifferentTypes == false && (ordinateToCompare.Y is null || Y is null || ordinateToCompare.Y.Type != Y.Type))
                 return false;
 
+            if (Y is null || ordinateToCompare.Y is null)
+                return false;
             double minPercentile = Y.Type == UnivariateDistributionType.PertPercentile || Y.Type == UnivariateDistributionType.PertPercentileZ ? 0.05 : 1E-5;
 
             // Test reasonable lower bound
@@ -223,7 +235,7 @@ namespace Numerics.Data
                     result.Add("Ordinate X value can not be infinity.");
                 if (double.IsNaN(ordinateToCompare.X))
                     result.Add("Ordinate X value must be a valid number.");
-                if (ordinateToCompare.Y == null)
+                if (ordinateToCompare.Y is null)
                 {
                     result.Add("Ordinate Y value must be defined.");
                 }
@@ -234,6 +246,12 @@ namespace Numerics.Data
                 }
             }
             // Check for equivalent distribution types
+            if(ordinateToCompare.Y is null || Y is null)
+            {
+                result.Add("Ordinate Y value must be defined.");
+                return result;
+            }
+
             if (allowDifferentTypes == false && ordinateToCompare.Y.Type != Y.Type)
                 result.Add("Can't compare two ordinates with different distribution types."); // Return False
             // 
@@ -266,7 +284,7 @@ namespace Numerics.Data
                     result.Add("Ordinate X value can not be infinity.");
                 if (double.IsNaN(X))
                     result.Add("Ordinate X value must be a valid number.");
-                if (Y == null)
+                if (Y is null)
                     result.Add("Ordinate Y value must be defined.");
                 else if (Y.ParametersValid == false)
                 {
@@ -286,8 +304,12 @@ namespace Numerics.Data
         /// <returns>True if two objects are numerically equal; otherwise, False.</returns>
         public static bool operator ==(UncertainOrdinate left, UncertainOrdinate right)
         {
-            //if (left == null || right == null) return false;
+            
             if (left.X != right.X)
+                return false;
+            if (left.Y is null && right.Y is null)
+                return true;
+            if (left.Y is null || right.Y is null)
                 return false;
             if (left.Y != right.Y)
                 return false;
@@ -310,7 +332,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is UncertainOrdinate other)
             {
@@ -329,7 +351,7 @@ namespace Numerics.Data
             {
                 int hash = 17;
                 hash = hash * 23 + X.GetHashCode();
-                hash = hash * 23 + Y.GetHashCode();
+                hash = hash * 23 + (Y is not null ? Y.GetHashCode() : 0);
                 return hash;
             }
         }
@@ -341,7 +363,10 @@ namespace Numerics.Data
         {
             var result = new XElement(nameof(UncertainOrdinate));
             result.SetAttributeValue(nameof(X), X.ToString("G17", CultureInfo.InvariantCulture));
-            result.Add(Y.ToXElement());
+            if (Y is not null)
+            {
+                result.Add(Y.ToXElement());
+            }      
             return result;
         }
 

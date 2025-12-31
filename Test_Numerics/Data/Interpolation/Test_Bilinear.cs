@@ -93,7 +93,7 @@ namespace Data.Interpolation
             double x1 = 350d;
             double x2 = 75d;
             double y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 874.84d, 1E-6);
+            Assert.AreEqual(874.84d, y,  1E-6);
         }
 
         /// <summary>
@@ -136,31 +136,31 @@ namespace Data.Interpolation
 
             var LogLinLin = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.Logarithmic };
             double y1 = LogLinLin.Interpolate(x1, x2);
-            Assert.AreEqual(y1, 874.909523653025d, 1E-6);
+            Assert.AreEqual(874.909523653025d, y1,  1E-6);
 
             var LinLogLin = new Bilinear(x1Array, x2Array, yArray) { X2Transform = Transform.Logarithmic };
             double y2 = LinLogLin.Interpolate(x1, x2);
-            Assert.AreEqual(y2, 875.919023759159d, 1E-6);
+            Assert.AreEqual(875.919023759159d, y2, 1E-6);
 
             var LinLinLog = new Bilinear(x1Array, x2Array, yArray) { YTransform = Transform.Logarithmic };
             double y3 = LinLinLog.Interpolate(x1, x2);
-            Assert.AreEqual(y3, 874.8164, 1E-4);
+            Assert.AreEqual(874.8164, y3,  1E-4);
 
             var LinLogLog = new Bilinear(x1Array, x2Array, yArray) { X2Transform = Transform.Logarithmic, YTransform = Transform.Logarithmic };
             double y4 = LinLogLog.Interpolate(x1, x2);
-            Assert.AreEqual(y4, 875.896104342695d, 1E-6);
+            Assert.AreEqual(875.896104342695d, y4, 1E-6);
 
             var LogLogLin = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.Logarithmic, X2Transform = Transform.Logarithmic };
             double y5 = LogLogLin.Interpolate(x1, x2);
-            Assert.AreEqual(y5, 875.9855, 1E-4);
+            Assert.AreEqual(875.9855, y5, 1E-4);
 
             var LogLinLog = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.Logarithmic, YTransform = Transform.Logarithmic };
             double y6 = LogLinLog.Interpolate(x1, x2);
-            Assert.AreEqual(y6, 874.886, 1E-4);
+            Assert.AreEqual(874.886, y6, 1E-4);
 
             var LogLogLog = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.Logarithmic, X2Transform = Transform.Logarithmic, YTransform = Transform.Logarithmic };
             double y7 = LogLogLog.Interpolate(x1, x2);
-            Assert.AreEqual(y7, 875.962713889793d, 1E-6);
+            Assert.AreEqual(875.962713889793d, y7, 1E-6);
         }
 
 
@@ -204,15 +204,15 @@ namespace Data.Interpolation
 
             var ZLinLin = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.NormalZ };
             double y1 = ZLinLin.Interpolate(x1, x2);
-            Assert.AreEqual(y1, 890.8358, 1E-4);
+            Assert.AreEqual(890.8358, y1, 1E-4);
 
             var LinZLin = new Bilinear(x1Array, x2Array, yArray) { X2Transform = Transform.NormalZ };
             double y2 = LinZLin.Interpolate(x1, x2);
-            Assert.AreEqual(y2, 890.7267, 1E-4);
+            Assert.AreEqual(890.7267, y2, 1E-4);
 
             var ZZLin = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.NormalZ, X2Transform = Transform.NormalZ };
             double y3 = ZZLin.Interpolate(x1, x2);
-            Assert.AreEqual(y3, 890.6835, 1E-4);
+            Assert.AreEqual(890.6835, y3, 1E-4);
         }
 
         /// <summary>
@@ -255,19 +255,19 @@ namespace Data.Interpolation
 
             var LinLinZ = new Bilinear(x1Array, x2Array, yArray) { YTransform = Transform.NormalZ };
             double y1 = LinLinZ.Interpolate(x1, x2);
-            Assert.AreEqual(y1, 0.9596228, 1E-6);
+            Assert.AreEqual(0.9596228, y1, 1E-6);
 
             var LinZZ = new Bilinear(x1Array, x2Array, yArray) { X2Transform = Transform.NormalZ, YTransform = Transform.NormalZ };
             double y2 = LinZZ.Interpolate(x1, x2);
-            Assert.AreEqual(y2, 0.95946, 1E-6);
+            Assert.AreEqual(0.95946, y2, 1E-6);
 
             var ZLinZ = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.NormalZ, YTransform = Transform.NormalZ };
             double y3 = ZLinZ.Interpolate(x1, x2);
-            Assert.AreEqual(y3, 0.9595799, 1E-6);
+            Assert.AreEqual(0.9595799, y3, 1E-6);
 
             var ZZZ = new Bilinear(x1Array, x2Array, yArray) { X1Transform = Transform.NormalZ, X2Transform = Transform.NormalZ, YTransform = Transform.NormalZ };
             double y4 = ZZZ.Interpolate(x1, x2);
-            Assert.AreEqual(y4, 0.9594168, 1E-6);
+            Assert.AreEqual(0.9594168, y4, 1E-6);
         }
 
         /// <summary>
@@ -311,46 +311,46 @@ namespace Data.Interpolation
             double x1 = 50;
             double x2 = 28;
             double y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 850.36, 1E-6);
+            Assert.AreEqual(850.36, y, 1E-6);
             // Top Right
             x1 = 50;
             x2 = 300;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 928.87, 1E-6);
+            Assert.AreEqual(928.87, y, 1E-6);
             // Bottom Left
             x1 = 600;
             x2 = 25;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 871.84, 1E-6);
+            Assert.AreEqual(871.84, y, 1E-6);
             // Bottom Right
             x1 = 600;
             x2 = 300;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 929.68, 1E-6);
+            Assert.AreEqual(929.68, y, 1E-6);
 
             // Ascending - x1 out
             // Top
             x1 = 50;
             x2 = 75;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 859.405, 1E-6);
+            Assert.AreEqual(859.405, y, 1E-6);
             // Bottom
             x1 = 600;
             x2 = 225;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 924.93, 1E-6);
+            Assert.AreEqual(924.93, y, 1E-6);
 
             // Ascending - x2 out
             // Top
             x1 = 125;
             x2 = 25;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 854.11750, 1E-6);
+            Assert.AreEqual(854.11750, y, 1E-6);
             // Bottom
             x1 = 450;
             x2 = 300;
             y = bilinear.Interpolate(x1, x2);
-            Assert.AreEqual(y, 929.65000, 1E-6);
+            Assert.AreEqual(929.65000, y, 1E-6);
 
         }
     }

@@ -270,8 +270,8 @@ namespace Distributions.Univariate
             Assert.AreEqual(convolved.Mean, convolved.Median, 0.5, "Median should be close to mean for symmetric distribution");
 
             // Verify CDF properties
-            Assert.IsLessThanOrEqualTo( 0.01, convolved.CDF(convolved.Minimum) );
-            Assert.IsGreaterThanOrEqualTo(0.99, convolved.CDF(convolved.Maximum));
+            Assert.IsLessThanOrEqualTo(0.01,convolved.CDF(convolved.Minimum), "CDF at minimum should be close to 0");
+            Assert.IsGreaterThanOrEqualTo(0.99,convolved.CDF(convolved.Maximum), "CDF at maximum should be close to 1");
         }
 
         /// <summary>
@@ -317,8 +317,8 @@ namespace Distributions.Univariate
             double meanError = Math.Abs(convolved.Mean - expectedMean) / expectedMean;
             double stdDevError = Math.Abs(convolved.StandardDeviation - expectedStdDev) / expectedStdDev;
 
-            Assert.IsLessThan(0.05, meanError);
-            Assert.IsLessThan(0.15, stdDevError);
+            Assert.IsLessThan(0.05,meanError, $"Mean error {meanError:P2} should be less than 5%");
+            Assert.IsLessThan(0.15,stdDevError, $"StdDev error {stdDevError:P2} should be less than 15%");
 
             // Verify range is reasonable
             double expectedMin = distributions.Sum(d => d.Minimum);

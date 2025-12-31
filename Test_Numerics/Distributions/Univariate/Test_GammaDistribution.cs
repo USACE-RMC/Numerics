@@ -75,8 +75,8 @@ namespace Distributions.Univariate
             double lambda = G.Kappa;
             double trueA = 0.08317d;
             double trueL = 15.91188d;
-            Assert.IsLessThan(0.01d, (alpha - trueA) / trueA);
-            Assert.IsLessThan(0.01d, (lambda - trueL) / trueL);
+            Assert.IsLessThan(0.01d,(alpha - trueA) / trueA);
+            Assert.IsLessThan(0.01d,(lambda - trueL) / trueL);
         }
 
         [TestMethod()]
@@ -93,9 +93,9 @@ namespace Distributions.Univariate
             Assert.AreEqual(scale, true_scale, 0.0001d);
             Assert.AreEqual(shape, true_shape, 0.0001d);
             var lmom = G.LinearMomentsFromParameters(G.GetParameters);
-            Assert.AreEqual(9.9575163d, lmom[0],  0.0001d);
+            Assert.AreEqual(9.9575163d, lmom[0], 0.0001d);
             Assert.AreEqual(1.9822363d, lmom[1],  0.0001d);
-            Assert.AreEqual(0.1175059d, lmom[2],  0.0001d);
+            Assert.AreEqual(0.1175059d,lmom[2], 0.0001d);
             Assert.AreEqual(0.1268391d, lmom[3],  0.0001d);
         }
 
@@ -143,7 +143,7 @@ namespace Distributions.Univariate
             Assert.IsLessThan(0.01d, (q1000 - true_1000) / true_1000);
             double p = G.CDF(q1000);
             double true_p = 0.99d;
-            Assert.AreEqual(p,true_p);
+            Assert.AreEqual(p, true_p);
         }
 
         /// <summary>
@@ -182,7 +182,7 @@ namespace Distributions.Univariate
         {
             var G = new GammaDistribution(2, 10);
             Assert.AreEqual(2,G.Theta);
-            Assert.AreEqual(10, G.Kappa);
+            Assert.AreEqual(10,G.Kappa);
 
             var G2 = new GammaDistribution(-1, 4);
             Assert.AreEqual(-1,G2.Theta);
@@ -197,10 +197,10 @@ namespace Distributions.Univariate
         public void Test_Rate()
         {
             var G = new GammaDistribution(2, 2);
-            Assert.AreEqual(0.5,G.Rate);
+            Assert.AreEqual(0.5, G.Rate);
 
             var G2 = new GammaDistribution();
-            Assert.AreEqual(0.1,G2.Rate);
+            Assert.AreEqual(0.1, G2.Rate);
         }
 
         /// <summary>
@@ -210,10 +210,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var G = new GammaDistribution();
-            Assert.AreEqual("Scale (θ)", G.ParametersToString[0, 0]);
-            Assert.AreEqual("Shape (κ)",G.ParametersToString[1, 0]);
-            Assert.AreEqual("10",G.ParametersToString[0, 1]);
-            Assert.AreEqual("2",G.ParametersToString[1, 1]);
+            Assert.AreEqual("Scale (θ)",G.ParametersToString[0, 0] );
+            Assert.AreEqual("Shape (κ)", G.ParametersToString[1, 0]);
+            Assert.AreEqual("10", G.ParametersToString[0, 1]);
+            Assert.AreEqual("2", G.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -256,7 +256,7 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var G = new GammaDistribution();
-            Assert.AreEqual(20,G.Mean);
+            Assert.AreEqual(20, G.Mean);
         }
 
         /// <summary>
@@ -302,7 +302,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var G = new GammaDistribution();
-            Assert.AreEqual(1.4142135, G.Skewness, 1e-04);
+            Assert.AreEqual(1.4142135, G.Skewness,  1e-04);
 
             var G2 = new GammaDistribution(10, 100);
             Assert.AreEqual(0.2, G2.Skewness);
@@ -321,7 +321,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(4, G2.Kurtosis);
 
             var G3 = new GammaDistribution(10, 2.5);
-            Assert.AreEqual(5.4,G3.Kurtosis);
+            Assert.AreEqual(5.4, G3.Kurtosis);
         }
 
         /// <summary>
@@ -331,7 +331,7 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var G = new GammaDistribution();
-            Assert.AreEqual(0,G.Minimum);
+            Assert.AreEqual(0, G.Minimum);
         }
 
         /// <summary>
@@ -341,7 +341,7 @@ namespace Distributions.Univariate
         public void Test_Maximum()
         {
             var G = new GammaDistribution();
-            Assert.AreEqual(double.PositiveInfinity,G.Maximum);
+            Assert.AreEqual(double.PositiveInfinity,G.Maximum );
         }
 
         /// <summary>
@@ -364,8 +364,8 @@ namespace Distributions.Univariate
             double lambda = G.Kappa;
             double trueA = 0.08833d;
             double trueL = 16.89937d;
-            Assert.IsLessThan( 0.2d, (alpha - trueA) / trueA );
-            Assert.IsLessThan(0.01d, (lambda - trueL) / trueL);
+            Assert.IsLessThan(0.2d,(alpha - trueA) / trueA);
+            Assert.IsLessThan(0.01d,(lambda - trueL) / trueL);
         }
 
         /// <summary>
@@ -400,10 +400,10 @@ namespace Distributions.Univariate
         {
             var G = new GammaDistribution(10,1);
             Assert.AreEqual(0.090483, G.PDF(1),  1e-04);
-            Assert.AreEqual(0.036787, G.PDF(10), 1e-04);
+            Assert.AreEqual(0.036787, G.PDF(10),  1e-04);
 
             var G2 = new GammaDistribution(1,1);
-            Assert.AreEqual(0.367879, G2.PDF(1), 1e-04);
+            Assert.AreEqual(0.367879, G2.PDF(1),  1e-04);
             Assert.AreEqual(0.0000453999, G2.PDF(10),  1e-10);
         }
 
@@ -418,7 +418,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.63212, G.CDF(10), 1e-04);
 
             var G2 = new GammaDistribution(1, 1);
-            Assert.AreEqual(0.999954, G2.CDF(10), 1e-04);
+            Assert.AreEqual(0.999954, G2.CDF(10),  1e-04);
 
             var G3 = new GammaDistribution(0.1, 10);
             Assert.AreEqual(0.54207028, G3.CDF(1), 1e-04);

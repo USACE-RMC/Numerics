@@ -163,7 +163,7 @@ namespace Numerics.Mathematics.Optimization
         {
             int i, j, D = NumberOfParameters;
             bool cancel = false;
-            Optimizer solver = null;
+            Optimizer solver = null!;
 
             // Set lower and upper bounds and
             // create uniform distributions for each parameter
@@ -219,7 +219,7 @@ namespace Numerics.Mathematics.Optimization
         private Optimizer GetLocalOptimizer(IList<double> initialValues, double relativeTolerance, double absoluteTolerance, ref bool cancel)
         {
             bool localCancel = false;
-            Optimizer solver = null;
+            Optimizer solver = null!;
 
             // Make sure the parameters are within the bounds.
             for (int i = 0; i < NumberOfParameters; i++)

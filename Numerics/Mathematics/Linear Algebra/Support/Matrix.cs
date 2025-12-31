@@ -186,8 +186,10 @@ namespace Numerics.Mathematics.LinearAlgebra
                 
           
             int nrow = 0, ncol = 0;
-            if (xElement.Attribute(nameof(NumberOfRows)) != null) int.TryParse(xElement.Attribute(nameof(NumberOfRows)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out nrow);
-            if (xElement.Attribute(nameof(NumberOfColumns)) != null) int.TryParse(xElement.Attribute(nameof(NumberOfColumns)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out ncol);
+            var rowsAttr = xElement.Attribute(nameof(NumberOfRows));
+            var colsAttr = xElement.Attribute(nameof(NumberOfColumns));
+            if (rowsAttr != null) int.TryParse(rowsAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out nrow);
+            if (colsAttr != null) int.TryParse(colsAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out ncol);
 
             _matrix = new double[nrow, ncol];
             int rowCount = 0;
@@ -219,7 +221,7 @@ namespace Numerics.Mathematics.LinearAlgebra
 
         #region Members
 
-        private double[,] _matrix;
+        private double[,] _matrix = null!;
 
         /// <summary>
         /// Gets the number of rows.
@@ -251,7 +253,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <summary>
         /// The matrix column header text. 
         /// </summary>
-        public string[] Header { get; set; }
+        public string[] Header { get; set; } = null!;
 
         /// <summary>
         /// Evaluates whether this matrix is symmetric.

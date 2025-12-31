@@ -66,12 +66,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var poly = new Polynomial(3, values, values);
             var lo = poly.SequentialSearch(872.5d);
-            Assert.AreEqual(lo, 871);
+            Assert.AreEqual(871, lo );
 
             Array.Reverse(values);
             var poly2 = new Polynomial(3, values, values, SortOrder.Descending);
             lo = poly2.SequentialSearch(872.5);
-            Assert.AreEqual(lo, 127);
+            Assert.AreEqual(127,lo);
         }
 
         /// <summary>
@@ -85,12 +85,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var poly = new Polynomial(3, values, values);
             var lo = poly.BisectionSearch(872.5d);
-            Assert.AreEqual(lo, 871);
+            Assert.AreEqual(871,lo);
 
             Array.Reverse(values);
             var poly2 = new Polynomial(3, values, values, SortOrder.Descending);
             lo = poly2.BisectionSearch(872.5);
-            Assert.AreEqual(lo, 127);
+            Assert.AreEqual(127,lo);
         }
 
         /// <summary>
@@ -104,12 +104,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var poly = new Polynomial(3, values, values);
             var lo = poly.HuntSearch(872.5d);
-            Assert.AreEqual(lo, 871);
+            Assert.AreEqual(871,lo);
 
             Array.Reverse(values);
             var poly2 = new Polynomial(3, values, values, SortOrder.Descending);
             lo = poly2.HuntSearch(872.5);
-            Assert.AreEqual(lo, 127);
+            Assert.AreEqual(127,lo);
         }
 
         /// <summary>
@@ -123,7 +123,7 @@ namespace Data.Interpolation
             var poly = new Polynomial(3, XArray, YArray);
             double X = 8d;
             double Y = poly.Interpolate(X);
-            Assert.AreEqual(Y, 11.5415808882467, 1E-6);
+            Assert.AreEqual(11.5415808882467, Y,  1E-6);
         }
 
         /// <summary>

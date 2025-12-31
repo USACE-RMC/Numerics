@@ -94,14 +94,17 @@ namespace Numerics.Mathematics.Optimization
                     Values[i] = outVal;
                 }
             }
-            if (xElement.Attribute(nameof(Fitness)) != null)
+
+            var fitAttr = xElement.Attribute(nameof(Fitness));
+            if (fitAttr != null)
             {
-                double.TryParse(xElement.Attribute(nameof(Fitness)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var fitness);
+                double.TryParse(fitAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var fitness);
                 Fitness = fitness;
             }
-            if (xElement.Attribute(nameof(Weight)) != null)
+            var weightAttr = xElement.Attribute(nameof(Weight));
+            if (weightAttr != null)
             {
-                double.TryParse(xElement.Attribute(nameof(Weight)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight);
+                double.TryParse(weightAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight);
                 Weight = weight;
             }
         }
@@ -109,7 +112,7 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The trial parameter set values.
         /// </summary>
-        public double[] Values;
+        public double[] Values = null!;
 
         /// <summary>
         /// The objective function result (or fitness) given the trial parameter set. 

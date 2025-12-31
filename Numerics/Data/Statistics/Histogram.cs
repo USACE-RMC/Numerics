@@ -119,8 +119,10 @@ namespace Numerics.Data.Statistics
             /// +1 if this bin is lower than the compared bin.
             /// -1 otherwise.
             /// </returns>
-            public int CompareTo(Bin other)
+            public int CompareTo(Bin? other)
             {
+                if (other is null) { return 1; }
+
                 if (UpperBound > other.LowerBound && LowerBound < other.LowerBound)
                 {
                     throw new ArgumentException(nameof(other), "The bins cannot be overlapping.");
@@ -149,7 +151,7 @@ namespace Numerics.Data.Statistics
             /// Checks whether two histogram bins are equal.
             /// </summary>
             /// <returns>True if the bins are equal and false otherwise.</returns>
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
             {
                 if (!(obj is Bin))
                 {

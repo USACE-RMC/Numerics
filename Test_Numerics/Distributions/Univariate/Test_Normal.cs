@@ -105,9 +105,9 @@ namespace Distributions.Univariate
             Assert.AreEqual(u2, true_u2, 0.0001d);
             var lmom = norm.LinearMomentsFromParameters(norm.GetParameters);
             Assert.AreEqual(9.9575163d, lmom[0],  0.0001d);
-            Assert.AreEqual(1.9822411d, lmom[1],  0.0001d);
+            Assert.AreEqual(1.9822411d, lmom[1], 0.0001d);
             Assert.AreEqual(0.0000000d, lmom[2], 0.0001d);
-            Assert.AreEqual(0.1226017d, lmom[3],  0.0001d);
+            Assert.AreEqual(0.1226017d, lmom[3], 0.0001d);
         }
 
         /// <summary>
@@ -219,9 +219,9 @@ namespace Distributions.Univariate
         {
             var N = new Normal();
             Assert.AreEqual("Mean (µ)",N.ParametersToString[0, 0]);
-            Assert.AreEqual("Std Dev (σ)",N.ParametersToString[1, 0]);
-            Assert.AreEqual("0",N.ParametersToString[0, 1] );
-            Assert.AreEqual("1",N.ParametersToString[1,1]);
+            Assert.AreEqual("Std Dev (σ)",N.ParametersToString[1, 0] );
+            Assert.AreEqual("0",N.ParametersToString[0, 1]);
+            Assert.AreEqual("1",N.ParametersToString[1,1] );
         }
 
         /// <summary>
@@ -339,10 +339,10 @@ namespace Distributions.Univariate
         {
             var N = new Normal();
             Assert.AreEqual(0.39894, N.PDF(0),  1e-04);
-            Assert.AreEqual(0.24197, N.PDF(1),  1e-04);
+            Assert.AreEqual(0.24197, N.PDF(1), 1e-04);
 
             var N2 = new Normal(5, 9);
-            Assert.AreEqual(0.03549, N2.PDF(-1),  1e-04);
+            Assert.AreEqual(0.03549, N2.PDF(-1), 1e-04);
         }
 
         /// <summary>

@@ -82,7 +82,7 @@ namespace Numerics.Data.Statistics
         /// <param name="N">The sample size.</param>
         /// <param name="plottingPostionType">The plotting position formula type.</param>
         /// <returns>An array of plotting positions of size N.</returns>
-        public static double[] Function(int N, PlottingPositions.PlottingPostionType plottingPostionType)
+        public static double[]? Function(int N, PlottingPositions.PlottingPostionType plottingPostionType)
         {
             if (plottingPostionType == PlottingPostionType.Blom)
             {

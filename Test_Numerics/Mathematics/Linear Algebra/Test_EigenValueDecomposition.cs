@@ -185,7 +185,7 @@ namespace Mathematics.LinearAlgebra
 
             // Max eigen residual
             var maxRes = MaxEigenResidual(A, V, w);
-            Assert.IsLessThan(1e-12, maxRes);
+            Assert.IsLessThan(1e-12, maxRes, $"Max eigen residual too large: {maxRes}");
         }
 
         /// <summary>
@@ -232,7 +232,7 @@ namespace Mathematics.LinearAlgebra
 
             // Max eigen residual
             var maxRes = MaxEigenResidual(A, V, w);
-            Assert.IsLessThan(1e-8, maxRes);
+            Assert.IsLessThan(1e-8, maxRes, $"Max eigen residual too large: {maxRes}");
         }
 
         /// <summary>
@@ -268,7 +268,7 @@ namespace Mathematics.LinearAlgebra
 
             // Max eigen residual
             var maxRes = MaxEigenResidual(A, V, w);
-            Assert.IsLessThan(1e-8, maxRes);
+            Assert.IsLessThan(1e-8, maxRes, $"Max eigen residual too large: {maxRes}");
         }
 
         // ---------- Helpers ----------

@@ -276,12 +276,12 @@ namespace Distributions.Univariate
         {
             var x = new ChiSquared(1);
             Assert.AreEqual(0.09999, x.InverseCDF(0.24817036595415071751), 1e-04);
-            Assert.AreEqual(1, x.InverseCDF(0.68268949213708589717),  1e-04);
+            Assert.AreEqual(1, x.InverseCDF(0.68268949213708589717), 1e-04);
             Assert.AreEqual(5.5, x.InverseCDF(0.9809835), 1e-04);
 
             var x2 = new ChiSquared(2);
-            Assert.AreEqual(0, x2.InverseCDF(0));
-            Assert.AreEqual(0.1, x2.InverseCDF(0.04877057), 1e-04);
+            Assert.AreEqual(0,x2.InverseCDF(0));
+            Assert.AreEqual(0.1, x2.InverseCDF(0.04877057),1e-04);
             Assert.AreEqual(1, x2.InverseCDF(0.3934693),1e-04);
             Assert.AreEqual(5.5, x2.InverseCDF(0.9360721), 1e-04);
         }

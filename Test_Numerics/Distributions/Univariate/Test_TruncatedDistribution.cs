@@ -59,27 +59,27 @@ namespace Distributions.Univariate
             var p = tn.CDF(1.5);
             var q = tn.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.9786791, 1E-5);
-            Assert.AreEqual(p, 0.3460251, 1E-5);
-            Assert.AreEqual(q, 1.5, 1E-5);
+            Assert.AreEqual(0.9786791, d,  1E-5);
+            Assert.AreEqual(0.3460251, p,  1E-5);
+            Assert.AreEqual(1.5, q,  1E-5);
 
             tn = new TruncatedDistribution(new Normal(10, 3), 8, 25);
             d = tn.PDF(12.75);
             p = tn.CDF(12.75);
             q = tn.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.1168717, 1E-5);
-            Assert.AreEqual(p, 0.7596566, 1E-5);
-            Assert.AreEqual(q, 12.75, 1E-5);
+            Assert.AreEqual(0.1168717, d,  1E-5);
+            Assert.AreEqual(0.7596566, p,  1E-5);
+            Assert.AreEqual(12.75, q,  1E-5);
 
             tn = new TruncatedDistribution(new Normal(0, 3), 0, 9);
             d = tn.PDF(4.5);
             p = tn.CDF(4.5);
             q = tn.InverseCDF(p);
 
-            Assert.AreEqual(d, 0.08657881, 1E-5);
-            Assert.AreEqual(p, 0.868731, 1E-5);
-            Assert.AreEqual(q, 4.5, 1E-5);
+            Assert.AreEqual(0.08657881, d,  1E-5);
+            Assert.AreEqual(0.868731, p,  1E-5);
+            Assert.AreEqual(4.5, q,  1E-5);
 
         }
 
@@ -90,16 +90,16 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(((Normal)tn.BaseDistribution).Mu, 0.5);
-            Assert.AreEqual(((Normal)tn.BaseDistribution).Sigma, 0.2);
-            Assert.AreEqual(tn.Min, 0);
-            Assert.AreEqual(tn.Max, 1);
+            Assert.AreEqual(0.5,((Normal)tn.BaseDistribution).Mu);
+            Assert.AreEqual(0.2, ((Normal)tn.BaseDistribution).Sigma);
+            Assert.AreEqual(0, tn.Min);
+            Assert.AreEqual(1, tn.Max);
 
             var tn2 = new TruncatedDistribution(new Normal(1, 1), 1, 2);
-            Assert.AreEqual(((Normal)tn2.BaseDistribution).Mu, 1);
-            Assert.AreEqual(((Normal)tn2.BaseDistribution).Sigma, 1);
-            Assert.AreEqual(tn2.Min, 1);
-            Assert.AreEqual(tn2.Max, 2);
+            Assert.AreEqual(1, ((Normal)tn2.BaseDistribution).Mu);
+            Assert.AreEqual(1, ((Normal)tn2.BaseDistribution).Sigma);
+            Assert.AreEqual(1, tn2.Min);
+            Assert.AreEqual(2, tn2.Max);
         }
 
         /// <summary>
@@ -109,14 +109,14 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.ParametersToString[0, 0], "Mean (µ)");
-            Assert.AreEqual(tn.ParametersToString[1, 0], "Std Dev (σ)");
-            Assert.AreEqual(tn.ParametersToString[2, 0], "Min");
-            Assert.AreEqual(tn.ParametersToString[3, 0], "Max");
-            Assert.AreEqual(tn.ParametersToString[0, 1], "0.5");
-            Assert.AreEqual(tn.ParametersToString[1, 1], "0.2");
-            Assert.AreEqual(tn.ParametersToString[2, 1], "0");
-            Assert.AreEqual(tn.ParametersToString[3, 1], "1");
+            Assert.AreEqual("Mean (µ)",tn.ParametersToString[0, 0]);
+            Assert.AreEqual("Std Dev (σ)", tn.ParametersToString[1, 0]);
+            Assert.AreEqual("Min", tn.ParametersToString[2, 0]);
+            Assert.AreEqual("Max", tn.ParametersToString[3, 0]);
+            Assert.AreEqual("0.5", tn.ParametersToString[0, 1]);
+            Assert.AreEqual("0.2", tn.ParametersToString[1, 1]);
+            Assert.AreEqual("0", tn.ParametersToString[2, 1]);
+            Assert.AreEqual("1", tn.ParametersToString[3, 1]);
         }
 
         /// <summary>
@@ -140,7 +140,7 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.Mean, 0.5, 1e-4);
+            Assert.AreEqual(0.5, tn.Mean, 1e-4);
         }
 
         /// <summary>
@@ -150,7 +150,7 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.Median, 0.5, 1e-4);
+            Assert.AreEqual(0.5, tn.Median,  1e-4);
         }
 
         /// <summary>
@@ -160,7 +160,7 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.Mode, 0.5, 1e-4);
+            Assert.AreEqual(0.5, tn.Mode, 1e-4);
         }
 
         /// <summary>
@@ -170,7 +170,7 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.StandardDeviation, 0.19091, 1e-4);
+            Assert.AreEqual(0.19091, tn.StandardDeviation,  1e-4);
         }
 
         /// <summary>
@@ -180,7 +180,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.Skewness, 0, 1E-4);
+            Assert.AreEqual(0, tn.Skewness,  1E-4);
         }
 
         /// <summary>
@@ -190,7 +190,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.Kurtosis, 2.62422, 1e-04);
+            Assert.AreEqual(2.62422, tn.Kurtosis,  1e-04);
         }
 
         /// <summary>
@@ -200,8 +200,8 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var tn = new TruncatedDistribution(new Normal(0.5, 0.2), 0, 1);
-            Assert.AreEqual(tn.Minimum, 0);
-            Assert.AreEqual(tn.Maximum, 1);
+            Assert.AreEqual(0, tn.Minimum);
+            Assert.AreEqual(1, tn.Maximum);
         }
     }
 }

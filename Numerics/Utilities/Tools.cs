@@ -783,7 +783,7 @@ namespace Numerics
         /// <param name="data">An array of bytes.</param>
         public static byte[] Compress(byte[] data)
         {
-            if (data is null) return null;
+            if (data is null) return null!;
             var output = new MemoryStream();
             using (var dstream = new DeflateStream(output, CompressionLevel.Optimal))
             {
@@ -798,7 +798,7 @@ namespace Numerics
         /// <param name="data">An array of bytes.</param>
         public static byte[] Decompress(byte[] data)
         {
-            if (data is null) return null;
+            if (data is null) return null!;
             var input = new MemoryStream(data);
             var output = new MemoryStream();
             using (var dstream = new DeflateStream(input, CompressionMode.Decompress))

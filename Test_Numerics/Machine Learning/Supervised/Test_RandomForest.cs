@@ -133,7 +133,7 @@ namespace MachineLearning
             var lmR2 = GoodnessOfFit.RSquared(Y_test.Array, lmPredict);
 
             // Random Forest is better
-            Assert.IsGreaterThan(lmR2, rfR2 );
+            Assert.IsGreaterThan(lmR2,rfR2);
 
         }
     }

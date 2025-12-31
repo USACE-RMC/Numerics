@@ -71,14 +71,14 @@ namespace Data.PairedData
             var ordinate4 = new Ordinate(double.NaN, 4);
 
             Assert.AreEqual(ordinate1, ordinate2);
-            Assert.AreEqual(ordinate1.X, 2);
-            Assert.AreEqual(ordinate1.Y, 4);
-            Assert.AreEqual(ordinate2.X, 2);
-            Assert.AreEqual(ordinate2.Y, 4);
+            Assert.AreEqual(2,ordinate1.X);
+            Assert.AreEqual(4, ordinate1.Y);
+            Assert.AreEqual(2, ordinate2.X);
+            Assert.AreEqual(4, ordinate2.Y);
             
-            Assert.AreEqual(ordinate1.IsValid, true);
-            Assert.AreEqual(ordinate3.IsValid, false);
-            Assert.AreEqual(ordinate4.IsValid, false);
+            Assert.IsTrue(ordinate1.IsValid);
+            Assert.IsFalse(ordinate3.IsValid);
+            Assert.IsFalse(ordinate4.IsValid);
 
             Assert.AreNotEqual(ordinate1, ordinate3);
 

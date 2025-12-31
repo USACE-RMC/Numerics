@@ -273,7 +273,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (_baseDist != null) _baseDist.ValidateParameters(parameters.ToArray().Subset(0, parameters.Count - 2), throwException);
+            if (_baseDist != null!) _baseDist.ValidateParameters(parameters.ToArray().Subset(0, parameters.Count - 2), throwException);
             if (double.IsNaN(Min) || double.IsNaN(Max) || double.IsInfinity(Min) || double.IsInfinity(Max) || Min >= Max)
             {
                 if (throwException)
@@ -286,7 +286,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
                 return new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
             }              
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

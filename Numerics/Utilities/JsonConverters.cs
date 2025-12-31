@@ -78,14 +78,14 @@ namespace Numerics.Utilities
         public override double[,] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
-                return null;
+                return null!;
 
             if (reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("Expected StartObject token");
 
             int rows = 0;
             int cols = 0;
-            double[] data = null;
+            double[]? data = null!;
 
             while (reader.Read())
             {
@@ -94,7 +94,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -217,14 +217,14 @@ namespace Numerics.Utilities
         public override string[,] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
-                return null;
+                return null!;
 
             if (reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("Expected StartObject token");
 
             int rows = 0;
             int cols = 0;
-            string[] data = null;
+            string[]? data = null!;
 
             while (reader.Read())
             {
@@ -233,7 +233,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -371,13 +371,13 @@ namespace Numerics.Utilities
         public override UnivariateDistributionBase Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
-                return null;
+                return null!;
 
             if (reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("Expected StartObject token");
 
             UnivariateDistributionType? distributionType = null;
-            double[] parameters = null;
+            double[]? parameters = null!;
 
             while (reader.Read())
             {
@@ -386,7 +386,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -402,22 +402,22 @@ namespace Numerics.Utilities
             }
 
             if (!distributionType.HasValue || parameters == null)
-                return null;
+                return null!;
 
             // Use the factory to create a default distribution, then set its parameters
             try
             {
                 var distribution = UnivariateDistributionFactory.CreateDistribution(distributionType.Value);
-                if (distribution != null && parameters != null && parameters.Length > 0)
+                if (distribution != null! && parameters != null && parameters.Length > 0)
                 {
                     distribution.SetParameters(parameters);
                 }
-                return distribution;
+                return distribution!;
             }
             catch
             {
                 // If we can't recreate it, return null
-                return null;
+                return null!;
             }
         }
 
@@ -443,7 +443,7 @@ namespace Numerics.Utilities
         /// </remarks>
         public override void Write(Utf8JsonWriter writer, UnivariateDistributionBase value, JsonSerializerOptions options)
         {
-            if (value == null)
+            if (value == null!)
             {
                 writer.WriteNullValue();
                 return;

@@ -94,7 +94,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="nodeCount">Optional number of nodes in the network. If not provided it will be calculated internally.</param>
         /// <param name="edgesFromNodes">Optional list of incoming edges from each node in the network. If not provided or mismatched with edges it will be calculated internally.</param>
         /// <returns>Lookup table of shortest paths from any given node.</returns>
-        public static float[,] Solve(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1, List<Edge>[] edgesFromNodes = null)
+        public static float[,] Solve(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1, List<Edge>[] edgesFromNodes = null!)
         {
             // Set optional parameters if required.
             int nNodes = (nodeCount == -1) ? (edges.Max(o => Math.Max(o.FromIndex,o.ToIndex)) + 1) : nodeCount;
@@ -147,7 +147,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="nodeCount">Optional number of nodes in the network. If not provided it will be calculated internally.</param>
         /// <param name="edgesToNodes">Optional list of incoming edges from each node in the network. If not provided or mismatched with edges it will be calculated internally.</param>
         /// <returns>Lookup table of shortest paths from any given node.</returns>
-        public static float[,] Solve(IList<Edge> edges, int destinationIndex, int nodeCount = -1, List<Edge>[] edgesToNodes = null)
+        public static float[,] Solve(IList<Edge> edges, int destinationIndex, int nodeCount = -1, List<Edge>[] edgesToNodes = null!)
         {
             // Set optional parameters if required.
             int nNodes = (nodeCount == -1) ? (edges.Max(o => Math.Max(o.FromIndex, o.ToIndex)) + 1) : nodeCount;

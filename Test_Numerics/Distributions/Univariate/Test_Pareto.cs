@@ -250,7 +250,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(4d / 9d,p.PDF(1.5) );
 
             var p2 = new Pareto(3, 2);
-            Assert.AreEqual(2d / 3d,p2.PDF(3) );
+            Assert.AreEqual(2d / 3d,p2.PDF(3));
             Assert.AreEqual(18d / 125d,p2.PDF(5) );
         }
 
@@ -273,7 +273,7 @@ namespace Distributions.Univariate
         {
             var p = new Pareto();
             Assert.AreEqual(1, p.InverseCDF(0));
-            Assert.AreEqual(1.0363, p.InverseCDF(0.3),  1e-04);
+            Assert.AreEqual(1.0363, p.InverseCDF(0.3), 1e-04);
         }
     }
 }

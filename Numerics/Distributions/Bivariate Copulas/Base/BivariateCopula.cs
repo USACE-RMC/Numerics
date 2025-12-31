@@ -108,10 +108,10 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public virtual IUnivariateDistribution MarginalDistributionX { get; set; }
+        public virtual IUnivariateDistribution MarginalDistributionX { get; set; } = null!;
 
         /// <inheritdoc/>
-        public virtual IUnivariateDistribution MarginalDistributionY { get; set; }
+        public virtual IUnivariateDistribution MarginalDistributionY { get; set; } = null!;
 
         /// <inheritdoc/>
         public abstract string DisplayName { get; }

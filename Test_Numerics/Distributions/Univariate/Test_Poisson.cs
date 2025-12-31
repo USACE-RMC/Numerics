@@ -159,7 +159,7 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var P = new Poisson();
-            Assert.AreEqual(1, P.Median,  1E-4);
+            Assert.AreEqual(1, P.Median, 1E-4);
         }
 
         /// <summary>
@@ -225,7 +225,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity,P.Maximum);
 
             var P2 = new Poisson(4);
-            Assert.AreEqual(0, P2.Minimum   );
+            Assert.AreEqual(0, P2.Minimum);
             Assert.AreEqual(double.PositiveInfinity, P2.Maximum);
         }
 
@@ -252,7 +252,7 @@ namespace Distributions.Univariate
         {
             var P = new Poisson(1.5);
             Assert.AreEqual(0.55782, P.CDF(1),  1e-04);
-            Assert.AreEqual(0.999999, P.CDF(10),  1e-06);
+            Assert.AreEqual(0.999999, P.CDF(10), 1e-06);
 
             var P2 = new Poisson(10.8);
             Assert.AreEqual(0.00024, P2.CDF(1),  1e-05);

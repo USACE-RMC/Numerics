@@ -302,7 +302,7 @@ namespace Numerics.Sampling
         /// <param name="dimension">The number of dimensions to stratify.</param>
         /// <param name="seed"> Seed for random number generator. </param>
         /// <param name="correlation">The correlation matrix. If null, independence is assumed.</param>
-        public static List<List<StratificationBin>> MultivariateProbabilities(StratificationOptions options, ImportanceDistribution distributionType = ImportanceDistribution.Uniform, bool isExhaustive = true, int dimension = 1, int seed = -1, double[,] correlation = null)
+        public static List<List<StratificationBin>> MultivariateProbabilities(StratificationOptions options, ImportanceDistribution distributionType = ImportanceDistribution.Uniform, bool isExhaustive = true, int dimension = 1, int seed = -1, double[,] correlation = null!)
         {
             // Validate inputs
             var output = new List<List<StratificationBin>>();

@@ -117,7 +117,7 @@ namespace Sampling
                 weights += probs[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d,weights,  1E-8);
         }
 
         /// <summary>
@@ -143,7 +143,7 @@ namespace Sampling
                 weights += probs[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights,  1E-8);
 
         }
 
@@ -203,7 +203,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -225,7 +225,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -244,7 +244,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -264,7 +264,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -283,7 +283,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -305,7 +305,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -324,7 +324,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
 
         /// <summary>
@@ -343,7 +343,7 @@ namespace Sampling
                 weights += bins[i].Weight;
             }
             // Check weights sum to 1.0
-            Assert.AreEqual(weights, 1.0d, 1E-8);
+            Assert.AreEqual(1.0d, weights, 1E-8);
         }
     }
 }

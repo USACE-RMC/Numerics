@@ -44,17 +44,17 @@ namespace Numerics.Sampling
         /// <summary>
         /// Delegate function for resampling the original data and model fit.
         /// </summary>
-        public Func<TData, ParameterSet, Random, TData> ResampleFunction { get; set; }
+        public Func<TData, ParameterSet, Random, TData> ResampleFunction { get; set; } = null!;
 
         /// <summary>
         /// Delegate function for fitting a model.
         /// </summary>
-        public Func<TData, ParameterSet> FitFunction { get; set; }
+        public Func<TData, ParameterSet> FitFunction { get; set; } = null!;
 
         /// <summary>
         /// Delegate function for extracting a statistic from the fit result.
         /// </summary>
-        public Func<ParameterSet, double[]> StatisticFunction { get; set; }
+        public Func<ParameterSet, double[]> StatisticFunction { get; set; } = null!;
 
         /// <summary>
         /// Number of bootstrap replicates.
@@ -79,8 +79,8 @@ namespace Numerics.Sampling
 
         private TData _originalData;
         private ParameterSet _originalParameters;
-        private ParameterSet[] _bootstrapParameterSets;
-        private double[][] _bootstrapStatistics;
+        private ParameterSet[] _bootstrapParameterSets = null!;
+        private double[][] _bootstrapStatistics = null!;
 
         /// <summary>
         /// Gets the bootstrapped model parameter sets.

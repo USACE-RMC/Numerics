@@ -147,7 +147,7 @@ namespace Distributions.Univariate
             var EXP = new Exponential(27421d, 25200d);
             double q100 = EXP.InverseCDF(0.99d);
             double true_100 = 143471d;
-            Assert.IsLessThan(0.01d, (q100 - true_100) / true_100 );
+            Assert.IsLessThan(0.01d, (q100 - true_100) / true_100);
             double p = EXP.CDF(q100);
             double true_p = 0.99d;
             Assert.AreEqual(p, true_p);
@@ -172,7 +172,7 @@ namespace Distributions.Univariate
             var EXP = new Exponential(27421d, 25200d);
             double se100 = Math.Sqrt(EXP.QuantileVariance(0.99d, 85, ParameterEstimationMethod.MethodOfMoments));
             double true_se100 = 15986d;
-            Assert.IsLessThan(0.01d, (se100 - true_se100) / true_se100);
+            Assert.IsLessThan(0.01d,(se100 - true_se100) / true_se100);
 
             // Maximum Likelihood
             EXP = new Exponential(12629d, 39991d);
@@ -203,11 +203,11 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var EXP = new Exponential(-5, 100);
-            Assert.AreEqual(-5, EXP.Xi);
+            Assert.AreEqual(-5,EXP.Xi);
             Assert.AreEqual(100,EXP.Alpha);
 
             var EXP2 = new Exponential(0, 1);
-            Assert.AreEqual(0, EXP2.Xi);
+            Assert.AreEqual(0,EXP2.Xi);
             Assert.AreEqual(1, EXP2.Alpha);
         }
 
@@ -237,7 +237,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var EXP = new Exponential(1, 1);
-            Assert.AreEqual("Location (ξ)",EXP.ParametersToString[0, 0]);
+            Assert.AreEqual("Location (ξ)",EXP.ParametersToString[0, 0] );
             Assert.AreEqual("Scale (α)", EXP.ParametersToString[1, 0]);
             Assert.AreEqual("1", EXP.ParametersToString[0, 1]);
             Assert.AreEqual("1", EXP.ParametersToString[1, 1]);
@@ -349,7 +349,7 @@ namespace Distributions.Univariate
         public void Test_Maximum()
         {
             var EXP = new Exponential(0, 1);
-            Assert.AreEqual(double.PositiveInfinity, EXP.Maximum);
+            Assert.AreEqual(double.PositiveInfinity,EXP.Maximum);
         }
 
         /// <summary>

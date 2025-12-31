@@ -232,12 +232,12 @@ namespace Functions
             // Given X
             double X = 50.0;
             double Y = func.Function(X);
-            Assert.AreEqual(Y, 100.0);
+            Assert.AreEqual(100.0,Y);
 
             // Given Y
             double Y2 = 100d;
             double X2 = func.InverseFunction(Y2);
-            Assert.AreEqual(X, 50.0);
+            Assert.AreEqual(50.0, X);
 
             // Given X - Interpolation
             double X3 = 75.0d;

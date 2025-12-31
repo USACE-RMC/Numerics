@@ -117,9 +117,9 @@ namespace Distributions.Univariate
             Assert.AreEqual(k, true_k, 0.001d);
             var lmom = GLO.LinearMomentsFromParameters(GLO.GetParameters);
             Assert.AreEqual(1648.806d, lmom[0],  0.001d);
-            Assert.AreEqual(138.2366d, lmom[1],  0.001d);
-            Assert.AreEqual(0.1033903d, lmom[2],  0.001d);
-            Assert.AreEqual(0.1755746d, lmom[3],  0.001d);
+            Assert.AreEqual(138.2366d, lmom[1], 0.001d);
+            Assert.AreEqual(0.1033903d, lmom[2], 0.001d);
+            Assert.AreEqual(0.1755746d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -169,7 +169,7 @@ namespace Distributions.Univariate
             Assert.IsLessThan(0.01d, (q100 - true_100) / true_100);
             double p = GLO.CDF(q100);
             double true_p = 0.99d;
-            Assert.AreEqual(p,true_p);
+            Assert.AreEqual(p, true_p);
         }
 
         /// <summary>
@@ -199,7 +199,7 @@ namespace Distributions.Univariate
             var l = new GeneralizedLogistic();
             Assert.AreEqual(100,l.Xi);
             Assert.AreEqual(10,l.Alpha);
-            Assert.AreEqual(0, l.Kappa);
+            Assert.AreEqual(0,l.Kappa);
 
             var l2 = new GeneralizedLogistic(-100, 10, 1);
             Assert.AreEqual(-100,l2.Xi);
@@ -323,7 +323,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(-10.90354, l2.Skewness,  1e-04);
 
             var l3 = new GeneralizedLogistic(100, 10, 1);
-            Assert.AreEqual(double.NaN,l3.Skewness);
+            Assert.AreEqual(double.NaN, l3.Skewness);
         }
 
         /// <summary>
@@ -404,7 +404,7 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var l = new GeneralizedLogistic();
-            Assert.AreEqual(double.NegativeInfinity,l.InverseCDF(0) );
+            Assert.AreEqual(double.NegativeInfinity,l.InverseCDF(0));
             Assert.AreEqual(100, l.InverseCDF(0.5));
             Assert.AreEqual(double.PositiveInfinity, l.InverseCDF(1));
 

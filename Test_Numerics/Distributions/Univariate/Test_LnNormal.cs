@@ -182,7 +182,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(10, LN.StandardDeviation,  1E-4);
 
             var LN2 = new LnNormal(1, 1);
-            Assert.AreEqual(1, LN2.Mean,  1E-4);
+            Assert.AreEqual(1, LN2.Mean, 1E-4);
             Assert.AreEqual(1, LN2.StandardDeviation, 1E-4);
         }
 

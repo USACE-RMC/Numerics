@@ -166,7 +166,7 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The array of decision trees.
         /// </summary>
-        public DecisionTree[] DecisionTrees { get; private set; }
+        public DecisionTree[] DecisionTrees { get; private set; } = null!;
 
         /// <summary>
         /// Determines whether this is for regression or classification. Default = regression.
@@ -250,7 +250,7 @@ namespace Numerics.MachineLearning
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         public double[,] Predict(Matrix X, double alpha = 0.1)
         {
-            if (!IsTrained) return null;
+            if (!IsTrained) return null!;
 
             var percentiles = new double[] { alpha / 2d, 0.5, 1d - alpha / 2d };
             var output = new double[X.NumberOfRows, 4]; // lower, median, upper, mean

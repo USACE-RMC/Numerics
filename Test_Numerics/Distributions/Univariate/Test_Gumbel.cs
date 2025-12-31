@@ -188,7 +188,7 @@ namespace Distributions.Univariate
 
             var GUM2 = new Gumbel(-100, 1);
             Assert.AreEqual(-100,GUM2.Xi);
-            Assert.AreEqual(1,GUM2.Alpha);
+            Assert.AreEqual(1, GUM2.Alpha);
         }
 
         /// <summary>
@@ -257,7 +257,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(103.66512, GUM.Median,  1e-05);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(10.366512, GUM2.Median,  1e-04);
+            Assert.AreEqual(10.366512, GUM2.Median, 1e-04);
         }
 
         /// <summary>
@@ -270,7 +270,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(12.82549, GUM.StandardDeviation,  1e-04);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(1.28254, GUM2.StandardDeviation,  1e-04);
+            Assert.AreEqual(1.28254, GUM2.StandardDeviation, 1e-04);
         }
 
         /// <summary>
@@ -336,7 +336,7 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(0.36787, GUM.CDF(100),  1e-04);
+            Assert.AreEqual(0.36787, GUM.CDF(100), 1e-04);
             Assert.AreEqual(3.5073e-65, GUM.CDF(50),  1e-68);
             Assert.AreEqual(0,GUM.CDF(-10));
 

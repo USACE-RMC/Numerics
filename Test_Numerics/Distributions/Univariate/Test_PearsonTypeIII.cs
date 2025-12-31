@@ -125,9 +125,9 @@ namespace Distributions.Univariate
             Assert.AreEqual(b, true_b, 0.001d);
             var lmom = P3.LinearMomentsFromParameters(P3.GetParameters);
             Assert.AreEqual(1648.806d, lmom[0],  0.001d);
-            Assert.AreEqual(138.2366d, lmom[1],  0.001d);
-            Assert.AreEqual(0.1033889d, lmom[2],  0.001d);
-            Assert.AreEqual(0.1258521d, lmom[3],  0.001d);
+            Assert.AreEqual(138.2366d, lmom[1], 0.001d);
+            Assert.AreEqual(0.1033889d, lmom[2], 0.001d);
+            Assert.AreEqual(0.1258521d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -220,7 +220,7 @@ namespace Distributions.Univariate
             P3 = new PearsonTypeIII(191.31739d, 47.01925d, 0.61897d);
             qVar999 = Math.Sqrt(P3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MaximumLikelihood));
             true_qVar999 = 20.045d;
-            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999 );
+            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999);
         }
 
         /// <summary>

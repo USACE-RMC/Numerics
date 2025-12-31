@@ -54,12 +54,12 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Nodes to the left of the threshold.
         /// </summary>
-        public DecisionNode Left { get; set; } = null;
+        public DecisionNode Left { get; set; } = null!;
 
         /// <summary>
         /// Nodes to the right of the threshold.
         /// </summary>
-        public DecisionNode Right { get; set; } = null;
+        public DecisionNode Right { get; set; } = null!;
 
         /// <summary>
         /// The leaf node value.

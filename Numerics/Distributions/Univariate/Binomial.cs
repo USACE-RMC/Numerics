@@ -256,7 +256,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "The number of trials (n) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "The number of trials (n) must be positive.");
             }
-            return null;
+            return null!;            
         }
 
         /// <inheritdoc/>

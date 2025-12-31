@@ -80,8 +80,8 @@ namespace Distributions.Univariate
             double u2 = LogN.Sigma;
             double true_u1 = 10.716952223744224d;
             double true_u2 = 0.45007398831588075d;
-            Assert.IsLessThan( 0.01d, (u1 - true_u1) / true_u1 );
-            Assert.IsLessThan(0.01d, (u2 - true_u2) / true_u2 );
+            Assert.IsLessThan(0.01d, (u1 - true_u1) / true_u1);
+            Assert.IsLessThan(0.01d, (u2 - true_u2) / true_u2);
         }
 
         /// <summary>
@@ -102,7 +102,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(u2, true_u2, 0.0001d);
             var lmom = norm.LinearMomentsFromParameters(norm.GetParameters);
             Assert.AreEqual(0.96723909d, lmom[0],  0.0001d);
-            Assert.AreEqual(0.09452119d, lmom[1],  0.0001d);
+            Assert.AreEqual(0.09452119d, lmom[1], 0.0001d);
             Assert.AreEqual(0.00000000d, lmom[2], 0.0001d);
             Assert.AreEqual(0.12260172d, lmom[3], 0.0001d);
         }
@@ -261,7 +261,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(3.32e-135, LogN.PDF(0.1), 1e-04);
 
             var LogN2 = new LogNormal(-0.1, 0.1);
-            Assert.AreEqual(9.12888e-56, LogN.PDF(0.8),  1e-04);
+            Assert.AreEqual(9.12888e-56, LogN.PDF(0.8), 1e-04);
         }
 
         /// <summary>
@@ -274,7 +274,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0, LogN.CDF(0.1));
 
             var LogN2 = new LogNormal(1.5, 1.5);
-            Assert.AreEqual(0.11493, LogN2.CDF(0.5),  1e-05);
+            Assert.AreEqual(0.11493, LogN2.CDF(0.5), 1e-05);
         }
 
         /// <summary>
@@ -284,7 +284,7 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var LogN = new LogNormal(2.5, 2.5);
-            Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8),  1e-04);
+            Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-04);
 
             var LogN2 = new LogNormal(1.5, 2.5);
             Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-05);

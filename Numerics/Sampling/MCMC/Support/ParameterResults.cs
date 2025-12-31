@@ -102,7 +102,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The autocorrelation function for each parameter. This is averaged across each chain.
         /// </summary>
-        public double[,] Autocorrelation { get; set; }
+        public double[,] Autocorrelation { get; set; } = null!;
 
     }
 }

@@ -136,14 +136,14 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Min, 0);
-            Assert.AreEqual(T.Mode, 0.5);
-            Assert.AreEqual(T.Max, 1);
+            Assert.AreEqual(0,T.Min);
+            Assert.AreEqual(0.5, T.Mode);
+            Assert.AreEqual(1, T.Max);
 
             var T2 = new Triangular(-1,1,2);
-            Assert.AreEqual(T2.Min, -1);
-            Assert.AreEqual(T2.Mode, 1);
-            Assert.AreEqual(T2.Max, 2);
+            Assert.AreEqual(-1, T2.Min);
+            Assert.AreEqual(1, T2.Mode);
+            Assert.AreEqual(2, T2.Max);
         }
 
         /// <summary>
@@ -172,12 +172,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.ParametersToString[0, 0], "Min (a)");
-            Assert.AreEqual(T.ParametersToString[1, 0], "Most Likely (c)");
-            Assert.AreEqual(T.ParametersToString[2, 0], "Max (b)");
-            Assert.AreEqual(T.ParametersToString[0, 1], "0");
-            Assert.AreEqual(T.ParametersToString[1, 1], "0.5");
-            Assert.AreEqual(T.ParametersToString[2, 1], "1");
+            Assert.AreEqual("Min (a)",T.ParametersToString[0, 0] );
+            Assert.AreEqual("Most Likely (c)",T.ParametersToString[1, 0] );
+            Assert.AreEqual("Max (b)",T.ParametersToString[2, 0] );
+            Assert.AreEqual("0", T.ParametersToString[0, 1]);
+            Assert.AreEqual("0.5", T.ParametersToString[1, 1]);
+            Assert.AreEqual("1", T.ParametersToString[2, 1]);
         }
 
         /// <summary>
@@ -201,10 +201,10 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Mean, 0.5);
+            Assert.AreEqual(0.5, T.Mean);
 
             var T2 = new Triangular(1, 3, 6);
-            Assert.AreEqual(T2.Mean, 3.3333, 1e-04);
+            Assert.AreEqual(3.3333, T2.Mean,  1e-04);
         }
 
         /// <summary>
@@ -214,10 +214,10 @@ namespace Distributions.Univariate
         public void Test_Median()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Median, 0.5);
+            Assert.AreEqual(0.5, T.Median);
 
             var T2 = new Triangular(1,3,6);
-            Assert.AreEqual(T2.Median, 3.26138, 1e-05);
+            Assert.AreEqual(3.26138, T2.Median,  1e-05);
         }
 
         /// <summary>
@@ -227,10 +227,10 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Mode, 0.5);
+            Assert.AreEqual(0.5, T.Mode);
 
             var T2 = new Triangular(1, 3, 6);
-            Assert.AreEqual(T2.Mode, 3);
+            Assert.AreEqual(3, T2.Mode);
         }
 
         /// <summary>
@@ -240,10 +240,10 @@ namespace Distributions.Univariate
         public void Test_StandardDeviation()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.StandardDeviation, 0.20412, 1e-04);
+            Assert.AreEqual(0.20412, T.StandardDeviation, 1e-04);
 
             var T2 = new Triangular(1, 3, 6);
-            Assert.AreEqual(T2.StandardDeviation, 1.02739, 1e-04);
+            Assert.AreEqual(1.02739, T2.StandardDeviation,  1e-04);
         }
 
         /// <summary>
@@ -253,7 +253,7 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Skewness, 0);
+            Assert.AreEqual(0, T.Skewness);
         }
 
         /// <summary>
@@ -263,10 +263,10 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Kurtosis, 12d / 5d);
+            Assert.AreEqual(12d / 5d, T.Kurtosis);
 
             var T2 = new Triangular(1, 3, 6);
-            Assert.AreEqual(T2.Kurtosis, 12d / 5d);
+            Assert.AreEqual(12d / 5d, T2.Kurtosis);
         }
 
         /// <summary>
@@ -276,12 +276,12 @@ namespace Distributions.Univariate
         public void Test_MinMax()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.Minimum, 0);
-            Assert.AreEqual(T.Maximum, 1);
+            Assert.AreEqual(0, T.Minimum);
+            Assert.AreEqual(1, T.Maximum);
 
             var T2 = new Triangular(1, 3, 6);
-            Assert.AreEqual(T2.Minimum, 1);
-            Assert.AreEqual(T2.Maximum, 6);
+            Assert.AreEqual(1, T2.Minimum);
+            Assert.AreEqual(6, T2.Maximum);
         }
 
         /// <summary>
@@ -291,13 +291,13 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.PDF(-1), 0);
-            Assert.AreEqual(T.PDF(0.4), 1.6);
-            Assert.AreEqual(T.PDF(0.6), 1.6);
-            Assert.AreEqual(T.PDF(0.5), 2);
+            Assert.AreEqual(0,T.PDF(-1));
+            Assert.AreEqual(1.6, T.PDF(0.4));
+            Assert.AreEqual(1.6, T.PDF(0.6));
+            Assert.AreEqual(2, T.PDF(0.5));
 
             var T2 = new Triangular(1, 3, 6);
-            Assert.AreEqual(T2.PDF(2), 0.2, 1e-04);
+            Assert.AreEqual(0.2, T2.PDF(2),  1e-04);
         }
 
         /// <summary>
@@ -307,13 +307,13 @@ namespace Distributions.Univariate
         public void Test_CDF()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.CDF(-1), 0);
-            Assert.AreEqual(T.CDF(2), 1);
-            Assert.AreEqual(T.CDF(0.4), 0.32,1e-04);
-            Assert.AreEqual(T.CDF(0.6), 0.68,1e-04);
+            Assert.AreEqual(0, T.CDF(-1));
+            Assert.AreEqual(1, T.CDF(2));
+            Assert.AreEqual(0.32, T.CDF(0.4), 1e-04);
+            Assert.AreEqual(0.68, T.CDF(0.6), 1e-04);
 
             var T2 = new Triangular(1,3, 6);
-            Assert.AreEqual(T2.CDF(2), 0.1, 1e-04);
+            Assert.AreEqual(0.1, T2.CDF(2),  1e-04);
         }
 
         /// <summary>
@@ -323,10 +323,10 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var T = new Triangular();
-            Assert.AreEqual(T.InverseCDF(0), 0);
-            Assert.AreEqual(T.InverseCDF(1), 1);
-            Assert.AreEqual(T.InverseCDF(0.2), 0.31622, 1e-04);
-            Assert.AreEqual(T.InverseCDF(0.5), 0.5);
+            Assert.AreEqual(0, T.InverseCDF(0));
+            Assert.AreEqual(1,T.InverseCDF(1));
+            Assert.AreEqual(0.31622, T.InverseCDF(0.2),  1e-04);
+            Assert.AreEqual(0.5, T.InverseCDF(0.5));
         }
     }
 }

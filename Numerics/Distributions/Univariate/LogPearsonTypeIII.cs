@@ -529,7 +529,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>
