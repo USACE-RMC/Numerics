@@ -173,11 +173,7 @@ namespace Numerics.Data
         /// <returns>A downloaded time series.</returns>
         public static async Task<TimeSeries> FromGHCN(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyPrecipitation, DepthUnit unit = DepthUnit.Inches)
         {
-            // Check internet connection
-            if (!await IsConnectedToInternet())
-            {
-                throw new InvalidOperationException("No internet connection.");
-            }
+            
 
             // Check site number
             if (siteNumber.Length != 11)
@@ -194,6 +190,12 @@ namespace Numerics.Data
             var timeSeries = new TimeSeries(TimeInterval.OneDay);
             DateTime? previousDate = null;
             string tempFilePath = Path.Combine(Path.GetTempPath(), $"{siteNumber}.dly");
+
+            // Check internet connection
+            if (!await IsConnectedToInternet())
+            {
+                throw new InvalidOperationException("No internet connection.");
+            }
 
             try
             {
@@ -353,11 +355,7 @@ namespace Numerics.Data
         /// <param name="timeSeriesType">The time series type.</param>
         public static async Task<(TimeSeries TimeSeries, string RawText)> FromUSGS(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge)
         {
-            // Check internet connection
-            if (!await IsConnectedToInternet())
-            {
-                throw new InvalidOperationException("No internet connection.");
-            }
+            
 
             // Check site number
             if (siteNumber.Length != 8)
@@ -369,6 +367,12 @@ namespace Numerics.Data
             if (timeSeriesType == TimeSeriesType.DailyPrecipitation || timeSeriesType == TimeSeriesType.DailySnow)
             {
                 throw new ArgumentException("The time series type cannot be daily precipitation or daily snow.", nameof(timeSeriesType));
+            }
+
+            // Check internet connection
+            if (!await IsConnectedToInternet())
+            {
+                throw new InvalidOperationException("No internet connection.");
             }
 
             var timeSeries = new TimeSeries();
@@ -742,9 +746,7 @@ namespace Numerics.Data
             DateTime? startDate = null,
             DateTime? endDate = null)
         {
-            // Check connectivity
-            if (!await IsConnectedToInternet())
-                throw new InvalidOperationException("No internet connection.");
+            
 
             // Validate station number (BOM station numbers are typically 6 digits)
             if (string.IsNullOrWhiteSpace(stationNumber) || stationNumber.Length < 6)
@@ -753,6 +755,10 @@ namespace Numerics.Data
             // Validate time series type
             if (timeSeriesType != TimeSeriesType.DailyDischarge && timeSeriesType != TimeSeriesType.DailyStage)
                 throw new ArgumentException("BOM API supports DailyDischarge or DailyStage only.", nameof(timeSeriesType));
+
+            // Check connectivity
+            if (!await IsConnectedToInternet())
+                throw new InvalidOperationException("No internet connection.");
 
             // Set default dates
             DateTime sd = startDate ?? new DateTime(1800, 1, 1);
