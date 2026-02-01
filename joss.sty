@@ -1,0 +1,136 @@
+% JOSS (Journal of Open Source Software) LaTeX Style
+% Based on the official JOSS template
+
+\ProvidesPackage{joss}[2024/01/01 JOSS Paper Style]
+
+% --- Required Packages ---
+\RequirePackage[utf8]{inputenc}
+\RequirePackage[T1]{fontenc}
+\RequirePackage{lmodern}
+\RequirePackage{geometry}
+\RequirePackage{graphicx}
+\RequirePackage{hyperref}
+\RequirePackage{natbib}
+\RequirePackage{booktabs}
+\RequirePackage{longtable}
+\RequirePackage{array}
+\RequirePackage{multirow}
+\RequirePackage{wrapfig}
+\RequirePackage{float}
+\RequirePackage{colortbl}
+\RequirePackage{pdflscape}
+\RequirePackage{tabu}
+\RequirePackage{threeparttable}
+\RequirePackage{threeparttablex}
+\RequirePackage[normalem]{ulem}
+\RequirePackage{makecell}
+\RequirePackage{xcolor}
+\RequirePackage{fancyhdr}
+\RequirePackage{lastpage}
+\RequirePackage{authblk}
+\RequirePackage{caption}
+\RequirePackage{listings}
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\RequirePackage{microtype}
+\RequirePackage{etoolbox}
+\RequirePackage{titlesec}
+\RequirePackage{marginnote}
+
+% --- Page Geometry ---
+\geometry{
+    a4paper,
+    left=2.5cm,
+    right=2.5cm,
+    top=2.5cm,
+    bottom=2.5cm,
+    marginparwidth=4cm,
+    marginparsep=0.5cm
+}
+
+% --- Colors ---
+\definecolor{jossblue}{RGB}{0, 102, 204}
+\definecolor{jossgray}{RGB}{100, 100, 100}
+\definecolor{codegray}{RGB}{245, 245, 245}
+
+% --- Hyperref Setup ---
+\hypersetup{
+    colorlinks=true,
+    linkcolor=jossblue,
+    citecolor=jossblue,
+    urlcolor=jossblue,
+    bookmarksnumbered=true,
+    bookmarksopen=true
+}
+
+% --- Header and Footer ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{jossgray}{JOSS Draft}}
+\fancyhead[R]{\small\textcolor{jossgray}{\thepage\ of \pageref{LastPage}}}
+\fancyfoot[C]{\small\textcolor{jossgray}{Journal of Open Source Software}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% --- Title Formatting ---
+\renewcommand{\maketitle}{%
+    \begin{center}
+        {\LARGE\bfseries\@title\par}
+        \vskip 1.5em
+        {\large\@author\par}
+        \vskip 1em
+        {\normalsize\@date\par}
+    \end{center}
+    \vskip 2em
+}
+
+% --- Section Formatting ---
+\titleformat{\section}
+    {\Large\bfseries\color{jossblue}}
+    {\thesection}{1em}{}
+\titleformat{\subsection}
+    {\large\bfseries\color{jossblue}}
+    {\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+    {\normalsize\bfseries}
+    {\thesubsubsection}{1em}{}
+
+% --- Code Listings ---
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    framerule=0pt,
+    xleftmargin=0.5em,
+    xrightmargin=0.5em
+}
+
+% --- Caption Formatting ---
+\captionsetup{
+    font=small,
+    labelfont=bf,
+    format=hang
+}
+
+% --- Bibliography ---
+\setcitestyle{authoryear,round,semicolon}
+
+% --- Affiliation formatting ---
+\renewcommand\Authfont{\normalsize}
+\renewcommand\Affilfont{\small\itshape}
+\setlength{\affilsep}{0.5em}
+
+% --- Abstract Environment (used as Summary in JOSS) ---
+\renewenvironment{abstract}{%
+    \section*{Summary}
+}{}
+
+\endinput
