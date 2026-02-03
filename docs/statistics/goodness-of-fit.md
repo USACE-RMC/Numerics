@@ -1,6 +1,6 @@
 # Goodness-of-Fit Metrics
 
-[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: MCMC Sampling →](../sampling/mcmc.md)
+[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: Hypothesis Tests →](hypothesis-tests.md)
 
 Goodness-of-fit (GOF) metrics evaluate how well a statistical model fits observed data. The ***Numerics*** library provides comprehensive metrics for model selection, distribution fitting validation, and hydrological model evaluation.
 
@@ -593,4 +593,4 @@ foreach (var (name, modeled) in models)
 
 ---
 
-[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: MCMC Sampling →](../sampling/mcmc.md)
+[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: Hypothesis Tests →](hypothesis-tests.md)
