@@ -1,6 +1,6 @@
 # Linear Algebra
 
-[← Back to Index](../index.md) | [Next: Special Functions →](special-functions.md)
+[← Previous: Root Finding](root-finding.md) | [Back to Index](../index.md) | [Next: Special Functions →](special-functions.md)
 
 The ***Numerics*** library provides `Matrix` and `Vector` classes for linear algebra operations. These classes support common operations needed for numerical computing, optimization, and statistical analysis.
 
@@ -487,4 +487,4 @@ Console.WriteLine($"Manhattan distance: {manhattan:F1}");
 
 ---
 
-[← Back to Index](../index.md) | [Next: Special Functions →](special-functions.md)
+[← Previous: Root Finding](root-finding.md) | [Back to Index](../index.md) | [Next: Special Functions →](special-functions.md)

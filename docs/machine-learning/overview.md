@@ -560,11 +560,17 @@ Console.WriteLine($"  90% Interval: [${interval[0, 0]:F0}, ${interval[0, 1]:F0}]
 ### Example 2: Classification Pipeline
 
 ```cs
-// Iris classification
-double[,] X_train = LoadIrisFeatures();  // Load training data
-double[] y_train = LoadIrisLabels();
-double[,] X_test = LoadIrisTestFeatures();
-double[] y_test = LoadIrisTestLabels();
+// Sample binary classification data (simplified)
+double[,] X_train = {
+    { 2.5, 3.2 }, { 3.1, 2.8 }, { 2.8, 3.5 }, { 3.3, 2.9 },  // Class 0
+    { 6.2, 5.8 }, { 5.9, 6.1 }, { 6.5, 5.5 }, { 5.8, 6.3 }   // Class 1
+};
+double[] y_train = { 0, 0, 0, 0, 1, 1, 1, 1 };
+
+double[,] X_test = {
+    { 2.9, 3.0 }, { 6.0, 5.9 }  // One from each class
+};
+double[] y_test = { 0, 1 };
 
 // Train random forest
 var rf = new RandomForest(X_train, y_train, nTrees: 100, seed: 42);
@@ -632,17 +638,28 @@ double[] accuracies = new double[k];
 
 for (int fold = 0; fold < k; fold++)
 {
-    // Split data into train/test
-    var trainIndices = Enumerable.Range(0, n)
-                                 .Where(i => i < fold * foldSize || i >= (fold + 1) * foldSize)
-                                 .ToArray();
-    
+    // Split data into train/test indices
     var testIndices = Enumerable.Range(fold * foldSize, foldSize).ToArray();
-    
+    var trainIndices = Enumerable.Range(0, n)
+                                 .Where(i => !testIndices.Contains(i))
+                                 .ToArray();
+
+    // Extract train/test data
+    var X_trainFold = Matrix.SelectRows(X, trainIndices);
+    var y_trainFold = trainIndices.Select(i => y[i]).ToArray();
+    var X_testFold = Matrix.SelectRows(X, testIndices);
+    var y_testFold = testIndices.Select(i => y[i]).ToArray();
+
     // Train and evaluate
-    // ... (extract train/test sets, train model, compute accuracy)
-    
-    accuracies[fold] = ComputeAccuracy(testIndices);
+    var model = new DecisionTree(X_trainFold, y_trainFold);
+    model.Train();
+    var predictions = model.Predict(X_testFold);
+
+    int correct = 0;
+    for (int i = 0; i < testIndices.Length; i++)
+        if (predictions[i, 0] == y_testFold[i]) correct++;
+
+    accuracies[fold] = (double)correct / testIndices.Length;
 }
 
 Console.WriteLine($"Cross-Validation Results:");
@@ -653,18 +670,34 @@ Console.WriteLine($"  Std dev: {Statistics.StandardDeviation(accuracies):F4}");
 ### Model Comparison
 
 ```cs
-// Compare models on same dataset
-var models = new[] {
-    ("Decision Tree", new DecisionTree(X, y)),
-    ("Random Forest", new RandomForest(X, y, nTrees: 50)),
-    ("KNN (k=3)", new KNearestNeighbors(X, y, k: 3))
-};
+// Compare different classifiers on the same dataset
+double[,] X = { /* training features */ };
+double[] y = { /* training labels */ };
+double[,] X_test = { /* test features */ };
+double[] y_test = { /* test labels */ };
 
+// Define models
+var decisionTree = new DecisionTree(X, y);
+var randomForest = new RandomForest(X, y, nTrees: 50);
+var knn = new KNearestNeighbors(X, y, k: 3);
+
+// Train all models
+decisionTree.Train();
+randomForest.Train();
+knn.Train();
+
+// Evaluate each model
 Console.WriteLine("Model Comparison:");
-foreach (var (name, model) in models)
+foreach (var (name, model) in new[] {
+    ("Decision Tree", decisionTree),
+    ("Random Forest", (IClassifier)randomForest),
+    ("KNN (k=3)", (IClassifier)knn) })
 {
-    model.Train();
-    double accuracy = EvaluateModel(model, X_test, y_test);
+    var predictions = model.Predict(X_test);
+    int correct = 0;
+    for (int i = 0; i < y_test.Length; i++)
+        if (predictions[i, 0] == y_test[i]) correct++;
+    double accuracy = (double)correct / y_test.Length;
     Console.WriteLine($"  {name}: {accuracy:P1}");
 }
 ```

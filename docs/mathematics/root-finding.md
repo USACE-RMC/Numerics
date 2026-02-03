@@ -264,15 +264,17 @@ A practical example from financial mathematics - solving the Black-Scholes equat
 
 ```cs
 using Numerics.Mathematics;
+using Numerics.Mathematics.SpecialFunctions;
 
 // Black-Scholes call option price
 double BlackScholesCall(double S, double K, double T, double r, double sigma)
 {
     double d1 = (Math.Log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.Sqrt(T));
     double d2 = d1 - sigma * Math.Sqrt(T);
-    
-    double N(double x) => 0.5 * (1.0 + Erf(x / Math.Sqrt(2)));
-    
+
+    // Standard normal CDF using the error function
+    double N(double x) => 0.5 * (1.0 + Erf.Function(x / Math.Sqrt(2)));
+
     return S * N(d1) - K * Math.Exp(-r * T) * N(d2);
 }
 

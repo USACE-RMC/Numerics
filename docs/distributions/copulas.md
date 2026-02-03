@@ -1,6 +1,6 @@
 # Copulas
 
-[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md)
+[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md) | [Next: Multivariate Distributions →](multivariate.md)
 
 Copulas separate the dependence structure of multivariate distributions from their marginal distributions. The ***Numerics*** library provides copula functions for modeling dependence between random variables in risk assessment and multivariate analysis [[1]](#1).
 
@@ -150,14 +150,9 @@ Func<double, double> conditionalCDF = (stage) =>
     return copula.ConditionalCDF(uFlow, uStage, conditionIndex: 0);
 };
 
-// Find conditional quantiles
-double[] condProbs = { 0.5, 0.9, 0.95 };
+// Conditional probability at specific values
 Console.WriteLine($"Given flow = {observedFlow:F0} cfs:");
-foreach (var p in condProbs)
-{
-    // This would require numerical solution
-    Console.WriteLine($"  {p:P0} quantile of stage");
-}
+Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - pStageGivenFlow(15):P1}");
 ```
 
 ## Tail Dependence
@@ -185,34 +180,39 @@ Console.WriteLine("  Frank: No tail dependence");
 ## Fitting Copulas to Data
 
 ```cs
-double[] x = { /* observed data series 1 */ };
-double[] y = { /* observed data series 2 */ };
+// Sample paired observations (e.g., peak flow and volume)
+double[] x = { 1200, 1500, 1100, 1800, 1350, 1600, 1250, 1450, 1900, 1300 };
+double[] y = { 45, 52, 42, 65, 48, 58, 44, 51, 68, 46 };
 
-// Step 1: Transform to uniform margins (pseudo-observations)
-var u = x.Select(xi => (double)Array.FindIndex(x.OrderBy(v => v).ToArray(), v => v == xi) / x.Length);
-var v = y.Select(yi => (double)Array.FindIndex(y.OrderBy(w => w).ToArray(), w => w == yi) / y.Length);
+// Step 1: Fit marginal distributions
+var gevX = new GeneralizedExtremeValue();
+gevX.Estimate(x, ParameterEstimationMethod.MethodOfLinearMoments);
 
-// Step 2: Fit copula to pseudo-observations
-// Use maximum likelihood or rank correlation methods
+var gevY = new GeneralizedExtremeValue();
+gevY.Estimate(y, ParameterEstimationMethod.MethodOfLinearMoments);
 
-// Step 3: Select best copula using AIC/BIC
-var candidates = new[] { "Gaussian", "t", "Clayton", "Gumbel", "Frank" };
+// Step 2: Transform to uniform margins using fitted CDFs
+double[] u = x.Select(xi => gevX.CDF(xi)).ToArray();
+double[] v = y.Select(yi => gevY.CDF(yi)).ToArray();
 
-Console.WriteLine("Fit each candidate copula and select best by AIC");
+// Step 3: Estimate copula parameters using rank correlation
+double tau = Statistics.KendallsTau(x, y);
+Console.WriteLine($"Kendall's tau: {tau:F3}");
+
+// Different copulas have different tau-to-parameter relationships
+// Clayton: θ = 2τ/(1-τ) for τ > 0
+// Gumbel: θ = 1/(1-τ) for τ > 0
 ```
 
-## Vine Copulas
+## Higher-Dimensional Dependence
 
-For higher dimensions, vine copulas decompose multivariate dependence:
+For problems with more than two variables, there are several approaches:
 
-```cs
-// C-vine, D-vine, and R-vine structures available
-// Allow flexible modeling of high-dimensional dependence
-// Construct from pairwise bivariate copulas
+1. **Multivariate Normal distribution**: Use when Gaussian dependence is appropriate
+2. **Nested Archimedean copulas**: Hierarchical structure for grouped variables
+3. **Vine copulas**: Build from pairwise bivariate copulas (C-vine, D-vine, R-vine)
 
-Console.WriteLine("Vine copulas enable flexible high-dimensional modeling");
-Console.WriteLine("Use for systems with > 2 correlated variables");
-```
+For hydrologic applications with 3+ correlated variables (e.g., peak flow, volume, duration), consider using the Multivariate Normal distribution for the initial analysis, which is available in the `Numerics.Distributions` namespace. See the [Multivariate Distributions](multivariate.md) documentation for details.
 
 ## Best Practices
 
@@ -243,4 +243,4 @@ Console.WriteLine("Use for systems with > 2 correlated variables");
 
 ---
 
-[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md)
+[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md) | [Next: Multivariate Distributions →](multivariate.md)
