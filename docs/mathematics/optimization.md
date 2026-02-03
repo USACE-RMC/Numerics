@@ -1,6 +1,6 @@
 # Optimization
 
-[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Linear Algebra →](linear-algebra.md)
+[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Root Finding →](root-finding.md)
 
 Optimization is the process of finding the parameter set that minimizes (or maximizes) an objective function. The ***Numerics*** library provides a comprehensive suite of local and global optimization algorithms for both unconstrained and constrained problems. These methods are essential for parameter estimation, model calibration, machine learning, and engineering design optimization.
 
@@ -589,4 +589,4 @@ else if (optimizer.Status == OptimizationStatus.MaxIterationsReached)
 
 ---
 
-[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Linear Algebra →](linear-algebra.md)
+[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Root Finding →](root-finding.md)

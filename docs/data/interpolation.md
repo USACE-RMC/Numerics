@@ -251,10 +251,15 @@ double z = terrain.Interpolate(x, y);
 
 Console.WriteLine($"Terrain elevation at ({x}, {y}): {z:F1} m");
 
-// Create contour at specific elevation
-double contourElevation = 110;
-Console.WriteLine($"\nFinding points at {contourElevation} m elevation...");
-// Would need to scan grid and find where z = contourElevation
+// Sample elevations along a transect
+Console.WriteLine("\nElevation transect from (2,2) to (8,8):");
+for (double t = 0; t <= 1; t += 0.2)
+{
+    double xi = 2 + 6 * t;
+    double yi = 2 + 6 * t;
+    double zi = terrain.Interpolate(xi, yi);
+    Console.WriteLine($"  ({xi:F1}, {yi:F1}): {zi:F1} m");
+}
 ```
 
 ## Best Practices

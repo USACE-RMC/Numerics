@@ -210,14 +210,11 @@ For second-order ODEs, convert to system of first-order ODEs:
 
 double omega = 2.0 * Math.PI;  // Angular frequency (1 Hz)
 
-// For systems, use multiple passes
+// System of ODEs: y1' = y2, y2' = -ω²y1
 double y1_0 = 1.0;  // Initial position
 double y2_0 = 0.0;  // Initial velocity
 
-Func<double, double, double> dy1dt = (t, y1) => y2;  // Needs y2
-Func<double, double, double> dy2dt = (t, y2) => -omega * omega * y1;  // Needs y1
-
-// Need to track both variables manually
+// Manual RK4 implementation for coupled system
 int steps = 1000;
 double t0 = 0.0, t1 = 2.0;
 double dt = (t1 - t0) / (steps - 1);

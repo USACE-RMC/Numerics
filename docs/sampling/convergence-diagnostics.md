@@ -34,10 +34,8 @@ sampler.WarmupIterations = 2000;
 sampler.Iterations = 5000;
 sampler.Sample();
 
-// Get chains
-var chains = new List<List<ParameterSet>>();
-// Extract chains from sampler output
-// (Implementation depends on sampler structure)
+// Get chains from sampler
+var chains = sampler.MarkovChains.ToList();
 
 // Compute Gelman-Rubin for each parameter
 int warmup = sampler.WarmupIterations;
@@ -91,8 +89,10 @@ ESS quantifies number of independent samples, accounting for autocorrelation [[2
 ### Computing ESS
 
 ```cs
-// For single parameter series
-double[] samples = /* Extract parameter samples from chain */;
+// Extract samples for parameter 0 from the first chain
+double[] samples = sampler.MarkovChains[0]
+    .Select(ps => ps.Values[0])
+    .ToArray();
 
 double ess = MCMCDiagnostics.EffectiveSampleSize(samples);
 
@@ -236,7 +236,7 @@ Console.WriteLine($"  Total samples: {samples.Length}");
 
 // Step 3: Check Gelman-Rubin
 Console.WriteLine($"\nGelman-Rubin Statistics:");
-var chains = ExtractChains(sampler);  // Helper function
+var chains = sampler.MarkovChains.ToList();
 double[] rhat = MCMCDiagnostics.GelmanRubin(chains, sampler.WarmupIterations);
 
 bool converged = true;
@@ -479,7 +479,7 @@ while (rhat.Max() > 1.05 || ess.Min() < 200)
     sampler.Sample();
     
     // Recompute diagnostics
-    chains = ExtractChains(sampler);
+    chains = sampler.MarkovChains.ToList();
     rhat = MCMCDiagnostics.GelmanRubin(chains, sampler.WarmupIterations);
     ess = MCMCDiagnostics.EffectiveSampleSize(chains, out _);
     

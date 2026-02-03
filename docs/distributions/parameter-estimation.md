@@ -479,11 +479,12 @@ lognormal.Estimate(observed, ParameterEstimationMethod.MethodOfMoments);
 ### 1. Sample Size Requirements
 
 ```cs
-// Rule of thumb: n > 10 * number of parameters
-if (data.Length < 3 * dist.NumberOfParameters * 10)
+// Rule of thumb: n > 10 * number of parameters for MLE
+int minSamples = 10 * dist.NumberOfParameters;
+if (data.Length < minSamples)
 {
-    Console.WriteLine("Warning: Small sample size relative to parameters");
-    Console.WriteLine("Consider using L-moments for improved efficiency");
+    Console.WriteLine($"Warning: Sample size ({data.Length}) below recommended minimum ({minSamples})");
+    Console.WriteLine("Consider using L-moments for improved small-sample efficiency");
 }
 ```
 
@@ -569,7 +570,7 @@ Console.WriteLine("Fitted with historical information included");
 3. **Not checking parameter validity** - Always validate after estimation
 4. **Wrong distribution family** - Use L-moment diagrams for selection
 5. **Ignoring outliers** - L-moments are more robust than MOM or MLE
-6. **Insufficient sample size** - Need at least 10n observations where n is number of parameters
+6. **Insufficient sample size** - Need at least 10× the number of parameters (e.g., 30 samples for a 3-parameter distribution)
 
 ---
 
