@@ -50,6 +50,12 @@ namespace Numerics.Sampling.MCMC
     {
 
         /// <summary>
+        /// Parameterless constructor for JSON deserialization.
+        /// </summary>
+        [JsonConstructor]
+        public ParameterResults() { }
+
+        /// <summary>
         /// Constructs new parameter results.
         /// </summary>
         /// <param name="values">List of posterior parameter values, aggregated together from each chain.</param>

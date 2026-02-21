@@ -88,6 +88,10 @@ namespace Numerics.Distributions
         private bool _mvnCreated = false;
         private MultivariateNormal _mvn = null!;
 
+        // Minimum log value to prevent -Infinity in log-likelihood
+        private const double _logZero = -745.0; // ≈ log(double.MinValue that's positive)
+        private const double _minDensity = 1E-300;
+
         /// <summary>
         /// Returns the array of univariate probability distributions.
         /// </summary>
@@ -490,23 +494,14 @@ namespace Numerics.Distributions
             // Only compute the exact PDF for independent random variables
             if (Dependency == Probability.DependencyType.Independent)
             {
-                double hf = 0d;
-                double sf = 1d;
-                for (int i = 0; i < Distributions.Count; i++)
+                if (MinimumOfRandomVariables)
                 {
-
-                    if (MinimumOfRandomVariables == true)
-                    {
-                        hf += Distributions[i].HF(x);
-                        sf *= Distributions[i].CCDF(x);
-                    }
-                    else
-                    {
-                        hf += Distributions[i].PDF(x) / Distributions[i].CDF(x);
-                        sf *= Distributions[i].CDF(x);
-                    }
+                    f = PDFMinimumIndependent(x);
                 }
-                f = hf * sf;
+                else
+                {
+                    f = PDFMaximumIndependent(x);
+                }
             }
             else
             {
@@ -514,8 +509,244 @@ namespace Numerics.Distributions
                 f = NumericalDerivative.Derivative(CDF, x);
             }
 
-            return f < 0d ? 0d : f;
+            // Return minimum density instead of zero to prevent log-likelihood issues
+            return f < _minDensity ? _minDensity : f;
         }
+
+        /// <summary>
+        /// Computes PDF for minimum of independent random variables.
+        /// f(x) = h(x) * S(x) where h(x) = sum of hazard rates, S(x) = product of survival functions
+        /// </summary>
+        private double PDFMinimumIndependent(double x)
+        {
+            double sumHazard = 0.0;
+            double productSurvival = 1.0;
+
+            for (int i = 0; i < Distributions.Count; i++)
+            {
+                double ccdf = Distributions[i].CCDF(x);
+                double pdf = Distributions[i].PDF(x);
+
+                productSurvival *= ccdf;
+
+                // Safe hazard calculation
+                if (ccdf > _minDensity)
+                {
+                    sumHazard += pdf / ccdf;
+                }
+                else if (pdf > _minDensity)
+                {
+                    // CCDF ≈ 0 but PDF > 0: we're at the boundary
+                    // The hazard is very large, but productSurvival will be ≈ 0
+                    // so the contribution is negligible
+                    sumHazard += pdf / _minDensity; // Cap the hazard
+                }
+            }
+
+            return sumHazard * productSurvival;
+        }
+
+        /// <summary>
+        /// Computes PDF for maximum of independent random variables.
+        /// f(x) = sum_i [f_i(x) * prod_{j≠i} F_j(x)]
+        ///      = [sum_i (f_i/F_i)] * [prod_j F_j]
+        /// </summary>
+        private double PDFMaximumIndependent(double x)
+        {
+            double sumRatio = 0.0;
+            double productCdf = 1.0;
+
+            for (int i = 0; i < Distributions.Count; i++)
+            {
+                double cdf = Distributions[i].CDF(x);
+                double pdf = Distributions[i].PDF(x);
+
+                productCdf *= cdf;
+
+                // Safe ratio calculation
+                if (cdf > _minDensity)
+                {
+                    sumRatio += pdf / cdf;
+                }
+                else if (pdf > _minDensity)
+                {
+                    // CDF ≈ 0 but PDF > 0: we're at the left boundary
+                    // The ratio is very large, but productCdf will be ≈ 0
+                    // so the contribution is negligible
+                    sumRatio += pdf / _minDensity; // Cap the ratio
+                }
+            }
+
+            return sumRatio * productCdf;
+        }
+
+        /// <inheritdoc/>
+        public override double LogPDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(GetParameters, true);
+
+            if (Distributions.Count == 1)
+            {
+                return Distributions[0].LogPDF(x);
+            }
+
+            // Only compute the exact LogPDF for independent random variables
+            if (Dependency == Probability.DependencyType.Independent)
+            {
+                if (MinimumOfRandomVariables)
+                {
+                    return LogPDFMinimumIndependent(x);
+                }
+                else
+                {
+                    return LogPDFMaximumIndependent(x);
+                }
+            }
+            else
+            {
+                // For dependent cases, fall back to numerical differentiation
+                // but use a more stable approach
+                double pdf = NumericalDerivative.Derivative(CDF, x);
+                return pdf > _minDensity ? Math.Log(pdf) : double.MinValue;
+            }
+
+        }
+
+        /// <summary>
+        /// Computes log-PDF for minimum of independent random variables.
+        /// Uses the formula: log(f(x)) = log(sum of hazards) + sum of log(survival functions)
+        /// 
+        /// For minimum: f(x) = h(x) * S(x) where:
+        ///   h(x) = sum_i h_i(x) = sum_i [f_i(x) / S_i(x)]
+        ///   S(x) = prod_i S_i(x)
+        /// 
+        /// In log space: log(f) = log(h(x)) + sum_i log(S_i(x))
+        /// </summary>
+        private double LogPDFMinimumIndependent(double x)
+        {
+            int n = Distributions.Count;
+            var logSurvival = new double[n];
+            var logHazard = new double[n];
+
+            double sumLogSurvival = 0.0;
+            bool allSurvivalZero = true;
+
+            for (int i = 0; i < n; i++)
+            {
+                double ccdf = Distributions[i].CCDF(x);
+                double pdf = Distributions[i].PDF(x);
+
+                if (ccdf > _minDensity)
+                {
+                    logSurvival[i] = Math.Log(ccdf);
+                    allSurvivalZero = false;
+                }
+                else
+                {
+                    // Survival is essentially zero - we're far in the right tail
+                    logSurvival[i] = _logZero;
+                }
+
+                sumLogSurvival += logSurvival[i];
+
+                // Compute log-hazard: log(f_i / S_i) = log(f_i) - log(S_i)
+                if (pdf > _minDensity && ccdf > _minDensity)
+                {
+                    logHazard[i] = Math.Log(pdf) - Math.Log(ccdf);
+                }
+                else if (pdf <= _minDensity)
+                {
+                    logHazard[i] = _logZero;
+                }
+                else
+                {
+                    // pdf > 0 but ccdf ≈ 0: hazard is very large
+                    // This happens in the far right tail
+                    logHazard[i] = Math.Log(pdf) - _logZero; // Will be very large
+                }
+            }
+
+            // If all survival functions are zero, density is zero
+            if (allSurvivalZero)
+                return _logZero;
+
+            // Compute log of sum of hazards using log-sum-exp trick
+            double logSumHazard = Tools.LogSumExp(logHazard);
+
+            // Final result: log(f) = log(sum h_i) + sum log(S_i)
+            double logPdf = logSumHazard + sumLogSurvival;
+
+            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.MinValue : logPdf;
+        }
+
+        /// <summary>
+        /// Computes log-PDF for maximum of independent random variables.
+        /// Uses the formula: f(x) = sum_i [f_i(x) * prod_{j≠i} F_j(x)]
+        /// 
+        /// In log space, we use the identity:
+        ///   f(x) = [sum_i (f_i/F_i)] * [prod_j F_j]
+        /// 
+        /// So: log(f) = log(sum_i f_i/F_i) + sum_j log(F_j)
+        /// </summary>
+        private double LogPDFMaximumIndependent(double x)
+        {
+            int n = Distributions.Count;
+            var logCdf = new double[n];
+            var logRatio = new double[n]; // log(f_i / F_i)
+
+            double sumLogCdf = 0.0;
+            bool allCdfZero = true;
+
+            for (int i = 0; i < n; i++)
+            {
+                double cdf = Distributions[i].CDF(x);
+                double pdf = Distributions[i].PDF(x);
+
+                if (cdf > _minDensity)
+                {
+                    logCdf[i] = Math.Log(cdf);
+                    allCdfZero = false;
+                }
+                else
+                {
+                    // CDF is essentially zero - we're far in the left tail
+                    logCdf[i] = _logZero;
+                }
+
+                sumLogCdf += logCdf[i];
+
+                // Compute log(f_i / F_i) = log(f_i) - log(F_i)
+                if (pdf > _minDensity && cdf > _minDensity)
+                {
+                    logRatio[i] = Math.Log(pdf) - Math.Log(cdf);
+                }
+                else if (pdf <= _minDensity)
+                {
+                    logRatio[i] = _logZero;
+                }
+                else
+                {
+                    // pdf > 0 but cdf ≈ 0: ratio is very large
+                    // This can happen but contributes negligibly when multiplied by near-zero CDF product
+                    logRatio[i] = Math.Log(pdf) - _logZero;
+                }
+            }
+
+            // If all CDFs are zero, density is zero
+            if (allCdfZero)
+                return _logZero;
+
+            // Compute log of sum of ratios using log-sum-exp trick
+            double logSumRatio = Tools.LogSumExp(logRatio);
+
+            // Final result: log(f) = log(sum f_i/F_i) + sum log(F_i)
+            double logPdf = logSumRatio + sumLogCdf;
+
+            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.MinValue : logPdf;
+        }
+
 
         /// <inheritdoc/>
         public override double CDF(double x)
@@ -912,6 +1143,84 @@ namespace Numerics.Distributions
             // Return array of random values
             return sample;
         }
+
+        /// <summary>
+        /// Generates random values accounting for dependency structure.
+        /// The original implementation only handles independent case correctly.
+        /// </summary>
+        /// <param name="sampleSize"> Size of random sample to generate. </param>
+        /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
+        /// <returns>Array of random samples.</returns>
+        public double[] GenerateRandomValuesWithDependency(int sampleSize, int seed = -1)
+        {
+            var rnd = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
+            var sample = new double[sampleSize];
+
+            if (Dependency == Probability.DependencyType.Independent)
+            {
+                // Original implementation is correct for independent case
+                for (int i = 0; i < sampleSize; i++)
+                {
+                    double xMin = double.MaxValue;
+                    double xMax = double.MinValue;
+                    for (int j = 0; j < Distributions.Count; j++)
+                    {
+                        var x = Distributions[j].InverseCDF(rnd.NextDouble());
+                        if (x < xMin) xMin = x;
+                        if (x > xMax) xMax = x;
+                    }
+                    sample[i] = MinimumOfRandomVariables ? xMin : xMax;
+                }
+            }
+            else if (Dependency == Probability.DependencyType.PerfectlyPositive)
+            {
+                // For perfectly positive dependency, all variables share the same quantile
+                for (int i = 0; i < sampleSize; i++)
+                {
+                    double u = rnd.NextDouble();
+                    double xMin = double.MaxValue;
+                    double xMax = double.MinValue;
+                    for (int j = 0; j < Distributions.Count; j++)
+                    {
+                        var x = Distributions[j].InverseCDF(u); // Same u for all
+                        if (x < xMin) xMin = x;
+                        if (x > xMax) xMax = x;
+                    }
+                    sample[i] = MinimumOfRandomVariables ? xMin : xMax;
+                }
+            }
+            else if (Dependency == Probability.DependencyType.PerfectlyNegative ||
+                     Dependency == Probability.DependencyType.CorrelationMatrix)
+            {
+                // Use Gaussian copula for correlation structure
+                if (_mvnCreated == false)
+                    CreateMultivariateNormal();
+
+                // Generate correlated standard normal samples
+                var mvnSamples = _mvn.GenerateRandomValues(sampleSize, seed);
+
+                for (int i = 0; i < sampleSize; i++)
+                {
+                    double xMin = double.MaxValue;
+                    double xMax = double.MinValue;
+
+                    for (int j = 0; j < Distributions.Count; j++)
+                    {
+                        // Transform standard normal to uniform via Phi, then to marginal via inverse CDF
+                        double z = mvnSamples[i, j];
+                        double u = Normal.StandardCDF(z);
+                        var x = Distributions[j].InverseCDF(u);
+
+                        if (x < xMin) xMin = x;
+                        if (x > xMax) xMax = x;
+                    }
+                    sample[i] = MinimumOfRandomVariables ? xMin : xMax;
+                }
+            }
+
+            return sample;
+        }
+
 
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
