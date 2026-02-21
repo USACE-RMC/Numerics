@@ -177,6 +177,26 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Internal constructor for JSON deserialization. Reconstructs a histogram from serialized bin data
+        /// without requiring the original raw data.
+        /// </summary>
+        /// <param name="lowerBound">The lower bound of the histogram.</param>
+        /// <param name="upperBound">The upper bound of the histogram.</param>
+        /// <param name="numberOfBins">The number of bins.</param>
+        /// <param name="binWidth">The bin width.</param>
+        /// <param name="bins">The list of histogram bins.</param>
+        internal Histogram(double lowerBound, double upperBound, int numberOfBins,
+                           double binWidth, List<Bin> bins)
+        {
+            LowerBound = lowerBound;
+            UpperBound = upperBound;
+            NumberOfBins = numberOfBins;
+            BinWidth = binWidth;
+            foreach (var bin in bins)
+                AddBin(bin);
+        }
+
+        /// <summary>
         /// Constructs a histogram based on the data provided. The Rice Rule is used to set the bin sizes.
         /// </summary>
         /// <param name="data">The data to construct a histogram with.</param>

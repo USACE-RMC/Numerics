@@ -29,9 +29,9 @@
 */
 
 using Numerics.Mathematics.Optimization;
+using Numerics.Utilities;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -194,6 +194,8 @@ namespace Numerics.Sampling.MCMC
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 IncludeFields = true
             };
+            options.Converters.Add(new Double2DArrayConverter());
+            options.Converters.Add(new HistogramConverter());
             return JsonSerializer.SerializeToUtf8Bytes(mcmcResults, options);
         }
 
@@ -208,32 +210,9 @@ namespace Numerics.Sampling.MCMC
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 IncludeFields = true
             };
-            try
-            {
-                return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
-            }
-            catch
-            {
-                ///Previous serialization used Binary Formatter, which won't deserialize cleanly as JSON. 
-                /// If this fails, then it's probably the bf bytes. fall back to legacy.
-                return FromByteArrayLegacy(bytes);
-            }
-        }
-
-        /// <summary>
-        /// Creates MCMC Results from a byte array.
-        /// </summary>
-        /// <param name="bytes">Byte array.</param>
-        private static MCMCResults FromByteArrayLegacy(byte[] bytes)
-        {
-            using var ms = new MemoryStream();
-            #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
-            var bf = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
-            ms.Write(bytes, 0, bytes.Length);
-            ms.Seek(0L, SeekOrigin.Begin);
-            var obj = bf.Deserialize(ms);
-            #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
-            return (MCMCResults)obj;
+            options.Converters.Add(new Double2DArrayConverter());
+            options.Converters.Add(new HistogramConverter());
+            return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
         }
 
         #endregion

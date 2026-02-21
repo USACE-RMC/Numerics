@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:waterservices.usgs.gov)",
+      "WebFetch(domain:nwis.waterdata.usgs.gov)",
+      "WebFetch(domain:help.waterdata.usgs.gov)",
+      "WebFetch(domain:waterdata.usgs.gov)",
+      "WebFetch(domain:api.waterdata.usgs.gov)",
+      "WebFetch(domain:water.code-pages.usgs.gov)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "WebFetch(domain:eccc-msc.github.io)",
+      "WebFetch(domain:api.weather.gc.ca)",
+      "WebFetch(domain:wateroffice.ec.gc.ca)",
+      "WebFetch(domain:www.bom.gov.au)",
+      "WebFetch(domain:software.openwaterfoundation.org)",
+      "Bash(Select-String -Pattern \"error|Build succeeded|Build FAILED\")",
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "WebFetch(domain:nwis.waterservices.usgs.gov)",
+      "Bash(curl:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

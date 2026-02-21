@@ -69,7 +69,7 @@ namespace Numerics.Data
                     var oldvalue = _seriesOrdinates[index];
                     _seriesOrdinates[index] = value;
                     if (SuppressCollectionChanged == false)
-                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue));
+                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue, index));
                 }
             }
         }
@@ -87,10 +87,9 @@ namespace Numerics.Data
                         var oldvalue = _seriesOrdinates[index];
                         _seriesOrdinates[index] = (SeriesOrdinate<TIndex, TValue>)value;
                         if (SuppressCollectionChanged == false)
-                            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue));
+                            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue, index));
                     }
                 }
-
             }
         }
 

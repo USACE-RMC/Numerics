@@ -166,7 +166,7 @@ namespace Numerics.Data
         /// <summary>
         /// Boolean of whether or not to invoke anything on CollectionChanged
         /// </summary>
-        public bool SupressCollectionChanged { get; set; } = false;
+        public bool SuppressCollectionChanged { get; set; } = false;
 
         /// <summary>
         /// Handles the event of CollectionChanged
@@ -394,7 +394,7 @@ namespace Numerics.Data
         /// </summary>
         public void Validate()
         {
-            if (SupressCollectionChanged == true) return;
+            if (SuppressCollectionChanged == true) return;
             _isValid = true; // innocent until proven guilty
             for (int i = 0; i < _uncertainOrdinates.Count; i++)
             {
@@ -561,9 +561,9 @@ namespace Numerics.Data
                     {
                         if (OrdinateValid(index) == true) { Validate(); }
                     }
-                    if (SupressCollectionChanged == false)
+                    if (SuppressCollectionChanged == false)
                     {
-                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue));
+                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue, index));
                     }
                 }
             }
@@ -591,7 +591,7 @@ namespace Numerics.Data
                 return false;
             _uncertainOrdinates.RemoveAt(itemIndex);
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
             return true;
         }
@@ -605,7 +605,7 @@ namespace Numerics.Data
             var itemRemoved = _uncertainOrdinates[index];
             _uncertainOrdinates.RemoveAt(index);
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, itemRemoved, index));
         }
 
@@ -626,7 +626,7 @@ namespace Numerics.Data
 
             _uncertainOrdinates.RemoveRange(index, count);
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, itemsRemoved, index));
         }
 
@@ -651,7 +651,7 @@ namespace Numerics.Data
                 _uncertainOrdinates.RemoveAt(sortedIndices[i]);
             }
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
             {
                 if (isContinuous)
                 {
@@ -673,7 +673,7 @@ namespace Numerics.Data
             _uncertainOrdinates.Add(item);
             if (OrdinateValid(_uncertainOrdinates.Count - 1) == false)
                 _isValid = false;
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _uncertainOrdinates.Count - 1));
         }
 
@@ -692,7 +692,7 @@ namespace Numerics.Data
                 if (OrdinateValid(_uncertainOrdinates.Count - 1) == false)
                     _isValid = false;
             }
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, items.ToList(), startIndex));
         }
 
@@ -711,7 +711,7 @@ namespace Numerics.Data
                     _isValid = false;
             }
 
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
@@ -733,7 +733,7 @@ namespace Numerics.Data
                         _isValid = false;
                 }
             }
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, items.ToList(), index));
         }
 
@@ -742,10 +742,17 @@ namespace Numerics.Data
         /// </summary>
         public void Clear()
         {
+            if (_uncertainOrdinates.Count == 0)
+                return;
+
+            bool wasSuppressed = SuppressCollectionChanged;
+            SuppressCollectionChanged = true;
             _uncertainOrdinates.Clear();
-            if (SupressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            SuppressCollectionChanged = wasSuppressed;
+
             _isValid = true;
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 
         /// <summary>

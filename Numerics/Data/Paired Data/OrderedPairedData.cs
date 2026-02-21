@@ -108,6 +108,18 @@ namespace Numerics.Data
         public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         /// <summary>
+        /// Gets or sets a value indicating whether collection changed events are suppressed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Set this to <c>true</c> before performing a batch of mutations and then
+        /// call <see cref="RaiseCollectionChangedReset"/> when the batch is complete.
+        /// This avoids firing an event for every individual mutation.
+        /// </para>
+        /// </remarks>
+        public bool SuppressCollectionChanged { get; set; } = false;
+
+        /// <summary>
         /// Represents if the paired dataset has valid ordinates and order.
         /// </summary>
         /// <returns>boolean representing data validity.</returns>
@@ -300,6 +312,22 @@ namespace Numerics.Data
         #region Methods
 
         /// <summary>
+        /// Raises a <see cref="NotifyCollectionChangedAction.Reset"/> event
+        /// unconditionally, regardless of the <see cref="SuppressCollectionChanged"/> flag.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Call this after a bulk operation once <see cref="SuppressCollectionChanged"/>
+        /// has been set back to <c>false</c> (or while still <c>true</c> if desired)
+        /// to notify listeners that the collection has changed.
+        /// </para>
+        /// </remarks>
+        public void RaiseCollectionChangedReset()
+        {
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        }
+
+        /// <summary>
         /// Get or set the ordinate at a specified index.
         /// </summary>
         /// <param name="index">Index of ordinate in the collection to manipulate.</param>
@@ -321,14 +349,11 @@ namespace Numerics.Data
                     {
                         if (OrdinateValid(index) == true) { Validate(); }
                     }
-                    //
-                    //We might need to add this check if performance suffers
-                    //if (SupressCollectionChanged == false)
-                    //{
-                    CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldValue));
-                    //}
+                    if (SuppressCollectionChanged == false)
+                    {
+                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldValue, index));
+                    }
                 }
-
             }
         }
 
@@ -427,7 +452,8 @@ namespace Numerics.Data
             if (itemIndex == -1) return false;
             _ordinates.RemoveAt(itemIndex);
             Validate();
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
             return true;
         }
 
@@ -441,7 +467,8 @@ namespace Numerics.Data
             var item = _ordinates[index];
             _ordinates.RemoveAt(index);
             Validate();
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
         }
 
         /// <summary>
@@ -456,7 +483,8 @@ namespace Numerics.Data
             for (int i = index; i < count; i++) { items.Add(_ordinates[i]); }
             _ordinates.RemoveRange(index, count);
             Validate();
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, items, index));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, items, index));
         }
 
         /// <summary>
@@ -467,7 +495,8 @@ namespace Numerics.Data
         {
             _ordinates.Add(item);
             IsValid = OrdinateValid(_ordinates.Count - 1);
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
         }
 
         /// <summary>
@@ -480,7 +509,8 @@ namespace Numerics.Data
             _ordinates.Insert(index, item);
             // only need to set valid state if it is true. if it is already false then inserting can't make it true.
             if (IsValid) IsValid = OrdinateValid(index);
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
         /// <summary>
@@ -488,9 +518,17 @@ namespace Numerics.Data
         /// </summary>
         public void Clear()
         {
+            if (_ordinates.Count == 0)
+                return;
+
+            bool wasSuppressed = SuppressCollectionChanged;
+            SuppressCollectionChanged = true;
             _ordinates.Clear();
+            SuppressCollectionChanged = wasSuppressed;
+
             IsValid = true;
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 
         /// <summary>

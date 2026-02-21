@@ -328,6 +328,34 @@ namespace Numerics.Data
             return (isValid, messages);
         }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether collection changed events are suppressed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Set this to <c>true</c> before performing a batch of mutations and then
+        /// call <see cref="RaiseCollectionChangedReset"/> when the batch is complete.
+        /// This avoids firing an event for every individual mutation.
+        /// </para>
+        /// </remarks>
+        public bool SuppressCollectionChanged { get; set; } = false;
+
+        /// <summary>
+        /// Raises a <see cref="NotifyCollectionChangedAction.Reset"/> event
+        /// unconditionally, regardless of the <see cref="SuppressCollectionChanged"/> flag.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Call this after a bulk operation once <see cref="SuppressCollectionChanged"/>
+        /// has been set back to <c>false</c> (or while still <c>true</c> if desired)
+        /// to notify listeners that the collection has changed.
+        /// </para>
+        /// </remarks>
+        public void RaiseCollectionChangedReset()
+        {
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        }
+
         #region Mutating methods with change notifications
 
         /// <summary>
@@ -487,12 +515,24 @@ namespace Numerics.Data
         /// <summary>
         /// Removes all elements from the list and raises the appropriate change events.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// If <see cref="SuppressCollectionChanged"/> is <c>false</c>, a single
+        /// <see cref="NotifyCollectionChangedAction.Reset"/> event is raised after
+        /// all items are removed. If suppress is already <c>true</c>, no event is
+        /// raised (the caller is expected to raise Reset when the batch is complete).
+        /// </para>
+        /// </remarks>
         public new void Clear()
         {
             if (Count == 0)
                 return;
 
+            bool wasSuppressed = SuppressCollectionChanged;
+            SuppressCollectionChanged = true;
             base.Clear();
+            SuppressCollectionChanged = wasSuppressed;
+
             OnPropertyChanged(nameof(Count));
             OnPropertyChanged("Item[]");
             OnCollectionChanged(
@@ -542,13 +582,17 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Raises the <see cref="CollectionChanged"/> event with the specified arguments.
+        /// Raises the <see cref="CollectionChanged"/> event with the specified arguments,
+        /// unless <see cref="SuppressCollectionChanged"/> is <c>true</c>.
         /// </summary>
         /// <param name="e">
         /// <see cref="NotifyCollectionChangedEventArgs"/> that describes the change.
         /// </param>
         protected virtual void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
         {
+            if (SuppressCollectionChanged)
+                return;
+
             var handler = CollectionChanged;
             if (handler != null)
                 handler(this, e);

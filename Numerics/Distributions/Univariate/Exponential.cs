@@ -51,7 +51,7 @@ namespace Numerics.Distributions
     [Serializable]
     public sealed class Exponential : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, IMomentEstimation, ILinearMomentEstimation, IStandardError, IBootstrappable
     {
-  
+
         /// <summary>
         /// Constructs an Exponential distribution with a location of 100 and scale of 10.
         /// </summary>
@@ -69,7 +69,15 @@ namespace Numerics.Distributions
         {
             SetParameters(location, scale);
         }
-  
+
+        /// <summary>
+        /// Constructs an Exponential distribution with a location of 0 and a given scale.
+        /// </summary>
+        /// <param name="scale">The scale parameter α (alpha).</param>
+        public Exponential(double scale) : this(0.0d, scale)
+        {
+        }
+
         private double _xi; // location
         private double _alpha; // scale
 
