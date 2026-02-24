@@ -835,11 +835,10 @@ namespace Functions
         /// Test that CreateFromXElement throws NotSupportedException for unknown element names.
         /// </summary>
         [TestMethod]
-        [ExpectedException(typeof(NotSupportedException))]
         public void Test_LinkFunctionFactory_CreateFromXElement_UnknownType_Throws()
         {
             var xml = new XElement("UnknownLink");
-            LinkFunctionFactory.CreateFromXElement(xml);
+            Assert.Throws<NotSupportedException>(() => LinkFunctionFactory.CreateFromXElement(xml));
         }
 
         /// <summary>
