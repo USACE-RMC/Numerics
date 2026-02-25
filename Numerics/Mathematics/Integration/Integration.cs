@@ -73,6 +73,46 @@ namespace Numerics.Mathematics.Integration
         }
 
         /// <summary>
+        /// Returns the integral of a function between a and b by twenty-point Gauss-Legendre integration.
+        /// </summary>
+        /// <param name="f">The function to integrate.</param>
+        /// <param name="a">Start point for integration.</param>
+        /// <param name="b">End point for integration.</param>
+        /// <returns>The value of a definite integral.</returns>
+        /// <remarks>
+        /// Twenty-point Gauss-Legendre quadrature is exact for polynomials of degree 39 or less.
+        /// Uses 10 symmetric node pairs (20 function evaluations total). Provides higher accuracy
+        /// than the 10-point <see cref="GaussLegendre"/> method for non-polynomial smooth integrands
+        /// such as log-transformed functions.
+        /// <para>
+        /// Nodes are roots of the Legendre polynomial P₂₀(x); weights are the corresponding
+        /// Christoffel numbers. Reference: Abramowitz and Stegun (1964), Table 25.4.
+        /// </para>
+        /// </remarks>
+        public static double GaussLegendre20(Func<double, double> f, double a, double b)
+        {
+            var x = new double[] {
+                0.0765265211334973338, 0.2277858511416450781, 0.3737060887154195607,
+                0.5108670019508270981, 0.6360536807265150254, 0.7463319064601507926,
+                0.8391169718222188234, 0.9122344282513259059, 0.9639719272779137912,
+                0.9931285991850949247 };
+            var w = new double[] {
+                0.1527533871307258507, 0.1491729864726037467, 0.1420961093183820514,
+                0.1316886384491766269, 0.1181945319615184174, 0.1019301198172404351,
+                0.0832767415767047487, 0.0626720483341090636, 0.0406014298003869413,
+                0.0176140071391521183 };
+            double xm = 0.5 * (b + a);
+            double xr = 0.5 * (b - a);
+            double s = 0;
+            for (int j = 0; j < 10; j++)
+            {
+                double dx = xr * x[j];
+                s += w[j] * (f(xm + dx) + f(xm - dx));
+            }
+            return s *= xr;
+        }
+
+        /// <summary>
         /// Numerical integration using the Trapezoidal Rule.
         /// </summary>
         /// <param name="f">The function to integrate.</param>

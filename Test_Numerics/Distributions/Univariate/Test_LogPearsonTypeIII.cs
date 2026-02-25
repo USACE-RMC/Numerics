@@ -190,15 +190,15 @@ namespace Distributions.Univariate
 
             // Method of Moments
             var LP3 = new LogPearsonTypeIII(2.26878d, 0.10699d, -0.04061d);
-            double qVar999 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MethodOfMoments));
-            double true_qVar999 = 25.053d;
-            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999);
+            double qVar99 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MethodOfMoments));
+            double true_qVar99 = 25.053d;
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
 
             // Maximum Likelihood
             LP3 = new LogPearsonTypeIII(2.26878d, 0.10621d, -0.02925d);
-            qVar999 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MaximumLikelihood));
-            true_qVar999 = 25d;
-            Assert.IsLessThan(0.01d, (qVar999 - true_qVar999) / true_qVar999 );
+            qVar99 = Math.Sqrt(LP3.QuantileVariance(0.99d, 69, ParameterEstimationMethod.MaximumLikelihood));
+            true_qVar99 = 25d;
+            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99 );
 
         }
 

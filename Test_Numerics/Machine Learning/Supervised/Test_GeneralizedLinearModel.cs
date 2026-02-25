@@ -30,6 +30,7 @@
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
+using Numerics.Functions;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics;
@@ -200,7 +201,7 @@ namespace MachineLearning
             var y = new Vector(deaths) { Header = "admits" };
             var x = new Matrix(list) { Header = new string[] { "drivers", "popden" } };
 
-            var GLM = new GeneralizedLinearModel(x, y, true, GeneralizedLinearModel.LinkFunctionType.Log);
+            var GLM = new GeneralizedLinearModel(x, y, true, LinkFunctionType.Log);
             GLM.Train();
 
             var par = GLM.Parameters;
@@ -264,7 +265,7 @@ namespace MachineLearning
             var x = new Matrix(list) { Header = new string[] { "gre", "gpa", "rank" } };
 
 
-            var GLM = new GeneralizedLinearModel(x, y, true, GeneralizedLinearModel.LinkFunctionType.Logit);
+            var GLM = new GeneralizedLinearModel(x, y, true, LinkFunctionType.Logit);
             GLM.Train();
 
             var par = GLM.Parameters;
@@ -329,7 +330,7 @@ namespace MachineLearning
             var x = new Matrix(list) { Header = new string[] { "gre", "gpa", "rank" } };
 
 
-            var GLM = new GeneralizedLinearModel(x, y, true, GeneralizedLinearModel.LinkFunctionType.Probit);
+            var GLM = new GeneralizedLinearModel(x, y, true, LinkFunctionType.Probit);
             GLM.Train();
 
             var par = GLM.Parameters;
@@ -396,7 +397,7 @@ namespace MachineLearning
             var x = new Matrix(list) { Header = new string[] { "gre", "gpa", "rank" } };
 
 
-            var GLM = new GeneralizedLinearModel(x, y, true, GeneralizedLinearModel.LinkFunctionType.ComplementaryLogLog);
+            var GLM = new GeneralizedLinearModel(x, y, true, LinkFunctionType.ComplementaryLogLog);
             GLM.Train();
 
             var par = GLM.Parameters;
