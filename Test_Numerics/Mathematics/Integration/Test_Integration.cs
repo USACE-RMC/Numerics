@@ -54,7 +54,26 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
-        /// Test Trapezoidal Rule Method. 
+        /// Test 20-point Gauss-Legendre with polynomial, trigonometric, and logarithmic integrands.
+        /// </summary>
+        [TestMethod()]
+        public void Test_GaussLegendre20()
+        {
+            // x^3 over [0,1] = 0.25 (exact for degree <= 39)
+            double e1 = Numerics.Mathematics.Integration.Integration.GaussLegendre20(Integrands.FX3, 0d, 1d);
+            Assert.AreEqual(0.25d, e1, 1E-14);
+
+            // Cosine over [0,1] = sin(1)
+            double e2 = Numerics.Mathematics.Integration.Integration.GaussLegendre20(Math.Cos, 0d, 1d);
+            Assert.AreEqual(Math.Sin(1d), e2, 1E-14);
+
+            // log(x) over [1,2] = 2*ln(2) - 1
+            double e3 = Numerics.Mathematics.Integration.Integration.GaussLegendre20(Math.Log, 1d, 2d);
+            Assert.AreEqual(2d * Math.Log(2d) - 1d, e3, 1E-14);
+        }
+
+        /// <summary>
+        /// Test Trapezoidal Rule Method.
         /// </summary>
         [TestMethod()]
         public void Test_TrapezoidalRule()

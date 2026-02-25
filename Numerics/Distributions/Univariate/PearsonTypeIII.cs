@@ -673,27 +673,77 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            if (estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
+                estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
             {
                 throw new NotImplementedException();
             }
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_mu, _sigma, _gamma, true);
-            // Compute covariance
-            double alpha = 1d / Beta;
-            double lambda = Alpha;
-            double A = 2d * Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) - 2d / (lambda - 1d) + 1d / Math.Pow(lambda - 1d, 2d);
+            // Compute covariance in user-facing (μ, σ, γ) parameterization.
             var covar = new double[3, 3];
-            covar[0, 0] = (lambda - 2d) / (sampleSize * A) * (1d / Math.Pow(alpha, 2d)) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) * lambda - 1d); // location
-            covar[1, 1] = (lambda - 2d) * Math.Pow(alpha, 2d) / (sampleSize * A) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) / (lambda - 2d) - 1d / Math.Pow(lambda - 1d, 2d)); // scale
-            covar[2, 2] = 2d / (sampleSize * A); // shape
-            covar[0, 1] = 1d / sampleSize * ((lambda - 2d) / A) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) - 1d / (lambda - 1d)); // location & scale
-            covar[1, 0] = covar[0, 1];
-            covar[0, 2] = (2d - lambda) / (sampleSize * alpha * A * (lambda - 1d)); // location & shape
-            covar[2, 0] = covar[0, 2];
-            covar[1, 2] = alpha / (sampleSize * A * (lambda - 1d)); // scale & shape
-            covar[2, 1] = covar[1, 2];
+            if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
+            {
+                // MoM asymptotic covariance via Cov = D⁻¹·S·D⁻ᵀ / n.
+                // Moment conditions centered on model mean μ(θ):
+                //   g₁ = X−μ, g₂ = (X−μ)²−σ², g₃ = (X−μ)³−γσ³.
+                // Jacobian D = ∂E[g]/∂(μ,σ,γ) is lower-triangular:
+                //   D = [[-1, 0, 0], [0, -2σ, 0], [-3σ², -3γσ², -σ³]]
+                // Note: D[2,0] = E[∂g₃/∂μ] = E[-3(X−μ)²] = -3σ² ≠ 0 because
+                // g₃ centers on μ(θ), not on x̄.
+                // D⁻¹ = [[-1, 0, 0], [0, -1/(2σ), 0], [3/σ, 3γ/(2σ²), -1/σ³]]
+                double s = _sigma, g = _gamma;
+                double s2 = s * s, s3 = s2 * s, s4 = s2 * s2, s5 = s4 * s, s6 = s4 * s2;
+                double g2 = g * g, g4 = g2 * g2;
+                // Central moments for Pearson III family
+                double mu2 = s2;
+                double mu3 = g * s3;
+                double mu4 = s4 * (3.0 + 1.5 * g2);
+                double mu5 = s5 * g * (10.0 + 3.0 * g2);
+                double mu6 = s6 * (15.0 + 32.5 * g2 + 7.5 * g4);
+                // S matrix elements: S = E[g·gᵀ]
+                double S00 = mu2;
+                double S01 = mu3;
+                double S02 = mu4;
+                double S11 = mu4 - mu2 * mu2;
+                double S12 = mu5 - mu2 * mu3;
+                double S22 = mu6 - mu3 * mu3;
+                // D⁻¹ elements (lower-triangular)
+                double a = -1.0;                    // D⁻¹[0,0]
+                double b = -1.0 / (2.0 * s);       // D⁻¹[1,1]
+                double e = 3.0 / s;                 // D⁻¹[2,0] — from D[2,0] = -3σ²
+                double c = 3.0 * g / (2.0 * s2);   // D⁻¹[2,1]
+                double d = -1.0 / s3;               // D⁻¹[2,2]
+                // Cov = D⁻¹ · S · D⁻ᵀ / n (exploit triangular structure)
+                covar[0, 0] = a * a * S00 / sampleSize;
+                covar[0, 1] = a * b * S01 / sampleSize;
+                covar[0, 2] = a * (e * S00 + c * S01 + d * S02) / sampleSize;
+                covar[1, 1] = b * b * S11 / sampleSize;
+                covar[1, 2] = b * (e * S01 + c * S11 + d * S12) / sampleSize;
+                covar[2, 2] = (e * e * S00 + 2.0 * e * c * S01 + 2.0 * e * d * S02
+                             + c * c * S11 + 2.0 * c * d * S12 + d * d * S22) / sampleSize;
+                covar[1, 0] = covar[0, 1];
+                covar[2, 0] = covar[0, 2];
+                covar[2, 1] = covar[1, 2];
+            }
+            else
+            {
+                // MLE: Fisher information inverse in internal (μ, α=1/β, λ=4/γ²) parameterization.
+                // This parameterization matches QuantileGradient for MLE QuantileVariance computation.
+                double alpha = 1d / Beta;
+                double lambda = Alpha;
+                double A = 2d * Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) - 2d / (lambda - 1d) + 1d / Math.Pow(lambda - 1d, 2d);
+                covar[0, 0] = (lambda - 2d) / (sampleSize * A) * (1d / Math.Pow(alpha, 2d)) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) * lambda - 1d); // location
+                covar[1, 1] = (lambda - 2d) * Math.Pow(alpha, 2d) / (sampleSize * A) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) / (lambda - 2d) - 1d / Math.Pow(lambda - 1d, 2d)); // scale
+                covar[2, 2] = 2d / (sampleSize * A); // shape
+                covar[0, 1] = 1d / sampleSize * ((lambda - 2d) / A) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) - 1d / (lambda - 1d)); // location & scale
+                covar[1, 0] = covar[0, 1];
+                covar[0, 2] = (2d - lambda) / (sampleSize * alpha * A * (lambda - 1d)); // location & shape
+                covar[2, 0] = covar[0, 2];
+                covar[1, 2] = alpha / (sampleSize * A * (lambda - 1d)); // scale & shape
+                covar[2, 1] = covar[1, 2];
+            }
             return covar;
         }
 
@@ -733,6 +783,8 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, Sigma, Gamma, true);
+            // Gradient in internal (μ, α=1/β, λ=4/γ²) parameterization.
+            // Matches ParameterCovariance(MLE) for MLE QuantileVariance computation.
             double alpha = 1d / Beta;
             double lambda = Alpha;
             double eps = Math.Sign(alpha);

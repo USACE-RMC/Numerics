@@ -747,8 +747,6 @@ namespace Functions
             Assert.AreEqual(expected, logDetJ, 1E-10);
         }
 
-        #endregion
-
         #region XElement Serialization
 
         /// <summary>
