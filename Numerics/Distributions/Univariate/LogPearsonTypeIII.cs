@@ -517,13 +517,13 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
             }
-            if (gamma > 5)
+            if (gamma > 6)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
             }
-            if (gamma < -5)
+            if (gamma < -6)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
@@ -712,8 +712,8 @@ namespace Numerics.Distributions
             upperVals[1] = double.IsNaN(upperVals[1]) ? 4 : upperVals[1];
 
             // Get bounds of skew
-            lowerVals[2] = -5d;
-            upperVals[2] = 5d;
+            lowerVals[2] = -6d;
+            upperVals[2] = 6d;
             // Correct initial value of skew if necessary
             if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
             {

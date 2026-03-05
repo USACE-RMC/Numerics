@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Numerics"
+version: "2.0.0"
+date-released: "2025-01-01"
+license: BSD-3-Clause
+repository-code: "https://github.com/USACE-RMC/Numerics"
+url: "https://github.com/USACE-RMC/Numerics"
+abstract: >-
+  Numerics is a free and open-source .NET library providing numerical methods,
+  probability distributions, statistical analysis, and Bayesian inference tools
+  for quantitative risk assessment in water resources engineering.
+keywords:
+  - statistics
+  - probability distributions
+  - MCMC
+  - hydrology
+  - flood frequency analysis
+  - copulas
+  - L-moments
+  - optimization
+  - .NET
+  - C#
+authors:
+  - family-names: "Smith"
+    given-names: "Haden"
+    email: "cole.h.smith@usace.army.mil"
+    affiliation: "U.S. Army Corps of Engineers, Risk Management Center"
+    orcid: "https://orcid.org/0000-0001-7881-5814"

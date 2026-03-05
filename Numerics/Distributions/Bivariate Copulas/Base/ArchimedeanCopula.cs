@@ -65,6 +65,18 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
+        public override int NumberOfCopulaParameters => 1;
+
+        /// <inheritdoc/>
+        public override double[] GetCopulaParameters => new double[] { Theta };
+
+        /// <inheritdoc/>
+        public override void SetCopulaParameters(double[] parameters)
+        {
+            Theta = parameters[0];
+        }
+
+        /// <inheritdoc/>
         public override ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException)
         {
             if (parameter < ThetaMinimum)

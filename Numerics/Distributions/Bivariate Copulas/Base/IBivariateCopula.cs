@@ -83,6 +83,22 @@ namespace Numerics.Distributions.Copulas
         IUnivariateDistribution MarginalDistributionY { get; set; }
 
         /// <summary>
+        /// Gets the number of copula-intrinsic parameters (e.g., 1 for Clayton, 2 for Student's t).
+        /// </summary>
+        int NumberOfCopulaParameters { get; }
+
+        /// <summary>
+        /// Gets all copula parameters as a double array.
+        /// </summary>
+        double[] GetCopulaParameters { get; }
+
+        /// <summary>
+        /// Sets all copula parameters from a double array.
+        /// </summary>
+        /// <param name="parameters">The parameter values to set.</param>
+        void SetCopulaParameters(double[] parameters);
+
+        /// <summary>
         /// Test to see if distribution parameters are valid.
         /// </summary>
         /// <param name="parameter">Dependency parameter.</param>
@@ -91,11 +107,12 @@ namespace Numerics.Distributions.Copulas
         ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException);
 
         /// <summary>
-        /// Returns the parameter constraints for the dependency parameter given the data samples. 
+        /// Returns the parameter constraints for all copula parameters given the data samples.
+        /// Returns a 2D array with shape [NumberOfCopulaParameters, 2] where column 0 is the lower bound and column 1 is the upper bound.
         /// </summary>
         /// <param name="sampleDataX">The sample data for the X variable.</param>
         /// <param name="sampleDataY">The sample data for the Y variable.</param>
-        double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
+        double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
 
         /// <summary>
         /// The probability density function (PDF) of the copula evaluated at reduced variates u and v.

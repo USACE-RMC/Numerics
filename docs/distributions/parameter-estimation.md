@@ -530,8 +530,8 @@ foreach (var method in methods)
 ```cs
 // Identify potential outliers before estimation
 double[] sorted = data.OrderBy(x => x).ToArray();
-double Q1 = Statistics.Quantile(sorted, 0.25);
-double Q3 = Statistics.Quantile(sorted, 0.75);
+double Q1 = Statistics.Percentile(sorted, 0.25);
+double Q3 = Statistics.Percentile(sorted, 0.75);
 double IQR = Q3 - Q1;
 
 var outliers = data.Where(x => x < Q1 - 1.5 * IQR || x > Q3 + 1.5 * IQR).ToArray();

@@ -210,6 +210,10 @@ namespace Numerics.Distributions
         /// </summary>
         UserDefined,
         /// <summary>
+        /// Von Mises (circular normal) distribution.
+        /// </summary>
+        VonMises,
+        /// <summary>
         /// Weibull distribution.
         /// </summary>
         Weibull

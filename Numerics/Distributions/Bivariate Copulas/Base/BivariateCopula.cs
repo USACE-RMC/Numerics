@@ -144,7 +144,16 @@ namespace Numerics.Distributions.Copulas
         public abstract double[] InverseCDF(double u, double v);
 
         /// <inheritdoc/>
-        public abstract double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
+        public abstract int NumberOfCopulaParameters { get; }
+
+        /// <inheritdoc/>
+        public abstract double[] GetCopulaParameters { get; }
+
+        /// <inheritdoc/>
+        public abstract void SetCopulaParameters(double[] parameters);
+
+        /// <inheritdoc/>
+        public abstract double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
 
         /// <inheritdoc/>
         public abstract ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException);

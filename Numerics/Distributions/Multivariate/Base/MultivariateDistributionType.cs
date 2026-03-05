@@ -52,6 +52,18 @@ namespace Numerics.Distributions
         /// <summary>
         /// Multivariate Normal (MVN) distribution.
         /// </summary>
-        MultivariateNormal
+        MultivariateNormal,
+        /// <summary>
+        /// Dirichlet distribution.
+        /// </summary>
+        Dirichlet,
+        /// <summary>
+        /// Multinomial distribution.
+        /// </summary>
+        Multinomial,
+        /// <summary>
+        /// Multivariate Student's t-distribution.
+        /// </summary>
+        MultivariateStudentT
     }
 }

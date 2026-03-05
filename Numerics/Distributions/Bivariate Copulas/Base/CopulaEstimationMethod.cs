@@ -55,12 +55,19 @@ namespace Numerics.Distributions.Copulas
         PseudoLikelihood,
 
         /// <summary>
-        /// The inference from margins (IFM) method includes two procedures: 
+        /// The inference from margins (IFM) method includes two procedures:
         /// 1) marginal distributions are independently estimated from the observed values;
-        /// 2) the copula dependency is estimate through the maximization of the likelihood function 
-        /// given the marginal distributions. 
+        /// 2) the copula dependency is estimate through the maximization of the likelihood function
+        /// given the marginal distributions.
         /// </summary>
-        InferenceFromMargins
-        
+        InferenceFromMargins,
+
+        /// <summary>
+        /// Bayesian estimation using Markov Chain Monte Carlo (MCMC).
+        /// Uses the pseudo log-likelihood with uniform priors on the parameter constraints by default.
+        /// Sets the Maximum a Posteriori (MAP) estimate on the copula.
+        /// </summary>
+        Bayesian
+
     }
 }
