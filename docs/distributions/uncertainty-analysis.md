@@ -202,8 +202,8 @@ for (int j = 0; j < gev.NumberOfParameters; j++)
     Console.WriteLine($"\n{paramNames[j]}:");
     Console.WriteLine($"  Mean: {values.Average():F4}");
     Console.WriteLine($"  Std Dev: {Statistics.StandardDeviation(values.ToArray()):F4}");
-    Console.WriteLine($"  5th percentile: {Statistics.Quantile(values.OrderBy(x => x).ToArray(), 0.05):F4}");
-    Console.WriteLine($"  95th percentile: {Statistics.Quantile(values.OrderBy(x => x).ToArray(), 0.95):F4}");
+    Console.WriteLine($"  5th percentile: {Statistics.Percentile(values.OrderBy(x => x).ToArray(), 0.05):F4}");
+    Console.WriteLine($"  95th percentile: {Statistics.Percentile(values.OrderBy(x => x).ToArray(), 0.95):F4}");
 }
 ```
 

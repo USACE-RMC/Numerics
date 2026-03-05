@@ -141,9 +141,21 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        public override int NumberOfCopulaParameters => 1;
+
+        /// <inheritdoc/>
+        public override double[] GetCopulaParameters => new double[] { Theta };
+
+        /// <inheritdoc/>
+        public override void SetCopulaParameters(double[] parameters)
         {
-            return [-1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon];
+            Theta = parameters[0];
+        }
+
+        /// <inheritdoc/>
+        public override double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        {
+            return new double[,] { { -1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon } };
         }
 
         /// <inheritdoc/>

@@ -46,6 +46,7 @@ The ***Numerics*** library provides over 40 univariate probability distributions
 | **Kernel Density** | Sample data, bandwidth | Smooth non-parametric estimation |
 | **Deterministic** | Single value | Point estimates, constants |
 | **Competing Risks** | Multiple distributions | Failure analysis with multiple causes |
+| **Von Mises** | μ (mean direction), κ (concentration) | Circular data, flood seasonality |
 
 ### Discrete Distributions
 
@@ -498,6 +499,7 @@ Console.WriteLine($"Scenarios > 0.002: {scenarios.Count(x => x > 0.002)} / 10000
 | Count data | Poisson, Binomial |
 | Expert judgment | PERT, PERT Percentile, Triangular |
 | Non-parametric | Empirical, Kernel Density |
+| Circular/directional data | Von Mises |
 
 ## Parameter Bounds and Validation
 

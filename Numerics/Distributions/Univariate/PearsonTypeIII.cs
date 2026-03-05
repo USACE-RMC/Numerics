@@ -394,17 +394,17 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma must be a number.");
             }
-            if (gamma > 5)
+            if (gamma > 6)
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
-                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 5.");
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 6.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 6.");
             }
-            if (gamma < -5)
+            if (gamma < -6)
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
-                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -5.");
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -6.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -6.");
             }
             return null;
         }
@@ -527,8 +527,8 @@ namespace Numerics.Distributions
             lowerVals[1] = Tools.DoubleMachineEpsilon;
             upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
             // Get bounds of skew
-            lowerVals[2] = -5d;
-            upperVals[2] = 5d;
+            lowerVals[2] = -6d;
+            upperVals[2] = 6d;
 
             // Correct initial value of skew if necessary
             if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])

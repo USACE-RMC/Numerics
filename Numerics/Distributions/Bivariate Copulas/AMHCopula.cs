@@ -212,9 +212,9 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        public override double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
         {
-            return [-1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon];
+            return new double[,] { { -1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon } };
         }
 
     }
