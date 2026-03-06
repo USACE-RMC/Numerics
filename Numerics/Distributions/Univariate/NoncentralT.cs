@@ -490,7 +490,7 @@ namespace Numerics.Distributions
                 TNC = TNC + P * XODD + q * XEVEN;
                 ERRBD = two * s * (XODD - GODD);
             }
-            while (ERRBD > Errmax & N <= ITRMAX);
+            while (ERRBD > Errmax && N <= ITRMAX);
             // 
             Twenty:
             ;
@@ -547,7 +547,7 @@ namespace Numerics.Distributions
             t1 = t0 + tInc;
             y1 = NCTDist(t1, df, delta) - p;
             iter = 0;
-            while (y0 < 0d != y1 > 0d & Math.Abs(t1 - t0) > xtol & iter < iterMax)
+            while ((y0 < 0d) != (y1 > 0d) && Math.Abs(t1 - t0) > xtol && iter < iterMax)
             {
                 // 
                 // Use secant method to extrapolate a zero, but overshoot by w >= 1.
@@ -656,12 +656,12 @@ namespace Numerics.Distributions
 
                 tol1 = 2.0d * eps * Math.Abs(b) + 0.5d * Tol;
                 xm = 0.5d * (c - b);
-                if (Math.Abs(xm) <= tol1 | fb == 0d)
+                if (Math.Abs(xm) <= tol1 || fb == 0d)
                 {
                     return b;
                 }
 
-                if (Math.Abs(e) >= tol1 & Math.Abs(fa) > Math.Abs(fb))
+                if (Math.Abs(e) >= tol1 && Math.Abs(fa) > Math.Abs(fb))
                 {
                     s = fb / fa;
                     if (a == c)

@@ -371,6 +371,7 @@ namespace Numerics.Distributions
                 {
                     double a = Bessel.I1(kappa) / Bessel.I0(kappa);
                     double aPrime = 1d - a * a - a / kappa;
+                    if (Math.Abs(aPrime) < 1e-30) break;
                     double delta = (a - rBar) / aPrime;
                     kappa -= delta;
                     if (kappa < 0) kappa = Tools.DoubleMachineEpsilon;

@@ -159,10 +159,10 @@ namespace Numerics.Distributions
             {
                 var parmString = new string[1, 2];
                 string Dstring = "{";
-                for (int i = 1; i < Distributions.Count - 1; i++)
+                for (int i = 0; i < Distributions.Count; i++)
                 {
                     Dstring += Distributions[i].DisplayName;
-                    if (i < Distributions.Count - 2)
+                    if (i < Distributions.Count - 1)
                     {
                         Dstring += ",";
                     }

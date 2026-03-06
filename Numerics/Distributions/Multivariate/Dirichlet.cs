@@ -404,6 +404,12 @@ namespace Numerics.Distributions
                 }
 
                 // Normalize to simplex
+                if (sum == 0)
+                {
+                    for (int i = 0; i < _dimension; i++)
+                        sample[s, i] = 1.0 / _dimension;
+                    continue;
+                }
                 for (int i = 0; i < _dimension; i++)
                     sample[s, i] = y[i] / sum;
             }
