@@ -143,6 +143,7 @@ namespace Numerics.Mathematics.SpecialFunctions
             }
             else
             {
+                if (ax > 709) return double.PositiveInfinity;
                 double t = 3.75 / ax;
                 return (Math.Exp(ax) / Math.Sqrt(ax)) * (0.39894228 + t * (0.01328592
                     + t * (0.00225319 + t * (-0.00157565 + t * (0.00916281 + t * (-0.02057706
@@ -208,8 +209,8 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <exception cref="ArgumentOutOfRangeException">Thrown if n &lt; 0.</exception>
         public static double In(int n, double x)
         {
-            if (n < 0)
-                throw new ArgumentOutOfRangeException(nameof(n), "The order n must be non-negative.");
+            if (n < 0 || n > 1_000_000)
+                throw new ArgumentOutOfRangeException(nameof(n), "The order n must be between 0 and 1,000,000.");
             if (n == 0) return I0(x);
             if (n == 1) return I1(x);
             if (x == 0.0) return 0.0;
@@ -486,8 +487,8 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <exception cref="ArgumentOutOfRangeException">Thrown if n &lt; 0.</exception>
         public static double Jn(int n, double x)
         {
-            if (n < 0)
-                throw new ArgumentOutOfRangeException(nameof(n), "The order n must be non-negative.");
+            if (n < 0 || n > 1_000_000)
+                throw new ArgumentOutOfRangeException(nameof(n), "The order n must be between 0 and 1,000,000.");
             if (n == 0) return J0(x);
             if (n == 1) return J1(x);
 
