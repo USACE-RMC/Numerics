@@ -200,37 +200,10 @@ namespace Numerics.Distributions
         }
 
          /// <summary>
-        /// Returns the class from a byte array. 
+        /// Returns the class from a byte array using the legacy BinaryFormatter.
         /// </summary>
         /// <param name="bytes">Byte array.</param>
         private static UncertaintyAnalysisResults? FromByteArrayLegacy(byte[] bytes)
-        {
-            try
-            {
-                var options = new JsonSerializerOptions
-                {
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                    IncludeFields = true
-                };
-                // Add custom converters for unsupported types
-                options.Converters.Add(new Double2DArrayConverter());
-                options.Converters.Add(new String2DArrayConverter());
-                options.Converters.Add(new UnivariateDistributionConverter());
-                return JsonSerializer.Deserialize<UncertaintyAnalysisResults>(bytes, options);
-            }
-            catch (Exception)
-            {
-                // An error can occur because we're trying to deserialize a blob written with binary formatter, 
-                //as a blob of json bytes. If that happens, fall back to the old.  
-                return FromByteArrayLegacy(bytes);
-            }          
-        }
-
-         /// <summary>
-        /// Returns the class from a byte array. 
-        /// </summary>
-        /// <param name="bytes">Byte array.</param>
-        private static UncertaintyAnalysisResults FromByteArrayLegacy(byte[] bytes)
         {
             try
             {
