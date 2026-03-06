@@ -89,24 +89,24 @@ namespace Numerics.Distributions
 
         private bool _parametersValid = true;
         private int _dimension = 0;
-        private double[] _mean;
-        private Matrix _covariance;
-        
-        private CholeskyDecomposition _cholesky;
+        private double[] _mean = null!;
+        private Matrix _covariance = null!;
+
+        private CholeskyDecomposition _cholesky = null!;
         private double _lnconstant;
-        private double[] _variance;
-        private double[] _standardDeviation;
+        private double[]? _variance;
+        private double[]? _standardDeviation;
 
         // variables required for the multivariate CDF
-        private Matrix _correlation;
-        private double[] _correl;
+        private Matrix _correlation = null!;
+        private double[] _correl = null!;
         private Random _MVNUNI = new MersenneTwister();
         private int _maxEvaluations = 100000;
         private double _absoluteError = 1E-4;
         private double _relativeError = 1E-4;
-        private double[] _lower;
-        private double[] _upper;
-        private int[] _infin;
+        private double[] _lower = null!;
+        private double[] _upper = null!;
+        private int[] _infin = null!;
         private bool _correlationMatrixCreated = false;
         private bool _covSRTed = false;
 
@@ -319,7 +319,7 @@ namespace Numerics.Distributions
         /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
         /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double[] mean, double[,] covariance, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double[] mean, double[,] covariance, bool throwException)
         {
             if (mean == null)
             {

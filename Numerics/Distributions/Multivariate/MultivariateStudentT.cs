@@ -131,13 +131,13 @@ namespace Numerics.Distributions
         private bool _parametersValid = true;
         private int _dimension;
         private double _degreesOfFreedom;
-        private double[] _location;
-        private Matrix _scaleMatrix;
+        private double[] _location = null!;
+        private Matrix _scaleMatrix = null!;
 
-        private CholeskyDecomposition _cholesky;
+        private CholeskyDecomposition _cholesky = null!;
         private double _lnconstant;
-        private double[] _variance;
-        private double[] _standardDeviation;
+        private double[]? _variance;
+        private double[]? _standardDeviation;
 
         /// <summary>
         /// Gets the number of variables for the distribution.
@@ -342,7 +342,7 @@ namespace Numerics.Distributions
         /// <returns>
         /// An <see cref="ArgumentOutOfRangeException"/> if validation fails; otherwise null.
         /// </returns>
-        public ArgumentOutOfRangeException ValidateParameters(double degreesOfFreedom, double[] location, double[,] scaleMatrix, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double degreesOfFreedom, double[] location, double[,] scaleMatrix, bool throwException)
         {
             if (degreesOfFreedom <= 0)
             {

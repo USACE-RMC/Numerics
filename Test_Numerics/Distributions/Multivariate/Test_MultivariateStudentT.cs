@@ -470,7 +470,7 @@ namespace Distributions.Multivariate
             }
 
             // KS critical value for N=50000 at α=0.01 ≈ 1.63/√N ≈ 0.0073
-            Assert.IsTrue(maxDiff < 0.01,
+            Assert.IsLessThan(0.01, maxDiff,
                 $"KS statistic = {maxDiff:F5}, marginal does not match StudentT(1, 1, 5)");
         }
 
@@ -504,7 +504,7 @@ namespace Distributions.Multivariate
                 double pdfT = mvt.PDF(x);
                 double pdfN = mvn.PDF(x);
                 double relErr = Math.Abs(pdfT - pdfN) / pdfN;
-                Assert.IsTrue(relErr < 5E-4,
+                Assert.IsLessThan(5E-4, relErr,
                     $"PDF mismatch at ({x[0]},{x[1]}): MVT={pdfT:E6}, MVN={pdfN:E6}, relErr={relErr:E3}");
             }
         }
@@ -757,7 +757,7 @@ namespace Distributions.Multivariate
 
             // PDF at mode should be valid
             double pdfMode = mvt.PDF(new[] { 0.0, 0.0 });
-            Assert.IsTrue(pdfMode > 0, "PDF at mode should be positive");
+            Assert.IsGreaterThan(0, pdfMode, "PDF at mode should be positive");
             Assert.IsFalse(double.IsNaN(pdfMode), "PDF at mode should not be NaN");
 
             // Sampling should work
@@ -887,7 +887,7 @@ namespace Distributions.Multivariate
             // Large χ² prob → small scaling → closer to normal
             double[] xLargeChi = mvt.InverseCDF(new[] { normalProb, 0.99 });
 
-            Assert.IsTrue(Math.Abs(xSmallChi[0]) > Math.Abs(xLargeChi[0]),
+            Assert.IsGreaterThan(Math.Abs(xLargeChi[0]), Math.Abs(xSmallChi[0]),
                 $"|x_small_chi| = {Math.Abs(xSmallChi[0]):F4} should be > |x_large_chi| = {Math.Abs(xLargeChi[0]):F4}");
         }
 

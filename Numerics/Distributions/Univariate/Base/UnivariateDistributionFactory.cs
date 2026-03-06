@@ -55,157 +55,153 @@ namespace Numerics.Distributions
         /// </returns>
         public static UnivariateDistributionBase CreateDistribution(UnivariateDistributionType distributionType)
         {
-            var distribution = default(UnivariateDistributionBase);
             if (distributionType == UnivariateDistributionType.Bernoulli)
             {
-                distribution = new Bernoulli();
+                return new Bernoulli();
             }
             else if (distributionType == UnivariateDistributionType.Beta)
             {
-                distribution = new BetaDistribution();
+                return new BetaDistribution();
             }
             else if (distributionType == UnivariateDistributionType.Binomial)
             {
-                distribution = new Binomial();
+                return new Binomial();
             }
             else if (distributionType == UnivariateDistributionType.Cauchy)
             {
-                distribution = new Cauchy();
+                return new Cauchy();
             }
             else if (distributionType == UnivariateDistributionType.ChiSquared)
             {
-                distribution = new ChiSquared();
-            }
-            else if (distributionType == UnivariateDistributionType.Deterministic)
-            {
-                distribution = new Deterministic();
+                return new ChiSquared();
             }
             else if (distributionType == UnivariateDistributionType.Exponential)
             {
-                distribution = new Exponential();
+                return new Exponential();
             }
             else if (distributionType == UnivariateDistributionType.GammaDistribution)
             {
-                distribution = new GammaDistribution();
+                return new GammaDistribution();
             }
             else if (distributionType == UnivariateDistributionType.GeneralizedBeta)
             {
-                distribution = new GeneralizedBeta();
+                return new GeneralizedBeta();
             }
             else if (distributionType == UnivariateDistributionType.GeneralizedExtremeValue)
             {
-                distribution = new GeneralizedExtremeValue();
+                return new GeneralizedExtremeValue();
             }
             else if (distributionType == UnivariateDistributionType.GeneralizedLogistic)
             {
-                distribution = new GeneralizedLogistic();
+                return new GeneralizedLogistic();
             }
             else if (distributionType == UnivariateDistributionType.GeneralizedNormal)
             {
-                distribution = new GeneralizedNormal();
+                return new GeneralizedNormal();
             }
             else if (distributionType == UnivariateDistributionType.GeneralizedPareto)
             {
-                distribution = new GeneralizedPareto();
+                return new GeneralizedPareto();
             }
             else if (distributionType == UnivariateDistributionType.Geometric)
             {
-                distribution = new Geometric();
+                return new Geometric();
             }
             else if (distributionType == UnivariateDistributionType.Gumbel)
             {
-                distribution = new Gumbel();
+                return new Gumbel();
             }
             else if (distributionType == UnivariateDistributionType.InverseChiSquared)
             {
-                distribution = new InverseChiSquared();
+                return new InverseChiSquared();
             }
             else if (distributionType == UnivariateDistributionType.InverseGamma)
             {
-                distribution = new InverseGamma();
+                return new InverseGamma();
             }
             else if (distributionType == UnivariateDistributionType.KappaFour)
             {
-                distribution = new KappaFour();
+                return new KappaFour();
             }
             else if (distributionType == UnivariateDistributionType.LnNormal)
             {
-                distribution = new LnNormal();
+                return new LnNormal();
             }
             else if (distributionType == UnivariateDistributionType.Logistic)
             {
-                distribution = new Logistic();
+                return new Logistic();
             }
             else if (distributionType == UnivariateDistributionType.LogNormal)
             {
-                distribution = new LogNormal();
+                return new LogNormal();
             }
             else if (distributionType == UnivariateDistributionType.LogPearsonTypeIII)
             {
-                distribution = new LogPearsonTypeIII();
+                return new LogPearsonTypeIII();
             }
             else if (distributionType == UnivariateDistributionType.NoncentralT)
             {
-                distribution = new NoncentralT();
+                return new NoncentralT();
             }
             else if (distributionType == UnivariateDistributionType.Normal)
             {
-                distribution = new Normal();
+                return new Normal();
             }
             else if (distributionType == UnivariateDistributionType.Pareto)
             {
-                distribution = new Pareto();
+                return new Pareto();
             }
             else if (distributionType == UnivariateDistributionType.PearsonTypeIII)
             {
-                distribution = new PearsonTypeIII();
+                return new PearsonTypeIII();
             }
             else if (distributionType == UnivariateDistributionType.Pert)
             {
-                distribution = new Pert();
+                return new Pert();
             }
             else if (distributionType == UnivariateDistributionType.PertPercentile)
             {
-                distribution = new PertPercentile();
+                return new PertPercentile();
             }
             else if (distributionType == UnivariateDistributionType.PertPercentileZ)
             {
-                distribution = new PertPercentileZ();
+                return new PertPercentileZ();
             }
             else if (distributionType == UnivariateDistributionType.Poisson)
             {
-                distribution = new Poisson();
+                return new Poisson();
             }
             else if (distributionType == UnivariateDistributionType.Rayleigh)
             {
-                distribution = new Rayleigh();
+                return new Rayleigh();
             }
             else if (distributionType == UnivariateDistributionType.StudentT)
             {
-                distribution = new StudentT();
+                return new StudentT();
             }
             else if (distributionType == UnivariateDistributionType.Triangular)
             {
-                distribution = new Triangular();
+                return new Triangular();
             }
             else if (distributionType == UnivariateDistributionType.TruncatedNormal)
             {
-                distribution = new TruncatedNormal();
+                return new TruncatedNormal();
             }
             else if (distributionType == UnivariateDistributionType.Uniform)
             {
-                distribution = new Uniform();
+                return new Uniform();
             }
             else if (distributionType == UnivariateDistributionType.UniformDiscrete)
             {
-                distribution = new UniformDiscrete();
+                return new UniformDiscrete();
             }
             else if (distributionType == UnivariateDistributionType.Weibull)
             {
-                distribution = new Weibull();
+                return new Weibull();
             }
 
-            return distribution;
+            // Default to Deterministic for unrecognized types
+            return new Deterministic();
         }
 
         /// <summary>
@@ -217,46 +213,40 @@ namespace Numerics.Distributions
         /// </returns>
         public static UnivariateDistributionBase CreateDistribution(XElement xElement)
         {
-            UnivariateDistributionType type;
-            UnivariateDistributionBase dist = null;
-            if (xElement.Attribute(nameof(UnivariateDistributionBase.Type)) != null)
+            UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
+            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (typeAttr != null)
             {
-                Enum.TryParse(xElement.Attribute(nameof(UnivariateDistributionBase.Type)).Value, out type);
+                Enum.TryParse(typeAttr.Value, out type);
 
                 if (type == UnivariateDistributionType.Mixture)
                 {
-                    dist = Mixture.FromXElement(xElement);
-                    return dist;
+                    return Mixture.FromXElement(xElement)!;
                 }
                 else if (type == UnivariateDistributionType.CompetingRisks)
                 {
-                    dist = CompetingRisks.FromXElement(xElement);
-                    return dist;
+                    return CompetingRisks.FromXElement(xElement)!;
                 }
                 else if (type == UnivariateDistributionType.PertPercentile)
                 {
-                    dist = PertPercentile.FromXElement(xElement);
-                    return dist;
+                    return PertPercentile.FromXElement(xElement)!;
                 }
                 else if (type == UnivariateDistributionType.PertPercentileZ)
                 {
-                    dist = PertPercentileZ.FromXElement(xElement);
-                    return dist;
+                    return PertPercentileZ.FromXElement(xElement)!;
                 }
-                else
-                {
-                    dist = CreateDistribution(type);
-                }
-
             }
+
+            var dist = CreateDistribution(type);
             var names = dist.GetParameterPropertyNames;
             var parms = dist.GetParameters;
             var vals = new double[dist.NumberOfParameters];
             for (int i = 0; i < dist.NumberOfParameters; i++)
             {
-                if (xElement.Attribute(names[i]) != null)
+                var paramAttr = xElement.Attribute(names[i]);
+                if (paramAttr != null)
                 {
-                    double.TryParse(xElement.Attribute(names[i]).Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out vals[i]);
+                    double.TryParse(paramAttr.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out vals[i]);
                 }
             }
             dist.SetParameters(vals);

@@ -133,37 +133,37 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The list of estimated parameter values.
         /// </summary>
-        public double[] Parameters { get; private set; }
+        public double[] Parameters { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter names.
         /// </summary>
-        public List<string> ParameterNames { get; private set; }
+        public List<string> ParameterNames { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter standard errors.
         /// </summary>
-        public double[] ParameterStandardErrors { get; private set; }
+        public double[] ParameterStandardErrors { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter z-scores.
         /// </summary>
-        public double[] ParameterZScores { get; private set; }
+        public double[] ParameterZScores { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter p-values.
         /// </summary>
-        public double[] ParameterPValues { get; private set; }
+        public double[] ParameterPValues { get; private set; } = null!;
 
         /// <summary>
         /// The estimate parameter covariance matrix.
         /// </summary>
-        public Matrix Covariance { get; private set; }
+        public Matrix Covariance { get; private set; } = null!;
 
         /// <summary>
         /// The residuals of the fitted linear model.
         /// </summary>
-        public double[] Residuals { get; private set; }
+        public double[] Residuals { get; private set; } = null!;
 
         /// <summary>
         /// The model standard error.
@@ -203,7 +203,7 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Gets the optimizer used to train the model. Default = Nelder-Mead.
         /// </summary>
-        public Optimizer Optimizer { get; private set; }
+        public Optimizer Optimizer { get; private set; } = null!;
 
         /// <summary>
         /// Gets the link function type.
@@ -224,6 +224,24 @@ namespace Numerics.MachineLearning
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Prepares the design matrix for prediction by adding an intercept column if needed.
+        /// If the matrix already has the expected number of columns (e.g. internal X), it passes through.
+        /// If it has one fewer column and HasIntercept is true, the intercept column is added.
+        /// </summary>
+        /// <param name="x">The matrix of predictor values.</param>
+        private Matrix PrepareDesignMatrix(Matrix x)
+        {
+            int expected = Parameters.Length;
+            if (x.NumberOfColumns == expected)
+                return x;
+            if (HasIntercept && x.NumberOfColumns == expected - 1)
+                return AddInterceptColumn(x);
+            throw new ArgumentException(
+                $"Expected {expected} columns{(HasIntercept ? $" (or {expected - 1} without intercept)" : "")}, but got {x.NumberOfColumns}.",
+                nameof(x));
+        }
 
         /// <summary>
         /// Helper method to add an intercept column to the covariate matrix.
@@ -584,10 +602,11 @@ namespace Numerics.MachineLearning
         /// <param name="x">The matrix of predictors.</param>
         public double[] Predict(Matrix x)
         {
-            int n = x.NumberOfRows;
+            var xp = PrepareDesignMatrix(x);
+            int n = xp.NumberOfRows;
             var result = new double[n];
             for (int i = 0; i < n; i++)
-                result[i] = LinkFunction.InverseLink(x.GetRow(i).DotProduct(Parameters.ToArray()));
+                result[i] = LinkFunction.InverseLink(xp.GetRow(i).DotProduct(Parameters.ToArray()));
             return result;
         }
 
@@ -598,26 +617,12 @@ namespace Numerics.MachineLearning
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         public double[,] Predict(Matrix x, double alpha = 0.1)
         {
+            var xp = PrepareDesignMatrix(x);
             var z = Normal.StandardZ(1 - alpha / 2);
-            var result = new double[x.NumberOfRows, 3];
-            for (int i = 0; i < x.NumberOfRows; i++)
+            var result = new double[xp.NumberOfRows, 3];
+            for (int i = 0; i < xp.NumberOfRows; i++)
             {
-                double[] xi;
-                if (HasIntercept)
-                {
-                    int p = x.NumberOfColumns;
-                    xi = new double[x.NumberOfColumns + 1];
-                    xi[0] = 1;
-                    for (int j = 1; j < p; j++)
-                    {
-                        xi[i] = x[i, j];
-                    }
-                }
-                else
-                {
-                    xi = x.GetRow(i);
-                }
-
+                var xi = xp.GetRow(i);
                 double mu = LinkFunction.InverseLink(xi.DotProduct(Parameters.ToArray()));
                 double se = Math.Sqrt(xi.DotProduct(Covariance.Multiply(new Vector(xi)).Array));
                 result[i, 0] = mu - z * se;

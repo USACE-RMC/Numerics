@@ -78,7 +78,7 @@ namespace Numerics.Data
         /// <summary>
         /// Stores the array of second derivatives.
         /// </summary>
-        private double[] y2;
+        private double[] y2 = null!;
 
         /// <summary>
         /// Auxiliary routine to set the second derivatives. If you make changes to the x- or y-values, then you need to call this routine afterwards.

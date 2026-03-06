@@ -141,20 +141,25 @@ namespace Numerics.Data
         public TimeSeries(XElement xElement)
         {
             // Get time interval
-            if (xElement.Attribute(nameof(TimeInterval)) != null)
-                Enum.TryParse(xElement.Attribute(nameof(TimeInterval)).Value, out _timeInterval);
+            var timeIntervalAttr = xElement.Attribute(nameof(TimeInterval));
+            if (timeIntervalAttr != null)
+                Enum.TryParse(timeIntervalAttr.Value, out _timeInterval);
 
             // Get Ordinates
             foreach (XElement ordinate in xElement.Elements("SeriesOrdinate"))
             {
                 // Try to parse the invariant date string using TryParseExact
                 // If it fails, do a regular try parse.
-                DateTime index;
-                if (!DateTime.TryParseExact(ordinate.Attribute("Index").Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
+                DateTime index = default;
+                double value = double.NaN;
+                var indexAttr = ordinate.Attribute("Index");
+                var valueAttr = ordinate.Attribute("Value");
+                if (indexAttr != null && !DateTime.TryParseExact(indexAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
                 {
-                    DateTime.TryParse(ordinate.Attribute("Index").Value, out index);
+                    DateTime.TryParse(indexAttr.Value, out index);
                 }
-                double.TryParse(ordinate.Attribute("Value").Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var value);
+                if (valueAttr != null)
+                    double.TryParse(valueAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
                 Add(new SeriesOrdinate<DateTime, double>(index, value));
             }
         }
@@ -1115,7 +1120,7 @@ namespace Numerics.Data
         /// <param name="timeInterval">The new time interval.</param>
         /// <param name="average">Optional. Determines if values should be averaged (true) or cumulated (false) for larger time steps. Default = true.</param>
         /// <returns>A new TimeSeries object with the new interval.</returns>
-        public TimeSeries ConvertTimeInterval(TimeInterval timeInterval, bool average = true)
+        public TimeSeries? ConvertTimeInterval(TimeInterval timeInterval, bool average = true)
         {
             var TS = TimeSeries.TimeIntervalInHours(TimeInterval); // The time step in hours
             var newTS = TimeSeries.TimeIntervalInHours(timeInterval); // The new time step in hours
@@ -1467,12 +1472,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1561,12 +1562,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1667,12 +1664,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1779,12 +1772,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1875,12 +1864,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1987,12 +1972,8 @@ namespace Numerics.Data
         public TimeSeries PeaksOverThresholdSeries(double threshold, int minStepsBetweenEvents = 1, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             // Create smoothed time series
-            TimeSeries smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -2099,6 +2080,7 @@ namespace Numerics.Data
             {
                 double val = (currentValue - mean) / stdDev;
                 var kNearest = kNN.GetNeighbors([val]);
+                if (kNearest == null) continue;
                 int selectedIdx = kNearest[prng.Next(k)];
                 currentValue = this[selectedIdx].Value;
                 currentDate = TimeSeries.AddTimeInterval(currentDate, TimeInterval);

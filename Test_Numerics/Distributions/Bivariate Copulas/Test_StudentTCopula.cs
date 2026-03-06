@@ -138,11 +138,11 @@ namespace Distributions.BivariateCopulas
             // The copula density should be well-defined and positive
             var copula = new StudentTCopula(0.5, 5);
             double pdf = copula.PDF(0.3, 0.7);
-            Assert.IsTrue(pdf > 0, "PDF should be positive.");
+            Assert.IsGreaterThan(0, pdf, "PDF should be positive.");
 
             // At the center (0.5, 0.5), the density should be relatively high
             double pdfCenter = copula.PDF(0.5, 0.5);
-            Assert.IsTrue(pdfCenter > 0);
+            Assert.IsGreaterThan(0, pdfCenter);
 
             // Symmetry: c(u,v; ρ) = c(v,u; ρ) for elliptical copulas
             Assert.AreEqual(copula.PDF(0.2, 0.8), copula.PDF(0.8, 0.2), 1E-6);
@@ -196,7 +196,8 @@ namespace Distributions.BivariateCopulas
 
             // CDF should be between 0 and 1
             double cdf = copula.CDF(0.3, 0.7);
-            Assert.IsTrue(cdf >= 0.0 && cdf <= 1.0);
+            Assert.IsGreaterThanOrEqualTo(0.0, cdf);
+            Assert.IsLessThanOrEqualTo(1.0, cdf);
 
             // CDF(u, 1) ≈ u for all copulas (Fréchet-Hoeffding bound)
             Assert.AreEqual(0.3, copula.CDF(0.3, 0.99999), 1E-2);
@@ -225,7 +226,7 @@ namespace Distributions.BivariateCopulas
             for (double u = 0.05; u <= 0.95; u += 0.1)
             {
                 double cdf = copula.CDF(u, v);
-                Assert.IsTrue(cdf >= prevCdf - 1E-10, $"CDF not monotone at u={u}");
+                Assert.IsGreaterThanOrEqualTo(prevCdf - 1E-10, cdf, $"CDF not monotone at u={u}");
                 prevCdf = cdf;
             }
         }
@@ -246,7 +247,8 @@ namespace Distributions.BivariateCopulas
 
                 var result = copula.InverseCDF(u, v);
                 Assert.AreEqual(u, result[0], 1E-10, "First component should be unchanged.");
-                Assert.IsTrue(result[1] >= 0 && result[1] <= 1, "Second component should be in [0,1].");
+                Assert.IsGreaterThanOrEqualTo(0, result[1], "Second component should be in [0,1].");
+                Assert.IsLessThanOrEqualTo(1, result[1], "Second component should be in [0,1].");
             }
         }
 
@@ -278,7 +280,7 @@ namespace Distributions.BivariateCopulas
             double cov = sumProduct / n - meanU * meanV;
 
             // Covariance should be positive for positive ρ
-            Assert.IsTrue(cov > 0, "Samples should show positive dependence.");
+            Assert.IsGreaterThan(0, cov, "Samples should show positive dependence.");
         }
 
         /// <summary>
@@ -295,26 +297,26 @@ namespace Distributions.BivariateCopulas
             // λ = 2·t_5(-√(5·0.5/1.5)) = 2·t_5(-√(5/3)) = 2·t_5(-1.2910)
             var copula = new StudentTCopula(0.5, 4);
             double lambda = copula.TailDependence;
-            Assert.IsTrue(lambda > 0, "Tail dependence should be positive for finite ν.");
-            Assert.IsTrue(lambda < 1, "Tail dependence should be less than 1.");
+            Assert.IsGreaterThan(0, lambda, "Tail dependence should be positive for finite ν.");
+            Assert.IsLessThan(1, lambda, "Tail dependence should be less than 1.");
 
             // ρ = 0, ν = 4: still has tail dependence (this is the key difference from Normal copula)
             var copulaZero = new StudentTCopula(0.0, 4);
             double lambdaZero = copulaZero.TailDependence;
-            Assert.IsTrue(lambdaZero > 0, "t-copula with ρ=0 still has tail dependence.");
+            Assert.IsGreaterThan(0, lambdaZero, "t-copula with ρ=0 still has tail dependence.");
 
             // Higher ν → lower tail dependence (approaching Normal copula with λ=0)
             var copulaHighNu = new StudentTCopula(0.5, 100);
             double lambdaHighNu = copulaHighNu.TailDependence;
-            Assert.IsTrue(lambdaHighNu < lambda, "Higher ν should reduce tail dependence.");
+            Assert.IsLessThan(lambda, lambdaHighNu, "Higher ν should reduce tail dependence.");
 
             // Higher ρ → higher tail dependence
             var copulaHighRho = new StudentTCopula(0.9, 4);
-            Assert.IsTrue(copulaHighRho.TailDependence > lambda, "Higher ρ should increase tail dependence.");
+            Assert.IsGreaterThan(lambda, copulaHighRho.TailDependence, "Higher ρ should increase tail dependence.");
 
             // ρ close to -1: tail dependence approaches 0
             var copulaNegRho = new StudentTCopula(-0.99, 4);
-            Assert.IsTrue(copulaNegRho.TailDependence < 0.01, "Tail dependence should be near 0 for ρ ≈ -1.");
+            Assert.IsLessThan(0.01, copulaNegRho.TailDependence, "Tail dependence should be near 0 for ρ ≈ -1.");
         }
 
         /// <summary>
@@ -350,8 +352,10 @@ namespace Distributions.BivariateCopulas
             for (int i = 0; i < 500; i++)
             {
                 // All values should be in [0, 1]
-                Assert.IsTrue(samples[i, 0] >= 0 && samples[i, 0] <= 1, $"Sample [{i},0] out of range.");
-                Assert.IsTrue(samples[i, 1] >= 0 && samples[i, 1] <= 1, $"Sample [{i},1] out of range.");
+                Assert.IsGreaterThanOrEqualTo(0, samples[i, 0], $"Sample [{i},0] out of range.");
+                Assert.IsLessThanOrEqualTo(1, samples[i, 0], $"Sample [{i},0] out of range.");
+                Assert.IsGreaterThanOrEqualTo(0, samples[i, 1], $"Sample [{i},1] out of range.");
+                Assert.IsLessThanOrEqualTo(1, samples[i, 1], $"Sample [{i},1] out of range.");
             }
         }
 
@@ -396,8 +400,8 @@ namespace Distributions.BivariateCopulas
             BivariateCopulaEstimation.Estimate(ref copula, rank1, rank2, CopulaEstimationMethod.PseudoLikelihood);
 
             // The estimated ρ should be positive and reasonable for this correlated data
-            Assert.IsTrue(copula.Theta > 0.5, $"Estimated ρ = {copula.Theta} should be > 0.5");
-            Assert.IsTrue(copula.Theta < 1.0, $"Estimated ρ = {copula.Theta} should be < 1.0");
+            Assert.IsGreaterThan(0.5, copula.Theta, $"Estimated ρ = {copula.Theta} should be > 0.5");
+            Assert.IsLessThan(1.0, copula.Theta, $"Estimated ρ = {copula.Theta} should be < 1.0");
         }
 
         /// <summary>
@@ -416,8 +420,8 @@ namespace Distributions.BivariateCopulas
             BivariateCopulaEstimation.Estimate(ref copula, data1, data2, CopulaEstimationMethod.InferenceFromMargins);
 
             // The estimated ρ should be positive and reasonable
-            Assert.IsTrue(copula.Theta > 0.5, $"Estimated ρ = {copula.Theta} should be > 0.5");
-            Assert.IsTrue(copula.Theta < 1.0, $"Estimated ρ = {copula.Theta} should be < 1.0");
+            Assert.IsGreaterThan(0.5, copula.Theta, $"Estimated ρ = {copula.Theta} should be > 0.5");
+            Assert.IsLessThan(1.0, copula.Theta, $"Estimated ρ = {copula.Theta} should be < 1.0");
         }
 
         /// <summary>
@@ -441,17 +445,17 @@ namespace Distributions.BivariateCopulas
             var tCopula = (StudentTCopula)copula;
 
             // ρ should be estimated as positive
-            Assert.IsTrue(tCopula.Theta > 0.5, $"Estimated ρ = {tCopula.Theta} should be > 0.5");
-            Assert.IsTrue(tCopula.Theta < 1.0, $"Estimated ρ = {tCopula.Theta} should be < 1.0");
+            Assert.IsGreaterThan(0.5, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be > 0.5");
+            Assert.IsLessThan(1.0, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be < 1.0");
 
             // ν should be estimated (may differ from initial value of 5)
-            Assert.IsTrue(tCopula.DegreesOfFreedom >= 3, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsTrue(tCopula.DegreesOfFreedom <= 60, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
+            Assert.IsGreaterThanOrEqualTo(3, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
+            Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
 
             // Tail dependence should be data-driven (not user-defined)
             double lambda = tCopula.TailDependence;
-            Assert.IsTrue(lambda > 0, "Tail dependence should be positive.");
-            Assert.IsTrue(lambda < 1, "Tail dependence should be less than 1.");
+            Assert.IsGreaterThan(0, lambda, "Tail dependence should be positive.");
+            Assert.IsLessThan(1, lambda, "Tail dependence should be less than 1.");
         }
 
         /// <summary>
@@ -469,66 +473,9 @@ namespace Distributions.BivariateCopulas
             BivariateCopulaEstimation.Estimate(ref copula, data1, data2, CopulaEstimationMethod.InferenceFromMargins);
 
             var tCopula = (StudentTCopula)copula;
-            Assert.IsTrue(tCopula.Theta > 0.5, $"Estimated ρ = {tCopula.Theta} should be > 0.5");
-            Assert.IsTrue(tCopula.DegreesOfFreedom >= 3, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsTrue(tCopula.DegreesOfFreedom <= 60, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
-        }
-
-        /// <summary>
-        /// Test Bayesian estimation using MCMC.
-        /// </summary>
-        [TestMethod]
-        public void Test_Bayesian_Fit()
-        {
-            var rank1 = Statistics.RanksInPlace(data1);
-            var rank2 = Statistics.RanksInPlace(data2);
-            for (int i = 0; i < data1.Length; i++)
-            {
-                rank1[i] = rank1[i] / (rank1.Length + 1d);
-                rank2[i] = rank2[i] / (rank2.Length + 1d);
-            }
-
-            BivariateCopula copula = new StudentTCopula(0.0, 5);
-            BivariateCopulaEstimation.Estimate(ref copula, rank1, rank2, CopulaEstimationMethod.Bayesian);
-
-            var tCopula = (StudentTCopula)copula;
-
-            // MAP estimate of ρ should be reasonable
-            Assert.IsTrue(tCopula.Theta > 0.3, $"Bayesian MAP ρ = {tCopula.Theta} should be > 0.3");
-            Assert.IsTrue(tCopula.Theta < 1.0, $"Bayesian MAP ρ = {tCopula.Theta} should be < 1.0");
-
-            // ν should be estimated
-            Assert.IsTrue(tCopula.DegreesOfFreedom >= 3, $"Bayesian MAP ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsTrue(tCopula.DegreesOfFreedom <= 60, $"Bayesian MAP ν = {tCopula.DegreesOfFreedom} should be <= 60");
-        }
-
-        /// <summary>
-        /// Test Bayesian estimation returns posterior samples.
-        /// </summary>
-        [TestMethod]
-        public void Test_Bayesian_PosteriorSamples()
-        {
-            var rank1 = Statistics.RanksInPlace(data1);
-            var rank2 = Statistics.RanksInPlace(data2);
-            for (int i = 0; i < data1.Length; i++)
-            {
-                rank1[i] = rank1[i] / (rank1.Length + 1d);
-                rank2[i] = rank2[i] / (rank2.Length + 1d);
-            }
-
-            var copula = new StudentTCopula(0.0, 5);
-            var sampler = BivariateCopulaEstimation.EstimateBayesian(copula, rank1, rank2);
-
-            // Should have 2 parameter results (rho and nu)
-            Assert.AreEqual(2, sampler.NumberOfParameters);
-
-            // Posterior output should exist (array of chains, each chain is a list of ParameterSets)
-            Assert.IsTrue(sampler.Output.Length > 0, "Posterior chains should exist.");
-            Assert.IsTrue(sampler.Output[0].Count > 0, "Posterior samples should exist in the first chain.");
-
-            // MAP should have valid parameter values
-            Assert.IsTrue(sampler.MAP.Values != null, "MAP estimate should exist.");
-            Assert.AreEqual(2, sampler.MAP.Values.Length);
+            Assert.IsGreaterThan(0.5, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be > 0.5");
+            Assert.IsGreaterThanOrEqualTo(3, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
+            Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
         }
 
         /// <summary>
@@ -576,8 +523,8 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(2, constraints.GetLength(1));
 
             // Row 0: rho constraints [-1+eps, 1-eps]
-            Assert.IsTrue(constraints[0, 0] < -0.99);
-            Assert.IsTrue(constraints[0, 1] > 0.99);
+            Assert.IsLessThan(-0.99, constraints[0, 0]);
+            Assert.IsGreaterThan(0.99, constraints[0, 1]);
 
             // Row 1: nu constraints [3, 60]
             Assert.AreEqual(3.0, constraints[1, 0]);

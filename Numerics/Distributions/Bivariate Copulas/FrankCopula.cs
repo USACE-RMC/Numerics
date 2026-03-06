@@ -71,7 +71,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="theta">The dependency parameter, θ.</param>
         ///<param name="marginalDistributionX">The X marginal distribution for the copula.</param>
         ///<param name="marginalDistributionY">The Y marginal distribution for the copula.</param>
-        public FrankCopula(double theta, IUnivariateDistribution marginalDistributionX, IUnivariateDistribution marginalDistributionY)
+        public FrankCopula(double theta, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             Theta = theta;
             MarginalDistributionX = marginalDistributionX;
@@ -109,7 +109,7 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
             if (parameter < ThetaMinimum)
             {

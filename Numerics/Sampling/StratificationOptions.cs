@@ -98,27 +98,31 @@ namespace Numerics.Sampling
         public StratificationOptions(XElement element)
         {
             // Get required data
-            if (element.Attribute(nameof(LowerBound)) != null)
+            var lowerBoundAttr = element.Attribute(nameof(LowerBound));
+            if (lowerBoundAttr != null)
             {
-                double.TryParse(element.Attribute(nameof(LowerBound)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var lower);
+                double.TryParse(lowerBoundAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var lower);
                 LowerBound = lower;
             }
 
-            if (element.Attribute(nameof(UpperBound)) != null)
+            var upperBoundAttr = element.Attribute(nameof(UpperBound));
+            if (upperBoundAttr != null)
             {
-                double.TryParse(element.Attribute(nameof(UpperBound)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var upper);
+                double.TryParse(upperBoundAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var upper);
                 UpperBound = upper;
             }
 
-            if (element.Attribute(nameof(NumberOfBins)) != null)
+            var numberOfBinsAttr = element.Attribute(nameof(NumberOfBins));
+            if (numberOfBinsAttr != null)
             {
-                int.TryParse(element.Attribute(nameof(NumberOfBins)).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var nBins);
+                int.TryParse(numberOfBinsAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var nBins);
                 NumberOfBins = nBins;
             }
 
-            if (element.Attribute(nameof(IsProbability)) != null)
+            var isProbabilityAttr = element.Attribute(nameof(IsProbability));
+            if (isProbabilityAttr != null)
             {
-                bool.TryParse(element.Attribute(nameof(IsProbability)).Value, out var isProbability);
+                bool.TryParse(isProbabilityAttr.Value, out var isProbability);
                 IsProbability = isProbability;
             }
 
@@ -228,7 +232,7 @@ namespace Numerics.Sampling
         /// <summary>
         /// Compares objects for equality.
         /// </summary>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is not StratificationOptions other)
                 return false;

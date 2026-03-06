@@ -275,7 +275,7 @@ namespace Numerics.Distributions
         /// <param name="v">The degrees of freedom ν (nu). Range: ν > 0.</param>
         /// <param name="mu">The noncentrality parameter μ (mu).</param>
         /// <param name="throwException"></param>
-        public ArgumentOutOfRangeException ValidateParameters(double v, double mu, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double v, double mu, bool throwException)
         {
             if (v < 1.0d)
             {
@@ -293,7 +293,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }

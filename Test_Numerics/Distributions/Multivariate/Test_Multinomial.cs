@@ -197,7 +197,7 @@ namespace Distributions.Multivariate
                 double sum = 0;
                 for (int j = 0; j < 3; j++)
                 {
-                    Assert.IsTrue(samples[i, j] >= 0, $"Sample [{i},{j}] is negative");
+                    Assert.IsGreaterThanOrEqualTo(0, samples[i, j], $"Sample [{i},{j}] is negative");
                     sum += samples[i, j];
                 }
                 Assert.AreEqual(100.0, sum, 1e-10, $"Sample {i} does not sum to N");
@@ -231,7 +231,8 @@ namespace Distributions.Multivariate
             for (int i = 0; i < n; i++)
             {
                 int idx = Multinomial.Sample(weights, rng);
-                Assert.IsTrue(idx >= 0 && idx < 3);
+                Assert.IsGreaterThanOrEqualTo(0, idx);
+                Assert.IsLessThan(3, idx);
                 counts[idx]++;
             }
 

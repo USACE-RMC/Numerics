@@ -159,7 +159,7 @@ namespace Numerics.Distributions
         /// <param name="parameters">Array of parameters.</param>
         /// <param name="throwException">Boolean indicating whether to throw the exception or not.</param>
         /// <returns>Nothing if the parameters are valid and the exception if invalid parameters were found.</returns>
-        ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException);
+        ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException);
 
         /// <summary>
         /// The Probability Density Function (PDF) of the distribution evaluated at a point X.

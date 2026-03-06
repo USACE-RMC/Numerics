@@ -260,7 +260,7 @@ namespace Distributions.Multivariate
                 double sum = 0;
                 for (int j = 0; j < 3; j++)
                 {
-                    Assert.IsTrue(samples[i, j] > 0, $"Sample [{i},{j}] = {samples[i, j]} is not positive");
+                    Assert.IsGreaterThan(0, samples[i, j], $"Sample [{i},{j}] = {samples[i, j]} is not positive");
                     sum += samples[i, j];
                 }
                 Assert.AreEqual(1.0, sum, 1e-10, $"Sample {i} does not sum to 1");

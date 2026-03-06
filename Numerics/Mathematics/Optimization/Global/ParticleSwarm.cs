@@ -95,12 +95,12 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// An array of lower bounds (inclusive) of the interval containing the optimal point. 
         /// </summary>
-        public double[] LowerBounds { get; private set; }
+        public double[] LowerBounds { get; private set; } = null!;
 
         /// <summary>
         /// An array of upper bounds (inclusive) of the interval containing the optimal point.
         /// </summary>
-        public double[] UpperBounds { get; private set; }
+        public double[] UpperBounds { get; private set; } = null!;
 
         /// <summary>
         /// The total population size. Default = 30.
@@ -235,7 +235,7 @@ namespace Numerics.Mathematics.Optimization
             /// The velocity determines how the particle moves through the search space.
             /// It is updated based on the particle's personal best and the global best.
             /// </remarks>
-            public double[] Velocity { get; set; }
+            public double[] Velocity { get; set; } = null!;
         }
     }
 }

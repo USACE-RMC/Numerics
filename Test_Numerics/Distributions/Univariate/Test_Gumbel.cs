@@ -183,12 +183,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(GUM.Xi, 100);
-            Assert.AreEqual(GUM.Alpha, 10);
+            Assert.AreEqual(100, GUM.Xi);
+            Assert.AreEqual(10, GUM.Alpha);
 
             var GUM2 = new Gumbel(-100, 1);
-            Assert.AreEqual(GUM2.Xi, -100);
-            Assert.AreEqual(GUM2.Alpha, 1);
+            Assert.AreEqual(-100, GUM2.Xi);
+            Assert.AreEqual(1, GUM2.Alpha);
         }
 
         /// <summary>

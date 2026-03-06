@@ -78,16 +78,16 @@ namespace Distributions.Multivariate
             double cdf = MultiN.CDF(new[] { 3d, 5d });
             for (int i = 0; i <= MultiN.Dimension - 1; i++)
             {
-                Assert.AreEqual(mean[i], true_mean[i], 0.0001d);
-                Assert.AreEqual(median[i], true_median[i], 0.0001d);
-                Assert.AreEqual(mode[i], true_mode[i], 0.0001d);
-                Assert.AreEqual(stdev[i], true_stdDev[i], 0.0001d);
+                Assert.AreEqual(true_mean[i], mean[i], 0.0001d);
+                Assert.AreEqual(true_median[i], median[i], 0.0001d);
+                Assert.AreEqual(true_mode[i], mode[i], 0.0001d);
+                Assert.AreEqual(true_stdDev[i], stdev[i], 0.0001d);
             }
 
-            Assert.AreEqual(pdf1, true_pdf1, 0.0001d);
-            Assert.AreEqual(pdf2, true_pdf2, 0.0001d);
-            Assert.AreEqual(pdf3, true_pdf3, 0.0001d);
-            Assert.AreEqual(cdf, true_cdf, 0.0001d);
+            Assert.AreEqual(true_pdf1, pdf1, 0.0001d);
+            Assert.AreEqual(true_pdf2, pdf2, 0.0001d);
+            Assert.AreEqual(true_pdf3, pdf3, 0.0001d);
+            Assert.AreEqual(true_cdf, cdf, 0.0001d);
 
         }
 
@@ -145,47 +145,47 @@ namespace Distributions.Multivariate
 
             // AB
             var p = mvn.CDF(new[] { Normal.StandardZ(0.25), Normal.StandardZ(0.35), double.PositiveInfinity, double.PositiveInfinity });
-            Assert.AreEqual(p, 0.05011069, 1E-4);
+            Assert.AreEqual(0.05011069, p, 1E-4);
 
             // AC
             p = mvn.CDF(new[] { Normal.StandardZ(0.25), double.PositiveInfinity, Normal.StandardZ(0.5), double.PositiveInfinity });
-            Assert.AreEqual(p, 0.0827451, 1E-4);
+            Assert.AreEqual(0.0827451, p, 1E-4);
 
             // AD
             p = mvn.CDF(new[] { Normal.StandardZ(0.25), double.PositiveInfinity, double.PositiveInfinity, Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.0827451, 1E-4);
+            Assert.AreEqual(0.0827451, p, 1E-4);
 
             // BC
             p = mvn.CDF(new[] { double.PositiveInfinity, Normal.StandardZ(0.35), Normal.StandardZ(0.5), double.PositiveInfinity });
-            Assert.AreEqual(p, 0.1254504, 1E-4);
+            Assert.AreEqual(0.1254504, p, 1E-4);
 
             // BD
             p = mvn.CDF(new[] { double.PositiveInfinity, Normal.StandardZ(0.35), double.PositiveInfinity, Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.1254504, 1E-4);
+            Assert.AreEqual(0.1254504, p, 1E-4);
 
             // CD
             p = mvn.CDF(new[] { double.PositiveInfinity, double.PositiveInfinity, Normal.StandardZ(0.5), Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.1964756, 1E-4);
+            Assert.AreEqual(0.1964756, p, 1E-4);
 
             // ABC
             p = mvn.CDF(new[] { Normal.StandardZ(0.25), Normal.StandardZ(0.35), Normal.StandardZ(0.5), double.PositiveInfinity });
-            Assert.AreEqual(p, 0.005960125, 1E-4);
+            Assert.AreEqual(0.005960125, p, 1E-4);
 
             // ABD
             p = mvn.CDF(new[] { Normal.StandardZ(0.25), Normal.StandardZ(0.35), double.PositiveInfinity, Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.005964513, 1E-4);
+            Assert.AreEqual(0.005964513, p, 1E-4);
 
             // ACD
             p = mvn.CDF(new[] { Normal.StandardZ(0.25), double.PositiveInfinity, Normal.StandardZ(0.5), Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.0128066, 1E-4);
+            Assert.AreEqual(0.0128066, p, 1E-4);
 
             // BCD
             p = mvn.CDF(new[] { double.PositiveInfinity, Normal.StandardZ(0.35), Normal.StandardZ(0.5), Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.02324389, 1E-4);
+            Assert.AreEqual(0.02324389, p, 1E-4);
 
             // ABCD
             p = mvn.CDF(new[] { Normal.StandardZ(0.25), Normal.StandardZ(0.35), Normal.StandardZ(0.5), Normal.StandardZ(0.5)});
-            Assert.AreEqual(p, 3.593582e-13, 1E-4);
+            Assert.AreEqual(3.593582e-13, p, 1E-4);
         }
 
         /// <summary>
@@ -206,7 +206,7 @@ namespace Distributions.Multivariate
             var mvn = new MultivariateNormal(mean, covar) { MVNUNI = new MersenneTwister(12345) };
 
             var p = mvn.CDF(new[] { Normal.StandardZ(0.5), Normal.StandardZ(0.5), Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.002740932, 1E-4);
+            Assert.AreEqual(0.002740932, p, 1E-4);
         }
 
         /// <summary>
@@ -226,7 +226,7 @@ namespace Distributions.Multivariate
             var mvn = new MultivariateNormal(mean, covar) { MVNUNI = new MersenneTwister(12345) };
 
             var p = mvn.CDF(new[] { Normal.StandardZ(0.5), Normal.StandardZ(0.5), Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.4661416, 1E-4);
+            Assert.AreEqual(0.4661416, p, 1E-4);
 
         }
 
@@ -246,7 +246,7 @@ namespace Distributions.Multivariate
             var mvn = new MultivariateNormal(mean, covar) { MVNUNI = new MersenneTwister(12345) };
 
             var p = mvn.CDF(new[] { Normal.StandardZ(0.5), Normal.StandardZ(0.5), Normal.StandardZ(0.5) });
-            Assert.AreEqual(p, 0.125, 1E-4);
+            Assert.AreEqual(0.125, p, 1E-4);
 
         }
          

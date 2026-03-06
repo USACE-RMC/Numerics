@@ -69,7 +69,7 @@ namespace Numerics.Sampling.MCMC
             ProposalSigma = proposalSigma;
         }
 
-        private MultivariateNormal[] mvn;
+        private MultivariateNormal[] mvn = null!;
 
         /// <summary>
         /// The covariance matrix Σ (sigma) for the proposal distribution.
@@ -94,9 +94,9 @@ namespace Numerics.Sampling.MCMC
                 mvn[i] = new MultivariateNormal(NumberOfParameters);
             }
             // Set up proposal matrix
-            if (Initialize == InitializationType.MAP && _mapSuccessful)
+            if (Initialize == InitializationType.MAP && _mapSuccessful && _MVN != null)
             {
-                ProposalSigma = new Matrix(base._MVN.Covariance);
+                ProposalSigma = new Matrix(_MVN.Covariance);
             }
         }
 

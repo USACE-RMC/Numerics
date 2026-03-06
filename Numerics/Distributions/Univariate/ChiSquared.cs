@@ -233,7 +233,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="degreesOfFreedom">The degrees of freedom for the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(int degreesOfFreedom, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(int degreesOfFreedom, bool throwException)
         {
             if (degreesOfFreedom < 1.0d)
             {
@@ -246,7 +246,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters((int)parameters[0], throwException);
         }

@@ -111,7 +111,7 @@ namespace Numerics.Mathematics.LinearAlgebra
          /// <summary>
          /// The vector header text. 
          /// </summary>
-        public string Header { get; set; }
+        public string Header { get; set; } = null!;
 
 
         /// <summary>

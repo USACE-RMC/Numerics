@@ -62,12 +62,5 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         InferenceFromMargins,
 
-        /// <summary>
-        /// Bayesian estimation using Markov Chain Monte Carlo (MCMC).
-        /// Uses the pseudo log-likelihood with uniform priors on the parameter constraints by default.
-        /// Sets the Maximum a Posteriori (MAP) estimate on the copula.
-        /// </summary>
-        Bayesian
-
     }
 }

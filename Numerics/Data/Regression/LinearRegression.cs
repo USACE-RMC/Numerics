@@ -117,32 +117,32 @@ namespace Numerics.Data
         /// <summary>
         /// The list of estimated parameter values.
         /// </summary>
-        public List<double> Parameters { get; private set; }
+        public List<double> Parameters { get; private set; } = null!;
 
         /// <summary>
-        /// The list of the estimated parameter names. 
+        /// The list of the estimated parameter names.
         /// </summary>
-        public List<string> ParameterNames { get; private set; }
+        public List<string> ParameterNames { get; private set; } = null!;
 
         /// <summary>
-        /// The list of the estimated parameter standard errors. 
+        /// The list of the estimated parameter standard errors.
         /// </summary>
-        public List<double> ParameterStandardErrors { get; private set; }
+        public List<double> ParameterStandardErrors { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter t-statistics.
         /// </summary>
-        public List<double> ParameterTStats { get; private set; }
+        public List<double> ParameterTStats { get; private set; } = null!;
 
         /// <summary>
-        /// The estimate parameter covariance matrix. 
+        /// The estimate parameter covariance matrix.
         /// </summary>
-        public Matrix Covariance { get; private set; }
+        public Matrix Covariance { get; private set; } = null!;
 
         /// <summary>
-        /// The residuals of the fitted linear model. 
+        /// The residuals of the fitted linear model.
         /// </summary>
-        public double[] Residuals { get; private set; }
+        public double[] Residuals { get; private set; } = null!;
 
         /// <summary>
         /// The model standard error.
@@ -271,6 +271,24 @@ namespace Numerics.Data
             RSquared = 1 - sse / sst;
             AdjRSquared = 1 - (1 - RSquared) * (n - 1) / (DegreesOfFreedom);
 
+        }
+
+        /// <summary>
+        /// Prepares the design matrix for prediction by adding an intercept column if needed.
+        /// If the matrix already has the expected number of columns (e.g. internal X), it passes through.
+        /// If it has one fewer column and HasIntercept is true, the intercept column is added.
+        /// </summary>
+        /// <param name="x">The matrix of predictor values.</param>
+        private Matrix PrepareDesignMatrix(Matrix x)
+        {
+            int expected = Parameters.Count;
+            if (x.NumberOfColumns == expected)
+                return x;
+            if (HasIntercept && x.NumberOfColumns == expected - 1)
+                return AddInterceptColumn(x);
+            throw new ArgumentException(
+                $"Expected {expected} columns{(HasIntercept ? $" (or {expected - 1} without intercept)" : "")}, but got {x.NumberOfColumns}.",
+                nameof(x));
         }
 
         /// <summary>

@@ -39,14 +39,14 @@ namespace Test_Numerics.Serialization
     /// Demonstration of custom JSON converters for complex types.
     /// </summary>
     [TestClass]
-    public static class JsonConverterDemo
+    public class JsonConverterDemo
     {
         /// <summary>
         /// Demonstrates how the custom converters handle 2D arrays and complex distribution objects.
         /// </summary>
         /// 
         [TestMethod]
-        public static void RunDemo()
+        public void RunDemo()
         {
             Console.WriteLine("=== JSON Converter Demo ===\n");
 

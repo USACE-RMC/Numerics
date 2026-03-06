@@ -170,10 +170,10 @@ namespace Numerics.Mathematics.Integration
                     Status = IntegrationStatus.Success;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 Status = IntegrationStatus.Failure;
-                if (ReportFailure) throw ex;
+                if (ReportFailure) throw;
             }
         }
 

@@ -277,7 +277,7 @@ namespace Numerics.Mathematics
         /// <returns>
         /// A 2-column array with the first column contains the lags, and the second the autocorrelation.
         /// </returns>
-        public static double[,] Autocorrelation(IList<double> series, int lagMax = -1)
+        public static double[,]? Autocorrelation(IList<double> series, int lagMax = -1)
         {
             int n = series.Count;
             if (lagMax < 0)

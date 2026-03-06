@@ -80,7 +80,7 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void InitializeCustomSettings()
         {
-            if (mvn == null && useImportanceSampling == false && Initialize == InitializationType.MAP && _mapSuccessful)
+            if (mvn == null && useImportanceSampling == false && Initialize == InitializationType.MAP && _mapSuccessful && _MVN != null)
             {
                 mvn = (MultivariateNormal)_MVN.Clone();
                 var covar = new Matrix(mvn.Covariance);
@@ -149,7 +149,7 @@ namespace Numerics.Sampling.MCMC
                 var parameters = new double[NumberOfParameters];
                 double logLH = 0;
                 double weight = 0;
-                if (useImportanceSampling == true)
+                if (useImportanceSampling == true && mvn != null)
                 {
                     parameters = mvn.InverseCDF(rnds.GetRow(idx));
                     logLH = LogLikelihoodFunction(parameters);

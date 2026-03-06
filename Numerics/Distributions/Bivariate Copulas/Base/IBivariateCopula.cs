@@ -75,12 +75,12 @@ namespace Numerics.Distributions.Copulas
         /// <summary>
         /// The X marginal distribution for the copula. 
         /// </summary>
-        IUnivariateDistribution MarginalDistributionX { get; set; }
+        IUnivariateDistribution? MarginalDistributionX { get; set; }
 
         /// <summary>
-        /// The Y marginal distribution for the copula. 
+        /// The Y marginal distribution for the copula.
         /// </summary>
-        IUnivariateDistribution MarginalDistributionY { get; set; }
+        IUnivariateDistribution? MarginalDistributionY { get; set; }
 
         /// <summary>
         /// Gets the number of copula-intrinsic parameters (e.g., 1 for Clayton, 2 for Student's t).
@@ -104,7 +104,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="parameter">Dependency parameter.</param>
         /// <param name="throwException">Boolean indicating whether to throw the exception or not.</param>
         /// <returns>Nothing if the parameters are valid and the exception if invalid parameters were found.</returns>
-        ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException);
+        ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException);
 
         /// <summary>
         /// Returns the parameter constraints for all copula parameters given the data samples.

@@ -229,7 +229,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             // Validate probability
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]))

@@ -77,7 +77,7 @@ namespace Numerics.Utilities
         /// <remarks>
         /// Expects JSON in the format: { "rows": int, "cols": int, "data": double[] }
         /// </remarks>
-        public override double[,] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override double[,]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
                 return null;
@@ -87,7 +87,7 @@ namespace Numerics.Utilities
 
             int rows = 0;
             int cols = 0;
-            double[] data = null;
+            double[]? data = null;
 
             while (reader.Read())
             {
@@ -96,7 +96,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -216,7 +216,7 @@ namespace Numerics.Utilities
         /// <remarks>
         /// Expects JSON in the format: { "rows": int, "cols": int, "data": string[] }
         /// </remarks>
-        public override string[,] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override string[,]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
                 return null;
@@ -226,7 +226,7 @@ namespace Numerics.Utilities
 
             int rows = 0;
             int cols = 0;
-            string[] data = null;
+            string[]? data = null;
 
             while (reader.Read())
             {
@@ -235,7 +235,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -370,7 +370,7 @@ namespace Numerics.Utilities
         /// returns null rather than throwing an exception.
         /// </para>
         /// </remarks>
-        public override UnivariateDistributionBase Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override UnivariateDistributionBase? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
                 return null;
@@ -379,7 +379,7 @@ namespace Numerics.Utilities
                 throw new JsonException("Expected StartObject token");
 
             UnivariateDistributionType? distributionType = null;
-            double[] parameters = null;
+            double[]? parameters = null;
 
             while (reader.Read())
             {
@@ -388,7 +388,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -404,13 +404,13 @@ namespace Numerics.Utilities
             }
 
             if (!distributionType.HasValue || parameters == null)
-                return null;
+                return null!;
 
             // Use the factory to create a default distribution, then set its parameters
             try
             {
                 var distribution = UnivariateDistributionFactory.CreateDistribution(distributionType.Value);
-                if (distribution != null && parameters != null && parameters.Length > 0)
+                if (distribution is not null && parameters != null && parameters.Length > 0)
                 {
                     distribution.SetParameters(parameters);
                 }
@@ -419,7 +419,7 @@ namespace Numerics.Utilities
             catch
             {
                 // If we can't recreate it, return null
-                return null;
+                return null!;
             }
         }
 
@@ -445,7 +445,7 @@ namespace Numerics.Utilities
         /// </remarks>
         public override void Write(Utf8JsonWriter writer, UnivariateDistributionBase value, JsonSerializerOptions options)
         {
-            if (value == null)
+            if (value is null)
             {
                 writer.WriteNullValue();
                 return;
@@ -513,7 +513,7 @@ namespace Numerics.Utilities
         /// <exception cref="JsonException">
         /// Thrown when the JSON format is invalid (e.g., missing StartObject token).
         /// </exception>
-        public override Histogram Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Histogram? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
                 return null;
@@ -534,7 +534,7 @@ namespace Numerics.Utilities
 
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    string propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
                     reader.Read();
 
                     switch (propertyName)
@@ -598,7 +598,7 @@ namespace Numerics.Utilities
 
                         if (reader.TokenType == JsonTokenType.PropertyName)
                         {
-                            string name = reader.GetString();
+                            string? name = reader.GetString();
                             reader.Read();
 
                             switch (name)

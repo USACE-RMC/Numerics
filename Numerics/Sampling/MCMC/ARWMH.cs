@@ -75,9 +75,9 @@ namespace Numerics.Sampling.MCMC
         }
 
 
-        private Matrix sigmaIdentity;
-        private RunningCovarianceMatrix[] sigma;
-        private MultivariateNormal[] mvn;
+        private Matrix sigmaIdentity = null!;
+        private RunningCovarianceMatrix[] sigma = null!;
+        private MultivariateNormal[] mvn = null!;
 
         /// <summary>
         /// The scaling parameter used to scale the adaptive covariance matrix.
@@ -127,7 +127,7 @@ namespace Numerics.Sampling.MCMC
                 mvn[i] = new MultivariateNormal(NumberOfParameters);
                 sigma[i] = new RunningCovarianceMatrix(NumberOfParameters);
 
-                if (Initialize == InitializationType.MAP && _mapSuccessful)
+                if (Initialize == InitializationType.MAP && _mapSuccessful && _MVN != null)
                 {
                     // Hot start the covariance matrix
                     for (int j = 0; j < NumberOfParameters; j++)

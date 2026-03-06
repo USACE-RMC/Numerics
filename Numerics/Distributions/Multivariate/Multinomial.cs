@@ -113,7 +113,7 @@ namespace Numerics.Distributions
         }
 
         private int _n;
-        private double[] _p;
+        private double[] _p = null!;
         private int _dimension;
 
         /// <summary>

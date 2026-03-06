@@ -378,7 +378,7 @@ namespace Numerics.Distributions
         /// <param name="min">The minimum possible value.</param>
         /// <param name="max">The maximum possible value.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double alpha, double beta, double min, double max, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double alpha, double beta, double min, double max, bool throwException)
         {
             if (double.IsNaN(alpha) || double.IsInfinity(alpha) || alpha <= 0.0d)
             {
@@ -403,7 +403,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], parameters[3], throwException);
         }

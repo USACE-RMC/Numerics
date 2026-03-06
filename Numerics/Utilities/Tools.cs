@@ -781,7 +781,7 @@ namespace Numerics
         /// Returns a compressed a byte array.
         /// </summary>
         /// <param name="data">An array of bytes.</param>
-        public static byte[] Compress(byte[] data)
+        public static byte[]? Compress(byte[]? data)
         {
             if (data is null) return null;
             var output = new MemoryStream();
@@ -796,7 +796,7 @@ namespace Numerics
         /// Returns a decompressed byte array.
         /// </summary>
         /// <param name="data">An array of bytes.</param>
-        public static byte[] Decompress(byte[] data)
+        public static byte[]? Decompress(byte[]? data)
         {
             if (data is null) return null;
             var input = new MemoryStream(data);

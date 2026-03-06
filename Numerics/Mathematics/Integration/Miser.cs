@@ -340,12 +340,10 @@ namespace Numerics.Mathematics.Integration
         private void ranpt(double[] pt, double[] regn)
         {
             int j, n = pt.Length;
-            double[] rnd = null;
-            if (UseSobolSequence)
-                rnd = _sobol.NextDouble();
+            double[]? rnd = UseSobolSequence ? _sobol.NextDouble() : null;
 
             for (j = 0; j < n; j++)
-                pt[j] = regn[j] + (regn[n + j] - regn[j]) * (UseSobolSequence ? rnd[j] : Random.NextDouble());
+                pt[j] = regn[j] + (regn[n + j] - regn[j]) * (rnd != null ? rnd[j] : Random.NextDouble());
         }
     }
 }

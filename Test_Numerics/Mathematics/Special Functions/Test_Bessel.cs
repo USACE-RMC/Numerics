@@ -146,8 +146,8 @@ namespace Mathematics.SpecialFunctions
             // K0(0.1) ≈ 2.4270690248
             Assert.AreEqual(2.4270690248, Bessel.K0(0.1), 1e-4);
             // K0 is monotonically decreasing
-            Assert.IsTrue(Bessel.K0(1) > Bessel.K0(2));
-            Assert.IsTrue(Bessel.K0(2) > Bessel.K0(5));
+            Assert.IsGreaterThan(Bessel.K0(2), Bessel.K0(1));
+            Assert.IsGreaterThan(Bessel.K0(5), Bessel.K0(2));
         }
 
         /// <summary>
@@ -163,7 +163,7 @@ namespace Mathematics.SpecialFunctions
             // K1(5) ≈ 0.004044613184
             Assert.AreEqual(0.004044613184, Bessel.K1(5), 1e-6);
             // K1 is monotonically decreasing for x > 0
-            Assert.IsTrue(Bessel.K1(1) > Bessel.K1(2));
+            Assert.IsGreaterThan(Bessel.K1(2), Bessel.K1(1));
         }
 
         /// <summary>
@@ -181,7 +181,7 @@ namespace Mathematics.SpecialFunctions
             // K3(2) ≈ 0.6473853909
             Assert.AreEqual(0.6473853909, Bessel.Kn(3, 2), 1e-4);
             // Kn increases with n for fixed x
-            Assert.IsTrue(Bessel.Kn(3, 2) > Bessel.Kn(2, 2));
+            Assert.IsGreaterThan(Bessel.Kn(2, 2), Bessel.Kn(3, 2));
         }
 
         /// <summary>

@@ -374,7 +374,7 @@ namespace Numerics.Distributions
         /// <param name="sigma">The standard deviation of the distribution.</param>
         /// <param name="gamma">The skew of the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double mu, double sigma, double gamma, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double mu, double sigma, double gamma, bool throwException)
         {
             if (double.IsNaN(mu) || double.IsInfinity(mu))
             {
@@ -410,7 +410,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }
@@ -866,7 +866,7 @@ namespace Numerics.Distributions
         private (bool stable, bool divisable) TryPearsonConditionalMoments(
             double a, double b, out double[] moments, double pMin)
         {
-            moments = null;
+            moments = null!;
 
             // ---- small math helpers -------------------------------------------------
             static double Phi(double x) => 0.5 * (1.0 + Mathematics.SpecialFunctions.Erf.Function(x / Math.Sqrt(2.0)));

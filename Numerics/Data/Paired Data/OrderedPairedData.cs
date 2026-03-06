@@ -277,20 +277,24 @@ namespace Numerics.Data
         {
             // Get Strictness
             bool strict = false;
-            if (el.Attribute(nameof(StrictX)) != null) { bool.TryParse(el.Attribute(nameof(StrictX)).Value, out strict); }
+            var strictXAttr = el.Attribute(nameof(StrictX));
+            if (strictXAttr != null) { bool.TryParse(strictXAttr.Value, out strict); }
             StrictX = strict;
 
             strict = false;
-            if (el.Attribute(nameof(StrictY)) != null) { bool.TryParse(el.Attribute(nameof(StrictY)).Value, out strict); }
+            var strictYAttr = el.Attribute(nameof(StrictY));
+            if (strictYAttr != null) { bool.TryParse(strictYAttr.Value, out strict); }
             StrictY = strict;
 
             // Get Order
             SortOrder order = SortOrder.None;
-            if (el.Attribute(nameof(OrderX)) != null) { Enum.TryParse(el.Attribute(nameof(OrderX)).Value, out order); }
+            var orderXAttr = el.Attribute(nameof(OrderX));
+            if (orderXAttr != null) { Enum.TryParse(orderXAttr.Value, out order); }
             OrderX = order;
 
             order = SortOrder.None;
-            if (el.Attribute(nameof(OrderY)) != null) { Enum.TryParse(el.Attribute(nameof(OrderY)).Value, out order); }
+            var orderYAttr = el.Attribute(nameof(OrderY));
+            if (orderYAttr != null) { Enum.TryParse(orderYAttr.Value, out order); }
             OrderY = order;
 
             // Ordinates
@@ -1470,7 +1474,7 @@ namespace Numerics.Data
         /// and number of points in the search region.</returns>
         public OrderedPairedData LangSimplify(double tolerance, int lookAhead)
         {
-            if (_ordinates == null | lookAhead <= 1 | tolerance <= 0)
+            if (_ordinates == null || lookAhead <= 1 || tolerance <= 0)
                 return this;
 
             List<Ordinate> ordinates = new List<Ordinate>();

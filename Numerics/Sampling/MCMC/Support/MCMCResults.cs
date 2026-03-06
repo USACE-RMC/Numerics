@@ -94,44 +94,44 @@ namespace Numerics.Sampling.MCMC
         /// The list of sampled Markov Chains.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet>[] MarkovChains { get; private set; }
+        public List<ParameterSet>[]? MarkovChains { get; private set; }
 
         /// <summary>
         /// Output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet> Output { get; private set; }
+        public List<ParameterSet> Output { get; private set; } = new List<ParameterSet>();
 
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
         [JsonInclude]
-        public List<double> MeanLogLikelihood { get; private set; }
+        public List<double>? MeanLogLikelihood { get; private set; }
 
         /// <summary>
         /// The acceptance rate for each chain.
         /// </summary>
         [JsonInclude]
-        public double[] AcceptanceRates { get; private set; }
+        public double[] AcceptanceRates { get; private set; } = null!;
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public ParameterResults[] ParameterResults { get; private set; }
+        public ParameterResults[] ParameterResults { get; private set; } = null!;
 
         /// <summary>
         /// The output parameter set that produced the maximum likelihood.
         /// This is referred to as the maximum a posteriori (MAP).
         /// </summary>
         [JsonInclude]
-        public ParameterSet MAP { get; private set; }
+        public ParameterSet MAP { get; private set; } = new ParameterSet();
 
         /// <summary>
         /// The mean of the posterior distribution of each parameter.
         /// </summary>
         [JsonInclude]
-        public ParameterSet PosteriorMean { get; private set; }
+        public ParameterSet PosteriorMean { get; private set; } = new ParameterSet();
 
         /// <summary>
         /// Process the parameter results.
@@ -203,7 +203,7 @@ namespace Numerics.Sampling.MCMC
         /// Creates MCMC Results from a byte array.
         /// </summary>
         /// <param name="bytes">Byte array.</param>
-        public static MCMCResults FromByteArray(byte[] bytes)
+        public static MCMCResults? FromByteArray(byte[] bytes)
         {
             var options = new JsonSerializerOptions
             {

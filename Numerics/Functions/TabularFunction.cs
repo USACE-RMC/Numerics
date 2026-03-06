@@ -150,7 +150,7 @@ namespace Numerics.Functions
         }
 
         /// <inheritdoc/>
-        public ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             var errors = PairedData.GetErrors();
             if (errors.Count > 0)

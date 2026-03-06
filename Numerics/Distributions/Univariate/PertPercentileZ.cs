@@ -302,7 +302,7 @@ namespace Numerics.Distributions
         /// <param name="fiftieth">The 50th percentile value of the distribution.</param>
         /// <param name="ninetyFifth">The 95th percentile value of the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        private ArgumentOutOfRangeException ValidateParameters(double fifth, double fiftieth, double ninetyFifth, bool throwException)
+        private ArgumentOutOfRangeException? ValidateParameters(double fifth, double fiftieth, double ninetyFifth, bool throwException)
         {
             if (double.IsNaN(fifth) || double.IsInfinity(fifth) ||
                 double.IsNaN(ninetyFifth) || double.IsInfinity(ninetyFifth) || fifth > ninetyFifth)
@@ -334,7 +334,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }
@@ -501,20 +501,22 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new mixture distribution.</returns>
-        public static PertPercentileZ FromXElement(XElement xElement)
+        public static PertPercentileZ? FromXElement(XElement xElement)
         {
             UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
-            if (xElement.Attribute(nameof(UnivariateDistributionBase.Type)) != null)
+            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (typeAttr != null)
             {
-                Enum.TryParse(xElement.Attribute(nameof(UnivariateDistributionBase.Type)).Value, out type);
+                Enum.TryParse(typeAttr.Value, out type);
 
             }
             if (type == UnivariateDistributionType.PertPercentileZ)
             {
                 bool parametersSolved = false;
-                if (xElement.Attribute("ParametersSolved") != null)
+                var paramsSolvedAttr = xElement.Attribute("ParametersSolved");
+                if (paramsSolvedAttr != null)
                 {
-                    bool.TryParse(xElement.Attribute("ParametersSolved").Value, out parametersSolved);
+                    bool.TryParse(paramsSolvedAttr.Value, out parametersSolved);
                 }
                 else
                 {
@@ -525,9 +527,10 @@ namespace Numerics.Distributions
                     var vals = new double[dist.NumberOfParameters];
                     for (int i = 0; i < dist.NumberOfParameters; i++)
                     {
-                        if (xElement.Attribute(names[i]) != null)
+                        var nameAttr = xElement.Attribute(names[i]);
+                        if (nameAttr != null)
                         {
-                            double.TryParse(xElement.Attribute(names[i]).Value, NumberStyles.Any, CultureInfo.InvariantCulture, out vals[i]);
+                            double.TryParse(nameAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out vals[i]);
                         }
                     }
                     dist.SetParameters(vals);
@@ -536,9 +539,10 @@ namespace Numerics.Distributions
                 }
 
                 var beta = new GeneralizedBeta();
-                if (xElement.Attribute("BetaParameters") != null)
+                var betaParamsAttr = xElement.Attribute("BetaParameters");
+                if (betaParamsAttr != null)
                 {
-                    var vals = xElement.Attribute("BetaParameters").Value.Split('|');
+                    var vals = betaParamsAttr.Value.Split('|');
                     var parameters = new List<double>();
                     for (int i = 0; i < vals.Length; i++)
                     {
@@ -548,9 +552,10 @@ namespace Numerics.Distributions
                     beta.SetParameters(parameters);
                 }
                 double _5th = 0, _50th = 0, _95th = 0;
-                if (xElement.Attribute("Parameters") != null)
+                var paramsAttr = xElement.Attribute("Parameters");
+                if (paramsAttr != null)
                 {
-                    var vals = xElement.Attribute("Parameters").Value.Split('|');
+                    var vals = paramsAttr.Value.Split('|');
                     double.TryParse(vals[0], NumberStyles.Any, CultureInfo.InvariantCulture, out _5th);
                     double.TryParse(vals[1], NumberStyles.Any, CultureInfo.InvariantCulture, out _50th);
                     double.TryParse(vals[2], NumberStyles.Any, CultureInfo.InvariantCulture, out _95th);

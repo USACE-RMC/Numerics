@@ -58,7 +58,7 @@ namespace Numerics
         /// <typeparam name="T">The type of the attribute you want to retrieve</typeparam>
         /// <param name="enumValue">The enum value</param>
         /// <returns>The attribute of type T that exists on the enum value</returns>
-        public static T GetAttributeOfType<T>(this Enum enumValue) where T : Attribute
+        public static T? GetAttributeOfType<T>(this Enum enumValue) where T : Attribute
         {
             var type = enumValue.GetType();
             var memInfo = type.GetMember(enumValue.ToString());
