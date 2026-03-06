@@ -359,27 +359,19 @@ namespace Numerics.Distributions
         /// <param name="delta">The noncentrality parameter.</param>
         private double NCT_CDF(double t, double df, double delta)
         {
-            double Z;
-            double ANS = 0d;
+            double ANS;
             try
             {
                 ANS = NCTDist(t, df, delta);
             }
-            catch (Exception ex)
+            catch (ArgumentException)
             {
-                // If the solver fails, then use approximation
-                if (ex.ToString() == "Maximum number of iterations reached.")
-                {
-                    Z = (t * (1.0d - 1.0d / (4.0d * df)) - delta) / Math.Sqrt(1.0d + Math.Pow(t, 2d) / (2.0d * df));
-                    ANS = Normal.StandardCDF(Z);
-                }
-
-                if (ANS < 0d)
-                    ANS = 0d;
-                if (ANS > 1d)
-                    ANS = 1d;
+                // If the series fails to converge, use normal approximation
+                double Z = (t * (1.0d - 1.0d / (4.0d * df)) - delta) / Math.Sqrt(1.0d + t * t / (2.0d * df));
+                ANS = Normal.StandardCDF(Z);
+                if (ANS < 0d) ANS = 0d;
+                if (ANS > 1d) ANS = 1d;
             }
-
             return ANS;
         }
 
@@ -580,54 +572,29 @@ namespace Numerics.Distributions
 
         private double NCTInv0(double P, double N, double D)
         {
-            // 
             // Approximates percentage points of the non-central t distribution.
             // P is the percentage, N is the degrees of freedom, D is the non-centrality parameter.
-            // 
-            // Non-central t is the ratio (U + D)/(Chi/Sqrt(n)) where U and Chi are independent
-            // random variables distributed as Normal(0, 1) and Chi(n), respectively.
-            // D is the non-centrality parameter.  When equal to 0, TInvNC is Student's t.
-            // 
             // Source: Johnson & Kotz, Continuous Univariate Distributions, Volume 2.
-            // 
-            // NB: The number of iterations appears to go quadratically in D.  Thus, for large
-            // D, we will be in trouble.
-            // 
-            // VB version (c) 2001 Quantitative Decisions.  All rights reserved.
-            // Contact William A. Huber.  www.quantdec.com
-            // 
-            double b;
-            double z;
-            double b2;
-            double u2;
-            double T;
-            // 
-            // Establish entry conditions.
-            // 
-            // If N < 1.0# Or P <= 0.000001 Or P >= 0.999999 Then
-            // Return Double.NaN
-            // End If
-
-            var StudentT = new StudentT(N);
-            z = Normal.StandardZ(P);
-            // 
+            double z = Normal.StandardZ(P);
+            //
             // Jennett & Welch approximation, formula (14.1).
             // Intended for large values of D^2, such as are used for most tolerance interval calculations.
-            // 
-            b = Math.Exp(Gamma.LogGamma((N + 1d) / 2d) - Gamma.LogGamma(N / 2d)) * Math.Sqrt(2d / N);
-            u2 = z * z;
-            b2 = b * b;
-            T = b2 + (1d - b2) * (Math.Pow(D, 2d) - u2);
-            if (T > 0d)
+            //
+            double b = Math.Exp(Gamma.LogGamma((N + 1d) / 2d) - Gamma.LogGamma(N / 2d)) * Math.Sqrt(2d / N);
+            double u2 = z * z;
+            double b2 = b * b;
+            double denom = b2 - u2 * (1d - b2);
+            double disc = b2 + (1d - b2) * (D * D - u2);
+            if (disc > 0d && Math.Abs(denom) > 1e-12)
             {
-                T = (D * b + z * Math.Sqrt(T)) / (b2 - u2 * (1d - b2));
+                return (D * b + z * Math.Sqrt(disc)) / denom;
             }
             else
             {
-                T = 0d;
+                // Fallback: offset central t quantile by the noncentrality parameter
+                var st = new StudentT(N);
+                return st.InverseCDF(P) + D;
             }
-
-            return T;
         }
 
         private double ZBrent(double X1, double X2, double y1, double y2, double Tol, double N, double Dnc, double Perc)
