@@ -313,21 +313,10 @@ namespace Numerics.Data
         /// <param name="x">The matrix of predictor values.</param>
         public double[] Predict(Matrix x)
         {
-            var result = new double[x.NumberOfRows];
-            for (int i = 0; i < x.NumberOfRows; i++)
-            {
-                if (HasIntercept == true)
-                {
-                    var values = new List<double>() { 1 };
-                    values.AddRange(x.Row(i));
-                    result[i] = Tools.SumProduct(Parameters, values);
-                }
-                else
-                {
-                    result[i] = Tools.SumProduct(Parameters, x.Row(i));
-                }
-            }
-                
+            var xp = PrepareDesignMatrix(x);
+            var result = new double[xp.NumberOfRows];
+            for (int i = 0; i < xp.NumberOfRows; i++)
+                result[i] = Tools.SumProduct(Parameters, xp.Row(i));
             return result;
         }
 
@@ -338,22 +327,12 @@ namespace Numerics.Data
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% prediction intervals.</param>
         public double[,] PredictionIntervals(Matrix x, double alpha = 0.1)
         {
+            var xp = PrepareDesignMatrix(x);
             var percentiles = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var result = new double[x.NumberOfRows, 3]; // lower, upper, mean
-            for (int i = 0; i < x.NumberOfRows; i++)
+            var result = new double[xp.NumberOfRows, 3]; // lower, upper, mean
+            for (int i = 0; i < xp.NumberOfRows; i++)
             {
-                double mu = 0;
-                if (HasIntercept == true)
-                {
-                    var values = new List<double>() { 1 };
-                    values.AddRange(x.Row(i));
-                    mu = Tools.SumProduct(Parameters, values);
-
-                }
-                else
-                {
-                    mu = Tools.SumProduct(Parameters, x.Row(i));
-                }
+                double mu = Tools.SumProduct(Parameters, xp.Row(i));
                 var s = StandardError;
                 var s2 = s * s;
                 var n = DegreesOfFreedom;
@@ -362,7 +341,6 @@ namespace Numerics.Data
                 result[i, 1] = t.InverseCDF(percentiles[1]);
                 result[i, 2] = mu;
             }
-
             return result;
         }
 

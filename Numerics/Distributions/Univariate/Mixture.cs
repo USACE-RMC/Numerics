@@ -913,8 +913,8 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters(GetParameters, true);
 
-            // If there is only one distribution, return its inverse CDF
-            if (Distributions.Count() == 1)
+            // If there is only one distribution and not zero-inflated, return its inverse CDF
+            if (Distributions.Count() == 1 && !IsZeroInflated)
             {
                 return Distributions[0].InverseCDF(probability);
             }
@@ -927,9 +927,13 @@ namespace Numerics.Distributions
             else
             {
                 // Use a root finder to solve the inverse CDF
-                var xVals = Distributions.Select(d => d.InverseCDF(probability));
-                double minX = xVals.Min();
-                double maxX = xVals.Max();
+                // For zero-inflated mixtures, use adjusted probability for lower bracket
+                // and unadjusted for upper bracket to ensure the root is bracketed
+                double adjProb = IsZeroInflated ? (probability - ZeroWeight) / (1d - ZeroWeight) : probability;
+                var minXVals = Distributions.Select(d => d.InverseCDF(adjProb));
+                var maxXVals = Distributions.Select(d => d.InverseCDF(probability));
+                double minX = minXVals.Min();
+                double maxX = maxXVals.Max();
                 try
                 {
                     if (IsZeroInflated)
