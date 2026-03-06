@@ -200,7 +200,7 @@ namespace Numerics.Functions
                     throw new ArgumentOutOfRangeException(nameof(Sigma), "Standard error must be greater than zero.");
                 return new ArgumentOutOfRangeException(nameof(Sigma), "Standard error must be greater than zero.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

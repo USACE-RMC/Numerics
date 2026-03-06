@@ -161,7 +161,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0, t.Mean);
 
             var t2 = new NoncentralT(0, 1);
-            Assert.AreEqual(double.NaN,t2.Mean);
+            Assert.AreEqual(double.NaN, t2.Mean);
         }
 
         /// <summary>
@@ -187,7 +187,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0, t.Mode,  1E-4);
 
             var t3 = new NoncentralT(10, 1);
-            Assert.AreEqual(0.9329, t3.Mode,  1e-04);
+            Assert.AreEqual(0.9329, t3.Mode, 1e-04);
         }
 
         /// <summary>

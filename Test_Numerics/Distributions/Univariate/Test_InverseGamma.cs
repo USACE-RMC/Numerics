@@ -83,7 +83,7 @@ namespace Distributions.Univariate
 
             var IG2 = new InverseGamma(2, 4);
             Assert.AreEqual(2,IG2.Beta);
-            Assert.AreEqual(4,IG2.Alpha);
+            Assert.AreEqual(4, IG2.Alpha);
         }
 
         /// <summary>
@@ -109,10 +109,10 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var IG = new InverseGamma();
-            Assert.AreEqual("Scale (β)",IG.ParametersToString[0, 0]);
-            Assert.AreEqual("Shape (α)",IG.ParametersToString[1, 0] );
-            Assert.AreEqual("0.5",IG.ParametersToString[0, 1] );
-            Assert.AreEqual("2",IG.ParametersToString[1, 1]);
+            Assert.AreEqual("Scale (β)",IG.ParametersToString[0, 0] );
+            Assert.AreEqual("Shape (α)", IG.ParametersToString[1, 0]);
+            Assert.AreEqual("0.5", IG.ParametersToString[0, 1]);
+            Assert.AreEqual("2", IG.ParametersToString[1, 1]);
         }
 
         /// <summary>
@@ -122,7 +122,7 @@ namespace Distributions.Univariate
         public void Test_Mean()
         {
             var IG = new InverseGamma();
-            Assert.AreEqual(0.5,IG.Mean);
+            Assert.AreEqual(0.5, IG.Mean);
 
             var IG2 = new InverseGamma(1, 1);
             Assert.AreEqual(double.NaN,IG2.Mean);
@@ -148,7 +148,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.1666, IG.Mode,  1e-04);
 
             var IG2 = new InverseGamma(1, 1);
-            Assert.AreEqual(0.5,IG2.Mode);
+            Assert.AreEqual(0.5, IG2.Mode);
         }
 
         /// <summary>
@@ -243,7 +243,7 @@ namespace Distributions.Univariate
         {
             var IG = new InverseGamma();
             Assert.AreEqual(0, IG.InverseCDF(0));
-            Assert.AreEqual(double.PositiveInfinity,IG.InverseCDF(1));
+            Assert.AreEqual(double.PositiveInfinity, IG.InverseCDF(1));
 
             var IG2 = new InverseGamma(2, 2);
             Assert.AreEqual(0.81993, IG2.InverseCDF(0.3), 1e-04);

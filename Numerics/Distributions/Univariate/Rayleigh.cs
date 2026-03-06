@@ -267,7 +267,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Sigma), "Standard deviation must be greater than zero.");
                 return new ArgumentOutOfRangeException(nameof(Sigma), "Standard deviation must be greater than zero.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

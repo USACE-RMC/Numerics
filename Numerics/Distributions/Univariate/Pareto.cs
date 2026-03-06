@@ -261,7 +261,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Alpha), "The shape parameter α (alpha) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Alpha), "The shape parameter α (alpha) must be positive.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

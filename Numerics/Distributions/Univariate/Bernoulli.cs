@@ -225,7 +225,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Probability), "Probability must be between 0 and 1.");
                 return new ArgumentOutOfRangeException(nameof(Probability), "Probability must be between 0 and 1.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

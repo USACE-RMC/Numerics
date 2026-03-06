@@ -255,7 +255,7 @@ namespace Numerics.Distributions
                 return new ArgumentOutOfRangeException(nameof(Beta), "The shape parameter β (beta) must be positive.");
             }
             // 
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

@@ -159,7 +159,7 @@ namespace Numerics.Functions
                     throw new ArgumentOutOfRangeException(nameof(PairedData), "The uncertain ordered paired data has errors.");
                 return new ArgumentOutOfRangeException(nameof(PairedData), "The uncertain ordered paired data has errors.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

@@ -217,7 +217,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Lambda), "The rate (λ) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Lambda), "The rate (λ) must be positive.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

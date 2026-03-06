@@ -340,7 +340,7 @@ namespace Numerics.Distributions
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(MostLikely), "The mode (most likely) must be between the min and max.");
                 return new ArgumentOutOfRangeException(nameof(MostLikely), "The mode (most likely) must be between the min and max.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

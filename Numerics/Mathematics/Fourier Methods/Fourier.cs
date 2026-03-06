@@ -283,7 +283,7 @@ namespace Numerics.Mathematics
             if (lagMax < 0)
                 lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             if (lagMax < 1 || n < 2)
-                return null;
+                return null!;
             // Pad the length to be the power of 2 to facilitate FFT speed.
             int newLength = Convert.ToInt32(Math.Pow(2d, Math.Ceiling(Math.Log(series.Count, 2d))));
             // Normalize the data series

@@ -122,7 +122,7 @@ namespace Numerics.Distributions.Copulas
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be less than or equal to " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be less than or equal to " + ThetaMaximum.ToString() + ".");
             }
-            return null;
+            return new ArgumentOutOfRangeException(nameof(Theta), "Parameter is valid.");
         }
 
         /// <inheritdoc/>

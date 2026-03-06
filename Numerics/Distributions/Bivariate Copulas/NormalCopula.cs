@@ -137,7 +137,7 @@ namespace Numerics.Distributions.Copulas
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
             }
-            return null;
+            return new ArgumentOutOfRangeException(nameof(Theta),"The parameter is valid.");
         }
 
         /// <inheritdoc/>

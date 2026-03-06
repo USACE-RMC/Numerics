@@ -268,7 +268,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var p = new Pert();
-            Assert.AreEqual(2.3333, p.Kurtosis,1e-04);
+            Assert.AreEqual(2.3333, p.Kurtosis, 1e-04);
         }
 
         /// <summary>

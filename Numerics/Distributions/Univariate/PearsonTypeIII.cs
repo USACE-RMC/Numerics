@@ -406,7 +406,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -6.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be greater than -6.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

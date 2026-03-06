@@ -269,7 +269,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Sigma), "The scale parameter σ (sigma) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Sigma), "The scale parameter σ (sigma) must be positive.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

@@ -68,7 +68,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Function(testX[i]);
-                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
+                Assert.IsLessThan(0.01d, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -85,7 +85,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Lanczos(testX[i]);
-                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
+                Assert.IsLessThan(0.01d, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -157,7 +157,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Trigamma(testX[i]);
-                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
+                Assert.IsLessThan(0.01d,Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -187,7 +187,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.LogGamma(testX[i]);
-                Assert.IsLessThan(0.01, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
+                Assert.IsLessThan(0.01d,Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
         }
 
@@ -227,7 +227,7 @@ namespace Mathematics.SpecialFunctions
             for (int i = 0; i < testValid.Length; i++)
             {
                 testResults[i] = Gamma.Incomplete(testX[i], testA[i]);
-                Assert.IsLessThan(0.01,Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
+                Assert.IsLessThan(0.01d, Math.Abs(testValid[i] - testResults[i]) / testValid[i]);
             }
 
         }

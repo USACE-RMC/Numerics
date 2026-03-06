@@ -389,7 +389,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Kappa), "The shape parameter κ (kappa) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Kappa), "The shape parameter κ (kappa) must be positive.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

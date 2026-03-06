@@ -361,7 +361,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom ν (nu) must greater than or equal to one.");
                 return new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom ν (nu) must greater than or equal to one.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

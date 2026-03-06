@@ -230,7 +230,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Gamma), "The scale parameter γ (gamma) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Gamma), "The scale parameter γ (gamma) must be positive.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

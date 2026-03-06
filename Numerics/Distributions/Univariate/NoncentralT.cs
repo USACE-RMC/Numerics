@@ -289,7 +289,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Noncentrality), "The noncentrality parameter μ (mu) must be a number.");
                 return new ArgumentOutOfRangeException(nameof(Noncentrality), "The noncentrality parameter μ (mu) must be a number.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

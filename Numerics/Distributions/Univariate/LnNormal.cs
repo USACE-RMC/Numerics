@@ -311,7 +311,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Sigma), "Sigma must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Sigma), "Sigma must be positive.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>

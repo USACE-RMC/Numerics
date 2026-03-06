@@ -110,8 +110,8 @@ namespace Distributions.Univariate
             var lmom = GPA.LinearMomentsFromParameters(GPA.GetParameters);
             Assert.AreEqual(1648.806d, lmom[0],  0.001d);
             Assert.AreEqual(138.2366d, lmom[1],  0.001d);
-            Assert.AreEqual(0.1033903d, lmom[2],  0.001d);
-            Assert.AreEqual(0.03073215d, lmom[3],  0.001d);
+            Assert.AreEqual(0.1033903d, lmom[2], 0.001d);
+            Assert.AreEqual(0.03073215d, lmom[3], 0.001d);
         }
 
         /// <summary>
@@ -312,7 +312,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(105.26315, GPA2.Mean,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(double.NaN,GPA3.Mean );
+            Assert.AreEqual(double.NaN,GPA3.Mean);
         }
 
         /// <summary>
@@ -335,7 +335,7 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(100,GPA.Mode );
+            Assert.AreEqual(100, GPA.Mode);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
             Assert.AreEqual(95, GPA2.Mode);
@@ -396,7 +396,7 @@ namespace Distributions.Univariate
         public void Test_Minimum()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(100,GPA.Minimum);
+            Assert.AreEqual(100, GPA.Minimum);
         }
 
         /// <summary>
@@ -435,7 +435,7 @@ namespace Distributions.Univariate
         {
             var GPA = new GeneralizedPareto();
             Assert.AreEqual(0, GPA.CDF(100));
-            Assert.AreEqual(0, GPA.CDF(0),  1e-04);
+            Assert.AreEqual(0, GPA.CDF(0), 1e-04);
             Assert.AreEqual(0.999954, GPA.CDF(200),  1e-06);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
@@ -451,8 +451,8 @@ namespace Distributions.Univariate
         public void Test_InverseCDF()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(100,GPA.InverseCDF(0));
-            Assert.AreEqual(double.PositiveInfinity, GPA.InverseCDF(1));
+            Assert.AreEqual(100, GPA.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity,GPA.InverseCDF(1));
             Assert.AreEqual(106.93147, GPA.InverseCDF(0.5),  1e-04);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);

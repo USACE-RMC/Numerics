@@ -209,7 +209,7 @@ namespace Mathematics.SpecialFunctions
 
             var ccLen = cc.Length;
             // Length of cc should be the possible number of combinations * the number of elements in each combination (5)
-            Assert.AreEqual(possible * 5, ccLen);
+            Assert.HasCount((int)possible * 5, cc);
 
             // How many of subsets of combinations there should be
             // For example, there are 5 ways to have only one #1 in the array, with the other 4 elements being #0

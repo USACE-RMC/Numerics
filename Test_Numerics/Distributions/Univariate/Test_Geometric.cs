@@ -91,7 +91,7 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var G = new Geometric();
-            Assert.AreEqual(0.5,G.ProbabilityOfSuccess);
+            Assert.AreEqual(0.5, G.ProbabilityOfSuccess);
 
             var G2 = new Geometric(0);
             Assert.AreEqual(0, G2.ProbabilityOfSuccess);
@@ -140,7 +140,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(1, G.Mean);
 
             var G2 = new Geometric(0.3);
-            Assert.AreEqual(2.3333, G2.Mean,  1e-04);
+            Assert.AreEqual(2.3333, G2.Mean, 1e-04);
         }
 
         /// <summary>
@@ -239,7 +239,7 @@ namespace Distributions.Univariate
 
             var G2 = new Geometric(0.3);
             Assert.AreEqual(0.3, G2.PDF(0));
-            Assert.AreEqual(0.122989, G2.PDF(2.5),  1e-05);
+            Assert.AreEqual(0.122989, G2.PDF(2.5), 1e-05);
         }
 
         /// <summary>

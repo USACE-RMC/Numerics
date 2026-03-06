@@ -219,7 +219,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "Probability must be between 0 and 1.");
                 return new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "Probability must be between 0 and 1.");
             }
-            return null;
+            return null!;
         }
 
         /// <inheritdoc/>
