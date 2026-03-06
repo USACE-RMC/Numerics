@@ -428,15 +428,18 @@ namespace Numerics.Distributions
         public double[] ComputeMinMaxQuantiles(double minProbability, double maxProbability, IUnivariateDistribution[] distributions)
         {
             var output = new double[] { double.MaxValue, double.MinValue };
+            object lockObject = new object();
             Parallel.For(0, distributions.Count(), j =>
             {
                 if (distributions[j] != null)
                 {
                     var minX = distributions[j].InverseCDF(minProbability);
-                    if (minX < output[0]) output[0] = minX;
-
                     var maxX = distributions[j].InverseCDF(maxProbability);
-                    if (maxX > output[1]) output[1] = maxX;
+                    lock (lockObject)
+                    {
+                        if (minX < output[0]) output[0] = minX;
+                        if (maxX > output[1]) output[1] = maxX;
+                    }
                 }
             });
             return output;
@@ -458,8 +461,19 @@ namespace Numerics.Distributions
                 var XValues = new double[bootDistributions.Count()];
                 Parallel.For(0, bootDistributions.Count(), idx => { XValues[idx] = bootDistributions[idx] != null ? bootDistributions[idx].InverseCDF(probabilities[i]) : double.NaN; });
 
-                // sort X values
-                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
+                // Filter valid values and sort
+                int validCount = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k])) validCount++;
+                }
+                var validValues = new double[validCount];
+                int writeIdx = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k]))
+                        validValues[writeIdx++] = XValues[k];
+                }
                 Array.Sort(validValues);
 
                 // Record percentiles for CIs
@@ -499,8 +513,19 @@ namespace Numerics.Distributions
                 // get proportion
                 P0 = P0 / (bootDistributions.Count() + 1);
 
-                // sort X values
-                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
+                // Filter valid values and sort
+                int validCount = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k])) validCount++;
+                }
+                var validValues = new double[validCount];
+                int writeIdx = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k]))
+                        validValues[writeIdx++] = XValues[k];
+                }
                 Array.Sort(validValues);
 
                 // Record percentiles for CIs
@@ -538,8 +563,21 @@ namespace Numerics.Distributions
                 var XValues = new double[bootDistributions.Count()];
                 Parallel.For(0, bootDistributions.Count(), idx => { XValues[idx] = bootDistributions[idx] != null ? Math.Pow(bootDistributions[idx].InverseCDF(probabilities[i]), 1d / 3d) : double.NaN; });
 
+                // Filter valid values
+                int validCount = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k])) validCount++;
+                }
+                var validValues = new double[validCount];
+                int writeIdx = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k]))
+                        validValues[writeIdx++] = XValues[k];
+                }
+
                 // Get Standard error
-                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
                 double SE = Statistics.StandardDeviation(validValues);
 
                 // Record percentiles for CIs
@@ -593,8 +631,19 @@ namespace Numerics.Distributions
                 // get proportion
                 P0 = (P0 + 1) / (Replications + 1);
 
-                // sort X values
-                var validValues = XValues.Where(x => !double.IsNaN(x)).ToArray();
+                // Filter valid values and sort
+                int validCount = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k])) validCount++;
+                }
+                var validValues = new double[validCount];
+                int writeIdx = 0;
+                for (int k = 0; k < XValues.Length; k++)
+                {
+                    if (!double.IsNaN(XValues[k]))
+                        validValues[writeIdx++] = XValues[k];
+                }
                 Array.Sort(validValues);
 
                 // Record percentiles for CIs
@@ -727,8 +776,25 @@ namespace Numerics.Distributions
 
             for (int i = 0; i < probabilities.Count; i++)
             {
-                var XValues = xValues.GetColumn(i).Where(x => !double.IsNaN(x)).ToArray();
-                var TValues = studentT.GetColumn(i).Where(x => !double.IsNaN(x)).ToArray();
+                var rawX = xValues.GetColumn(i);
+                var rawT = studentT.GetColumn(i);
+                int validCount = 0;
+                for (int k = 0; k < rawX.Length; k++)
+                {
+                    if (!double.IsNaN(rawX[k])) validCount++;
+                }
+                var XValues = new double[validCount];
+                var TValues = new double[validCount];
+                int writeIdx = 0;
+                for (int k = 0; k < rawX.Length; k++)
+                {
+                    if (!double.IsNaN(rawX[k]))
+                    {
+                        XValues[writeIdx] = rawX[k];
+                        TValues[writeIdx] = rawT[k];
+                        writeIdx++;
+                    }
+                }
 
                 // Get Standard error
                 double SE = Statistics.StandardDeviation(XValues);

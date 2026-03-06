@@ -499,8 +499,8 @@ namespace Numerics.Distributions
             // Build monotonic interpolation points
             var yVals = new List<double> { quantiles[0] };
             var xVals = new List<double> { expected[0] };
-            double minY = quantiles[0];
-            double maxY = quantiles[0];
+            double minY = double.MaxValue;
+            double maxY = double.MinValue;
 
             for (int i = 1; i < bins; i++)
             {

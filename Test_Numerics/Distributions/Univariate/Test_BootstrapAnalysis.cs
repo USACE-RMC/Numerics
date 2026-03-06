@@ -35,6 +35,7 @@ using Numerics.Distributions;
 using Numerics.Sampling;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using static System.Reflection.Metadata.BlobBuilder;
 
 namespace Distributions.Univariate
@@ -160,6 +161,56 @@ namespace Distributions.Univariate
                 Assert.AreEqual(trueCIs[i, 1], CIs[i, 1], 0.01 * trueCIs[i, 1]);
             }
 
+        }
+
+        /// <summary>
+        /// This test verifies that UncertaintyAnalysisResults produces equivalent results to BootstrapAnalysis.Estimate.
+        /// </summary>
+        [TestMethod]
+        public void Test_BootstrapAnalysis_UncertaintyAnalysisResults_Equivalence()
+        {
+            var probabilities = new double[] { 0.999, 0.998, 0.995, 0.99, 0.98, 0.95, 0.9, 0.8, 0.7, 0.5, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01 };
+            double alpha = 0.1;
+            var dist = new Normal(3.122599, 0.5573654);
+            var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100);
+
+            // Generate bootstrap distributions once and share between both methods
+            var bootDistributions = boot.Distributions();
+
+            // Reference result from BootstrapAnalysis.Estimate
+            var reference = boot.Estimate(probabilities, alpha, bootDistributions, recordParameterSets: false);
+
+            // Result from UncertaintyAnalysisResults constructor
+            var sampledDists = bootDistributions.Cast<UnivariateDistributionBase>().ToArray();
+            var result = new UncertaintyAnalysisResults(dist, sampledDists, probabilities, alpha);
+
+            // Compare ModeCurve
+            Assert.HasCount(reference.ModeCurve.Length, result.ModeCurve);
+            for (int i = 0; i < reference.ModeCurve.Length; i++)
+            {
+                Assert.AreEqual(reference.ModeCurve[i], result.ModeCurve[i], 1E-8,
+                    $"ModeCurve mismatch at index {i}");
+            }
+
+            // Compare ConfidenceIntervals
+            Assert.AreEqual(reference.ConfidenceIntervals.GetLength(0), result.ConfidenceIntervals.GetLength(0));
+            Assert.AreEqual(reference.ConfidenceIntervals.GetLength(1), result.ConfidenceIntervals.GetLength(1));
+            for (int i = 0; i < reference.ConfidenceIntervals.GetLength(0); i++)
+            {
+                for (int j = 0; j < reference.ConfidenceIntervals.GetLength(1); j++)
+                {
+                    Assert.AreEqual(reference.ConfidenceIntervals[i, j], result.ConfidenceIntervals[i, j], 1E-8,
+                        $"ConfidenceIntervals mismatch at [{i},{j}]");
+                }
+            }
+
+            // Compare MeanCurve
+            Assert.HasCount(reference.MeanCurve.Length, result.MeanCurve);
+            for (int i = 0; i < reference.MeanCurve.Length; i++)
+            {
+                Assert.AreEqual(reference.MeanCurve[i], result.MeanCurve[i], 1E-8,
+                    $"MeanCurve mismatch at index {i}");
+            }
         }
 
     }
