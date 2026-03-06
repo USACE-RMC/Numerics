@@ -127,13 +127,13 @@ namespace Numerics.Distributions
             ComputeNormalization();
         }
 
-        private double[] _alpha;
+        private double[] _alpha = null!;
         private int _dimension;
         private double _logNormalization; // log(B(alpha)) = sum(logGamma(alpha_i)) - logGamma(sum(alpha_i))
         private double _alphaSum;
-        private double[] _mean;
-        private double[] _variance;
-        private double[] _mode;
+        private double[]? _mean;
+        private double[]? _variance;
+        private double[]? _mode;
 
         /// <summary>
         /// Computes and caches the normalization constant and alpha sum.

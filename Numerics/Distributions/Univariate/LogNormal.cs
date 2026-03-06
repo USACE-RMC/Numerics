@@ -351,7 +351,7 @@ namespace Numerics.Distributions
         /// <param name="mu">The mean (of log).</param>
         /// <param name="sigma">The standard deviation (of log).</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double mu, double sigma, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double mu, double sigma, bool throwException)
         {
             if (double.IsNaN(mu) || double.IsInfinity(mu))
             {
@@ -369,7 +369,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }

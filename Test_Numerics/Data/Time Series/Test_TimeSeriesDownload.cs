@@ -156,13 +156,13 @@ namespace Data.TimeSeriesAnalysis
         private static void AssertDailySeriesMonotonic(TimeSeries ts)
         {
             Assert.IsNotNull(ts, "Time series is null.");
-            Assert.IsGreaterThan( 0, ts.Count);
+            Assert.IsGreaterThan(0, ts.Count);
 
             DateTime? prev = null;
             foreach (var pt in ts)
             {
                 if (prev.HasValue)
-                    Assert.IsTrue(pt.Index >= prev.Value, "Dates not sorted chronologically.");
+                    Assert.IsGreaterThanOrEqualTo(prev.Value, pt.Index, "Dates not sorted chronologically.");
                 prev = pt.Index;
             }
 
@@ -438,12 +438,12 @@ namespace Data.TimeSeriesAnalysis
             Assert.IsNotNull(ts, "Time series is null.");
             Assert.IsNotNull(raw, "Raw text is null.");
             Assert.IsGreaterThan(0, ts.Count);
-            Assert.IsTrue(!string.IsNullOrEmpty(raw), "Raw text should contain JSON response.");
+            Assert.IsFalse(string.IsNullOrEmpty(raw), "Raw text should contain JSON response.");
 
             // Verify all values are positive (discharge must be > 0)
             foreach (var pt in ts)
             {
-                Assert.IsTrue(pt.Value > 0, $"Discharge value {pt.Value} at {pt.Index} should be positive.");
+                Assert.IsGreaterThan(0, pt.Value, $"Discharge value {pt.Value} at {pt.Index} should be positive.");
             }
         }
 
@@ -461,12 +461,12 @@ namespace Data.TimeSeriesAnalysis
             Assert.IsNotNull(ts, "Time series is null.");
             Assert.IsNotNull(raw, "Raw text is null.");
             Assert.IsGreaterThan(0, ts.Count);
-            Assert.IsTrue(!string.IsNullOrEmpty(raw), "Raw text should contain JSON response.");
+            Assert.IsFalse(string.IsNullOrEmpty(raw), "Raw text should contain JSON response.");
 
             // Verify all values are positive (gage height must be > 0)
             foreach (var pt in ts)
             {
-                Assert.IsTrue(pt.Value > 0, $"Gage height value {pt.Value} at {pt.Index} should be positive.");
+                Assert.IsGreaterThan(0, pt.Value, $"Gage height value {pt.Value} at {pt.Index} should be positive.");
             }
         }
 
@@ -740,9 +740,9 @@ namespace Data.TimeSeriesAnalysis
             var firstDate = ts.First().Index;
             var lastDate = ts.Last().Index;
 
-            Assert.IsTrue(firstDate >= WinStart.AddDays(-1),
+            Assert.IsGreaterThanOrEqualTo(WinStart.AddDays(-1), firstDate,
                 $"First date {firstDate} is before window start {WinStart}");
-            Assert.IsTrue(lastDate <= WinEnd.AddDays(1),
+            Assert.IsLessThanOrEqualTo(WinEnd.AddDays(1), lastDate,
                 $"Last date {lastDate} is after window end {WinEnd}");
         }
 

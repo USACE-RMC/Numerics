@@ -174,14 +174,14 @@ namespace Distributions.Univariate
             for (double x = -Math.PI; x <= Math.PI; x += 0.1)
             {
                 double cdf = VM.CDF(x);
-                Assert.IsTrue(cdf >= prev - 1e-10);
+                Assert.IsGreaterThanOrEqualTo(prev - 1e-10, cdf);
                 prev = cdf;
             }
 
             // CDF at pi/2 should be > 0.5 (right of mean)
             double cdfPiHalf = VM.CDF(Math.PI / 2);
-            Assert.IsTrue(cdfPiHalf > 0.5);
-            Assert.IsTrue(cdfPiHalf < 1.0);
+            Assert.IsGreaterThan(0.5, cdfPiHalf);
+            Assert.IsLessThan(1.0, cdfPiHalf);
         }
 
         /// <summary>
@@ -284,7 +284,8 @@ namespace Distributions.Univariate
             // All values should be in [-π, π]
             foreach (var s in samples)
             {
-                Assert.IsTrue(s >= -Math.PI && s <= Math.PI);
+                Assert.IsGreaterThanOrEqualTo(-Math.PI, s);
+                Assert.IsLessThanOrEqualTo(Math.PI, s);
             }
 
             // Mean direction should be close to mu

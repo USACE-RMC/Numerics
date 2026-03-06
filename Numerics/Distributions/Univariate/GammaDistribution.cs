@@ -375,7 +375,7 @@ namespace Numerics.Distributions
         /// <param name="scale">The scale parameter θ (theta).</param>
         /// <param name="shape">The shape parameter k.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double scale, double shape, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double scale, double shape, bool throwException)
         {
             if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0.0d)
             {
@@ -393,7 +393,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }

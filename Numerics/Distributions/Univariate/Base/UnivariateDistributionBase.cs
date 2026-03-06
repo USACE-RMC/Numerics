@@ -164,7 +164,7 @@ namespace Numerics.Distributions
         public abstract void SetParameters(IList<double> parameters);
 
         /// <inheritdoc/>
-        public abstract ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException);
+        public abstract ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException);
 
         /// <summary>
         /// The log likelihood function.

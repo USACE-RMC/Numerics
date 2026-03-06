@@ -59,6 +59,7 @@ namespace Numerics.Sampling.MCMC
             //https://www.rdocumentation.org/packages/LaplacesDemon/versions/16.1.4/topics/ESS
             int N = series.Count;
             var acf = Fourier.Autocorrelation(series, (int)Math.Ceiling((double)N / 2));
+            if (acf == null) return N;
             double rho = 0;
             for (int i = 1; i < acf.GetLength(0); i++)
             {
@@ -105,6 +106,7 @@ namespace Numerics.Sampling.MCMC
 
                     // Get ACF for this chain
                     var acf = Fourier.Autocorrelation(values, (int)Math.Ceiling((double)N / 2));
+                    if (acf == null) continue;
                     // Update the average ACF across all chains
                     for (int j = 0; j < acf.GetLength(0); j++)
                     {

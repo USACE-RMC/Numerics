@@ -122,7 +122,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="marginalDistributionX">The X marginal distribution.</param>
         /// <param name="marginalDistributionY">The Y marginal distribution.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when ν ≤ 2.</exception>
-        public StudentTCopula(double rho, int degreesOfFreedom, IUnivariateDistribution marginalDistributionX, IUnivariateDistribution marginalDistributionY)
+        public StudentTCopula(double rho, int degreesOfFreedom, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             if (degreesOfFreedom <= 2)
                 throw new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "The degrees of freedom must be greater than 2.");
@@ -200,7 +200,7 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
             if (parameter < ThetaMinimum)
             {

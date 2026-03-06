@@ -78,7 +78,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="gradient">Optional. Function to evaluate the gradient. Default uses finite difference.</param>
         public BFGS(Func<double[], double> objectiveFunction, int numberOfParameters, 
                     IList<double> initialValues, IList<double> lowerBounds, IList<double> upperBounds, 
-                    Func<double[], double[]> gradient = null!) : base(objectiveFunction, numberOfParameters)
+                    Func<double[], double[]>? gradient = null) : base(objectiveFunction, numberOfParameters)
         {
             // Check if the length of the initial, lower and upper bounds equal the number of parameters
             if (initialValues.Count != numberOfParameters || lowerBounds.Count != numberOfParameters || upperBounds.Count != numberOfParameters)
@@ -121,7 +121,7 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The function for evaluating the gradient of the objective function.
         /// </summary>
-        public Func<double[], double[]> Gradient;
+        public Func<double[], double[]>? Gradient;
 
         /// <inheritdoc/>
         protected override void Optimize()

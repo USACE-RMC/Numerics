@@ -109,7 +109,7 @@ namespace Numerics.Mathematics.Optimization
             return Dijkstra.Solve(edges, _destinationIndices, _nodeCount, _incomingEdges);
         }
 
-        public List<int> GetPath(int[] edgesToRemove, int startNodeIndex)
+        public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex)
         {
             int[] nodeState = new int[_nodeCount];
             float[] nodeWeightToDestination = new float[_nodeCount];
@@ -348,7 +348,7 @@ namespace Numerics.Mathematics.Optimization
             else return null!;
         }
 
-        public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
+        public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
         {
             int[] nodeState = new int[_nodeCount];
             float[] nodeWeightToDestination = new float[_nodeCount];

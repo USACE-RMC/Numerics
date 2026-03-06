@@ -228,7 +228,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public double[,] Predict(double[] X, double alpha = 0.1)
+        public double[,]? Predict(double[] X, double alpha = 0.1)
         {
             return Predict(new Matrix(X), alpha);
         }
@@ -238,7 +238,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public double[,] Predict(double[,] X, double alpha = 0.1)
+        public double[,]? Predict(double[,] X, double alpha = 0.1)
         {
             return Predict(new Matrix(X), alpha);
         }
@@ -248,7 +248,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public double[,] Predict(Matrix X, double alpha = 0.1)
+        public double[,]? Predict(Matrix X, double alpha = 0.1)
         {
             if (!IsTrained) return null!;
 
@@ -258,7 +258,7 @@ namespace Numerics.MachineLearning
             var bootResults = new double[X.NumberOfRows, NumberOfTrees];
 
             // Bootstrap the predictions
-            Parallel.For(0, NumberOfTrees, idx => { bootResults.SetColumn(idx, DecisionTrees[idx].Predict(X)); });
+            Parallel.For(0, NumberOfTrees, idx => { bootResults.SetColumn(idx, DecisionTrees[idx].Predict(X)!); });
 
             // Process results
             Parallel.For(0, X.NumberOfRows, idx =>

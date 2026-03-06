@@ -426,7 +426,7 @@ namespace Numerics.Data
                         using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
                         using (StreamReader reader = new StreamReader(decompressionStream))
                         {
-                            string line;
+                            string? line;
                             bool isHeader = true;
 
                             while ((line = await reader.ReadLineAsync()) != null)
@@ -567,20 +567,20 @@ namespace Numerics.Data
         /// <param name="initialUrl">The initial API URL.</param>
         /// <param name="timeSeries">TimeSeries to populate with parsed data.</param>
         /// <param name="rawText">Optional StringBuilder to accumulate raw JSON responses.</param>
-        private static async Task ParseUSGSOgcApiPages(HttpClient client, string initialUrl, TimeSeries timeSeries, System.Text.StringBuilder rawText = null)
+        private static async Task ParseUSGSOgcApiPages(HttpClient client, string initialUrl, TimeSeries timeSeries, System.Text.StringBuilder? rawText = null)
         {
-            string nextUrl = initialUrl;
+            string? nextUrl = initialUrl;
 
             while (nextUrl != null)
             {
                 // Retry with exponential backoff for rate limiting (429)
-                HttpResponseMessage response = null;
-                for (int attempt = 0; attempt < 6; attempt++)
+                HttpResponseMessage response = await client.GetAsync(nextUrl);
+                for (int attempt = 1; attempt < 6; attempt++)
                 {
-                    response = await client.GetAsync(nextUrl);
                     if ((int)response.StatusCode != 429) break;
                     int delayMs = Math.Min((int)Math.Pow(2, attempt) * 2000, 60000);
                     await System.Threading.Tasks.Task.Delay(delayMs);
+                    response = await client.GetAsync(nextUrl);
                 }
                 response.EnsureSuccessStatusCode();
                 var json = await response.Content.ReadAsStringAsync();
@@ -599,12 +599,12 @@ namespace Numerics.Data
                     foreach (var feature in features.EnumerateArray())
                     {
                         var props = feature.GetProperty("properties");
-                        string timeStr = props.GetProperty("time").GetString();
+                        string? timeStr = props.GetProperty("time").GetString();
                         if (!DateTime.TryParse(timeStr, CultureInfo.InvariantCulture,
                             DateTimeStyles.AdjustToUniversal, out DateTime dt))
                             continue;
 
-                        string valueStr = props.GetProperty("value").GetString();
+                        string? valueStr = props.GetProperty("value").GetString();
                         if (string.IsNullOrWhiteSpace(valueStr) ||
                             !double.TryParse(valueStr, NumberStyles.Float,
                             CultureInfo.InvariantCulture, out double val))
@@ -620,7 +620,7 @@ namespace Numerics.Data
                 {
                     foreach (var link in links.EnumerateArray())
                     {
-                        if (link.GetProperty("rel").GetString() == "next")
+                        if (link.GetProperty("rel").GetString() is "next")
                         {
                             nextUrl = link.GetProperty("href").GetString();
                             // Small delay between pages to avoid rate limiting
@@ -1016,7 +1016,7 @@ namespace Numerics.Data
                 $"&station_no={Uri.EscapeDataString(stationNumber)}" +
                 $"&parametertype_name={Uri.EscapeDataString(parameterType)}";
 
-            string tsId = null;
+            string? tsId = null;
 
             // Create HttpClientHandler with automatic decompression
             var handler = new HttpClientHandler
@@ -1086,7 +1086,7 @@ namespace Numerics.Data
 
                 for (int i = 0; i < headers.GetArrayLength(); i++)
                 {
-                    string header = headers[i].GetString();
+                    string? header = headers[i].GetString();
                     if (header == "ts_id") tsIdIndex = i;
                     if (header == "ts_name") tsNameIndex = i;
                 }
@@ -1110,7 +1110,7 @@ namespace Numerics.Data
                     for (int i = 1; i < root.GetArrayLength(); i++)
                     {
                         var row = root[i];
-                        string tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() : "";
+                        string tsName = tsNameIndex >= 0 ? row[tsNameIndex].GetString() ?? "" : "";
 
                         if (!tsName.Contains(tsNamePattern)) continue;
                         if (pass == 0 && !tsName.StartsWith("DMQaQc.Merged")) continue;
@@ -1198,7 +1198,7 @@ namespace Numerics.Data
                     if (point.GetArrayLength() < 2) continue;
 
                     // Parse timestamp
-                    string timestampStr = point[0].GetString();
+                    string? timestampStr = point[0].GetString();
                     if (!DateTime.TryParse(timestampStr, out DateTime date))
                         continue;
 

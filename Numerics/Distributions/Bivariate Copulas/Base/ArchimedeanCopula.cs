@@ -77,7 +77,7 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
             if (parameter < ThetaMinimum)
             {

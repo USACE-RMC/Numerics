@@ -335,7 +335,7 @@ namespace Numerics.Distributions
         /// <param name="location">The location parameter µ (Mu).</param>
         /// <param name="scale">The scale parameter σ (sigma).</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double location, double scale, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double location, double scale, bool throwException)
         {
             if (double.IsNaN(location) || double.IsInfinity(location))
             {
@@ -353,7 +353,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }

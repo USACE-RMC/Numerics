@@ -232,7 +232,7 @@ namespace Functions
             // Given X
             double X = 50.0;
             double Y = func.Function(X);
-            Assert.AreEqual(100.0,Y);
+            Assert.AreEqual(100.0, Y);
 
             // Given Y
             double Y2 = 100d;

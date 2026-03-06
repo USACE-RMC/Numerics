@@ -79,7 +79,7 @@ namespace Numerics.Distributions
             SetParameters(distributions);
         }
 
-        private UnivariateDistributionBase[] _distributions = Array.Empty<UnivariateDistributionBase>();
+        private UnivariateDistributionBase[] _distributions = null!;
         private EmpiricalDistribution _empiricalCDF = null!;
         private bool _momentsComputed = false;
         private double u1, u2, u3, u4;
@@ -414,7 +414,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (Distributions.Count == 0) return new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least 1 distribution");
             for (int i = 0; i < Distributions.Count; i++)
@@ -426,7 +426,7 @@ namespace Numerics.Distributions
                     return new ArgumentOutOfRangeException(nameof(Distributions), "One of the distributions have invalid parameters.");
                 }
             }
-            return null!;
+            return null;
         }
 
         /// <inheritdoc/>
@@ -1237,7 +1237,7 @@ namespace Numerics.Distributions
                 ProbabilityTransform = ProbabilityTransform
             };
             if (CorrelationMatrix != null)
-                cr.CorrelationMatrix = (double[,]) CorrelationMatrix.Clone();
+                cr.CorrelationMatrix = (double[,])CorrelationMatrix.Clone();
 
             return cr;
         }
@@ -1301,19 +1301,19 @@ namespace Numerics.Distributions
         public static CompetingRisks? FromXElement(XElement xElement)
         {
             UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
-            var xElAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
-            if (xElAttr != null)
+            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (typeAttr != null)
             {
-                Enum.TryParse(xElAttr.Value, out type);
+                Enum.TryParse(typeAttr.Value, out type);
 
             }
             if (type == UnivariateDistributionType.CompetingRisks)
             {
                 var distributions = new List<UnivariateDistributionBase>();
-                var xDistAttr = xElement.Attribute(nameof(Distributions));
-                if (xDistAttr != null)
+                var distsAttr = xElement.Attribute(nameof(Distributions));
+                if (distsAttr != null)
                 {
-                    var types = xDistAttr.Value.Split('|');
+                    var types = distsAttr.Value.Split('|');
                     for (int i = 0; i < types.Length; i++)
                     {
                         Enum.TryParse(types[i], out UnivariateDistributionType distType);
@@ -1322,48 +1322,36 @@ namespace Numerics.Distributions
                 }
                 var competingRisks = new CompetingRisks(distributions.ToArray());
 
-                if (xElement.Attribute(nameof(XTransform)) != null)
+                var xTransformAttr = xElement.Attribute(nameof(XTransform));
+                if (xTransformAttr != null)
                 {
-                    var xTransformAttr = xElement.Attribute(nameof(XTransform));
-                    if (xTransformAttr != null)
-                    {
-                        Enum.TryParse(xTransformAttr.Value, out Transform xTransform);
-                        competingRisks.XTransform = xTransform;
-                    }
+                    Enum.TryParse(xTransformAttr.Value, out Transform xTransform);
+                    competingRisks.XTransform = xTransform;
                 }
-                if (xElement.Attribute(nameof(ProbabilityTransform)) != null)
+                var probTransformAttr = xElement.Attribute(nameof(ProbabilityTransform));
+                if (probTransformAttr != null)
                 {
-                    var xProbabilityAttr = xElement.Attribute(nameof(ProbabilityTransform));
-                    if (xProbabilityAttr != null)
-                    {
-                        Enum.TryParse(xProbabilityAttr.Value, out Transform probabilityTransform);
-                        competingRisks.ProbabilityTransform = probabilityTransform;
-                    }
+                    Enum.TryParse(probTransformAttr.Value, out Transform probabilityTransform);
+                    competingRisks.ProbabilityTransform = probabilityTransform;
                 }
-                if (xElement.Attribute(nameof(MinimumOfRandomVariables)) != null)
+                var minOfRVAttr = xElement.Attribute(nameof(MinimumOfRandomVariables));
+                if (minOfRVAttr != null)
                 {
-                    var xMinOfAttr = xElement.Attribute(nameof(MinimumOfRandomVariables));
-                    if (xMinOfAttr != null)
-                    {
-                        bool.TryParse(xMinOfAttr.Value, out bool minOfValues);
-                        competingRisks.MinimumOfRandomVariables = minOfValues;
-                    }
+                    bool.TryParse(minOfRVAttr.Value, out bool minOfValues);
+                    competingRisks.MinimumOfRandomVariables = minOfValues;
                 }
-                if (xElement.Attribute(nameof(Dependency)) != null)
+                var depAttr = xElement.Attribute(nameof(Dependency));
+                if (depAttr != null)
                 {
-                    var xDependencyAttr = xElement.Attribute(nameof(Dependency));
-                    if (xDependencyAttr != null)
-                    {
-                        Enum.TryParse(xDependencyAttr.Value, out Probability.DependencyType dependency);
-                        competingRisks.Dependency = dependency;
-                    }
+                    Enum.TryParse(depAttr.Value, out Probability.DependencyType dependency);
+                    competingRisks.Dependency = dependency;
                 }
 
                 // Parameters
-                var xParametersAttr = xElement.Attribute("Parameters");
-                if (xParametersAttr != null)
-                {   
-                    var vals = xParametersAttr.Value.Split('|');
+                var paramsAttr = xElement.Attribute("Parameters");
+                if (paramsAttr != null)
+                {
+                    var vals = paramsAttr.Value.Split('|');
                     var parameters = new List<double>();
                     for (int i = 0; i < vals.Length; i++)
                     {

@@ -165,7 +165,7 @@ namespace Numerics.Functions
         }
 
         /// <inheritdoc/>
-        public ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (IsDeterministic == false && parameters[2] <= 0)
             {

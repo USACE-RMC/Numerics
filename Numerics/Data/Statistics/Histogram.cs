@@ -121,8 +121,7 @@ namespace Numerics.Data.Statistics
             /// </returns>
             public int CompareTo(Bin? other)
             {
-                if (other is null) { return 1; }
-
+                if (other is null) return 1;
                 if (UpperBound > other.LowerBound && LowerBound < other.LowerBound)
                 {
                     throw new ArgumentException(nameof(other), "The bins cannot be overlapping.");

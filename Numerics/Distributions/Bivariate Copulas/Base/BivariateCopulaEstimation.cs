@@ -76,24 +76,7 @@ namespace Numerics.Distributions.Copulas
                 case CopulaEstimationMethod.FullLikelihood:
                     MLE(copula, sampleDataX, sampleDataY);
                     break;
-                case CopulaEstimationMethod.Bayesian:
-                    BayesianMPL(copula, sampleDataX, sampleDataY);
-                    break;
             }
-        }
-
-        /// <summary>
-        /// Estimate the copula using Bayesian MCMC with optional custom priors.
-        /// Sets the MAP estimate on the copula and returns the MCMC sampler for posterior analysis.
-        /// </summary>
-        /// <param name="copula">The copula to estimate.</param>
-        /// <param name="sampleDataX">The sample data for the X variable.</param>
-        /// <param name="sampleDataY">The sample data for the Y variable.</param>
-        /// <param name="priorDistributions">Optional. The prior distributions for each copula parameter. If null, uniform priors on the parameter constraints are used.</param>
-        /// <returns>The MCMC sampler with posterior samples accessible via <see cref="MCMCSampler.Output"/>.</returns>
-        public static MCMCSampler EstimateBayesian(BivariateCopula copula, IList<double> sampleDataX, IList<double> sampleDataY, List<IUnivariateDistribution> priorDistributions = null)
-        {
-            return BayesianMPL(copula, sampleDataX, sampleDataY, priorDistributions);
         }
 
         /// <summary>
@@ -209,13 +192,13 @@ namespace Numerics.Distributions.Copulas
         private static void MLE(BivariateCopula copula, IList<double> sampleDataX, IList<double> sampleDataY)
         {
             // See if marginals are estimable
-            IMaximumLikelihoodEstimation margin1 = (IMaximumLikelihoodEstimation)copula.MarginalDistributionX;
-            IMaximumLikelihoodEstimation margin2 = (IMaximumLikelihoodEstimation)copula.MarginalDistributionY;
+            IMaximumLikelihoodEstimation? margin1 = copula.MarginalDistributionX as IMaximumLikelihoodEstimation;
+            IMaximumLikelihoodEstimation? margin2 = copula.MarginalDistributionY as IMaximumLikelihoodEstimation;
             if (margin1 == null || margin2 == null) throw new ArgumentOutOfRangeException("marginal distributions", "The marginal distributions must implement the IMaximumLikelihoodEstimation interface to use this method.");
 
             int nCopula = copula.NumberOfCopulaParameters;
-            int np1 = copula.MarginalDistributionX.NumberOfParameters;
-            int np2 = copula.MarginalDistributionY.NumberOfParameters;
+            int np1 = copula.MarginalDistributionX!.NumberOfParameters;
+            int np2 = copula.MarginalDistributionY!.NumberOfParameters;
             int totalParams = nCopula + np1 + np2;
 
             var initials = new double[totalParams];
@@ -243,11 +226,11 @@ namespace Numerics.Distributions.Copulas
             }
 
             // Estimate marginals
-            ((IEstimation)copula.MarginalDistributionX).Estimate(sampleDataX, ParameterEstimationMethod.MaximumLikelihood);
-            ((IEstimation)copula.MarginalDistributionY).Estimate(sampleDataY, ParameterEstimationMethod.MaximumLikelihood);
+            ((IEstimation)copula.MarginalDistributionX!).Estimate(sampleDataX, ParameterEstimationMethod.MaximumLikelihood);
+            ((IEstimation)copula.MarginalDistributionY!).Estimate(sampleDataY, ParameterEstimationMethod.MaximumLikelihood);
 
             var con = margin1.GetParameterConstraints(sampleDataX);
-            var parms = copula.MarginalDistributionX.GetParameters;
+            var parms = copula.MarginalDistributionX!.GetParameters;
             for (int i = 0; i < np1; i++)
             {
                 initials[nCopula + i] = parms[i];
@@ -255,7 +238,7 @@ namespace Numerics.Distributions.Copulas
                 uppers[nCopula + i] = con.Item3[i];
             }
             con = margin2.GetParameterConstraints(sampleDataY);
-            parms = copula.MarginalDistributionY.GetParameters;
+            parms = copula.MarginalDistributionY!.GetParameters;
             for (int i = 0; i < np2; i++)
             {
                 initials[nCopula + np1 + i] = parms[i];
@@ -273,13 +256,13 @@ namespace Numerics.Distributions.Copulas
                 C.SetCopulaParameters(copulaVals);
 
                 // Marginal 1
-                var m1 = ((UnivariateDistributionBase)copula.MarginalDistributionX).Clone();
+                var m1 = ((UnivariateDistributionBase)copula.MarginalDistributionX!).Clone();
                 var p1 = new double[np1];
                 Array.Copy(x, nCopula, p1, 0, np1);
                 m1.SetParameters(p1);
 
                 // Marginal 2
-                var m2 = ((UnivariateDistributionBase)copula.MarginalDistributionY).Clone();
+                var m2 = ((UnivariateDistributionBase)copula.MarginalDistributionY!).Clone();
                 var p2 = new double[np2];
                 Array.Copy(x, nCopula + np1, p2, 0, np2);
                 m2.SetParameters(p2);
@@ -300,87 +283,12 @@ namespace Numerics.Distributions.Copulas
             // Set marginal 1 parameters
             var par1 = new double[np1];
             Array.Copy(solver.BestParameterSet.Values, nCopula, par1, 0, np1);
-            copula.MarginalDistributionX.SetParameters(par1);
+            copula.MarginalDistributionX!.SetParameters(par1);
 
             // Set marginal 2 parameters
             var par2 = new double[np2];
             Array.Copy(solver.BestParameterSet.Values, nCopula + np1, par2, 0, np2);
-            copula.MarginalDistributionY.SetParameters(par2);
-        }
-
-        /// <summary>
-        /// Bayesian estimation using MCMC with pseudo log-likelihood.
-        /// Uses uniform priors on the parameter constraints by default.
-        /// </summary>
-        /// <param name="copula">The copula to estimate.</param>
-        /// <param name="sampleDataX">The sample data for the X variable.</param>
-        /// <param name="sampleDataY">The sample data for the Y variable.</param>
-        /// <param name="priors">Optional. The prior distributions for each copula parameter. If null, uniform priors are used.</param>
-        /// <returns>The MCMC sampler with posterior samples.</returns>
-        private static MCMCSampler BayesianMPL(BivariateCopula copula, IList<double> sampleDataX, IList<double> sampleDataY, List<IUnivariateDistribution> priors = null)
-        {
-            int nParams = copula.NumberOfCopulaParameters;
-            var constraints = copula.ParameterConstraints(sampleDataX, sampleDataY);
-
-            // Build default priors if not provided: Uniform over constraint bounds
-            if (priors == null)
-            {
-                priors = new List<IUnivariateDistribution>();
-                for (int i = 0; i < nParams; i++)
-                {
-                    priors.Add(new Uniform(constraints[i, 0], constraints[i, 1]));
-                }
-            }
-
-            // First, get a good initial estimate using MPL (fast deterministic optimization)
-            var mplCopula = copula.Clone();
-            MPL(mplCopula, sampleDataX, sampleDataY);
-            copula.SetCopulaParameters(mplCopula.GetCopulaParameters);
-
-            // Get plotting positions for pseudo-likelihood
-            var rank1 = Statistics.RanksInPlace(sampleDataX.ToArray());
-            var rank2 = Statistics.RanksInPlace(sampleDataY.ToArray());
-            for (int i = 0; i < rank1.Length; i++)
-            {
-                rank1[i] = rank1[i] / (rank1.Length + 1d);
-                rank2[i] = rank2[i] / (rank2.Length + 1d);
-            }
-
-            // Log-likelihood function (pseudo-likelihood + prior)
-            LogLikelihood logLH = (double[] parameters) =>
-            {
-                var C = copula.Clone();
-                C.SetCopulaParameters(parameters);
-                double ll = C.PseudoLogLikelihood(rank1, rank2);
-
-                // Add prior log-likelihood
-                for (int i = 0; i < nParams; i++)
-                    ll += priors[i].LogPDF(parameters[i]);
-
-                return ll;
-            };
-
-            // Use ARWMH sampler (self-tuning, robust for low-dimensional problems)
-            // Initialize near the MPL estimate rather than running expensive MAP optimization
-            var sampler = new ARWMH(priors, logLH);
-            sampler.Initialize = MCMCSampler.InitializationType.Randomize;
-            sampler.NumberOfChains = 1;
-            sampler.Sample();
-
-            // Set the best estimate on the copula
-            // Use the MPL estimate if MCMC didn't find something better
-            var mplParams = mplCopula.GetCopulaParameters;
-            double mplLogLH = logLH(mplParams);
-            if (sampler.MAP.Values != null && sampler.MAP.Fitness >= mplLogLH)
-            {
-                copula.SetCopulaParameters(sampler.MAP.Values);
-            }
-            else
-            {
-                copula.SetCopulaParameters(mplParams);
-            }
-
-            return sampler;
+            copula.MarginalDistributionY!.SetParameters(par2);
         }
 
     }

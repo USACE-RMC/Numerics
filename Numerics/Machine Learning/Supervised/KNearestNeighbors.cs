@@ -147,7 +147,7 @@ namespace Numerics.MachineLearning
         /// Returns the indexes of the k-Nearest Neighbors. 
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
-        public int[] GetNeighbors(double[] X)
+        public int[]? GetNeighbors(double[] X)
         {
             return kNN(this.X, this.Y, new Matrix(X));
         }
@@ -156,7 +156,7 @@ namespace Numerics.MachineLearning
         /// Returns the indexes of the k-Nearest Neighbors. 
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
-        public int[] GetNeighbors(double[,] X)
+        public int[]? GetNeighbors(double[,] X)
         {
             return kNN(this.X, this.Y, new Matrix(X));
         }
@@ -165,7 +165,7 @@ namespace Numerics.MachineLearning
         /// Returns the indexes of the k-Nearest Neighbors. 
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
-        public int[] GetNeighbors(Matrix X)
+        public int[]? GetNeighbors(Matrix X)
         {
             return kNN(this.X, this.Y, X);
         }
@@ -174,7 +174,7 @@ namespace Numerics.MachineLearning
         /// Returns the prediction from k-Nearest neighbors.
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
-        public double[] Predict(double[] X)
+        public double[]? Predict(double[] X)
         {
             return kNNPredict(this.X, this.Y, new Matrix(X));
         }
@@ -183,16 +183,16 @@ namespace Numerics.MachineLearning
         /// Returns the prediction from k-Nearest neighbors.
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
-        public double[] Predict(double[,] X)
+        public double[]? Predict(double[,] X)
         {
-            return kNNPredict(this.X, this.Y, new Matrix(X));         
+            return kNNPredict(this.X, this.Y, new Matrix(X));
         }
 
         /// <summary>
         /// Returns the prediction from k-Nearest neighbors.
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
-        public double[] Predict(Matrix X)
+        public double[]? Predict(Matrix X)
         {
             return kNNPredict(this.X, this.Y, X);
         }
@@ -202,7 +202,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
-        public double[] BootstrapPredict(double[] X, int seed = -1)
+        public double[]? BootstrapPredict(double[] X, int seed = -1)
         {
             return kNNBootstrapPredict(this.X, this.Y, new Matrix(X), seed);
         }
@@ -212,7 +212,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
-        public double[] BootstrapPredict(double[,] X, int seed = -1)
+        public double[]? BootstrapPredict(double[,] X, int seed = -1)
         {
             return kNNBootstrapPredict(this.X, this.Y, new Matrix(X), seed);
         }
@@ -222,7 +222,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
-        public double[] BootstrapPredict(Matrix X, int seed = -1)
+        public double[]? BootstrapPredict(Matrix X, int seed = -1)
         {
             return kNNBootstrapPredict(this.X, this.Y, X, seed);
         }
@@ -234,7 +234,7 @@ namespace Numerics.MachineLearning
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
         /// <param name="realizations">The number of bootstrap realizations. Default = 1,000.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public double[,] PredictionIntervals(double[] X, int seed = -1, int realizations = 1000, double alpha = 0.1)
+        public double[,]? PredictionIntervals(double[] X, int seed = -1, int realizations = 1000, double alpha = 0.1)
         {
             return kNNPredictionIntervals(this.X, this.Y, new Matrix(X), seed, realizations, alpha);
         }
@@ -246,7 +246,7 @@ namespace Numerics.MachineLearning
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
         /// <param name="realizations">The number of bootstrap realizations. Default = 1,000.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public double[,] PredictionIntervals(double[,] X, int seed = -1, int realizations = 1000, double alpha = 0.1)
+        public double[,]? PredictionIntervals(double[,] X, int seed = -1, int realizations = 1000, double alpha = 0.1)
         {
             return kNNPredictionIntervals(this.X, this.Y, new Matrix(X), seed, realizations, alpha);
         }
@@ -258,7 +258,7 @@ namespace Numerics.MachineLearning
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
         /// <param name="realizations">The number of bootstrap realizations. Default = 1,000.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        public double[,] PredictionIntervals(Matrix X, int seed = -1, int realizations = 1000, double alpha = 0.1)
+        public double[,]? PredictionIntervals(Matrix X, int seed = -1, int realizations = 1000, double alpha = 0.1)
         {
             return kNNPredictionIntervals(this.X, this.Y, X, seed, realizations, alpha);
         }
@@ -269,7 +269,7 @@ namespace Numerics.MachineLearning
         /// <param name="xTrain">The training matrix of predictors.</param>
         /// <param name="yTrain">The training response vector.</param>
         /// <param name="xTest">The test matrix of predictors</param>
-        private int[] kNN(Matrix xTrain, Vector yTrain, Matrix xTest)
+        private int[]? kNN(Matrix xTrain, Vector yTrain, Matrix xTest)
         {
             if (NumberOfFeatures != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
@@ -304,7 +304,7 @@ namespace Numerics.MachineLearning
         /// <param name="xTrain">The training matrix of predictors.</param>
         /// <param name="yTrain">The training response vector.</param>
         /// <param name="xTest">The test matrix of predictors</param>
-        private double[] kNNPredict(Matrix xTrain, Vector yTrain, Matrix xTest)
+        private double[]? kNNPredict(Matrix xTrain, Vector yTrain, Matrix xTest)
         {
             if (xTest.NumberOfColumns != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
@@ -362,7 +362,7 @@ namespace Numerics.MachineLearning
         /// <param name="yTrain">The training response vector.</param>
         /// <param name="xTest">The test matrix of predictors</param>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
-        private double[] kNNBootstrapPredict(Matrix xTrain, Vector yTrain, Matrix xTest, int seed = -1)
+        private double[]? kNNBootstrapPredict(Matrix xTrain, Vector yTrain, Matrix xTest, int seed = -1)
         {
             var rnd = seed > 0 ? new Random(seed) : new Random();
             var idxs = rnd.NextIntegers(0, xTrain.NumberOfRows, xTrain.NumberOfRows);
@@ -398,7 +398,7 @@ namespace Numerics.MachineLearning
             var seeds = rnd.NextIntegers(realizations);
 
             // Bootstrap the predictions
-            Parallel.For(0, realizations, idx => { bootResults.SetColumn(idx, kNNBootstrapPredict(xTrain, yTrain, xTest, seeds[idx]));});
+            Parallel.For(0, realizations, idx => { bootResults.SetColumn(idx, kNNBootstrapPredict(xTrain, yTrain, xTest, seeds[idx])!);});
 
             // Process results
             Parallel.For(0, xTest.NumberOfRows, idx => 

@@ -35,7 +35,6 @@ using System.Collections.Specialized;
 using System.Data;
 using System.Linq;
 using System.Xml.Linq;
-using System.Xml.Serialization;
 using Numerics.Distributions;
 
 namespace Numerics.Data
@@ -103,7 +102,7 @@ namespace Numerics.Data
         private bool _strictY;
         private SortOrder _orderX;
         private SortOrder _orderY;
-        private readonly List<Ordinate> _ordinates;
+        private List<Ordinate> _ordinates;
 
         /// <inheritdoc/>
         public event NotifyCollectionChangedEventHandler? CollectionChanged;
@@ -1475,14 +1474,15 @@ namespace Numerics.Data
         /// and number of points in the search region.</returns>
         public OrderedPairedData LangSimplify(double tolerance, int lookAhead)
         {
-            if (lookAhead <= 1 | tolerance <= 0) { return this; }
+            if (_ordinates == null || lookAhead <= 1 || tolerance <= 0)
+                return this;
 
             List<Ordinate> ordinates = new List<Ordinate>();
 
             int count = _ordinates.Count;
             int offset;
-            if (lookAhead > count - 1) { lookAhead = count - 1; }
-
+            if (lookAhead > count - 1)
+                lookAhead = count - 1;
             ordinates.Add(_ordinates[0]);
 
             for (int i = 0; i < count; i++)

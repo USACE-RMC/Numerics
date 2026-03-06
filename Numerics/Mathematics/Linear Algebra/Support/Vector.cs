@@ -108,9 +108,9 @@ namespace Numerics.Mathematics.LinearAlgebra
             set { _vector[index] = value; }
         }
 
-        /// <summary>
-        /// The vector header text. 
-        /// </summary>
+         /// <summary>
+         /// The vector header text. 
+         /// </summary>
         public string Header { get; set; } = null!;
 
 

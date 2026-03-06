@@ -79,7 +79,7 @@ namespace Numerics.Distributions
             SetParameters(weights, distributions);
         }
 
-        private double[] _weights = Array.Empty<double>();
+        private double[] _weights = null!;
         private UnivariateDistributionBase[] _distributions = null!;
         private EmpiricalDistribution _empiricalCDF = null!;
         private bool _momentsComputed = false;
@@ -580,7 +580,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             // Check if weights are between 0 and 1.
             if (IsZeroInflated && (ZeroWeight < 0.0 || ZeroWeight > 1.0))
@@ -618,7 +618,7 @@ namespace Numerics.Distributions
                     return new ArgumentOutOfRangeException(nameof(Distributions), "Distribution " + (i + 1).ToString() + " has invalid parameters.");
                 }
             }
-            return null!;
+            return null;
         }
 
         /// <inheritdoc/>
@@ -1083,33 +1083,33 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new mixture distribution.</returns>
-        public static Mixture FromXElement(XElement xElement)
+        public static Mixture? FromXElement(XElement xElement)
         {
             UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
-            var univBaseAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
-            if (univBaseAttr != null)
+            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (typeAttr != null)
             {
-                Enum.TryParse(univBaseAttr.Value, out type);
+                Enum.TryParse(typeAttr.Value, out type);
 
             }
             if (type == UnivariateDistributionType.Mixture)
             {
                 var weights = new List<double>();
                 var distributions = new List<UnivariateDistributionBase>();
-                var weightAttr = xElement.Attribute(nameof(Weights));
-                if (weightAttr != null)
+                var weightsAttr = xElement.Attribute(nameof(Weights));
+                if (weightsAttr != null)
                 {
-                    var w = weightAttr.Value.Split('|');
+                    var w = weightsAttr.Value.Split('|');
                     for (int i = 0; i < w.Length; i++)
                     {
                         double.TryParse(w[i], NumberStyles.Any, CultureInfo.InvariantCulture, out var weight);
                         weights.Add(weight);
                     }
                 }
-                var distAttr = xElement.Attribute(nameof(Distributions));
-                if (distAttr != null)
+                var distsAttr = xElement.Attribute(nameof(Distributions));
+                if (distsAttr != null)
                 {
-                    var types = distAttr.Value.Split('|');
+                    var types = distsAttr.Value.Split('|');
                     for (int i = 0; i < types.Length; i++)
                     {
                         Enum.TryParse(types[i], out UnivariateDistributionType distType);
@@ -1117,6 +1117,7 @@ namespace Numerics.Distributions
                     }
                 }
                 var mixture = new Mixture(weights.ToArray(), distributions.ToArray());
+
                 var zeroInflatedAttr = xElement.Attribute(nameof(IsZeroInflated));
                 if (zeroInflatedAttr != null)
                 {
@@ -1135,16 +1136,16 @@ namespace Numerics.Distributions
                     Enum.TryParse(xTransformAttr.Value, out Transform xTransform);
                     mixture.XTransform = xTransform;
                 }
-                var xProbabilityTransformAttr = xElement.Attribute(nameof(ProbabilityTransform));
-                if (xProbabilityTransformAttr != null)
+                var probTransformAttr = xElement.Attribute(nameof(ProbabilityTransform));
+                if (probTransformAttr != null)
                 {
-                    Enum.TryParse(xProbabilityTransformAttr.Value, out Transform probabilityTransform);
+                    Enum.TryParse(probTransformAttr.Value, out Transform probabilityTransform);
                     mixture.ProbabilityTransform = probabilityTransform;
                 }
-                var xParametersAttr = xElement.Attribute("Parameters");
-                if (xParametersAttr != null)
+                var paramsAttr = xElement.Attribute("Parameters");
+                if (paramsAttr != null)
                 {
-                    var vals = xParametersAttr.Value.Split('|');
+                    var vals = paramsAttr.Value.Split('|');
                     var parameters = new List<double>();
                     for (int i = 0; i < vals.Length; i++)
                     {
@@ -1158,7 +1159,7 @@ namespace Numerics.Distributions
             }
             else
             {
-                return null!;
+                return null;
             }
         }
 

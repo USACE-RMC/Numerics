@@ -144,12 +144,12 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var t = new StudentT();
-            Assert.AreEqual(t.ParametersToString[0, 0], "Location (µ)");
-            Assert.AreEqual(t.ParametersToString[1, 0], "Scale (σ)");
-            Assert.AreEqual(t.ParametersToString[2, 0], "Degrees of Freedom (ν)");
-            Assert.AreEqual(t.ParametersToString[0, 1], "0");
-            Assert.AreEqual(t.ParametersToString[1,1],"1");
-            Assert.AreEqual(t.ParametersToString[2, 1], "10");
+            Assert.AreEqual("Location (µ)", t.ParametersToString[0, 0]);
+            Assert.AreEqual("Scale (σ)", t.ParametersToString[1, 0]);
+            Assert.AreEqual("Degrees of Freedom (ν)", t.ParametersToString[2, 0]);
+            Assert.AreEqual("0", t.ParametersToString[0, 1]);
+            Assert.AreEqual("1", t.ParametersToString[1,1]);
+            Assert.AreEqual("10", t.ParametersToString[2, 1]);
         }
 
         /// <summary>

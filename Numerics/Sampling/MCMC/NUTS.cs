@@ -124,10 +124,19 @@ namespace Numerics.Sampling.MCMC
             _initialStepSize = stepSize;
             MaxTreeDepth = maxTreeDepth;
 
-            // Set the gradient function
+            // Cache prior distribution bounds for the gradient function
+            _lowerBounds = new double[NumberOfParameters];
+            _upperBounds = new double[NumberOfParameters];
+            for (int i = 0; i < NumberOfParameters; i++)
+            {
+                _lowerBounds[i] = priorDistributions[i].Minimum;
+                _upperBounds[i] = priorDistributions[i].Maximum;
+            }
+
+            // Set the gradient function with prior bounds so finite-difference probes stay in valid region
             if (gradientFunction == null)
             {
-                GradientFunction = (x) => new Vector(NumericalDerivative.Gradient((y) => LogLikelihoodFunction(y), x.ToArray()));
+                GradientFunction = (x) => new Vector(NumericalDerivative.Gradient((y) => SafeLogLikelihood(y), x.ToArray(), _lowerBounds, _upperBounds));
             }
             else
             {
@@ -137,13 +146,15 @@ namespace Numerics.Sampling.MCMC
 
         private Vector _inverseMass;
         private double _initialStepSize;
+        private double[] _lowerBounds;
+        private double[] _upperBounds;
 
         // Per-chain dual averaging state
-        private double[] _chainStepSizes;
-        private double[] _chainLogEpsBar;
-        private double[] _chainHBar;
-        private double[] _chainMu;
-        private int[] _chainAdaptStep;
+        private double[] _chainStepSizes = null!;
+        private double[] _chainLogEpsBar = null!;
+        private double[] _chainHBar = null!;
+        private double[] _chainMu = null!;
+        private int[] _chainAdaptStep = null!;
 
         // Dual averaging hyperparameters (Hoffman & Gelman 2014, Section 3.2)
         private const double DELTA_TARGET = 0.80;
@@ -199,6 +210,7 @@ namespace Numerics.Sampling.MCMC
                 _chainMu[i] = Math.Log(10.0 * _initialStepSize);
                 _chainAdaptStep[i] = 0;
             }
+
         }
 
         /// <inheritdoc/>
@@ -314,7 +326,7 @@ namespace Numerics.Sampling.MCMC
             {
                 // Base case: take one leapfrog step
                 var (thetaPrime, momentumPrime) = Leapfrog(theta, momentum, epsilon);
-                double logLH = LogLikelihoodFunction(thetaPrime.Array);
+                double logLH = SafeLogLikelihood(thetaPrime.Array);
                 double H = -logLH + 0.5 * HMC.QuadraticForm(momentumPrime, _inverseMass);
                 double logWeight = -H;
                 bool divergent = (H - H0) > MAX_DELTA_H;
@@ -452,6 +464,23 @@ namespace Numerics.Sampling.MCMC
             double max = Math.Max(a, b);
             if (double.IsNegativeInfinity(max)) return double.NegativeInfinity;
             return max + Math.Log(Math.Exp(a - max) + Math.Exp(b - max));
+        }
+
+        /// <summary>
+        /// Evaluates the log-likelihood, returning negative infinity if the parameters are out of range.
+        /// This prevents ArgumentOutOfRangeException from propagating during leapfrog integration
+        /// when the sampler explores parameter values that violate distribution constraints.
+        /// </summary>
+        private double SafeLogLikelihood(double[] parameters)
+        {
+            try
+            {
+                return LogLikelihoodFunction(parameters);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return double.NegativeInfinity;
+            }
         }
 
         /// <summary>

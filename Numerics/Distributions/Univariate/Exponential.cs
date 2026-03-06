@@ -279,7 +279,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="parameters">A list of parameters.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]))
             {

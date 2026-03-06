@@ -108,10 +108,10 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public virtual IUnivariateDistribution MarginalDistributionX { get; set; } = null!;
+        public virtual IUnivariateDistribution? MarginalDistributionX { get; set; }
 
         /// <inheritdoc/>
-        public virtual IUnivariateDistribution MarginalDistributionY { get; set; } = null!;
+        public virtual IUnivariateDistribution? MarginalDistributionY { get; set; }
 
         /// <inheritdoc/>
         public abstract string DisplayName { get; }
@@ -156,7 +156,7 @@ namespace Numerics.Distributions.Copulas
         public abstract double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY);
 
         /// <inheritdoc/>
-        public abstract ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException);
+        public abstract ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException);
 
         /// <summary>
         /// Create a deep copy of the copula.

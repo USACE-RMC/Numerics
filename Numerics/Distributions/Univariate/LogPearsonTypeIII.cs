@@ -497,7 +497,7 @@ namespace Numerics.Distributions
         /// <param name="sigma">The standard deviation of the log transformed data.</param>
         /// <param name="gamma">The skew of the log transformed data.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double mu, double sigma, double gamma, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double mu, double sigma, double gamma, bool throwException)
         {
             if (double.IsNaN(mu) || double.IsInfinity(mu))
             {
@@ -533,7 +533,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }

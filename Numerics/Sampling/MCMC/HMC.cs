@@ -104,10 +104,19 @@ namespace Numerics.Sampling.MCMC
             StepSize = stepSize;
             Steps = steps;
 
-            // Set the gradient function
+            // Cache prior distribution bounds for the gradient function
+            _lowerBounds = new double[NumberOfParameters];
+            _upperBounds = new double[NumberOfParameters];
+            for (int i = 0; i < NumberOfParameters; i++)
+            {
+                _lowerBounds[i] = priorDistributions[i].Minimum;
+                _upperBounds[i] = priorDistributions[i].Maximum;
+            }
+
+            // Set the gradient function with prior bounds so finite-difference probes stay in valid region
             if (gradientFunction == null)
             {
-                GradientFunction = (x) => new Vector(NumericalDerivative.Gradient((y) => LogLikelihoodFunction(y), x.ToArray()));
+                GradientFunction = (x) => new Vector(NumericalDerivative.Gradient((y) => SafeLogLikelihood(y), x.ToArray(), _lowerBounds, _upperBounds));
             }
             else
             {
@@ -121,6 +130,8 @@ namespace Numerics.Sampling.MCMC
         private Vector _inverseMass;
         private double _stepSize = 0.1;
         private int _steps = 50;
+        private double[] _lowerBounds;
+        private double[] _upperBounds;
 
         /// <summary>
         /// The mass vector for the momentum distribution.
@@ -225,7 +236,7 @@ namespace Numerics.Sampling.MCMC
             var logKp = -0.5 * QuadraticForm(phi, _inverseMass);
 
             // Evaluate fitness
-            var logLHp = LogLikelihoodFunction(xp.Array);
+            var logLHp = SafeLogLikelihood(xp.Array);
             var logLHi = state.Fitness;
 
             // Calculate the Metropolis ratio
@@ -245,6 +256,23 @@ namespace Numerics.Sampling.MCMC
                 return state;
             }
 
+        }
+
+        /// <summary>
+        /// Evaluates the log-likelihood, returning negative infinity if the parameters are out of range.
+        /// This prevents ArgumentOutOfRangeException from propagating during leapfrog integration
+        /// when the sampler explores parameter values that violate distribution constraints.
+        /// </summary>
+        private double SafeLogLikelihood(double[] parameters)
+        {
+            try
+            {
+                return LogLikelihoodFunction(parameters);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return double.NegativeInfinity;
+            }
         }
 
         /// <summary>

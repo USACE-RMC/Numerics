@@ -68,7 +68,9 @@ namespace Numerics.Data
         {
             X = xValue;
             Y = yValue;
-            IsValid = !(double.IsInfinity(X) || double.IsNaN(X) || Y is null || !Y.ParametersValid);
+            IsValid = true;
+            if (double.IsInfinity(X) || double.IsNaN(X) || Y is null || Y.ParametersValid == false)
+                IsValid = false;
         }
 
         /// <summary>
@@ -77,18 +79,18 @@ namespace Numerics.Data
         /// <param name="xElement">The XElement to deserialize.</param>
         public UncertainOrdinate(XElement xElement)
         {
-            var xAttr = xElement.Attribute(nameof(X));
             double x = 0;
             UnivariateDistributionBase? dist = null;
-            if (xAttr != null) { double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x); }
-
-            var distEl = xElement.Element("Distribution");
-            if (distEl != null) { dist = UnivariateDistributionFactory.CreateDistribution(distEl); }
+            var xAttr = xElement.Attribute(nameof(X));
+            if (xAttr != null) double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
+            var distElement = xElement.Element("Distribution");
+            if (distElement != null) { dist = UnivariateDistributionFactory.CreateDistribution(distElement); }
             //
             X = x;
             Y = dist;
-
-            IsValid = !(double.IsInfinity(X) || double.IsNaN(X) || Y is null || !Y.ParametersValid);
+            IsValid = true;
+            if (double.IsInfinity(X) || double.IsNaN(X) || Y is null || Y.ParametersValid == false)
+                IsValid = false;
         }
 
         /// <summary>
@@ -99,8 +101,8 @@ namespace Numerics.Data
         public UncertainOrdinate(XElement xElement, UnivariateDistributionType distributionType)
         {
             double x = 0;
-            var xElAttr = xElement.Attribute(nameof(X));
-            if (xElAttr != null) double.TryParse(xElAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
+            var xAttr2 = xElement.Attribute(nameof(X));
+            if (xAttr2 != null) double.TryParse(xAttr2.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out x);
             // backwards compatibility
             var dist = UnivariateDistributionFactory.CreateDistribution(distributionType);
             var props = dist.GetParameterPropertyNames;
@@ -108,8 +110,8 @@ namespace Numerics.Data
             for (int i = 0; i < props.Count(); i++)
             {
                 double p = 0;
-                var xElPropsAttr = xElement.Attribute(props[i]);
-                if (xElPropsAttr != null) { double.TryParse(xElPropsAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out p); }
+                var paramAttr = xElement.Attribute(props[i]);
+                if (paramAttr != null) double.TryParse(paramAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out p);
                 paramVals[i] = p;
             }
             dist.SetParameters(paramVals);
@@ -153,10 +155,7 @@ namespace Numerics.Data
         /// <returns>A 'sampled' ordinate value.</returns>
         public Ordinate GetOrdinate(double probability)
         {
-            if (Y is null)
-            {
-                throw new InvalidOperationException("Y distribution is not defined.");
-            }
+            if (Y is null) throw new InvalidOperationException("Cannot get ordinate when Y distribution is null.");
             return new Ordinate(X, Y.InverseCDF(probability));
         }
 
@@ -166,10 +165,7 @@ namespace Numerics.Data
         /// <returns>A mean ordinate value.</returns>
         public Ordinate GetOrdinate()
         {
-            if (Y is null)
-            {
-                throw new InvalidOperationException("Y distribution is not defined.");
-            }
+            if (Y is null) throw new InvalidOperationException("Cannot get ordinate when Y distribution is null.");
             return new Ordinate(X, Y.Mean);
         }
 
@@ -186,17 +182,18 @@ namespace Numerics.Data
         /// <returns> A boolean indicating if the ordinate is valid or not given the criteria.</returns>
         public bool OrdinateValid(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes = false)
         {
-            // 
+            //
             if (IsValid == false)
                 return false;
             if (ordinateToCompare.IsValid == false)
                 return false;
-            // Check for equivalent distribution types
-            if (allowDifferentTypes == false && (ordinateToCompare.Y is null || Y is null || ordinateToCompare.Y.Type != Y.Type))
-                return false;
-
+            // Both Y values must be non-null
             if (Y is null || ordinateToCompare.Y is null)
                 return false;
+            // Check for equivalent distribution types
+            if (allowDifferentTypes == false && ordinateToCompare.Y.Type != Y.Type)
+                return false;
+
             double minPercentile = Y.Type == UnivariateDistributionType.PertPercentile || Y.Type == UnivariateDistributionType.PertPercentileZ ? 0.05 : 1E-5;
 
             // Test reasonable lower bound
@@ -246,16 +243,10 @@ namespace Numerics.Data
                 }
             }
             // Check for equivalent distribution types
-            if(ordinateToCompare.Y is null || Y is null)
-            {
-                result.Add("Ordinate Y value must be defined.");
-                return result;
-            }
-
-            if (allowDifferentTypes == false && ordinateToCompare.Y.Type != Y.Type)
+            if (Y is not null && ordinateToCompare.Y is not null && allowDifferentTypes == false && ordinateToCompare.Y.Type != Y.Type)
                 result.Add("Can't compare two ordinates with different distribution types."); // Return False
-            // 
-            if (IsValid == true && ordinateToCompare.IsValid == true)
+            //
+            if (IsValid == true && ordinateToCompare.IsValid == true && Y is not null && ordinateToCompare.Y is not null)
             {
                 double minPercentile = Y.Type == UnivariateDistributionType.PertPercentile || Y.Type == UnivariateDistributionType.PertPercentileZ ? 0.05 : 1E-5;
 
@@ -304,7 +295,7 @@ namespace Numerics.Data
         /// <returns>True if two objects are numerically equal; otherwise, False.</returns>
         public static bool operator ==(UncertainOrdinate left, UncertainOrdinate right)
         {
-            
+            //if (left == null || right == null) return false;
             if (left.X != right.X)
                 return false;
             if (left.Y is null && right.Y is null)
@@ -351,7 +342,8 @@ namespace Numerics.Data
             {
                 int hash = 17;
                 hash = hash * 23 + X.GetHashCode();
-                hash = hash * 23 + (Y is not null ? Y.GetHashCode() : 0);
+                if (Y is not null)
+                    hash = hash * 23 + Y.GetHashCode();
                 return hash;
             }
         }
@@ -364,9 +356,7 @@ namespace Numerics.Data
             var result = new XElement(nameof(UncertainOrdinate));
             result.SetAttributeValue(nameof(X), X.ToString("G17", CultureInfo.InvariantCulture));
             if (Y is not null)
-            {
                 result.Add(Y.ToXElement());
-            }      
             return result;
         }
 

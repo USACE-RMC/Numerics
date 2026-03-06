@@ -71,7 +71,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="theta">The dependency parameter, θ.</param>
         ///<param name="marginalDistributionX">The X marginal distribution for the copula.</param>
         ///<param name="marginalDistributionY">The Y marginal distribution for the copula.</param>
-        public JoeCopula(double theta, IUnivariateDistribution marginalDistributionX, IUnivariateDistribution marginalDistributionY)
+        public JoeCopula(double theta, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             Theta = theta;
             MarginalDistributionX = marginalDistributionX;
