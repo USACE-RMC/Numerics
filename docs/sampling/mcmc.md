@@ -1,6 +1,6 @@
 # MCMC Sampling
 
-[← Previous: Goodness-of-Fit](../statistics/goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)
+[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)
 
 Markov Chain Monte Carlo (MCMC) methods sample from complex posterior distributions that are difficult to sample directly. The ***Numerics*** library provides multiple MCMC samplers for Bayesian inference, uncertainty quantification, and parameter estimation with full posterior distributions [[1]](#1).
 
@@ -675,4 +675,4 @@ foreach (var (name, sampler) in samplers)
 
 ---
 
-[← Previous: Goodness-of-Fit](../statistics/goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)
+[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)

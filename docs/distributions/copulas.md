@@ -1,6 +1,6 @@
 # Copulas
 
-[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md)
+[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md) | [Next: Multivariate Distributions →](multivariate.md)
 
 Copulas separate the dependence structure of multivariate distributions from their marginal distributions. The ***Numerics*** library provides copula functions for modeling dependence between random variables in risk assessment and multivariate analysis [[1]](#1).
 
@@ -21,38 +21,39 @@ This allows us to:
 
 The library provides common copula families:
 
-### Normal (Gaussian) Copula
+### Gaussian Copula
 
 Models linear correlation with normal dependence structure:
 
 ```cs
 using Numerics.Distributions.Copulas;
 
-// Normal copula with correlation coefficient
-double rho = 0.7;
-var normalCopula = new NormalCopula(rho);
+// Correlation matrix for 2D Gaussian copula
+double rho = 0.7;  // Correlation coefficient
+var corrMatrix = new double[,] { { 1.0, rho }, { rho, 1.0 } };
+
+var gaussianCopula = new GaussianCopula(corrMatrix);
 
 // Evaluate copula density
 double u1 = 0.3, u2 = 0.7;
-double density = normalCopula.PDF(u1, u2);
+double density = gaussianCopula.PDF(new double[] { u1, u2 });
 
-Console.WriteLine($"Normal copula density: {density:F4}");
+Console.WriteLine($"Gaussian copula density: {density:F4}");
 ```
 
 ### Student's t Copula
 
-Similar to Normal but with symmetric tail dependence:
+Similar to Gaussian but with tail dependence:
 
 ```cs
-// t-copula with correlation 0.7 and 5 degrees of freedom
-double rho = 0.7;
+// t-copula with 5 degrees of freedom
 int nu = 5;
-var tCopula = new StudentTCopula(rho, nu);
+var tCopula = new StudentTCopula(corrMatrix, nu);
 
-double density = tCopula.PDF(u1, u2);
+double density = tCopula.PDF(new double[] { u1, u2 });
 
 Console.WriteLine($"t-copula density: {density:F4}");
-Console.WriteLine($"Tail dependence: {tCopula.TailDependence:F4}");
+Console.WriteLine("t-copula has stronger tail dependence than Gaussian");
 ```
 
 ### Archimedean Copulas
@@ -85,11 +86,12 @@ var margin2 = new Gumbel(100, 20);      // Peak stage
 
 // Step 2: Define dependence via copula
 double rho = 0.8;  // Strong positive correlation
-var copula = new NormalCopula(rho);
+var corrMatrix = new double[,] { { 1.0, rho }, { rho, 1.0 } };
+var copula = new GaussianCopula(corrMatrix);
 
 // Step 3: Sample from joint distribution
 int n = 1000;
-var samples = copula.GenerateRandomValues(n);
+var samples = copula.Sample(n);
 
 // Transform uniforms to actual distributions
 double[] flow = new double[n];
@@ -126,28 +128,31 @@ double u1 = margin1.CDF(flowThreshold);
 double u2 = margin2.CDF(stageThreshold);
 
 // P(Flow > threshold AND Stage > threshold)
-double jointExceedance = copula.ORJointExceedanceProbability(u1, u2);
+double jointExceedance = copula.Survival(new double[] { u1, u2 });
 
 Console.WriteLine($"Joint exceedance probability: {jointExceedance:E4}");
 Console.WriteLine($"Return period: {1.0 / jointExceedance:F1} years");
 ```
 
-### Conditional Sampling
+### Conditional Distributions
 
-Generate stage values conditional on an observed flow using the copula inverse CDF:
+Given flow, what is the conditional distribution of stage?
 
 ```cs
 // Observed flow
 double observedFlow = 12000;
 double uFlow = margin1.CDF(observedFlow);
 
-// Conditional sample: given u1 = uFlow, sample u2
-var rng = new Random(42);
-double[] conditionalSample = copula.InverseCDF(uFlow, rng.NextDouble());
-double conditionalStage = margin2.InverseCDF(conditionalSample[1]);
+// Conditional CDF for stage | flow
+Func<double, double> conditionalCDF = (stage) =>
+{
+    double uStage = margin2.CDF(stage);
+    return copula.ConditionalCDF(uFlow, uStage, conditionIndex: 0);
+};
 
+// Conditional probability at specific values
 Console.WriteLine($"Given flow = {observedFlow:F0} cfs:");
-Console.WriteLine($"  Conditional stage sample: {conditionalStage:F1} feet");
+Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - pStageGivenFlow(15):P1}");
 ```
 
 ## Tail Dependence
@@ -175,21 +180,39 @@ Console.WriteLine("  Frank: No tail dependence");
 ## Fitting Copulas to Data
 
 ```cs
-double[] x = { /* observed data series 1 */ };
-double[] y = { /* observed data series 2 */ };
+// Sample paired observations (e.g., peak flow and volume)
+double[] x = { 1200, 1500, 1100, 1800, 1350, 1600, 1250, 1450, 1900, 1300 };
+double[] y = { 45, 52, 42, 65, 48, 58, 44, 51, 68, 46 };
 
-// Step 1: Transform to uniform margins (pseudo-observations)
-var u = x.Select(xi => (double)Array.FindIndex(x.OrderBy(v => v).ToArray(), v => v == xi) / x.Length);
-var v = y.Select(yi => (double)Array.FindIndex(y.OrderBy(w => w).ToArray(), w => w == yi) / y.Length);
+// Step 1: Fit marginal distributions
+var gevX = new GeneralizedExtremeValue();
+gevX.Estimate(x, ParameterEstimationMethod.MethodOfLinearMoments);
 
-// Step 2: Fit copula to pseudo-observations
-// Use maximum likelihood or rank correlation methods
+var gevY = new GeneralizedExtremeValue();
+gevY.Estimate(y, ParameterEstimationMethod.MethodOfLinearMoments);
 
-// Step 3: Select best copula using AIC/BIC
-var candidates = new[] { "Gaussian", "t", "Clayton", "Gumbel", "Frank" };
+// Step 2: Transform to uniform margins using fitted CDFs
+double[] u = x.Select(xi => gevX.CDF(xi)).ToArray();
+double[] v = y.Select(yi => gevY.CDF(yi)).ToArray();
 
-Console.WriteLine("Fit each candidate copula and select best by AIC");
+// Step 3: Estimate copula parameters using rank correlation
+double tau = Statistics.KendallsTau(x, y);
+Console.WriteLine($"Kendall's tau: {tau:F3}");
+
+// Different copulas have different tau-to-parameter relationships
+// Clayton: θ = 2τ/(1-τ) for τ > 0
+// Gumbel: θ = 1/(1-τ) for τ > 0
 ```
+
+## Higher-Dimensional Dependence
+
+For problems with more than two variables, there are several approaches:
+
+1. **Multivariate Normal distribution**: Use when Gaussian dependence is appropriate
+2. **Nested Archimedean copulas**: Hierarchical structure for grouped variables
+3. **Vine copulas**: Build from pairwise bivariate copulas (C-vine, D-vine, R-vine)
+
+For hydrologic applications with 3+ correlated variables (e.g., peak flow, volume, duration), consider using the Multivariate Normal distribution for the initial analysis, which is available in the `Numerics.Distributions` namespace. See the [Multivariate Distributions](multivariate.md) documentation for details.
 
 ## Best Practices
 
@@ -220,4 +243,4 @@ Console.WriteLine("Fit each candidate copula and select best by AIC");
 
 ---
 
-[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md)
+[← Previous: Uncertainty Analysis](uncertainty-analysis.md) | [Back to Index](../index.md) | [Next: Multivariate Distributions →](multivariate.md)

@@ -101,7 +101,7 @@ simpson.Integrate();
 double result = simpson.Result; // 0.25
 ```
 
-**Error**: Simpson's Rule is fourth-order accurate, $O(h^4)$, making it significantly more accurate than the Trapezoidal Rule for smooth functions.
+**Accuracy**: Simpson's Rule is fourth-order accurate, $O(h^4)$, making it significantly more accurate than the Trapezoidal Rule for smooth functions.
 
 ### Gauss-Legendre Quadrature
 
@@ -117,7 +117,7 @@ where $x_i$ are roots of Legendre polynomials and $w_i$ are corresponding weight
 double result = Integration.GaussLegendre(FX, 0, 1); // 0.25
 ```
 
-**Error**: The 10-point Gauss-Legendre method is exact for polynomials of degree 19 or less.
+**Accuracy**: The 10-point Gauss-Legendre method is exact for polynomials of degree 19 or less.
 
 ### Midpoint Rule
 
@@ -349,7 +349,7 @@ This result is much closer to the true value of $\pi$.
 
 Unlike traditional methods, the complexity of Monte Carlo integration grows slowly with the number of dimensions, making it particularly useful for high-dimensional problems. The Monte Carlo approach is simple to implement in higher dimensions and can handle irregular domains and complex integrands. However, it converges slowly; the error decreases as $O \left( \frac{1}{\sqrt{N}} \right)$, meaning to halve the error, you need to quadruple the number of samples.
 
-**Error**: $O(1/\sqrt{N})$ - independent of dimension.
+**Convergence Rate**: $O(1/\sqrt{N})$ - independent of dimension.
 
 ### MISER (Recursive Stratified Sampling)
 

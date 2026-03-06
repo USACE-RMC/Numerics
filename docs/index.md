@@ -15,11 +15,11 @@ The library is designed for engineers, scientists, and researchers who need reli
 ## Key Features
 
 ### Probability Distributions
-- 43 univariate probability distributions with PDF, CDF, and inverse CDF (including Von Mises for circular data)
+- 40+ univariate probability distributions with PDF, CDF, and inverse CDF
 - Multiple parameter estimation methods (Method of Moments, L-Moments, Maximum Likelihood)
 - Uncertainty analysis via bootstrap resampling
-- 7 bivariate copulas for dependency modeling (Normal, Student-t, Clayton, Gumbel, Joe, Frank, AMH)
-- Multivariate distributions (Normal, Student-t, Dirichlet, Multinomial)
+- Bivariate copulas for dependency modeling
+- Multivariate normal distribution
 
 ### Statistical Analysis
 - Comprehensive goodness-of-fit metrics (NSE, KGE, RMSE, PBIAS, AIC/BIC)
@@ -44,7 +44,6 @@ The library is designed for engineers, scientists, and researchers who need reli
 - Adaptive Random Walk Metropolis-Hastings (ARWMH)
 - Differential Evolution MCMC (DE-MCz, DE-MCzs)
 - Hamiltonian Monte Carlo (HMC)
-- No-U-Turn Sampler (NUTS) with dual averaging step size adaptation
 - Gibbs sampling
 - Convergence diagnostics (Gelman-Rubin, Effective Sample Size)
 
@@ -110,10 +109,10 @@ var priors = new List<IUnivariateDistribution>
     new Uniform(0, 100)   // Prior for parameter 2
 };
 
-// Define log-likelihood function
+// Define log-likelihood function (simple Gaussian example)
 double LogLikelihood(double[] parameters)
 {
-    // Your likelihood calculation here
+    // Log-likelihood for parameters[0] with observed value of 5
     return -0.5 * Math.Pow(parameters[0] - 5, 2);
 }
 
@@ -128,41 +127,37 @@ var results = sampler.Output;
 
 ## Documentation Structure
 
-📘 **Status Legend:**
-- ✅ = Reviewed and updated with accurate code examples
-- 📝 = Draft (needs verification against actual library)
-
-| Document | Status | Description |
-|----------|--------|-------------|
-| [Getting Started](getting-started.md) | ✅ | Installation and basic usage patterns |
-| **Mathematics** | | |
-| [Numerical Integration](mathematics/integration.md) | ✅ | Comprehensive guide to 1D, 2D, and multidimensional integration |
-| [Numerical Differentiation](mathematics/differentiation.md) | ✅ | Derivatives, gradients, Hessians, and Jacobians |
-| [Optimization](mathematics/optimization.md) | ✅ | Local and global optimization algorithms |
-| [Root Finding](mathematics/root-finding.md) | ✅ | Equation solving methods |
-| [Linear Algebra](mathematics/linear-algebra.md) | ✅ | Matrix and vector operations |
-| [Special Functions](mathematics/special-functions.md) | ✅ | Gamma, Beta, Error, Bessel functions |
-| [ODE Solvers](mathematics/ode-solvers.md) | ✅ | Runge-Kutta methods |
-| **Distributions** | | |
-| [Univariate Distributions](distributions/univariate.md) | ✅ | Complete reference for univariate distributions |
-| [Multivariate Distributions](distributions/multivariate.md) | ✅ | Multivariate Normal, Student-t, Dirichlet, Multinomial |
-| [Parameter Estimation](distributions/parameter-estimation.md) | ✅ | Fitting distributions to data |
-| [Uncertainty Analysis](distributions/uncertainty-analysis.md) | ✅ | Bootstrap and confidence intervals |
-| [Copulas](distributions/copulas.md) | ✅ | Dependency modeling with copulas |
-| **Statistics** | | |
-| [Descriptive Statistics](statistics/descriptive.md) | ✅ | Summary statistics functions |
-| [Goodness-of-Fit](statistics/goodness-of-fit.md) | ✅ | Model evaluation metrics |
-| [Hypothesis Tests](statistics/hypothesis-tests.md) | ✅ | Statistical hypothesis testing |
-| **Data** | | |
-| [Interpolation](data/interpolation.md) | ✅ | Interpolation methods |
-| [Time Series](data/time-series.md) | ✅ | Time series data structures and analysis |
-| **Machine Learning** | | |
-| [Overview](machine-learning/overview.md) | ✅ | Supervised and unsupervised learning algorithms |
-| **Sampling** | | |
-| [MCMC Methods](sampling/mcmc.md) | ✅ | Markov Chain Monte Carlo samplers |
-| [Convergence Diagnostics](sampling/convergence-diagnostics.md) | ✅ | MCMC convergence assessment |
-| [Random Generation](sampling/random-generation.md) | ✅ | PRNGs, quasi-random, and sampling methods |
-| [References](references.md) | ✅ | Complete bibliography |
+| Document | Description |
+|----------|-------------|
+| [Getting Started](getting-started.md) | Installation and basic usage patterns |
+| **Mathematics** | |
+| [Numerical Integration](mathematics/integration.md) | Comprehensive guide to 1D, 2D, and multidimensional integration |
+| [Numerical Differentiation](mathematics/differentiation.md) | Derivatives, gradients, Hessians, and Jacobians |
+| [Optimization](mathematics/optimization.md) | Local and global optimization algorithms |
+| [Root Finding](mathematics/root-finding.md) | Equation solving methods |
+| [Linear Algebra](mathematics/linear-algebra.md) | Matrix and vector operations |
+| [Special Functions](mathematics/special-functions.md) | Gamma, Beta, Error functions |
+| [ODE Solvers](mathematics/ode-solvers.md) | Runge-Kutta methods |
+| **Distributions** | |
+| [Univariate Distributions](distributions/univariate.md) | Complete reference for univariate distributions |
+| [Multivariate Distributions](distributions/multivariate.md) | Multivariate Normal distribution |
+| [Parameter Estimation](distributions/parameter-estimation.md) | Fitting distributions to data |
+| [Uncertainty Analysis](distributions/uncertainty-analysis.md) | Bootstrap and confidence intervals |
+| [Copulas](distributions/copulas.md) | Dependency modeling with copulas |
+| **Statistics** | |
+| [Descriptive Statistics](statistics/descriptive.md) | Summary statistics functions |
+| [Goodness-of-Fit](statistics/goodness-of-fit.md) | Model evaluation metrics |
+| [Hypothesis Tests](statistics/hypothesis-tests.md) | Statistical hypothesis testing |
+| **Data** | |
+| [Interpolation](data/interpolation.md) | Interpolation methods |
+| [Time Series](data/time-series.md) | Time series data structures and analysis |
+| **Machine Learning** | |
+| [Overview](machine-learning/overview.md) | Supervised and unsupervised learning algorithms |
+| **Sampling** | |
+| [MCMC Methods](sampling/mcmc.md) | Markov Chain Monte Carlo samplers |
+| [Convergence Diagnostics](sampling/convergence-diagnostics.md) | MCMC convergence assessment |
+| [Random Generation](sampling/random-generation.md) | PRNGs, quasi-random, and sampling methods |
+| [References](references.md) | Complete bibliography |
 
 ## Namespaces
 
