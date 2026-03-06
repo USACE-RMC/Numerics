@@ -33,7 +33,7 @@ using System.Text.Json;
 using Numerics.Distributions;
 using Numerics.Utilities;
 
-namespace Test_Numerics.Serialization
+namespace Serialization
 {
     /// <summary>
     /// Demonstration of custom JSON converters for complex types.
