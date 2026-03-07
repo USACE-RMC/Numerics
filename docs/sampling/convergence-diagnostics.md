@@ -223,8 +223,8 @@ sampler.Sample();
 Console.WriteLine("MCMC Convergence Diagnostics");
 Console.WriteLine("=" + new string('=', 60));
 
-// Step 2: Extract samples
-var samples = sampler.ParameterSets;
+// Step 2: Extract samples (flatten all chains)
+var samples = sampler.Output.SelectMany(chain => chain).ToList();
 int nParams = samples[0].Values.Length;
 
 Console.WriteLine($"\nSampling Summary:");
@@ -232,7 +232,7 @@ Console.WriteLine($"  Chains: {sampler.NumberOfChains}");
 Console.WriteLine($"  Warmup: {sampler.WarmupIterations}");
 Console.WriteLine($"  Iterations: {sampler.Iterations}");
 Console.WriteLine($"  Thinning: {sampler.ThinningInterval}");
-Console.WriteLine($"  Total samples: {samples.Length}");
+Console.WriteLine($"  Total samples: {samples.Count}");
 
 // Step 3: Check Gelman-Rubin
 Console.WriteLine($"\nGelman-Rubin Statistics:");
@@ -252,9 +252,11 @@ Console.WriteLine($"\nEffective Sample Size:");
 double[] ess = MCMCDiagnostics.EffectiveSampleSize(chains, out double[][,] acf);
 
 int minESS = (int)ess.Min();
+// Use MarkovChains total sample count for efficiency (ESS is computed from MarkovChains, not Output)
+int chainSampleCount = chains.Sum(c => c.Count);
 for (int i = 0; i < nParams; i++)
 {
-    double efficiency = ess[i] / samples.Length;
+    double efficiency = ess[i] / chainSampleCount;
     Console.WriteLine($"  θ{i}: ESS = {ess[i]:F0} ({efficiency:P1} efficiency)");
 }
 
@@ -287,7 +289,7 @@ Plot parameter values vs. iteration:
 Console.WriteLine("Export trace data for plotting:");
 Console.WriteLine("Iteration | Parameter Values");
 
-for (int i = 0; i < Math.Min(samples.Length, 100); i++)
+for (int i = 0; i < Math.Min(samples.Count, 100); i++)
 {
     Console.Write($"{i,9} | ");
     foreach (var val in samples[i].Values)
@@ -311,10 +313,10 @@ for (int param = 0; param < nParams; param++)
     
     Console.WriteLine($"\nParameter {param} summary:");
     Console.WriteLine($"  Mean: {values.Average():F4}");
-    Console.WriteLine($"  Median: {Statistics.Percentile(values.OrderBy(v => v).ToArray(), 50):F4}");
+    Console.WriteLine($"  Median: {Statistics.Percentile(values, 0.50):F4}");
     Console.WriteLine($"  SD: {Statistics.StandardDeviation(values):F4}");
-    Console.WriteLine($"  95% CI: [{Statistics.Percentile(values.OrderBy(v => v).ToArray(), 2.5):F4}, " +
-                     $"{Statistics.Percentile(values.OrderBy(v => v).ToArray(), 97.5):F4}]");
+    Console.WriteLine($"  95% CI: [{Statistics.Percentile(values, 0.025):F4}, " +
+                     $"{Statistics.Percentile(values, 0.975):F4}]");
 }
 ```
 
@@ -462,29 +464,35 @@ Console.WriteLine($"  Chains: {sampler.NumberOfChains}");
 Console.WriteLine($"  Warmup: {sampler.WarmupIterations}");
 Console.WriteLine($"  Iterations: {sampler.Iterations}");
 Console.WriteLine($"  Thinning: {sampler.ThinningInterval}");
-Console.WriteLine($"  Total samples: {samples.Length}");
+Console.WriteLine($"  Total samples: {samples.Count}");
 Console.WriteLine($"  R̂ range: [{rhat.Min():F3}, {rhat.Max():F3}]");
 Console.WriteLine($"  ESS range: [{ess.Min():F0}, {ess.Max():F0}]");
 ```
 
 ### 5. Iterative Improvement
 
+**Note:** Setting any sampler property (e.g., `Iterations`) calls `Reset()` internally, which clears all chains and output. This means increasing `Iterations` and calling `Sample()` runs a completely new simulation with the updated iteration count -- it does not extend the previous run.
+
 ```cs
 int iteration = 1;
+int totalIterations = sampler.Iterations;
 while (rhat.Max() > 1.05 || ess.Min() < 200)
 {
-    Console.WriteLine($"\nIteration {iteration}: Extending sampling...");
-    
-    sampler.Iterations += 5000;
+    totalIterations += 5000;
+    Console.WriteLine($"\nIteration {iteration}: Restarting with {totalIterations} iterations...");
+
+    // Setting Iterations triggers Reset(), clearing all previous chains/output.
+    // Sample() then runs a fresh simulation with the new iteration count.
+    sampler.Iterations = totalIterations;
     sampler.Sample();
-    
+
     // Recompute diagnostics
     chains = sampler.MarkovChains.ToList();
     rhat = MCMCDiagnostics.GelmanRubin(chains, sampler.WarmupIterations);
     ess = MCMCDiagnostics.EffectiveSampleSize(chains, out _);
-    
+
     iteration++;
-    
+
     if (iteration > 5)
     {
         Console.WriteLine("Convergence issues persist - check model/sampler");

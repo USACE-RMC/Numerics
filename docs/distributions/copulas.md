@@ -21,24 +21,23 @@ This allows us to:
 
 The library provides common copula families:
 
-### Gaussian Copula
+### Normal (Gaussian) Copula
 
 Models linear correlation with normal dependence structure:
 
 ```cs
 using Numerics.Distributions.Copulas;
 
-// Correlation matrix for 2D Gaussian copula
+// Normal (Gaussian) copula with correlation rho
 double rho = 0.7;  // Correlation coefficient
-var corrMatrix = new double[,] { { 1.0, rho }, { rho, 1.0 } };
 
-var gaussianCopula = new GaussianCopula(corrMatrix);
+var normalCopula = new NormalCopula(rho);
 
 // Evaluate copula density
 double u1 = 0.3, u2 = 0.7;
-double density = gaussianCopula.PDF(new double[] { u1, u2 });
+double density = normalCopula.PDF(u1, u2);
 
-Console.WriteLine($"Gaussian copula density: {density:F4}");
+Console.WriteLine($"Normal copula density: {density:F4}");
 ```
 
 ### Student's t Copula
@@ -48,9 +47,9 @@ Similar to Gaussian but with tail dependence:
 ```cs
 // t-copula with 5 degrees of freedom
 int nu = 5;
-var tCopula = new StudentTCopula(corrMatrix, nu);
+var tCopula = new StudentTCopula(rho, nu);
 
-double density = tCopula.PDF(new double[] { u1, u2 });
+double density = tCopula.PDF(u1, u2);
 
 Console.WriteLine($"t-copula density: {density:F4}");
 Console.WriteLine("t-copula has stronger tail dependence than Gaussian");
@@ -58,25 +57,42 @@ Console.WriteLine("t-copula has stronger tail dependence than Gaussian");
 
 ### Archimedean Copulas
 
-Family of copulas with specific dependence structures:
+Family of copulas defined through generator functions, each with distinct dependence structures:
 
 ```cs
-// Clayton copula (lower tail dependence)
-double theta = 2.0;  // Dependence parameter
-var claytonCopula = new ClaytonCopula(theta);
+// Clayton copula (lower tail dependence), θ ∈ (0, ∞)
+var claytonCopula = new ClaytonCopula(2.0);
 
-// Gumbel copula (upper tail dependence)
-var gumbelCopula = new GumbelCopula(theta);
+// Gumbel copula (upper tail dependence), θ ∈ [1, ∞)
+var gumbelCopula = new GumbelCopula(2.0);
 
-// Frank copula (no tail dependence)
-var frankCopula = new FrankCopula(theta);
+// Frank copula (no tail dependence), θ ∈ (-∞, ∞) \ {0}
+var frankCopula = new FrankCopula(5.0);
+
+// Joe copula (upper tail dependence), θ ∈ [1, ∞)
+var joeCopula = new JoeCopula(2.0);
+
+// Ali-Mikhail-Haq copula (weak dependence), θ ∈ [-1, 1]
+var amhCopula = new AMHCopula(0.5);
 ```
+
+**Copula selection guide:**
+
+| Copula | Tail Dependence | Parameter Range | Best For |
+|--------|----------------|-----------------|----------|
+| Clayton | Lower tail | θ ∈ (0, ∞) | Joint low extremes (droughts) |
+| Gumbel | Upper tail | θ ∈ [1, ∞) | Joint high extremes (floods) |
+| Frank | None | θ ∈ (-∞, ∞) \ {0} | Moderate symmetric dependence |
+| Joe | Upper tail | θ ∈ [1, ∞) | Strong upper tail dependence |
+| AMH | None | θ ∈ [-1, 1] | Weak dependence structures |
 
 ## Practical Example: Bivariate Distribution
 
 Construct a bivariate distribution with arbitrary marginals and specified dependence:
 
 ```cs
+using System.Linq;
+using Numerics.Data.Statistics;
 using Numerics.Distributions;
 using Numerics.Distributions.Copulas;
 
@@ -86,12 +102,11 @@ var margin2 = new Gumbel(100, 20);      // Peak stage
 
 // Step 2: Define dependence via copula
 double rho = 0.8;  // Strong positive correlation
-var corrMatrix = new double[,] { { 1.0, rho }, { rho, 1.0 } };
-var copula = new GaussianCopula(corrMatrix);
+var copula = new NormalCopula(rho);
 
 // Step 3: Sample from joint distribution
 int n = 1000;
-var samples = copula.Sample(n);
+var samples = copula.GenerateRandomValues(n);
 
 // Transform uniforms to actual distributions
 double[] flow = new double[n];
@@ -128,7 +143,7 @@ double u1 = margin1.CDF(flowThreshold);
 double u2 = margin2.CDF(stageThreshold);
 
 // P(Flow > threshold AND Stage > threshold)
-double jointExceedance = copula.Survival(new double[] { u1, u2 });
+double jointExceedance = copula.ANDJointExceedanceProbability(u1, u2);
 
 Console.WriteLine($"Joint exceedance probability: {jointExceedance:E4}");
 Console.WriteLine($"Return period: {1.0 / jointExceedance:F1} years");
@@ -136,23 +151,26 @@ Console.WriteLine($"Return period: {1.0 / jointExceedance:F1} years");
 
 ### Conditional Distributions
 
-Given flow, what is the conditional distribution of stage?
+Given flow, what is the conditional distribution of stage? The conditional CDF can be computed numerically using the copula CDF via partial differentiation: C(v|u) = dC(u,v)/du.
 
 ```cs
 // Observed flow
 double observedFlow = 12000;
 double uFlow = margin1.CDF(observedFlow);
 
-// Conditional CDF for stage | flow
+// Approximate the conditional CDF: dC(u,v)/du via finite difference
 Func<double, double> conditionalCDF = (stage) =>
 {
     double uStage = margin2.CDF(stage);
-    return copula.ConditionalCDF(uFlow, uStage, conditionIndex: 0);
+    double du = 1e-6;
+    double uPlus = Math.Min(uFlow + du, 1.0);
+    double uMinus = Math.Max(uFlow - du, 0.0);
+    return (copula.CDF(uPlus, uStage) - copula.CDF(uMinus, uStage)) / (uPlus - uMinus);
 };
 
 // Conditional probability at specific values
 Console.WriteLine($"Given flow = {observedFlow:F0} cfs:");
-Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - pStageGivenFlow(15):P1}");
+Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - conditionalCDF(15):P1}");
 ```
 
 ## Tail Dependence
@@ -164,14 +182,18 @@ Different copulas have different tail dependence properties:
 // t-copula: Symmetric tail dependence
 // Clayton: Lower tail dependence only
 // Gumbel: Upper tail dependence only
+// Joe: Upper tail dependence only
 // Frank: No tail dependence
+// AMH: No tail dependence
 
 Console.WriteLine("Tail Dependence Properties:");
 Console.WriteLine("  Gaussian: No tail dependence");
 Console.WriteLine("  Student-t: Symmetric tail dependence");
 Console.WriteLine("  Clayton: Lower tail dependence (joint lows)");
 Console.WriteLine("  Gumbel: Upper tail dependence (joint highs)");
+Console.WriteLine("  Joe: Upper tail dependence (joint highs)");
 Console.WriteLine("  Frank: No tail dependence");
+Console.WriteLine("  AMH: No tail dependence");
 
 // For flood analysis: Gumbel copula captures joint extremes
 // For drought analysis: Clayton copula captures joint lows
@@ -180,6 +202,11 @@ Console.WriteLine("  Frank: No tail dependence");
 ## Fitting Copulas to Data
 
 ```cs
+using System.Linq;
+using Numerics.Data.Statistics;
+using Numerics.Distributions;
+using Numerics.Distributions.Copulas;
+
 // Sample paired observations (e.g., peak flow and volume)
 double[] x = { 1200, 1500, 1100, 1800, 1350, 1600, 1250, 1450, 1900, 1300 };
 double[] y = { 45, 52, 42, 65, 48, 58, 44, 51, 68, 46 };
@@ -196,7 +223,7 @@ double[] u = x.Select(xi => gevX.CDF(xi)).ToArray();
 double[] v = y.Select(yi => gevY.CDF(yi)).ToArray();
 
 // Step 3: Estimate copula parameters using rank correlation
-double tau = Statistics.KendallsTau(x, y);
+double tau = Correlation.KendallsTau(x, y);
 Console.WriteLine($"Kendall's tau: {tau:F3}");
 
 // Different copulas have different tau-to-parameter relationships

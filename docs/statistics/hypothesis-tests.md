@@ -245,11 +245,11 @@ else
 Non-parametric alternative to two-sample t-test (tests if distributions differ):
 
 ```cs
-double[] group1 = { 12, 15, 18, 21, 24 };
-double[] group2 = { 10, 13, 16, 19, 22, 25, 28, 31 };
+double[] group1 = { 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42 };
+double[] group2 = { 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40 };
 
 // Note: First sample must have length ≤ second sample
-// Combined samples must have length > 20
+// Combined samples must have length > 20 (here: 11 + 11 = 22)
 // Returns the two-sided p-value
 double pValue = HypothesisTests.MannWhitneyTest(group1, group2);
 

@@ -1,6 +1,6 @@
 # Multivariate Distributions
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Descriptive Statistics →](../statistics/descriptive.md)
 
 The ***Numerics*** library provides several multivariate distributions for modeling correlated random variables: the **Multivariate Normal**, **Multivariate Student-t**, **Dirichlet**, and **Multinomial** distributions. These are fundamental in multivariate statistics, risk assessment, and uncertainty quantification.
 
@@ -280,8 +280,8 @@ for (int i = 0; i < nYears; i++)
 Console.WriteLine($"Portfolio Analysis ({nYears} simulations):");
 Console.WriteLine($"  Mean return: {portfolioReturns.Average():P2}");
 Console.WriteLine($"  Volatility: {Statistics.StandardDeviation(portfolioReturns):P2}");
-Console.WriteLine($"  5th percentile: {Statistics.Percentile(portfolioReturns.OrderBy(r => r).ToArray(), 5):P2}");
-Console.WriteLine($"  95th percentile: {Statistics.Percentile(portfolioReturns.OrderBy(r => r).ToArray(), 95):P2}");
+Console.WriteLine($"  5th percentile: {Statistics.Percentile(portfolioReturns, 0.05):P2}");
+Console.WriteLine($"  95th percentile: {Statistics.Percentile(portfolioReturns, 0.95):P2}");
 ```
 
 ### Example 2: Multivariate Exceedance Probability
@@ -388,7 +388,7 @@ var diff = new Vector(x.Select((xi, i) => xi - means[i]).ToArray());
 var covMatrix = new Matrix(cov);
 var covInv = covMatrix.Inverse();
 
-double mahalanobis = Math.Sqrt(diff.DotProduct(covInv.Multiply(diff)));
+double mahalanobis = Math.Sqrt(Vector.DotProduct(diff, covInv.Multiply(diff)));
 
 // Chi-squared test: D² ~ χ²(k) under null hypothesis
 double chiSqCritical = 7.815;  // 95th percentile of χ²(3)
@@ -415,7 +415,7 @@ The multivariate Student-t distribution generalizes the univariate Student-t to 
 using Numerics.Distributions;
 
 // Bivariate Student-t with 5 degrees of freedom
-int nu = 5;
+double nu = 5;
 double[] mu = { 100, 50 };
 double[,] sigma = {
     { 225, 75 },
@@ -652,6 +652,91 @@ Console.WriteLine("Independent MVN → Diagonal covariance matrix");
 
 ---
 
+## Bivariate Empirical Distribution
+
+The `BivariateEmpirical` class represents a bivariate empirical CDF defined on a grid of values. It is useful when the joint distribution is known only through tabulated CDF values rather than a parametric form.
+
+```cs
+using Numerics.Distributions;
+
+// Define grid values
+double[] x1Values = { 100, 200, 300, 400, 500 };  // e.g., flow (cfs)
+double[] x2Values = { 10, 20, 30, 40 };            // e.g., stage (ft)
+
+// Define CDF values on the grid (must be non-decreasing, values in [0, 1])
+double[,] pValues = {
+    { 0.01, 0.02, 0.03, 0.04 },
+    { 0.05, 0.15, 0.20, 0.22 },
+    { 0.10, 0.35, 0.50, 0.55 },
+    { 0.15, 0.50, 0.75, 0.82 },
+    { 0.20, 0.60, 0.90, 1.00 }
+};
+
+// Create bivariate empirical distribution
+var bivariate = new BivariateEmpirical(x1Values, x2Values, pValues);
+
+// Evaluate CDF at a point
+double prob = bivariate.CDF(250, 25);
+Console.WriteLine($"P(X1 ≤ 250, X2 ≤ 25) = {prob:F4}");
+
+// Optional: apply transforms for interpolation
+var bivariateLog = new BivariateEmpirical(
+    x1Values, x2Values, pValues,
+    x1Transform: Transform.Logarithmic,
+    x2Transform: Transform.None,
+    probabilityTransform: Transform.NormalZ
+);
+```
+
+**Properties:**
+- `X1Values`, `X2Values` — grid axis values
+- `ProbabilityValues` — CDF values on the grid
+- `Dimension` — always 2
+- Supports `Transform.None`, `Transform.Logarithmic`, and `Transform.NormalZ` for interpolation
+
+**Note:** The `PDF()` method returns `double.NaN` because this is a purely empirical CDF — no density function is defined.
+
+### Practical Example: Joint Flood Stage-Duration Exceedance
+
+```cs
+using Numerics.Distributions;
+using Numerics.Data;
+
+// Define flood stage grid (ft)
+double[] stages = { 10, 12, 14, 16, 18, 20 };
+// Define flood duration grid (hr)
+double[] durations = { 6, 12, 24, 48, 72 };
+
+// Joint CDF values P(Stage ≤ s, Duration ≤ d)
+// Based on observed flood event records
+double[,] jointCDF = {
+    { 0.30, 0.35, 0.38, 0.39, 0.40 },
+    { 0.40, 0.50, 0.55, 0.57, 0.58 },
+    { 0.45, 0.60, 0.70, 0.73, 0.75 },
+    { 0.48, 0.65, 0.78, 0.83, 0.85 },
+    { 0.49, 0.68, 0.82, 0.90, 0.93 },
+    { 0.50, 0.70, 0.85, 0.95, 1.00 }
+};
+
+// Create with log transform on stages for better interpolation
+var jointDist = new BivariateEmpirical(
+    stages, durations, jointCDF,
+    x1Transform: Transform.Logarithmic,
+    x2Transform: Transform.None,
+    probabilityTransform: Transform.NormalZ
+);
+
+// Probability that a flood has stage ≤ 15 ft AND duration ≤ 36 hr
+double prob = jointDist.CDF(15, 36);
+Console.WriteLine($"P(Stage ≤ 15, Duration ≤ 36hr) = {prob:F4}");
+
+// Joint exceedance probability
+double jointExceedance = 1 - jointDist.CDF(16, 48);
+Console.WriteLine($"P(Stage > 16 AND/OR Duration > 48hr) = {jointExceedance:F4}");
+```
+
+---
+
 ## References
 
 <a id="1">[1]</a> Tong, Y. L. (2012). *The Multivariate Normal Distribution*. Springer Science & Business Media.
@@ -664,4 +749,4 @@ Console.WriteLine("Independent MVN → Diagonal covariance matrix");
 
 ---
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Descriptive Statistics →](../statistics/descriptive.md)

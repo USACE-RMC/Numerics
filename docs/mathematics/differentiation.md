@@ -15,16 +15,10 @@ In ***Numerics***, the derivative is evaluated using the two-point (central diff
 where $x$ is the input point and $h$ represents a small change in $x$. In ***Numerics***, the step size $h$ is automatically determined according to the magnitude of $x$:
 
 ```math
-\begin{equation}
-  h =
-    \begin{cases}
-      \mid x \mid \cdot \epsilon^\frac{1}{2}  & x \neq 0\\
-      \epsilon^\frac{1}{2}  & x = 0\\
-    \end{cases}       
-\end{equation}
+h = \epsilon^{1/2} \cdot (1 + |x|)
 ```
 
-where $\epsilon$ is double precision machine epsilon. The step size $h$ can also be user-defined.
+where $\epsilon$ is double precision machine epsilon. The $(1 + |x|)$ term scales the step size relative to the magnitude of the input, ensuring that the relative step size is appropriate regardless of the scale of $x$. The step size $h$ can also be user-defined.
 
 For example, consider the simple function:
 
@@ -406,10 +400,10 @@ double h2 = NumericalDerivative.CalculateStepSize(x: 2.0, order: 2);
 The step size is calculated as:
 
 ```math
-h = |x| \cdot \epsilon^{1/(1+\text{order})}
+h = \epsilon^{1/(1+\text{order})} \cdot (1 + |x|)
 ```
 
-where $\epsilon$ is machine epsilon. For $x=0$, the formula simplifies to $h = \epsilon^{1/(1+\text{order})}$.
+where $\epsilon$ is machine epsilon. The $(1 + |x|)$ term scales the step size relative to the magnitude of the input, ensuring an appropriate relative step size regardless of the scale of $x$.
 
 ## Best Practices
 
@@ -427,7 +421,7 @@ where $\epsilon$ is machine epsilon. For $x=0$, the formula simplifies to $h = \
 
 ## Accuracy Considerations
 
-The central difference formula has truncation error $O(h^2)$ and roundoff error $O(\epsilon/h)$, where $\epsilon$ is machine epsilon. The optimal step size balances these errors at approximately $h \approx \epsilon^{1/3}$ for first derivatives and $h \approx \epsilon^{1/4}$ for second derivatives. The automatic step sizing in ***Numerics*** uses $h \approx \epsilon^{1/2}$, which is a conservative choice that works well in practice.
+The central difference formula has truncation error $O(h^2)$ and roundoff error $O(\epsilon/h)$, where $\epsilon$ is machine epsilon. The optimal step size balances these errors at approximately $h \approx \epsilon^{1/3}$ for first derivatives and $h \approx \epsilon^{1/4}$ for second derivatives. The automatic step sizing in ***Numerics*** uses the formula $h = \epsilon^{1/(1+\text{order})} \cdot (1 + |x|)$, which gives $h \approx \epsilon^{1/2}$ for first derivatives and $h \approx \epsilon^{1/3}$ for second derivatives.
 
 For the second derivative, the truncation error is $O(h^2)$ and roundoff error is $O(\epsilon/h^2)$, making it more sensitive to numerical noise than first derivatives.
 
@@ -439,7 +433,7 @@ The numerical differentiation methods implemented in ***Numerics*** are based on
 
 <a id="1">[1]</a> W. H. Press, S. A. Teukolsky, W. T. Vetterling and B. P. Flannery, *Numerical Recipes: The Art of Scientific Computing*, 3rd ed., Cambridge, UK: Cambridge University Press, 2007.
 
-<a id="2">[2]</a> C. J. F. Ridders, "Accurate computation of F'(x) and F'(x) F''(x)," *Advances in Engineering Software*, vol. 4, no. 2, pp. 75-76, 1982.
+<a id="2">[2]</a> C. J. F. Ridders, "Accurate computation of F'(x) and F'(x)F''(x)," *Advances in Engineering Software*, vol. 4, no. 2, pp. 75-76, 1982.
 
 ---
 

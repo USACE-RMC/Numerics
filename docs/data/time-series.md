@@ -1,6 +1,6 @@
 # Time Series
 
-[← Previous: Interpolation](interpolation.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
+[← Previous: Linear Regression](regression.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
 
 The ***Numerics*** library provides a comprehensive `TimeSeries` class for working with time-indexed data. This class supports regular and irregular time intervals, statistical operations, transformations, and analysis methods essential for hydrological and environmental data.
 
@@ -15,8 +15,8 @@ using Numerics.Data;
 var ts = new TimeSeries();
 
 // Create with time interval
-var dailyData = new TimeSeries(TimeInterval.Daily);
-var monthlyData = new TimeSeries(TimeInterval.Monthly);
+var dailyData = new TimeSeries(TimeInterval.OneDay);
+var monthlyData = new TimeSeries(TimeInterval.OneMonth);
 ```
 
 ### Time Series with Date Range
@@ -26,11 +26,11 @@ var monthlyData = new TimeSeries(TimeInterval.Monthly);
 DateTime start = new DateTime(2020, 1, 1);
 DateTime end = new DateTime(2020, 12, 31);
 
-// With NaN values (placeholder)
-var ts1 = new TimeSeries(TimeInterval.Daily, start, end);
+// Create empty time series (values default to NaN)
+var ts1 = new TimeSeries(TimeInterval.OneDay, start, end);
 
 // With fixed value
-var ts2 = new TimeSeries(TimeInterval.Daily, start, end, fixedValue: 0.0);
+var ts2 = new TimeSeries(TimeInterval.OneDay, start, end, fixedValue: 0.0);
 
 Console.WriteLine($"Created time series with {ts1.Count} daily values");
 ```
@@ -42,7 +42,7 @@ Console.WriteLine($"Created time series with {ts1.Count} daily values");
 double[] dailyFlow = { 125.0, 130.0, 135.0, 132.0, 138.0 };
 DateTime start = new DateTime(2024, 1, 1);
 
-var ts = new TimeSeries(TimeInterval.Daily, start, dailyFlow);
+var ts = new TimeSeries(TimeInterval.OneDay, start, dailyFlow);
 
 Console.WriteLine("Daily Flow Data:");
 for (int i = 0; i < ts.Count; i++)
@@ -58,24 +58,24 @@ Supported time intervals:
 ```cs
 public enum TimeInterval
 {
-    Irregular,      // No fixed interval
     OneMinute,
     FiveMinute,
-    TenMinute,
     FifteenMinute,
     ThirtyMinute,
     OneHour,
     SixHour,
     TwelveHour,
-    Daily,
-    Weekly,
-    Monthly,
-    Annual
+    OneDay,
+    SevenDay,
+    OneMonth,
+    OneQuarter,
+    OneYear,
+    Irregular       // No fixed interval
 }
 
 // Example usage
 var hourlyData = new TimeSeries(TimeInterval.OneHour);
-var yearlyData = new TimeSeries(TimeInterval.Annual);
+var yearlyData = new TimeSeries(TimeInterval.OneYear);
 ```
 
 ## Accessing Data
@@ -83,23 +83,26 @@ var yearlyData = new TimeSeries(TimeInterval.Annual);
 ### Indexing
 
 ```cs
-var ts = new TimeSeries(TimeInterval.Daily, new DateTime(2024, 1, 1), 
+using System.Linq;
+using Numerics.Data;
+
+var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1),
                         new[] { 10.0, 15.0, 20.0, 25.0, 30.0 });
 
 // Access by index
 double value = ts[2].Value;                // 20.0
 DateTime date = ts[2].Index;               // 2024-01-03
 
-// Access by date
+// Access by date (use LINQ to find ordinate by date)
 DateTime queryDate = new DateTime(2024, 1, 3);
-var ordinate = ts.GetByIndex(queryDate);
+var ordinate = ts.First(o => o.Index == queryDate);
 Console.WriteLine($"Flow on {queryDate:yyyy-MM-dd}: {ordinate.Value:F1}");
 
 // Properties
 int count = ts.Count;
-DateTime firstDate = ts.FirstIndex;
-DateTime lastDate = ts.LastIndex;
-double[] values = ts.Values.ToArray();
+DateTime firstDate = ts.StartDate;
+DateTime lastDate = ts.EndDate;
+double[] values = ts.ValuesToArray();
 ```
 
 ### Missing Values
@@ -126,7 +129,7 @@ for (int i = 0; i < ts.Count; i++)
 ### Basic Arithmetic
 
 ```cs
-var ts = new TimeSeries(TimeInterval.Daily, new DateTime(2024, 1, 1),
+var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1),
                         new[] { 10.0, 15.0, 20.0, 25.0, 30.0 });
 
 // Add constant to all values
@@ -161,7 +164,7 @@ ts.Multiply(1.5, indexes);      // Multiply selected values by 1.5
 ### Transformations
 
 ```cs
-var ts = new TimeSeries(TimeInterval.Daily, new DateTime(2024, 1, 1),
+var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1),
                         new[] { 10.0, 15.0, 20.0, 25.0, 30.0 });
 
 // Absolute value
@@ -186,7 +189,7 @@ ts.Inverse();                   // 1 / x
 
 ```cs
 double[] dailyRainfall = { 0.5, 1.2, 0.8, 0.0, 2.1, 1.5 };
-var rainfall = new TimeSeries(TimeInterval.Daily, new DateTime(2024, 1, 1), dailyRainfall);
+var rainfall = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1), dailyRainfall);
 
 // Compute cumulative rainfall
 var cumulative = rainfall.CumulativeSum();
@@ -226,26 +229,28 @@ for (int i = 0; i < Math.Min(5, ts.Count); i++)
 ### Descriptive Statistics
 
 ```cs
+using System.Linq;
+using Numerics.Data;
 using Numerics.Data.Statistics;
 
-var ts = new TimeSeries(TimeInterval.Daily, new DateTime(2024, 1, 1),
+var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1),
                         new[] { 125.0, 130.0, 135.0, 132.0, 138.0, 145.0 });
 
 // Compute statistics
-double mean = Statistics.Mean(ts.Values.ToArray());
-double std = Statistics.StandardDeviation(ts.Values.ToArray());
-double min = ts.Values.Min();
-double max = ts.Values.Max();
+double mean = Statistics.Mean(ts.ValuesToArray());
+double std = Statistics.StandardDeviation(ts.ValuesToArray());
+double min = ts.ValuesToArray().Min();
+double max = ts.ValuesToArray().Max();
 
 Console.WriteLine($"Mean: {mean:F1}");
 Console.WriteLine($"Std Dev: {std:F1}");
 Console.WriteLine($"Range: [{min:F1}, {max:F1}]");
 
 // Percentiles
-double[] values = ts.Values.ToArray();
-double p25 = Statistics.Percentile(values, 25);
-double p50 = Statistics.Percentile(values, 50);
-double p75 = Statistics.Percentile(values, 75);
+double[] values = ts.ValuesToArray();
+double p25 = Statistics.Percentile(values, 0.25);
+double p50 = Statistics.Percentile(values, 0.50);
+double p75 = Statistics.Percentile(values, 0.75);
 
 Console.WriteLine($"25th percentile: {p25:F1}");
 Console.WriteLine($"Median: {p50:F1}");
@@ -283,6 +288,8 @@ for (int i = 0; i < ts.Count; i++)
 ### Sorting
 
 ```cs
+using System.ComponentModel;
+
 // Sort by time (ascending or descending)
 ts.SortByTime(ListSortDirection.Ascending);
 
@@ -314,15 +321,18 @@ Console.WriteLine($"Filtered to {filtered.Count} values in date range");
 ### Example 1: Annual Peak Flow Analysis
 
 ```cs
+using System.Linq;
+using Numerics.Data;
+
 // Monthly flow data
 double[] monthlyFlow = { 125, 135, 180, 220, 250, 280, 260, 230, 190, 150, 130, 120 };
-var flowData = new TimeSeries(TimeInterval.Monthly, new DateTime(2024, 1, 1), monthlyFlow);
+var flowData = new TimeSeries(TimeInterval.OneMonth, new DateTime(2024, 1, 1), monthlyFlow);
 
 Console.WriteLine("Monthly Streamflow Analysis");
 Console.WriteLine("=" + new string('=', 50));
 
 // Find annual peak
-double peakFlow = flowData.Values.Max();
+double peakFlow = flowData.ValuesToArray().Max();
 int peakMonth = Array.IndexOf(monthlyFlow, peakFlow) + 1;
 
 Console.WriteLine($"Peak flow: {peakFlow:F0} cfs");
@@ -340,6 +350,9 @@ Console.WriteLine($"  Summer (JJA): {summer.Average():F0} cfs");
 ### Example 2: Filling Missing Values
 
 ```cs
+using System.Linq;
+using Numerics.Data;
+
 // Time series with gaps
 var dates = new[] { 
     new DateTime(2024, 1, 1),
@@ -367,7 +380,7 @@ for (int i = 0; i < ts.Count - 1; i++)
 }
 
 // Fill gaps with linear interpolation
-var filled = new TimeSeries(TimeInterval.Daily, dates.Min(), dates.Max());
+var filled = new TimeSeries(TimeInterval.OneDay, dates.Min(), dates.Max());
 foreach (var ord in filled)
 {
     // Find surrounding values
@@ -392,10 +405,14 @@ Console.WriteLine($"\nFilled series: {filled.Count} continuous daily values");
 ### Example 3: Trend Detection
 
 ```cs
+using System.Linq;
+using Numerics.Data;
+using Numerics.Data.Statistics;
+
 double[] annualPeaks = { 1200, 1250, 1180, 1300, 1320, 1280, 1350, 1400, 1380, 1450 };
 var years = Enumerable.Range(2015, 10).Select(y => new DateTime(y, 1, 1)).ToArray();
 
-var peakSeries = new TimeSeries(TimeInterval.Annual);
+var peakSeries = new TimeSeries(TimeInterval.OneYear);
 for (int i = 0; i < years.Length; i++)
 {
     peakSeries.Add(new SeriesOrdinate<DateTime, double>(years[i], annualPeaks[i]));
@@ -406,7 +423,7 @@ Console.WriteLine("=" + new string('=', 50));
 
 // Linear regression for trend
 double[] x = Enumerable.Range(0, peakSeries.Count).Select(i => (double)i).ToArray();
-double[] y = peakSeries.Values.ToArray();
+double[] y = peakSeries.ValuesToArray();
 
 double xMean = x.Average();
 double yMean = y.Average();
@@ -418,11 +435,11 @@ double intercept = yMean - slope * xMean;
 Console.WriteLine($"Trend: {slope:F1} cfs/year");
 Console.WriteLine($"Direction: {(slope > 0 ? "Increasing" : "Decreasing")}");
 
-// Mann-Kendall test for significance
-double mkStat = HypothesisTests.MannKendallTest(y);
-Console.WriteLine($"Mann-Kendall statistic: {mkStat:F2}");
+// Mann-Kendall test for significance (returns p-value)
+double mkPValue = HypothesisTests.MannKendallTest(y);
+Console.WriteLine($"Mann-Kendall p-value: {mkPValue:F4}");
 
-if (Math.Abs(mkStat) > 1.96)
+if (mkPValue < 0.05)
     Console.WriteLine("Trend is statistically significant (p < 0.05)");
 else
     Console.WriteLine("Trend is not statistically significant");
@@ -431,12 +448,15 @@ else
 ### Example 4: Seasonal Analysis
 
 ```cs
+using System.Linq;
+using Numerics.Data;
+
 // Multi-year daily data
 int years = 3;
 int daysPerYear = 365;
 var random = new Random(123);
 
-var dailyTemp = new TimeSeries(TimeInterval.Daily, new DateTime(2022, 1, 1));
+var dailyTemp = new TimeSeries(TimeInterval.OneDay, new DateTime(2022, 1, 1));
 
 // Generate seasonal temperature pattern
 for (int day = 0; day < years * daysPerYear; day++)
@@ -495,4 +515,4 @@ for (int m = 1; m <= 12; m++)
 
 ---
 
-[← Previous: Interpolation](interpolation.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
+[← Previous: Linear Regression](regression.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)

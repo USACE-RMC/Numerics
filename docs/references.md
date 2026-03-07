@@ -32,7 +32,7 @@ This is a consolidated bibliography of all references cited throughout the ***Nu
 
 ## Hydrology and Water Resources
 
-[10] England, J. F., et al. (2019). Guidelines for Determining Flood Flow Frequency—Bulletin 17C. *U.S. Geological Survey Techniques and Methods*, Book 4, Chapter B5.
+[10] England, J. F., et al. (2018). Guidelines for Determining Flood Flow Frequency—Bulletin 17C. *U.S. Geological Survey Techniques and Methods*, Book 4, Chapter B5.
 
 [11] Stedinger, J. R., Vogel, R. M., & Foufoula-Georgiou, E. (1993). Frequency analysis of extreme events. In D. R. Maidment (Ed.), *Handbook of Hydrology* (Chapter 18). McGraw-Hill.
 
@@ -156,52 +156,82 @@ This is a consolidated bibliography of all references cited throughout the ***Nu
 
 [51] Vrugt, J. A. (2016). Markov chain Monte Carlo simulation using the DREAM software package: Theory, concepts, and MATLAB implementation. *Environmental Modelling & Software*, 75, 273-316.
 
-[65] Hoffman, M. D., & Gelman, A. (2014). The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. *Journal of Machine Learning Research*, 15(47), 1593-1623.
+[52] Hoffman, M. D., & Gelman, A. (2014). The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. *Journal of Machine Learning Research*, 15(47), 1593-1623.
 
 ---
 
 ## Uncertainty Analysis
 
-[52] Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall.
+[53] Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall.
 
-[53] Stedinger, J. R. (1983). Confidence intervals for design events. *Journal of Hydraulic Engineering*, 109(1), 13-27.
+[54] Stedinger, J. R. (1983). Confidence intervals for design events. *Journal of Hydraulic Engineering*, 109(1), 13-27.
 
-[54] Hirsch, R. M., & Stedinger, J. R. (1987). Plotting positions for historical floods and their precision. *Water Resources Research*, 23(4), 715-727.
+[55] Hirsch, R. M., & Stedinger, J. R. (1987). Plotting positions for historical floods and their precision. *Water Resources Research*, 23(4), 715-727.
 
 ---
 
 ## Special Distributions
 
-[55] Weibull, W. (1951). A statistical distribution function of wide applicability. *Journal of Applied Mechanics*, 18(3), 293-297.
+[56] Weibull, W. (1951). A statistical distribution function of wide applicability. *Journal of Applied Mechanics*, 18(3), 293-297.
 
-[56] Vose, D. (2008). *Risk Analysis: A Quantitative Guide* (3rd ed.). Wiley.
+[57] Vose, D. (2008). *Risk Analysis: A Quantitative Guide* (3rd ed.). Wiley.
 
-[57] McLachlan, G., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
+[58] McLachlan, G., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
 
-[58] Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall.
+[59] Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall.
 
-[66] Mardia, K. V., & Jupp, P. E. (2000). *Directional Statistics*. Wiley.
+[60] Mardia, K. V., & Jupp, P. E. (2000). *Directional Statistics*. Wiley.
 
 ---
 
 ## Goodness-of-Fit Tests
 
-[59] D'Agostino, R. B., & Stephens, M. A. (1986). *Goodness-of-Fit Techniques*. Marcel Dekker.
+[61] D'Agostino, R. B., & Stephens, M. A. (1986). *Goodness-of-Fit Techniques*. Marcel Dekker.
 
 ---
 
 ## Time Series
 
-[60] Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.
+[62] Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.
 
-[61] Box, G. E. P., & Cox, D. R. (1964). An analysis of transformations. *Journal of the Royal Statistical Society: Series B*, 26(2), 211-252.
+[63] Box, G. E. P., & Cox, D. R. (1964). An analysis of transformations. *Journal of the Royal Statistical Society: Series B*, 26(2), 211-252.
 
 ---
 
 ## Data Sources
 
-[62] U.S. Geological Survey. *USGS Water Services*. https://waterservices.usgs.gov/
+[64] U.S. Geological Survey. *USGS Water Services*. https://waterservices.usgs.gov/
 
-[63] Environment and Climate Change Canada. *Historical Hydrometric Data*. https://wateroffice.ec.gc.ca/
+[65] Environment and Climate Change Canada. *Historical Hydrometric Data*. https://wateroffice.ec.gc.ca/
 
-[64] Australian Bureau of Meteorology. *Water Data Online*. http://www.bom.gov.au/waterdata/
+[66] Australian Bureau of Meteorology. *Water Data Online*. https://www.bom.gov.au/waterdata/
+
+---
+
+## Machine Learning
+
+[67] Nelder, J. A., & Wedderburn, R. W. M. (1972). Generalized linear models. *Journal of the Royal Statistical Society: Series A*, 135(3), 370-384.
+
+[68] Breiman, L., Friedman, J. H., Olshen, R. A., & Stone, C. J. (1984). *Classification and Regression Trees*. Wadsworth.
+
+[69] Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5-32.
+
+[70] Cover, T., & Hart, P. (1967). Nearest neighbor pattern classification. *IEEE Transactions on Information Theory*, 13(1), 21-27.
+
+[71] Zhang, H. (2004). The optimality of naive Bayes. *Proceedings of the Seventeenth International FLAIRS Conference*, 562-567.
+
+[72] MacQueen, J. (1967). Some methods for classification and analysis of multivariate observations. *Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Probability*, 1, 281-297.
+
+[73] Bishop, C. M. (2006). *Pattern Recognition and Machine Learning*. Springer.
+
+[74] Jenks, G. F. (1967). The data model concept in statistical mapping. *International Yearbook of Cartography*, 7, 186-190.
+
+---
+
+## Additional MCMC and Sampling References
+
+[75] Metropolis, N., Rosenbluth, A. W., Rosenbluth, M. N., Teller, A. H., & Teller, E. (1953). Equation of state calculations by fast computing machines. *The Journal of Chemical Physics*, 21(6), 1087-1092.
+
+[76] Gelman, A., & Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. *Statistical Science*, 7(4), 457-472.
+
+[77] Sobol, I. M. (1967). On the distribution of points in a cube and the approximate evaluation of integrals. *USSR Computational Mathematics and Mathematical Physics*, 7(4), 86-112.

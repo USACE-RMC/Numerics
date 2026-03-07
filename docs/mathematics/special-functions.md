@@ -24,7 +24,7 @@ Console.WriteLine($"Γ(3.5) = {g3:F3}");
 
 // Verify: Γ(n+1) = n·Γ(n)
 double check = 3.5 * Gamma.Function(3.5);
-Console.WriteLine($"4.5·Γ(3.5) = {check:F3}");
+Console.WriteLine($"3.5·Γ(3.5) = {check:F3}");
 Console.WriteLine($"Γ(4.5) = {Gamma.Function(4.5):F3}");
 ```
 
@@ -87,7 +87,7 @@ Normalized version: P(a,x) = γ(a,x)/Γ(a)
 
 ```cs
 // Regularized incomplete gamma (CDF of Gamma distribution)
-double P = Gamma.Incomplete(x: 3.0, alpha: 2.0);
+double P = Gamma.Incomplete(X: 3.0, alpha: 2.0);
 
 Console.WriteLine($"P(2, 3) = {P:F6}");
 Console.WriteLine("This equals the Gamma(2,1) CDF at x=3");
@@ -267,23 +267,24 @@ Console.WriteLine($"I₀(2.5) = {i0:F6}");  // ≈ 3.289839
 double i1 = Bessel.I1(2.5);
 Console.WriteLine($"I₁(2.5) = {i1:F6}");  // ≈ 2.516716
 
-// Iν(x) - Modified Bessel function of the first kind, arbitrary order
-double iv = Bessel.Iv(2, 3.0);  // I₂(3.0)
-Console.WriteLine($"I₂(3.0) = {iv:F6}");
+// Iₙ(x) - Modified Bessel function of the first kind, integer order
+double i_n = Bessel.In(2, 3.0);  // I₂(3.0)
+Console.WriteLine($"I₂(3.0) = {i_n:F6}");
 ```
 
-### Log-Space Bessel Functions
+### Log-Space Bessel Computations
 
-For large arguments where the Bessel function overflows, use log-space variants:
+For large arguments where the Bessel function overflows, compute in log space manually:
 
 ```cs
-// Log I₀(x) - avoids overflow for large x
-double logI0 = Bessel.LogI0(500.0);
-Console.WriteLine($"ln(I₀(500)) = {logI0:F4}");
+// Log I₀(x) - compute manually to avoid overflow for large x
+double x = 500.0;
+double logI0 = Math.Log(Bessel.I0(x));
+Console.WriteLine($"ln(I₀({x})) = {logI0:F4}");
 
 // Log I₁(x)
-double logI1 = Bessel.LogI1(500.0);
-Console.WriteLine($"ln(I₁(500)) = {logI1:F4}");
+double logI1 = Math.Log(Bessel.I1(x));
+Console.WriteLine($"ln(I₁({x})) = {logI1:F4}");
 ```
 
 ### Bessel Function Ratios
@@ -311,9 +312,9 @@ Console.WriteLine($"K₀(1.0) = {k0:F6}");  // ≈ 0.421024
 double k1 = Bessel.K1(1.0);
 Console.WriteLine($"K₁(1.0) = {k1:F6}");  // ≈ 0.601907
 
-// Kν(x) - Arbitrary order
-double kv = Bessel.Kv(2, 1.5);
-Console.WriteLine($"K₂(1.5) = {kv:F6}");
+// Kₙ(x) - Integer order
+double k_n = Bessel.Kn(2, 1.5);
+Console.WriteLine($"K₂(1.5) = {k_n:F6}");
 ```
 
 ## Practical Applications
@@ -374,7 +375,7 @@ int k = 5;  // Degrees of freedom
 double x = 8.0;
 
 // CDF at x
-double cdf = Gamma.Incomplete(x: x / 2.0, alpha: k / 2.0);
+double cdf = Gamma.Incomplete(X: x / 2.0, alpha: k / 2.0);
 
 Console.WriteLine($"Chi-squared({k}) CDF at {x}:");
 Console.WriteLine($"  P(X ≤ {x}) = {cdf:F6}");
@@ -439,9 +440,9 @@ Console.WriteLine($"  Relative error = {relativeError:P4}");
 | **Gamma** | Factorial extension | `Function()`, `LogGamma()`, `Digamma()` |
 | **Incomplete Gamma** | Chi-squared, Gamma CDF | `LowerIncomplete()`, `UpperIncomplete()` |
 | **Beta** | Beta distribution | `Function()`, `Incomplete()` |
-| **Error** | Normal distribution | `Function()`, `Erfc()`, `InverseErf()` |
+| **Error** | Normal distribution | `Function()`, `Erfc()`, `InverseErf()`, `InverseErfc()` |
 | **Factorial** | Combinatorics | `Function()`, `BinomialCoefficient()` |
-| **Bessel** | Cylindrical, directional stats | `I0()`, `I1()`, `Iv()`, `K0()`, `K1()`, `Kv()` |
+| **Bessel** | Cylindrical, directional stats | `I0()`, `I1()`, `In()`, `K0()`, `K1()`, `Kn()`, `J0()`, `J1()`, `Jn()`, `Y0()`, `Y1()`, `Yn()` |
 
 ## Implementation Notes
 

@@ -13,10 +13,10 @@ The ***Numerics*** library provides over 40 univariate probability distributions
 | **Normal** | μ (mean), σ (std dev) | General purpose, natural phenomena |
 | **Log-Normal** | μ, σ | Right-skewed data, multiplicative processes |
 | **Uniform** | a (min), b (max) | Maximum entropy, prior distributions |
-| **Exponential** | λ (rate) | Time between events, survival analysis |
-| **Gamma** | α (shape), β (scale) | Waiting times, rainfall |
+| **Exponential** | ξ (location), α (scale) | Time between events, survival analysis |
+| **Gamma** | θ (scale), κ (shape) | Waiting times, rainfall |
 | **Beta** | α, β | Probabilities, proportions, [0,1] bounded |
-| **Weibull** | α (scale), β (shape) | Failure times, wind speed |
+| **Weibull** | λ (scale), κ (shape) | Failure times, wind speed |
 | **Gumbel** | ξ (location), α (scale) | Extreme values (maxima) |
 | **Generalized Extreme Value (GEV)** | ξ, α, κ (shape) | Block maxima, floods, earthquakes |
 | **Generalized Pareto (GP)** | ξ, α, κ | Exceedances over threshold |
@@ -37,7 +37,7 @@ The ***Numerics*** library provides over 40 univariate probability distributions
 | **Inverse Chi-Squared** | ν | Bayesian inference |
 | **Pareto** | xₘ (scale), α (shape) | Income distributions, city sizes |
 | **PERT** | a, b, c | Project management, expert judgment |
-| **PERT Percentile** | P₁₀, P₅₀, P₉₀ | Expert percentile elicitation |
+| **PERT Percentile** | P₅, P₅₀, P₉₅ | Expert percentile elicitation |
 | **PERT Percentile Z** | Similar to PERT Percentile | Alternative parametrization |
 | **Truncated Normal** | μ, σ, a, b | Bounded normal distributions |
 | **Truncated Distribution** | Any distribution + bounds | Bounded versions of distributions |
@@ -100,16 +100,16 @@ double[] GenerateRandomValues(int sampleSize, int seed = -1)
 using Numerics.Distributions;
 
 // Normal distribution: N(100, 15)
-var normal = new Normal(mu: 100, sigma: 15);
+var normal = new Normal(mean: 100, standardDeviation: 15);
 
 // Generalized Extreme Value: GEV(1000, 200, -0.1)
-var gev = new GeneralizedExtremeValue(xi: 1000, alpha: 200, kappa: -0.1);
+var gev = new GeneralizedExtremeValue(location: 1000, scale: 200, shape: -0.1);
 
 // Log-Normal distribution
-var lognormal = new LogNormal(mu: 4.5, sigma: 0.5);
+var lognormal = new LogNormal(meanOfLog: 4.5, standardDeviationOfLog: 0.5);
 
 // Gamma distribution
-var gamma = new GammaDistribution(alpha: 5, beta: 2);
+var gamma = new GammaDistribution(scale: 5, shape: 2);
 ```
 
 ### Method 2: Using SetParameters
@@ -117,10 +117,10 @@ var gamma = new GammaDistribution(alpha: 5, beta: 2);
 ```cs
 // Create with default parameters, then set
 var weibull = new Weibull();
-weibull.SetParameters(new double[] { 50, 2.5 }); // alpha=50, beta=2.5
+weibull.SetParameters(new double[] { 50, 2.5 }); // lambda=50, kappa=2.5
 
 // Or use named parameters
-weibull.SetParameters(alpha: 50, beta: 2.5);
+weibull.SetParameters(scale: 50, shape: 2.5);
 ```
 
 ### Method 3: From Parameter Array
@@ -162,7 +162,7 @@ Console.WriteLine($"95th percentile: {q95:F2}");  // 124.67
 ### Statistical Properties
 
 ```cs
-var gev = new GeneralizedExtremeValue(xi: 1000, alpha: 200, kappa: -0.1);
+var gev = new GeneralizedExtremeValue(location: 1000, scale: 200, shape: -0.1);
 
 Console.WriteLine($"Mean: {gev.Mean:F2}");
 Console.WriteLine($"Std Dev: {gev.StandardDeviation:F2}");
@@ -177,13 +177,13 @@ Console.WriteLine($"Mode: {gev.Mode:F2}");
 The hazard function describes instantaneous failure rate:
 
 ```cs
-var weibull = new Weibull(alpha: 100, beta: 2.5);
+var weibull = new Weibull(scale: 100, shape: 2.5);
 
 // Hazard at time t=50
 double hazard = weibull.HF(50);
 Console.WriteLine($"Hazard rate at t=50: {hazard:F6}");
 
-// For Weibull, hazard increases with time when β > 1 (wear-out)
+// For Weibull, hazard increases with time when κ > 1 (wear-out)
 ```
 
 ### Log-Space Calculations
@@ -287,7 +287,7 @@ Create truncated versions of any distribution:
 
 ```cs
 // Normal truncated to [0, 100]
-var truncNormal = new TruncatedNormal(mu: 50, sigma: 15, lowerBound: 0, upperBound: 100);
+var truncNormal = new TruncatedNormal(mean: 50, standardDeviation: 15, min: 0, max: 100);
 
 // Or truncate any distribution
 var normal = new Normal(50, 15);
@@ -306,7 +306,7 @@ var component1 = new Normal(100, 10);
 var component2 = new Normal(150, 15);
 var weights = new double[] { 0.6, 0.4 };  // 60% from first, 40% from second
 
-var mixture = new Mixture(new IUnivariateDistribution[] { component1, component2 }, weights);
+var mixture = new Mixture(weights, new UnivariateDistributionBase[] { component1, component2 });
 
 // PDF will show two peaks
 double pdf = mixture.PDF(125);  // Valley between modes
@@ -334,7 +334,7 @@ Console.WriteLine($"Empirical 90th percentile: {q90:F2}");
 Smooth non-parametric density estimation:
 
 ```cs
-var kde = new KernelDensity(observations, bandwidth: 1.5);
+var kde = new KernelDensity(observations, KernelType.Gaussian, 1.5);
 
 // Smooth PDF
 double density = kde.PDF(15.0);
@@ -353,11 +353,58 @@ For expert judgment and project management:
 var pert = new Pert(min: 10, mode: 15, max: 25);
 
 // PERT from percentile judgments
-var pertPercentile = new PertPercentile(p10: 12, p50: 15, p90: 22);
+var pertPercentile = new PertPercentile(fifth: 12, fiftieth: 15, ninetyFifth: 22);
 
 // Use for duration or cost uncertainty
 double expectedDuration = pert.Mean;
 double variance = pert.Variance;
+```
+
+### Competing Risks
+
+Model the distribution of the minimum (or maximum) of multiple independent or correlated random variables. This is commonly used in system reliability analysis where failure occurs when any component fails:
+
+```cs
+using Numerics.Distributions;
+using Numerics.Data.Statistics;
+
+// Define failure modes for a levee system
+var overtopping = new Normal(18.5, 2.0);   // Overtopping stage (ft)
+var seepage = new LogNormal(2.85, 0.15);   // Seepage failure stage (ft)
+var erosion = new GEV(16.0, 2.5, -0.1);   // Erosion failure stage (ft)
+
+// System fails at the MINIMUM failure stage
+var system = new CompetingRisks(new UnivariateDistributionBase[] {
+    overtopping, seepage, erosion
+});
+
+// Default: MinimumOfRandomVariables = true (first failure)
+Console.WriteLine("System Failure Analysis (Independent Components):");
+Console.WriteLine($"  Mean failure stage: {system.Mean:F2} ft");
+Console.WriteLine($"  Median failure stage: {system.InverseCDF(0.5):F2} ft");
+Console.WriteLine($"  P(failure ≤ 15 ft): {system.CDF(15.0):F4}");
+Console.WriteLine($"  1% failure stage: {system.InverseCDF(0.01):F2} ft");
+```
+
+**Dependency options:**
+
+```cs
+// Independent components (default)
+system.Dependency = Probability.DependencyType.Independent;
+
+// Perfectly correlated — system CDF equals the weakest component
+system.Dependency = Probability.DependencyType.PerfectlyPositive;
+
+// Custom correlation structure
+system.Dependency = Probability.DependencyType.CorrelationMatrix;
+system.CorrelationMatrix = new double[,] {
+    { 1.0, 0.6, 0.3 },
+    { 0.6, 1.0, 0.4 },
+    { 0.3, 0.4, 1.0 }
+};
+
+// Switch to maximum of random variables
+system.MinimumOfRandomVariables = false;
 ```
 
 ## Random Number Generation
@@ -408,7 +455,7 @@ foreach (var T in returnPeriods)
 ### Example 2: Probability of Exceedance
 
 ```cs
-var lp3 = new LogPearsonTypeIII(mu: 10.2, sigma: 0.3, gamma: 0.4);
+var lp3 = new LogPearsonTypeIII(meanOfLog: 10.2, standardDeviationOfLog: 0.3, skewOfLog: 0.4);
 
 // What's the probability a flood exceeds 50,000 cfs?
 double threshold = 50000;
@@ -451,7 +498,7 @@ foreach (var p in probs)
 
 ```cs
 // Component with Weibull failure time distribution
-var weibull = new Weibull(alpha: 1000, beta: 2.5); // hours
+var weibull = new Weibull(scale: 1000, shape: 2.5); // hours
 
 // Reliability at time t (probability of survival)
 double t = 500;  // hours
@@ -471,7 +518,7 @@ Console.WriteLine($"  MTTF: {weibull.Mean:F1} hours");
 
 ```cs
 // Annual probability of dam failure
-var failureProb = new Beta(alpha: 2, beta: 1998); // ~0.001
+var failureProb = new BetaDistribution(alpha: 2, beta: 1998); // ~0.001
 
 // Generate scenarios
 double[] scenarios = failureProb.GenerateRandomValues(10000, seed: 12345);

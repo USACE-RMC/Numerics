@@ -129,9 +129,10 @@ double rmse = GoodnessOfFit.RMSE(observed, gev);
 
 Console.WriteLine($"RMSE: {rmse:F2}");
 
-// With custom plotting positions
-var plottingPos = PlottingPositions.Weibull(observed.Length);
-double rmse2 = GoodnessOfFit.RMSE(observed, plottingPos, gev);
+// With custom plotting positions (observed data must be sorted in ascending order)
+var sortedObserved = observed.OrderBy(x => x).ToArray();
+var plottingPos = PlottingPositions.Weibull(sortedObserved.Length);
+double rmse2 = GoodnessOfFit.RMSE(sortedObserved, plottingPos, gev);
 
 // With parameter penalty
 double rmse3 = GoodnessOfFit.RMSE(observed, gev.InverseCDF(plottingPos).ToArray(), k: gev.NumberOfParameters);
@@ -273,9 +274,9 @@ else
     Console.WriteLine("Unsatisfactory (bias ≥ ±25%)");
 
 if (pbias > 0)
-    Console.WriteLine("Model underestimates (positive bias)");
+    Console.WriteLine("Model overestimates (positive bias)");
 else if (pbias < 0)
-    Console.WriteLine("Model overestimates (negative bias)");
+    Console.WriteLine("Model underestimates (negative bias)");
 ```
 
 ### RMSE-Observations Standard Deviation Ratio (RSR)
@@ -423,14 +424,28 @@ Console.WriteLine($"  Balanced Accuracy: {balancedAcc:P1}");
 
 ### Example 1: Complete Distribution Comparison
 
+This example compares candidate distributions for the White River near Nora, Indiana. Results can be cross-checked with the worked examples in Rao & Hamed (2000), Chapter 7.
+
+**Data source:** Rao, A. R. & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press, Table 7.1.2.
+See also: [`example-data/white-river-nora-floods.csv`](../example-data/white-river-nora-floods.csv)
+
 ```cs
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 
-double[] annualPeaks = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };
+// White River near Nora, IN — 62 years of annual peak streamflow (cfs)
+double[] annualPeaks = {
+    23200, 2950, 10300, 23200, 4540, 9960, 10800, 26900, 23300, 20400,
+    8480, 3150, 9380, 32400, 20800, 11100, 7270, 9600, 14600, 14300,
+    22500, 14700, 12700, 9740, 3050, 8830, 12000, 30400, 27000, 15200,
+    8040, 11700, 20300, 22700, 30400, 9180, 4870, 14700, 12800, 13700,
+    7960, 9830, 12500, 10700, 13200, 14700, 14300, 4050, 14600, 14400,
+    19200, 7160, 12100, 8650, 10600, 24500, 14400, 6300, 9560, 15800,
+    14300, 28700
+};
 
 // Candidate distributions
-var candidates = new (string Name, IUnivariateDistribution Dist)[]
+var candidates = new (string Name, UnivariateDistributionBase Dist)[]
 {
     ("LP3", new LogPearsonTypeIII()),
     ("GEV", new GeneralizedExtremeValue()),
@@ -446,7 +461,7 @@ var results = new List<(string Name, double AIC, double BIC, double RMSE, double
 foreach (var (name, dist) in candidates)
 {
     // Fit distribution
-    dist.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
+    ((IEstimation)dist).Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
     
     // Compute metrics
     double logLik = annualPeaks.Sum(x => dist.LogPDF(x));

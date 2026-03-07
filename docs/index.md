@@ -19,7 +19,7 @@ The library is designed for engineers, scientists, and researchers who need reli
 - Multiple parameter estimation methods (Method of Moments, L-Moments, Maximum Likelihood)
 - Uncertainty analysis via bootstrap resampling
 - Bivariate copulas for dependency modeling
-- Multivariate normal distribution
+- Multivariate distributions (Normal, Student-t, Dirichlet, Multinomial)
 
 ### Statistical Analysis
 - Comprehensive goodness-of-fit metrics (NSE, KGE, RMSE, PBIAS, AIC/BIC)
@@ -76,7 +76,7 @@ double[] annualMaxFlows = { 1200, 1500, 1100, 1800, 1350, 1600, 1250, 1450 };
 
 // Fit using L-Moments (recommended for hydrologic data)
 var gev = new GeneralizedExtremeValue();
-gev.SetParameters(gev.ParametersFromLinearMoments(annualMaxFlows));
+gev.Estimate(annualMaxFlows, ParameterEstimationMethod.MethodOfLinearMoments);
 
 // Compute the 100-year flood (1% annual exceedance probability)
 double q100 = gev.InverseCDF(0.99);
@@ -110,14 +110,14 @@ var priors = new List<IUnivariateDistribution>
 };
 
 // Define log-likelihood function (simple Gaussian example)
-double LogLikelihood(double[] parameters)
+double ComputeLogLikelihood(double[] parameters)
 {
     // Log-likelihood for parameters[0] with observed value of 5
     return -0.5 * Math.Pow(parameters[0] - 5, 2);
 }
 
 // Create and run sampler
-var sampler = new DEMCz(priors, LogLikelihood);
+var sampler = new DEMCz(priors, ComputeLogLikelihood);
 sampler.Iterations = 10000;
 sampler.Sample();
 
@@ -150,9 +150,10 @@ var results = sampler.Output;
 | [Hypothesis Tests](statistics/hypothesis-tests.md) | Statistical hypothesis testing |
 | **Data** | |
 | [Interpolation](data/interpolation.md) | Interpolation methods |
+| [Linear Regression](data/regression.md) | Linear regression modeling |
 | [Time Series](data/time-series.md) | Time series data structures and analysis |
 | **Machine Learning** | |
-| [Overview](machine-learning/overview.md) | Supervised and unsupervised learning algorithms |
+| [Machine Learning](machine-learning.md) | Supervised and unsupervised learning algorithms |
 | **Sampling** | |
 | [MCMC Methods](sampling/mcmc.md) | Markov Chain Monte Carlo samplers |
 | [Convergence Diagnostics](sampling/convergence-diagnostics.md) | MCMC convergence assessment |
@@ -165,15 +166,14 @@ var results = sampler.Output;
 |-----------|-------------|
 | `Numerics.Distributions` | Probability distributions and copulas |
 | `Numerics.Data.Statistics` | Statistical functions and tests |
-| `Numerics.Data.Interpolation` | Interpolation methods |
-| `Numerics.Data.TimeSeries` | Time series data structures |
-| `Numerics.Mathematics` | Base namespace for mathematical operations |
+| `Numerics.Data` | Interpolation methods, linear regression, time series data structures |
+| `Numerics.Mathematics` | Base namespace for mathematical operations (includes NumericalDerivative) |
 | `Numerics.Mathematics.Integration` | Numerical integration methods |
-| `Numerics.Mathematics.Differentiation` | Numerical differentiation (via NumericalDerivative class) |
 | `Numerics.Mathematics.Optimization` | Optimization algorithms |
 | `Numerics.Mathematics.LinearAlgebra` | Matrix and vector operations |
 | `Numerics.Mathematics.RootFinding` | Root finding algorithms |
 | `Numerics.Mathematics.SpecialFunctions` | Gamma, Beta, Error functions |
+| `Numerics.MachineLearning` | Supervised and unsupervised learning algorithms |
 | `Numerics.Sampling` | Random sampling and stratification |
 | `Numerics.Sampling.MCMC` | MCMC samplers and diagnostics |
 
