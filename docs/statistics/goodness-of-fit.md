@@ -134,8 +134,8 @@ var sortedObserved = observed.OrderBy(x => x).ToArray();
 var plottingPos = PlottingPositions.Weibull(sortedObserved.Length);
 double rmse2 = GoodnessOfFit.RMSE(sortedObserved, plottingPos, gev);
 
-// With parameter penalty
-double rmse3 = GoodnessOfFit.RMSE(observed, gev.InverseCDF(plottingPos).ToArray(), k: gev.NumberOfParameters);
+// With parameter penalty (both arrays must be in the same order)
+double rmse3 = GoodnessOfFit.RMSE(sortedObserved, gev.InverseCDF(plottingPos).ToArray(), k: gev.NumberOfParameters);
 
 Console.WriteLine($"RMSE (Weibull plotting): {rmse2:F2}");
 Console.WriteLine($"RMSE (with penalty): {rmse3:F2}");

@@ -371,7 +371,7 @@ using Numerics.Data.Statistics;
 // Define failure modes for a levee system
 var overtopping = new Normal(18.5, 2.0);   // Overtopping stage (ft)
 var seepage = new LogNormal(2.85, 0.15);   // Seepage failure stage (ft)
-var erosion = new GEV(16.0, 2.5, -0.1);   // Erosion failure stage (ft)
+var erosion = new GeneralizedExtremeValue(16.0, 2.5, -0.1);   // Erosion failure stage (ft)
 
 // System fails at the MINIMUM failure stage
 var system = new CompetingRisks(new UnivariateDistributionBase[] {

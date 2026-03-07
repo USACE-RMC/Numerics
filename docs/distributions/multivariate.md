@@ -124,21 +124,27 @@ Console.WriteLine($"  P(Z₁ ≤ {z1}, Z₂ ≤ {z2} | ρ={rho}) = {bivCDF:F6}")
 
 ### Inverse CDF (Quantile Function)
 
+The `InverseCDF(double[] probabilities)` method takes one probability per dimension and returns a single point in k-dimensional space where each marginal is at its respective probability level:
+
 ```cs
-// Generate quantiles for each marginal
-double[] probabilities = { 0.05, 0.50, 0.95 };
+// Get the point where dim1 is at 5%, dim2 is at 50%, dim3 is at 95%
+double[] point = mvn.InverseCDF(new double[] { 0.05, 0.50, 0.95 });
 
-double[] quantiles = mvn.InverseCDF(probabilities);
-
-Console.WriteLine("Marginal quantiles:");
+Console.WriteLine("Multivariate quantile point:");
 for (int i = 0; i < mvn.Dimension; i++)
 {
-    double q05 = mvn.Mean[i] + Math.Sqrt(mvn.Covariance[i, i]) * 
-                 new Normal(0, 1).InverseCDF(0.05);
+    Console.WriteLine($"  X{i + 1} at p={new[] { 0.05, 0.50, 0.95 }[i]}: {point[i]:F2}");
+}
+
+// For marginal quantiles, use the marginal normal distributions directly
+Console.WriteLine("\nMarginal quantile ranges:");
+for (int i = 0; i < mvn.Dimension; i++)
+{
+    double sd = Math.Sqrt(mvn.Covariance[i, i]);
+    double q05 = mvn.Mean[i] + sd * new Normal(0, 1).InverseCDF(0.05);
     double q50 = mvn.Mean[i];
-    double q95 = mvn.Mean[i] + Math.Sqrt(mvn.Covariance[i, i]) * 
-                 new Normal(0, 1).InverseCDF(0.95);
-    
+    double q95 = mvn.Mean[i] + sd * new Normal(0, 1).InverseCDF(0.95);
+
     Console.WriteLine($"  X{i + 1}: 5%={q05:F2}, 50%={q50:F2}, 95%={q95:F2}");
 }
 ```

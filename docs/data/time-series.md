@@ -456,7 +456,7 @@ int years = 3;
 int daysPerYear = 365;
 var random = new Random(123);
 
-var dailyTemp = new TimeSeries(TimeInterval.OneDay, new DateTime(2022, 1, 1));
+var dailyTemp = new TimeSeries(TimeInterval.OneDay);
 
 // Generate seasonal temperature pattern
 for (int day = 0; day < years * daysPerYear; day++)
