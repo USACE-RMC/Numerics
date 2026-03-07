@@ -1,6 +1,6 @@
 # Machine Learning
 
-[← Back to Index](../index.md)
+[← Previous: Time Series](data/time-series.md) | [Back to Index](index.md) | [Next: MCMC Sampling →](sampling/mcmc.md)
 
 The ***Numerics*** library provides machine learning algorithms for both supervised and unsupervised learning tasks. These implementations are designed for engineering and scientific applications including classification, regression, and clustering.
 
@@ -29,14 +29,16 @@ GLMs extend linear regression to non-normal response distributions [[1]](#1):
 ```cs
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.Optimization;
+using Numerics.Functions;
 
-// Training data
+// Training data (no intercept column needed — GLM adds it automatically when hasIntercept = true)
 double[,] X = {
-    { 1, 2.5, 1.2 },  // Observation 1: [intercept, feature1, feature2]
-    { 1, 3.1, 1.5 },
-    { 1, 2.8, 1.1 },
-    { 1, 3.5, 1.8 },
-    { 1, 2.2, 0.9 }
+    { 2.5, 1.2 },  // Observation 1: [feature1, feature2]
+    { 3.1, 1.5 },
+    { 2.8, 1.1 },
+    { 3.5, 1.8 },
+    { 2.2, 0.9 }
 };
 
 double[] y = { 45.2, 52.3, 47.8, 58.1, 42.5 };  // Response variable
@@ -45,8 +47,8 @@ double[] y = { 45.2, 52.3, 47.8, 58.1, 42.5 };  // Response variable
 var glm = new GeneralizedLinearModel(
     x: new Matrix(X),
     y: new Vector(y),
-    family: GLMFamily.Normal,        // Distribution family
-    linkFunction: LinkFunction.Identity  // Link function
+    hasIntercept: true,                        // Adds intercept column automatically
+    linkType: LinkFunctionType.Identity        // Link function type
 );
 
 // Set optimizer (optional)
@@ -68,8 +70,8 @@ Console.WriteLine($"  Standard Error: {glm.StandardError:F4}");
 
 // Make predictions
 double[,] XNew = {
-    { 1, 3.0, 1.4 },
-    { 1, 2.6, 1.0 }
+    { 3.0, 1.4 },
+    { 2.6, 1.0 }
 };
 
 double[] predictions = glm.Predict(new Matrix(XNew));
@@ -86,21 +88,16 @@ double[,] intervals = glm.Predict(new Matrix(XNew), alpha: 0.1);
 Console.WriteLine($"\n90% Prediction Intervals:");
 for (int i = 0; i < XNew.GetLength(0); i++)
 {
-    Console.WriteLine($"  X_new[{i}]: [{intervals[i, 0]:F2}, {intervals[i, 1]:F2}]");
+    Console.WriteLine($"  X_new[{i}]: [{intervals[i, 0]:F2}, {intervals[i, 2]:F2}]");
 }
 ```
 
-**Supported Families:**
-- `GLMFamily.Normal` - Gaussian (linear regression)
-- `GLMFamily.Binomial` - Binary outcomes (logistic regression)
-- `GLMFamily.Poisson` - Count data
-- `GLMFamily.Gamma` - Positive continuous data
-
-**Link Functions:**
-- `LinkFunction.Identity` - g(μ) = μ
-- `LinkFunction.Log` - g(μ) = log(μ)
-- `LinkFunction.Logit` - g(μ) = log(μ/(1-μ))
-- `LinkFunction.Probit` - g(μ) = Φ⁻¹(μ)
+**Link Function Types** (`LinkFunctionType` in `Numerics.Functions`):
+- `LinkFunctionType.Identity` - g(μ) = μ (Normal/Gaussian family)
+- `LinkFunctionType.Log` - g(μ) = log(μ) (Poisson family)
+- `LinkFunctionType.Logit` - g(μ) = log(μ/(1-μ)) (Binomial family)
+- `LinkFunctionType.Probit` - g(μ) = Φ⁻¹(μ) (Binomial family, alternative)
+- `LinkFunctionType.ComplementaryLogLog` - g(μ) = log(-log(1-μ)) (Asymmetric binary response)
 
 ### Decision Trees
 
@@ -109,36 +106,33 @@ Classification and regression trees [[2]](#2):
 ```cs
 using Numerics.MachineLearning;
 
-// Classification example
+// Classification example (Iris-like data, requires at least 10 training samples)
 double[,] X = {
-    { 5.1, 3.5, 1.4, 0.2 },  // Iris features
+    { 5.1, 3.5, 1.4, 0.2 },  // Iris features: sepal length, sepal width, petal length, petal width
     { 4.9, 3.0, 1.4, 0.2 },
+    { 4.7, 3.2, 1.3, 0.2 },
+    { 5.0, 3.6, 1.4, 0.2 },
     { 7.0, 3.2, 4.7, 1.4 },
     { 6.4, 3.2, 4.5, 1.5 },
+    { 6.9, 3.1, 4.9, 1.5 },
     { 6.3, 3.3, 6.0, 2.5 },
-    { 5.8, 2.7, 5.1, 1.9 }
+    { 5.8, 2.7, 5.1, 1.9 },
+    { 7.1, 3.0, 5.9, 2.1 },
+    { 6.5, 3.0, 5.8, 2.2 }
 };
 
-double[] y = { 0, 0, 1, 1, 2, 2 };  // Classes: Setosa(0), Versicolor(1), Virginica(2)
+double[] y = { 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2 };  // Classes: Setosa(0), Versicolor(1), Virginica(2)
 
-// Create decision tree
-var tree = new DecisionTree(
-    X: X,
-    y: y,
-    maxDepth: 5,              // Maximum tree depth
-    minSamplesSplit: 2,       // Minimum samples to split node
-    minSamplesLeaf: 1         // Minimum samples in leaf
-);
-
-// Train
+// Create and train decision tree
+var tree = new DecisionTree(X, y);
+tree.MaxDepth = 5;  // Optional: limit tree depth (default: 100)
 tree.Train();
 
 Console.WriteLine($"Decision Tree Trained: {tree.IsTrained}");
 
-// Predict
-double[] testSample = { 5.0, 3.0, 1.6, 0.2 };
+// Predict single sample (pass as 2D array with 1 row for multi-feature input)
+double[,] testSample = { { 5.0, 3.0, 1.6, 0.2 } };
 double[] prediction = tree.Predict(testSample);
-
 Console.WriteLine($"Prediction for test sample: Class {prediction[0]}");
 
 // Predict multiple samples
@@ -165,43 +159,40 @@ Ensemble of decision trees for improved accuracy [[3]](#3):
 using Numerics.MachineLearning;
 
 double[,] X = {
-    // Same Iris data as above
+    // Same Iris-like data as above (requires at least 10 training samples)
     { 5.1, 3.5, 1.4, 0.2 },
     { 4.9, 3.0, 1.4, 0.2 },
+    { 4.7, 3.2, 1.3, 0.2 },
+    { 5.0, 3.6, 1.4, 0.2 },
     { 7.0, 3.2, 4.7, 1.4 },
     { 6.4, 3.2, 4.5, 1.5 },
+    { 6.9, 3.1, 4.9, 1.5 },
     { 6.3, 3.3, 6.0, 2.5 },
-    { 5.8, 2.7, 5.1, 1.9 }
+    { 5.8, 2.7, 5.1, 1.9 },
+    { 7.1, 3.0, 5.9, 2.1 },
+    { 6.5, 3.0, 5.8, 2.2 }
 };
 
-double[] y = { 0, 0, 1, 1, 2, 2 };
+double[] y = { 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2 };
 
-// Create random forest
-var forest = new RandomForest(
-    X: X,
-    y: y,
-    nTrees: 100,             // Number of trees
-    maxDepth: 5,
-    minSamplesSplit: 2,
-    minSamplesLeaf: 1,
-    maxFeatures: 2,          // Features per split
-    bootstrap: true,         // Bootstrap sampling
-    seed: 12345
-);
-
-// Train
+// Create and train random forest
+var forest = new RandomForest(X, y, seed: 12345);
+forest.NumberOfTrees = 100;   // Default: 1000
+forest.MaxDepth = 5;          // Default: 100
 forest.Train();
 
 Console.WriteLine($"Random Forest Trained: {forest.IsTrained}");
-Console.WriteLine($"Number of trees: {forest.NTrees}");
+Console.WriteLine($"Number of trees: {forest.NumberOfTrees}");
 
-// Predict with confidence intervals
-double[] testSample = { 5.0, 3.0, 1.6, 0.2 };
+// Predict with confidence intervals (pass as 2D array for multi-feature input)
+// Predict returns double[,] with columns: lower(0), median(1), upper(2), mean(3)
+double[,] testSample = { { 5.0, 3.0, 1.6, 0.2 } };
 double[,] result = forest.Predict(testSample, alpha: 0.1);  // 90% CI
 
 Console.WriteLine($"\nPrediction:");
-Console.WriteLine($"  Predicted class: {result[0, 0]:F0}");
-Console.WriteLine($"  90% CI: [{result[0, 1]:F2}, {result[0, 2]:F2}]");
+Console.WriteLine($"  Predicted class (median): {result[0, 1]:F0}");
+Console.WriteLine($"  Mean: {result[0, 3]:F2}");
+Console.WriteLine($"  90% CI: [{result[0, 0]:F2}, {result[0, 2]:F2}]");
 
 // Batch prediction
 double[,] testSamples = {
@@ -214,8 +205,8 @@ double[,] results = forest.Predict(testSamples, alpha: 0.1);
 Console.WriteLine($"\nBatch predictions:");
 for (int i = 0; i < testSamples.GetLength(0); i++)
 {
-    Console.WriteLine($"  Sample {i}: Class {results[i, 0]:F0}, " +
-                     $"CI [{results[i, 1]:F2}, {results[i, 2]:F2}]");
+    Console.WriteLine($"  Sample {i}: Class {results[i, 1]:F0}, " +
+                     $"CI [{results[i, 0]:F2}, {results[i, 2]:F2}]");
 }
 ```
 
@@ -235,38 +226,34 @@ using Numerics.MachineLearning;
 double[,] X = {
     { 1.0, 2.0 },
     { 1.5, 1.8 },
+    { 1.0, 0.6 },
+    { 2.0, 1.5 },
+    { 1.2, 1.0 },
     { 5.0, 8.0 },
     { 8.0, 8.0 },
-    { 1.0, 0.6 },
-    { 9.0, 11.0 }
+    { 9.0, 11.0 },
+    { 7.0, 9.0 },
+    { 6.5, 7.5 }
 };
 
-double[] y = { 0, 0, 1, 1, 0, 1 };  // Binary classification
+double[] y = { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };  // Binary classification
 
-// Create KNN classifier
-var knn = new KNearestNeighbors(
-    X: X,
-    y: y,
-    k: 3,                    // Number of neighbors
-    weights: "uniform"       // "uniform" or "distance"
-);
+// Create KNN classifier (no explicit training needed — lazy learner)
+var knn = new KNearestNeighbors(X, y, k: 3);
 
-// KNN doesn't require explicit training
-// Prediction happens at query time
-
-// Predict
+// Predict single sample
 double[] testPoint = { 2.0, 3.0 };
-double prediction = knn.Predict(testPoint);
+double[] prediction = knn.Predict(testPoint);
+Console.WriteLine($"KNN Prediction for [{testPoint[0]}, {testPoint[1]}]: Class {prediction[0]}");
 
-Console.WriteLine($"KNN Prediction for [{testPoint[0]}, {testPoint[1]}]: Class {prediction}");
+// Predict multiple samples
+double[,] testPoints = { { 2.0, 3.0 }, { 7.0, 8.0 } };
+double[] predictions = knn.Predict(testPoints);
 
-// Predict with probability estimates
-double[,] probs = knn.PredictProba(testPoint);
-
-Console.WriteLine($"Class probabilities:");
-for (int i = 0; i < probs.GetLength(0); i++)
+Console.WriteLine($"Batch predictions:");
+for (int i = 0; i < predictions.Length; i++)
 {
-    Console.WriteLine($"  Class {i}: {probs[i, 0]:P1}");
+    Console.WriteLine($"  Point {i}: Class {predictions[i]}");
 }
 ```
 
@@ -287,36 +274,38 @@ Probabilistic classifier based on Bayes' theorem [[5]](#5):
 ```cs
 using Numerics.MachineLearning;
 
-// Text classification example (word counts)
+// Text classification example (word counts, requires at least 10 training samples)
 double[,] X = {
     { 2, 1, 0, 1 },  // Document 1: word counts
     { 1, 1, 1, 0 },
+    { 3, 2, 0, 1 },
+    { 2, 0, 1, 0 },
+    { 1, 2, 0, 2 },
     { 0, 3, 2, 1 },
-    { 1, 0, 1, 2 }
+    { 1, 0, 1, 2 },
+    { 0, 1, 3, 2 },
+    { 1, 0, 2, 3 },
+    { 0, 2, 2, 1 }
 };
 
-double[] y = { 0, 0, 1, 1 };  // Classes: spam(1), ham(0)
+double[] y = { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };  // Classes: spam(1), ham(0)
 
-// Create Naive Bayes
-var nb = new NaiveBayes(X: X, y: y);
-
-// Train
+// Create and train Naive Bayes
+var nb = new NaiveBayes(X, y);
 nb.Train();
 
-Console.WriteLine("Naive Bayes trained");
+Console.WriteLine($"Naive Bayes trained: {nb.IsTrained}");
 
-// Predict
+// Predict single sample
 double[] testDoc = { 1, 2, 0, 1 };
-double prediction = nb.Predict(testDoc);
+double[] prediction = nb.Predict(testDoc);
+Console.WriteLine($"Prediction: Class {prediction[0]}");
 
-Console.WriteLine($"Prediction: Class {prediction}");
-
-// Class probabilities
-double[] probabilities = nb.PredictProba(testDoc);
-
-Console.WriteLine($"Class probabilities:");
-Console.WriteLine($"  Class 0 (ham): {probabilities[0]:P1}");
-Console.WriteLine($"  Class 1 (spam): {probabilities[1]:P1}");
+// Predict multiple samples
+double[,] testDocs = { { 1, 2, 0, 1 }, { 0, 3, 1, 0 } };
+double[] predictions = nb.Predict(testDocs);
+for (int i = 0; i < predictions.Length; i++)
+    Console.WriteLine($"  Doc {i}: Class {predictions[i]}");
 ```
 
 **Assumptions:**
@@ -350,20 +339,14 @@ double[,] X = {
 };
 
 // Create k-means with 3 clusters
-var kmeans = new KMeans(X: X, k: 3);
-
-// Configure
+var kmeans = new KMeans(X, k: 3);
 kmeans.MaxIterations = 100;
-kmeans.Tolerance = 1e-4;
-kmeans.Seed = 12345;
 
-// Fit
-kmeans.Fit();
+// Train (use seed for reproducibility, k-means++ initialization by default)
+kmeans.Train(seed: 12345);
 
 Console.WriteLine($"k-Means Clustering (k={kmeans.K}):");
-Console.WriteLine($"Converged: {kmeans.HasConverged}");
 Console.WriteLine($"Iterations: {kmeans.Iterations}");
-Console.WriteLine($"Inertia: {kmeans.Inertia:F2}");
 
 // Cluster centers
 Console.WriteLine($"\nCluster Centers:");
@@ -378,12 +361,6 @@ for (int i = 0; i < X.GetLength(0); i++)
 {
     Console.WriteLine($"  Point [{X[i, 0]:F1}, {X[i, 1]:F1}] → Cluster {kmeans.Labels[i]}");
 }
-
-// Predict cluster for new point
-double[] newPoint = { 2.0, 3.0 };
-int cluster = kmeans.Predict(newPoint);
-
-Console.WriteLine($"\nNew point [{newPoint[0]}, {newPoint[1]}] → Cluster {cluster}");
 
 // Cluster sizes
 var clusterSizes = kmeans.Labels.GroupBy(l => l).Select(g => g.Count()).ToArray();
@@ -413,48 +390,35 @@ double[,] X = {
 };
 
 // Create GMM with 2 components
-var gmm = new GaussianMixtureModel(
-    X: X,
-    nComponents: 2,
-    covarianceType: "full"   // "full", "tied", "diag", "spherical"
-);
-
-// Configure
+var gmm = new GaussianMixtureModel(X, k: 2);
 gmm.MaxIterations = 100;
 gmm.Tolerance = 1e-3;
-gmm.Seed = 12345;
 
-// Fit using EM algorithm
-gmm.Fit();
+// Train using EM algorithm
+gmm.Train(seed: 12345);
 
-Console.WriteLine($"GMM Clustering ({gmm.NComponents} components):");
-Console.WriteLine($"Converged: {gmm.HasConverged}");
+Console.WriteLine($"GMM Clustering ({gmm.K} components):");
+Console.WriteLine($"Iterations: {gmm.Iterations}");
 Console.WriteLine($"Log-likelihood: {gmm.LogLikelihood:F2}");
-Console.WriteLine($"BIC: {gmm.BIC:F2}");
-Console.WriteLine($"AIC: {gmm.AIC:F2}");
 
 // Component parameters
 Console.WriteLine($"\nComponent Parameters:");
-for (int i = 0; i < gmm.NComponents; i++)
+for (int i = 0; i < gmm.K; i++)
 {
     Console.WriteLine($"  Component {i}:");
     Console.WriteLine($"    Weight: {gmm.Weights[i]:F3}");
-    Console.WriteLine($"    Mean: [{string.Join(", ", gmm.Means[i].Select(m => m.ToString("F2")))}]");
+    int dims = X.GetLength(1);
+    Console.Write($"    Mean: [");
+    for (int d = 0; d < dims; d++)
+        Console.Write($"{gmm.Means[i, d]:F2}{(d < dims - 1 ? ", " : "")}");
+    Console.WriteLine("]");
 }
 
-// Predict (hard assignment)
-double[] newPoint = { 2.0, 3.0 };
-int component = gmm.Predict(newPoint);
-
-Console.WriteLine($"\nNew point [{newPoint[0]}, {newPoint[1]}] → Component {component}");
-
-// Predict probabilities (soft assignment)
-double[] probabilities = gmm.PredictProba(newPoint);
-
-Console.WriteLine($"Component probabilities:");
-for (int i = 0; i < probabilities.Length; i++)
+// Cluster labels
+Console.WriteLine($"\nCluster Assignments:");
+for (int i = 0; i < X.GetLength(0); i++)
 {
-    Console.WriteLine($"  Component {i}: {probabilities[i]:P1}");
+    Console.WriteLine($"  Point [{X[i, 0]:F1}, {X[i, 1]:F1}] → Component {gmm.Labels[i]}");
 }
 ```
 
@@ -474,33 +438,20 @@ using Numerics.MachineLearning;
 // Data values (e.g., elevation, rainfall, etc.)
 double[] data = { 10, 12, 15, 18, 22, 25, 28, 35, 40, 45, 50, 55, 60, 70, 80 };
 
-// Find natural breaks with 4 classes
+// Find natural breaks with 4 classes (computation happens in constructor)
 int nClasses = 4;
 var jenks = new JenksNaturalBreaks(data, nClasses);
 
-jenks.Compute();
-
 Console.WriteLine($"Jenks Natural Breaks ({nClasses} classes):");
-Console.WriteLine($"Class breaks: [{string.Join(", ", jenks.Breaks.Select(b => b.ToString("F1")))}]");
+Console.WriteLine($"Break points: [{string.Join(", ", jenks.Breaks.Select(b => b.ToString("F1")))}]");
 Console.WriteLine($"Goodness of variance fit: {jenks.GoodnessOfVarianceFit:F4}");
 
-// Classify data
-int[] classes = jenks.Classify(data);
-
-Console.WriteLine($"\nData classification:");
-for (int i = 0; i < Math.Min(10, data.Length); i++)
+// Access cluster details
+Console.WriteLine($"\nCluster details:");
+for (int c = 0; c < jenks.Clusters.Length; c++)
 {
-    Console.WriteLine($"  Value {data[i]:F1} → Class {classes[i]}");
-}
-
-// Class statistics
-for (int c = 0; c < nClasses; c++)
-{
-    var classData = data.Where((v, i) => classes[i] == c).ToArray();
-    Console.WriteLine($"\nClass {c}:");
-    Console.WriteLine($"  Range: [{classData.Min():F1}, {classData.Max():F1}]");
-    Console.WriteLine($"  Count: {classData.Length}");
-    Console.WriteLine($"  Mean: {classData.Average():F1}");
+    var cluster = jenks.Clusters[c];
+    Console.WriteLine($"  Cluster {c}: {cluster.Count} values");
 }
 ```
 
@@ -519,14 +470,15 @@ for (int c = 0; c < nClasses; c++)
 ```cs
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Functions;
 
-// Predict home prices
+// Predict home prices (no intercept column — GLM adds it automatically)
 double[,] features = {
-    { 1, 1500, 3, 20 },  // [intercept, sqft, bedrooms, age]
-    { 1, 1800, 4, 15 },
-    { 1, 1200, 2, 30 },
-    { 1, 2000, 4, 10 },
-    { 1, 1600, 3, 25 }
+    { 1500, 3, 20 },  // [sqft, bedrooms, age]
+    { 1800, 4, 15 },
+    { 1200, 2, 30 },
+    { 2000, 4, 10 },
+    { 1600, 3, 25 }
 };
 
 double[] prices = { 250000, 320000, 190000, 380000, 270000 };  // $
@@ -534,8 +486,8 @@ double[] prices = { 250000, 320000, 190000, 380000, 270000 };  // $
 var glm = new GeneralizedLinearModel(
     new Matrix(features),
     new Vector(prices),
-    GLMFamily.Normal,
-    LinkFunction.Identity
+    hasIntercept: true,
+    linkType: LinkFunctionType.Identity
 );
 
 glm.Train();
@@ -548,40 +500,42 @@ Console.WriteLine($"  Per bedroom: ${glm.Parameters[2]:F0}");
 Console.WriteLine($"  Per year age: ${glm.Parameters[3]:F0}");
 
 // Predict new home
-double[,] newHome = { { 1, 1700, 3, 12 } };
+double[,] newHome = { { 1700, 3, 12 } };
 double predicted = glm.Predict(new Matrix(newHome))[0];
+// Predict returns columns: lower(0), mean(1), upper(2)
 double[,] interval = glm.Predict(new Matrix(newHome), alpha: 0.1);
 
 Console.WriteLine($"\nPrediction for 1700 sqft, 3BR, 12 years:");
 Console.WriteLine($"  Predicted price: ${predicted:F0}");
-Console.WriteLine($"  90% Interval: [${interval[0, 0]:F0}, ${interval[0, 1]:F0}]");
+Console.WriteLine($"  90% Interval: [${interval[0, 0]:F0}, ${interval[0, 2]:F0}]");
 ```
 
 ### Example 2: Classification Pipeline
 
 ```cs
-// Sample binary classification data (simplified)
+// Sample binary classification data (requires at least 10 training samples)
 double[,] X_train = {
-    { 2.5, 3.2 }, { 3.1, 2.8 }, { 2.8, 3.5 }, { 3.3, 2.9 },  // Class 0
-    { 6.2, 5.8 }, { 5.9, 6.1 }, { 6.5, 5.5 }, { 5.8, 6.3 }   // Class 1
+    { 2.5, 3.2 }, { 3.1, 2.8 }, { 2.8, 3.5 }, { 3.3, 2.9 }, { 2.6, 3.1 },  // Class 0
+    { 6.2, 5.8 }, { 5.9, 6.1 }, { 6.5, 5.5 }, { 5.8, 6.3 }, { 6.1, 5.7 }   // Class 1
 };
-double[] y_train = { 0, 0, 0, 0, 1, 1, 1, 1 };
+double[] y_train = { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };
 
 double[,] X_test = {
     { 2.9, 3.0 }, { 6.0, 5.9 }  // One from each class
 };
 double[] y_test = { 0, 1 };
 
-// Train random forest
-var rf = new RandomForest(X_train, y_train, nTrees: 100, seed: 42);
+// Train random forest (no nTrees constructor parameter — set via property)
+var rf = new RandomForest(X_train, y_train, seed: 42);
+rf.NumberOfTrees = 100;
 rf.Train();
 
-// Evaluate
+// Evaluate — Predict returns double[,] with columns: lower(0), median(1), upper(2), mean(3)
 double[,] predictions = rf.Predict(X_test);
 int correct = 0;
 for (int i = 0; i < y_test.Length; i++)
 {
-    if (predictions[i, 0] == y_test[i])
+    if (predictions[i, 1] == y_test[i])  // Use median (column 1) as predicted class
         correct++;
 }
 
@@ -608,7 +562,7 @@ double[,] customers = {
 
 // Cluster into 3 segments
 var kmeans = new KMeans(customers, k: 3);
-kmeans.Fit();
+kmeans.Train(seed: 42);
 
 Console.WriteLine("Customer Segmentation:");
 for (int i = 0; i < 3; i++)
@@ -624,14 +578,105 @@ for (int i = 0; i < 3; i++)
 }
 ```
 
+### Example 4: Flood Damage Prediction with Logistic GLM
+
+Predicting whether flood damage occurs based on hydraulic variables using data from [`example-data/flood-damage-glm.csv`](example-data/flood-damage-glm.csv):
+
+```cs
+using System.IO;
+using System.Linq;
+using Numerics.MachineLearning;
+using Numerics.Functions;
+using Numerics.Mathematics.LinearAlgebra;
+
+// Load CSV data (skip comment lines starting with #)
+string[] lines = File.ReadAllLines("example-data/flood-damage-glm.csv");
+var dataLines = lines
+    .Where(line => !line.StartsWith("#") && !string.IsNullOrWhiteSpace(line))
+    .Skip(1) // Skip header
+    .ToArray();
+
+int n = dataLines.Length;
+double[,] features = new double[n, 3];
+double[] damage = new double[n];
+
+for (int i = 0; i < n; i++)
+{
+    var parts = dataLines[i].Split(',');
+    features[i, 0] = double.Parse(parts[0]); // FloodStage_ft
+    features[i, 1] = double.Parse(parts[1]); // Duration_hr
+    features[i, 2] = double.Parse(parts[2]); // Velocity_fps
+    damage[i] = double.Parse(parts[3]);       // DamageOccurred (0/1)
+}
+
+// Fit logistic regression (GLM with Logit link)
+var glm = new GeneralizedLinearModel(
+    new Matrix(features),
+    new Vector(damage),
+    hasIntercept: true,
+    linkType: LinkFunctionType.Logit
+);
+
+glm.Train();
+
+// Print R-style summary
+Console.WriteLine("Flood Damage Logistic Regression");
+Console.WriteLine("=" + new string('=', 50));
+foreach (var line in glm.Summary())
+{
+    Console.WriteLine(line);
+}
+
+// Model fit statistics
+Console.WriteLine($"\nAIC: {glm.AIC:F2}");
+Console.WriteLine($"AICc: {glm.AICc:F2}");
+Console.WriteLine($"BIC: {glm.BIC:F2}");
+
+// Predict damage probability for a new flood event
+double[,] newEvent = { { 14.0, 10, 3.5 } };  // Stage=14ft, Duration=10hr, Velocity=3.5fps
+double[] prob = glm.Predict(new Matrix(newEvent));
+Console.WriteLine($"\nPredicted damage probability: {prob[0]:P1}");
+
+// Prediction with 90% confidence interval
+double[,] interval = glm.Predict(new Matrix(newEvent), alpha: 0.1);
+Console.WriteLine($"90% Prediction interval: [{interval[0, 0]:P1}, {interval[0, 2]:P1}]");
+Console.WriteLine($"  Mean prediction: {interval[0, 1]:P1}");
+
+// Compare link functions using AIC
+var linkTypes = new[] {
+    LinkFunctionType.Logit,
+    LinkFunctionType.Probit,
+    LinkFunctionType.ComplementaryLogLog
+};
+
+Console.WriteLine("\nLink Function Comparison:");
+Console.WriteLine("  Link              |     AIC |     BIC");
+Console.WriteLine("  ------------------|---------|--------");
+
+foreach (var link in linkTypes)
+{
+    var model = new GeneralizedLinearModel(
+        new Matrix(features),
+        new Vector(damage),
+        hasIntercept: true,
+        linkType: link
+    );
+    model.Train();
+    Console.WriteLine($"  {link,-18} | {model.AIC,7:F2} | {model.BIC,7:F2}");
+}
+```
+
 ## Model Selection and Evaluation
 
 ### Cross-Validation
 
 ```cs
+using Numerics.Data.Statistics;
+
 // Simple k-fold cross-validation
 int k = 5;
 int n = X.GetLength(0);
+int dims = X.GetLength(1);
 int foldSize = n / k;
 
 double[] accuracies = new double[k];
@@ -644,11 +689,24 @@ for (int fold = 0; fold < k; fold++)
                                  .Where(i => !testIndices.Contains(i))
                                  .ToArray();
 
-    // Extract train/test data
-    var X_trainFold = Matrix.SelectRows(X, trainIndices);
-    var y_trainFold = trainIndices.Select(i => y[i]).ToArray();
-    var X_testFold = Matrix.SelectRows(X, testIndices);
-    var y_testFold = testIndices.Select(i => y[i]).ToArray();
+    // Extract train/test data by copying rows
+    double[,] X_trainFold = new double[trainIndices.Length, dims];
+    double[] y_trainFold = new double[trainIndices.Length];
+    for (int i = 0; i < trainIndices.Length; i++)
+    {
+        for (int d = 0; d < dims; d++)
+            X_trainFold[i, d] = X[trainIndices[i], d];
+        y_trainFold[i] = y[trainIndices[i]];
+    }
+
+    double[,] X_testFold = new double[testIndices.Length, dims];
+    double[] y_testFold = new double[testIndices.Length];
+    for (int i = 0; i < testIndices.Length; i++)
+    {
+        for (int d = 0; d < dims; d++)
+            X_testFold[i, d] = X[testIndices[i], d];
+        y_testFold[i] = y[testIndices[i]];
+    }
 
     // Train and evaluate
     var model = new DecisionTree(X_trainFold, y_trainFold);
@@ -657,7 +715,7 @@ for (int fold = 0; fold < k; fold++)
 
     int correct = 0;
     for (int i = 0; i < testIndices.Length; i++)
-        if (predictions[i, 0] == y_testFold[i]) correct++;
+        if (predictions[i] == y_testFold[i]) correct++;
 
     accuracies[fold] = (double)correct / testIndices.Length;
 }
@@ -671,35 +729,45 @@ Console.WriteLine($"  Std dev: {Statistics.StandardDeviation(accuracies):F4}");
 
 ```cs
 // Compare different classifiers on the same dataset
-double[,] X = { /* training features */ };
+double[,] X = { /* training features (at least 10 rows) */ };
 double[] y = { /* training labels */ };
 double[,] X_test = { /* test features */ };
 double[] y_test = { /* test labels */ };
 
-// Define models
+// Train models (KNN is lazy — no Train() call needed)
 var decisionTree = new DecisionTree(X, y);
-var randomForest = new RandomForest(X, y, nTrees: 50);
+decisionTree.Train();
+
+var randomForest = new RandomForest(X, y, seed: 42);
+randomForest.NumberOfTrees = 50;
+randomForest.Train();
+
 var knn = new KNearestNeighbors(X, y, k: 3);
 
-// Train all models
-decisionTree.Train();
-randomForest.Train();
-knn.Train();
-
 // Evaluate each model
+// Note: DecisionTree and KNN return double[], RandomForest returns double[,]
 Console.WriteLine("Model Comparison:");
-foreach (var (name, model) in new[] {
-    ("Decision Tree", decisionTree),
-    ("Random Forest", (IClassifier)randomForest),
-    ("KNN (k=3)", (IClassifier)knn) })
-{
-    var predictions = model.Predict(X_test);
-    int correct = 0;
-    for (int i = 0; i < y_test.Length; i++)
-        if (predictions[i, 0] == y_test[i]) correct++;
-    double accuracy = (double)correct / y_test.Length;
-    Console.WriteLine($"  {name}: {accuracy:P1}");
-}
+
+// DecisionTree returns double[]
+double[] dtPredictions = decisionTree.Predict(X_test);
+int dtCorrect = 0;
+for (int i = 0; i < y_test.Length; i++)
+    if (dtPredictions[i] == y_test[i]) dtCorrect++;
+Console.WriteLine($"  Decision Tree: {(double)dtCorrect / y_test.Length:P1}");
+
+// RandomForest returns double[,] with columns: lower(0), median(1), upper(2), mean(3)
+double[,] rfPredictions = randomForest.Predict(X_test);
+int rfCorrect = 0;
+for (int i = 0; i < y_test.Length; i++)
+    if (rfPredictions[i, 1] == y_test[i]) rfCorrect++;  // Use median (column 1)
+Console.WriteLine($"  Random Forest: {(double)rfCorrect / y_test.Length:P1}");
+
+// KNN returns double[]
+double[] knnPredictions = knn.Predict(X_test);
+int knnCorrect = 0;
+for (int i = 0; i < y_test.Length; i++)
+    if (knnPredictions[i] == y_test[i]) knnCorrect++;
+Console.WriteLine($"  KNN (k=3): {(double)knnCorrect / y_test.Length:P1}");
 ```
 
 ## Best Practices
@@ -725,15 +793,15 @@ foreach (var (name, model) in new[] {
 
 <a id="1">[1]</a> Nelder, J. A., & Wedderburn, R. W. M. (1972). Generalized linear models. *Journal of the Royal Statistical Society: Series A*, 135(3), 370-384.
 
-<a id="2">[2]</a> Breiman, L., Friedman, J., Stone, C. J., & Olshen, R. A. (1984). *Classification and Regression Trees*. CRC Press.
+<a id="2">[2]</a> Breiman, L., Friedman, J. H., Olshen, R. A., & Stone, C. J. (1984). *Classification and Regression Trees*. Wadsworth.
 
 <a id="3">[3]</a> Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5-32.
 
 <a id="4">[4]</a> Cover, T., & Hart, P. (1967). Nearest neighbor pattern classification. *IEEE Transactions on Information Theory*, 13(1), 21-27.
 
-<a id="5">[5]</a> Zhang, H. (2004). The optimality of naive Bayes. *AA*, 1(2), 3.
+<a id="5">[5]</a> Zhang, H. (2004). The optimality of naive Bayes. *Proceedings of the Seventeenth International FLAIRS Conference*, 562-567.
 
-<a id="6">[6]</a> MacQueen, J. (1967). Some methods for classification and analysis of multivariate observations. *Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Probability*, 1(14), 281-297.
+<a id="6">[6]</a> MacQueen, J. (1967). Some methods for classification and analysis of multivariate observations. *Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Probability*, 1, 281-297.
 
 <a id="7">[7]</a> Bishop, C. M. (2006). *Pattern Recognition and Machine Learning*. Springer.
 
@@ -741,4 +809,4 @@ foreach (var (name, model) in new[] {
 
 ---
 
-[← Back to Index](../index.md)
+[← Previous: Time Series](data/time-series.md) | [Back to Index](index.md) | [Next: MCMC Sampling →](sampling/mcmc.md)

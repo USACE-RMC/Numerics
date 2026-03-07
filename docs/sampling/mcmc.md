@@ -13,6 +13,7 @@ Markov Chain Monte Carlo (MCMC) methods sample from complex posterior distributi
 | **DEMCz** | Differential Evolution MCMC | High dimensions, multimodal | Population-based, efficient |
 | **DEMCzs** | DE-MCMC with snooker update | Very high dimensions | Enhanced DE-MCMC |
 | **HMC** | Hamiltonian Monte Carlo | Smooth posteriors | Uses gradient information |
+| **NUTS** | No-U-Turn Sampler | General smooth posteriors | Auto-tuning HMC |
 | **Gibbs** | Gibbs Sampler | Conditional distributions available | No rejections |
 
 ## Common MCMC Interface
@@ -22,7 +23,7 @@ All samplers inherit from `MCMCSampler` base class with common properties:
 ```cs
 // Configuration
 int PRNGSeed               // Random seed (default: 12345)
-int InitialIterations      // Initialization phase (default: 10)
+int InitialIterations      // Initialization phase (base default: 10; most samplers override, e.g. RWMH/ARWMH/NUTS use 100 * NumberOfParameters)
 int WarmupIterations       // Burn-in period (default: 1750)
 int Iterations             // Main sampling (default: 3500)
 int NumberOfChains         // Parallel chains (default: 4)
@@ -33,10 +34,9 @@ List<IUnivariateDistribution> PriorDistributions
 LogLikelihood LogLikelihoodFunction
 
 // Outputs (after sampling)
-ParameterSet[] ParameterSets      // All samples
-double[] LogLikelihoods           // Log-likelihood values
-double[] LogPosteriors            // Log-posterior values
-int[] SampleCount                 // Samples per chain
+List<ParameterSet>[] Output       // Posterior samples (one list per chain)
+List<ParameterSet>[] MarkovChains // Raw MCMC chains
+ParameterSet MAP                  // Maximum a posteriori estimate
 ```
 
 ## Defining the Model
@@ -111,9 +111,17 @@ The simplest and most robust MCMC algorithm [[2]](#2):
 
 ```cs
 using Numerics.Sampling.MCMC;
+using Numerics.Sampling;
+using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Data.Statistics;
+using System.Linq;
+
+// Create proposal covariance matrix (identity scaled for initial exploration)
+int nParams = priors.Count;
+var proposalSigma = Matrix.Identity(nParams) * 0.1;
 
 // Create sampler
-var rwmh = new RWMH(priors, logLikelihood);
+var rwmh = new RWMH(priors, logLikelihood, proposalSigma);
 
 // Configure sampling
 rwmh.PRNGSeed = 12345;
@@ -128,8 +136,8 @@ Console.WriteLine("Running RWMH sampler...");
 rwmh.Sample();
 
 // Access results
-var samples = rwmh.ParameterSets;
-Console.WriteLine($"Generated {samples.Length} samples");
+var samples = rwmh.Output.SelectMany(chain => chain).ToList();
+Console.WriteLine($"Generated {samples.Count} samples");
 Console.WriteLine($"Samples per chain: {string.Join(", ", rwmh.SampleCount)}");
 
 // Posterior statistics
@@ -138,8 +146,8 @@ for (int i = 0; i < priors.Count; i++)
     var values = samples.Select(s => s.Values[i]).ToArray();
     double mean = values.Average();
     double std = Statistics.StandardDeviation(values);
-    double q025 = Statistics.Percentile(values.OrderBy(x => x).ToArray(), 2.5);
-    double q975 = Statistics.Percentile(values.OrderBy(x => x).ToArray(), 97.5);
+    double q025 = Statistics.Percentile(values, 0.025);
+    double q975 = Statistics.Percentile(values, 0.975);
     
     Console.WriteLine($"θ{i}: {mean:F3} ± {std:F3}, 95% CI: [{q025:F3}, {q975:F3}]");
 }
@@ -167,10 +175,10 @@ arwmh.NumberOfChains = 4;
 Console.WriteLine("Running Adaptive RWMH sampler...");
 arwmh.Sample();
 
-var samples = arwmh.ParameterSets;
-Console.WriteLine($"Generated {samples.Length} samples");
+var samples = arwmh.Output.SelectMany(chain => chain).ToList();
+Console.WriteLine($"Generated {samples.Count} samples");
 
-// ARWMH adapts proposal covariance to achieve ~23% acceptance rate
+// ARWMH adapts the proposal covariance matrix during sampling (it does not explicitly target a specific acceptance rate)
 Console.WriteLine("ARWMH automatically tuned proposal during warmup");
 ```
 
@@ -201,8 +209,8 @@ demcz.Iterations = 5000;
 Console.WriteLine("Running DE-MCMC sampler...");
 demcz.Sample();
 
-var samples = demcz.ParameterSets;
-Console.WriteLine($"Generated {samples.Length} samples from {demcz.NumberOfChains} chains");
+var samples = demcz.Output.SelectMany(chain => chain).ToList();
+Console.WriteLine($"Generated {samples.Count} samples from {demcz.NumberOfChains} chains");
 
 // DEMCz is particularly effective for multimodal posteriors
 ```
@@ -252,8 +260,8 @@ Console.WriteLine("Running Hamiltonian Monte Carlo...");
 hmc.Sample();
 
 // HMC produces high-quality samples with lower autocorrelation
-var samples = hmc.ParameterSets;
-Console.WriteLine($"Generated {samples.Length} high-quality samples");
+var samples = hmc.Output.SelectMany(chain => chain).ToList();
+Console.WriteLine($"Generated {samples.Count} high-quality samples");
 ```
 
 **When to use HMC:**
@@ -272,12 +280,69 @@ Console.WriteLine($"Generated {samples.Length} high-quality samples");
 - Less robust to discontinuities
 - More complex to tune
 
+## No-U-Turn Sampler (NUTS)
+
+NUTS automatically tunes the trajectory length that HMC requires as a manual setting, making it the recommended gradient-based sampler for most problems [[6]](#6):
+
+```cs
+var nuts = new NUTS(priors, logLikelihood);
+
+// NUTS-specific settings
+nuts.NumberOfChains = 4;
+nuts.WarmupIterations = 1000;       // Step size adapts during warmup
+nuts.Iterations = 2000;
+
+// Optional: set step size and max tree depth
+// nuts = new NUTS(priors, logLikelihood, stepSize: 0.5, maxTreeDepth: 10);
+
+Console.WriteLine("Running No-U-Turn Sampler...");
+nuts.Sample();
+
+// Analyze results using MCMCResults
+var results = new MCMCResults(nuts);
+
+Console.WriteLine($"Parameter 0 - Mean: {results.ParameterResults[0].SummaryStatistics.Mean:F3}");
+Console.WriteLine($"Parameter 0 - Median: {results.ParameterResults[0].SummaryStatistics.Median:F3}");
+```
+
+**When to use NUTS:**
+- Smooth, differentiable posteriors (same as HMC)
+- When you don't want to tune the number of leapfrog steps
+- Default gradient-based sampler for most applications
+- Medium to high dimensions
+
+**Advantages over HMC:**
+- No manual tuning of trajectory length
+- Adapts step size automatically via dual averaging
+- Eliminates wasteful U-turns in the trajectory
+- Generally more efficient per computation
+
+**Key settings:**
+- `stepSize`: Initial leapfrog step size (adapted during warmup)
+- `maxTreeDepth`: Maximum binary tree depth (default 10, caps trajectory at 2^10 = 1024 steps)
+- `gradientFunction`: Optional analytical gradient, provided as a constructor parameter only (not a settable property). If not provided, numerical finite differences are used.
+
 ## Gibbs Sampler
 
 Samples each parameter conditionally given others:
 
 ```cs
-var gibbs = new Gibbs(priors, logLikelihood);
+// Define a proposal function that samples each parameter from its conditional distribution.
+// The Gibbs.Proposal delegate signature is: double[] Proposal(double[] parameters, Random prng)
+Gibbs.Proposal proposalFunction = (parameters, prng) =>
+{
+    var proposed = (double[])parameters.Clone();
+    for (int i = 0; i < priors.Count; i++)
+    {
+        // Sample each parameter from a small perturbation around the current value
+        proposed[i] = parameters[i] + new Normal(0, 0.1).InverseCDF(prng.NextDouble());
+        // Clamp to prior bounds
+        proposed[i] = Math.Max(priors[i].Minimum, Math.Min(priors[i].Maximum, proposed[i]));
+    }
+    return proposed;
+};
+
+var gibbs = new Gibbs(priors, logLikelihood, proposalFunction);
 
 gibbs.NumberOfChains = 4;
 gibbs.WarmupIterations = 1500;
@@ -304,7 +369,9 @@ Console.WriteLine("Gibbs sampler completed (no rejections)");
 ```cs
 using Numerics.Distributions;
 using Numerics.Sampling.MCMC;
+using Numerics.Sampling;
 using Numerics.Data.Statistics;
+using System.Linq;
 
 // Generate synthetic data
 double trueIntercept = 2.0;
@@ -315,7 +382,8 @@ var random = new MersenneTwister(123);
 int n = 20;
 double[] x = Enumerable.Range(1, n).Select(i => (double)i).ToArray();
 double[] yTrue = x.Select(xi => trueIntercept + trueSlope * xi).ToArray();
-double[] y = yTrue.Select(yi => yi + new Normal(0, trueNoise).InverseCDF(random.NextDouble())).ToArray();
+var noiseDist = new Normal(0, trueNoise);
+double[] y = yTrue.Select(yi => yi + noiseDist.InverseCDF(random.NextDouble())).ToArray();
 
 Console.WriteLine($"Generated {n} data points");
 Console.WriteLine($"True parameters: a={trueIntercept}, b={trueSlope}, σ={trueNoise}");
@@ -360,8 +428,8 @@ Console.WriteLine("\nRunning MCMC...");
 sampler.Sample();
 
 // Analyze results
-var samples = sampler.ParameterSets;
-Console.WriteLine($"\nPosterior Summary ({samples.Length} samples):");
+var samples = sampler.Output.SelectMany(chain => chain).ToList();
+Console.WriteLine($"\nPosterior Summary ({samples.Count} samples):");
 Console.WriteLine("Parameter | True  | Post Mean | Post SD | 95% Credible Interval");
 Console.WriteLine("---------------------------------------------------------------");
 
@@ -370,11 +438,11 @@ double[] trueVals = { trueIntercept, trueSlope, trueNoise };
 
 for (int i = 0; i < 3; i++)
 {
-    var vals = samples.Select(s => s.Values[i]).OrderBy(v => v).ToArray();
+    var vals = samples.Select(s => s.Values[i]).ToArray();
     double mean = vals.Average();
     double std = Statistics.StandardDeviation(vals);
-    double lower = Statistics.Percentile(vals, 2.5);
-    double upper = Statistics.Percentile(vals, 97.5);
+    double lower = Statistics.Percentile(vals, 0.025);
+    double upper = Statistics.Percentile(vals, 0.975);
     
     Console.WriteLine($"{names[i],-9} | {trueVals[i],5:F2} | {mean,9:F3} | {std,7:F3} | [{lower:F3}, {upper:F3}]");
 }
@@ -385,88 +453,154 @@ double xNew = 15;
 var predictions = samples.Select(s => s.Values[0] + s.Values[1] * xNew).ToArray();
 double predMean = predictions.Average();
 double predSD = Statistics.StandardDeviation(predictions);
-double predLower = Statistics.Percentile(predictions.OrderBy(p => p).ToArray(), 2.5);
-double predUpper = Statistics.Percentile(predictions.OrderBy(p => p).ToArray(), 97.5);
+double predLower = Statistics.Percentile(predictions, 0.025);
+double predUpper = Statistics.Percentile(predictions, 0.975);
 
 Console.WriteLine($"E[y|x={xNew}] = {predMean:F2} ± {predSD:F2}");
 Console.WriteLine($"95% Credible Interval: [{predLower:F2}, {predUpper:F2}]");
 ```
 
-### Example 2: Distribution Parameter Estimation
+### Example 2: Bayesian Distribution Fitting with Real Streamflow Data
+
+This example fits a Normal distribution to Tippecanoe River streamflow data using ARWMH, following the same methodology used in the library's unit tests. Results are validated against rstan with comparable MCMC settings.
+
+**Data source:** Rao, A. R. & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press, Table 5.1.1.
+See also: [`example-data/tippecanoe-river-streamflow.csv`](../example-data/tippecanoe-river-streamflow.csv)
 
 ```cs
-// Observed data from unknown GEV distribution
-double[] annualMaxima = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };
+using Numerics.Distributions;
+using Numerics.Sampling.MCMC;
+using Numerics.Data.Statistics;
+using System.Linq;
 
-Console.WriteLine("Bayesian Estimation of GEV Parameters");
-Console.WriteLine("=" + new string('=', 50));
+// Tippecanoe River near Delphi, IN — 48 years of annual peak streamflow (cfs)
+// Source: Rao & Hamed (2000), Table 5.1.1
+double[] annualPeaks = {
+    6290, 2700, 13100, 16900, 14600, 9600, 7740, 8490, 8130, 12000,
+    17200, 15000, 12400, 6960, 6500, 5840, 10400, 18800, 21400, 22600,
+    14200, 11000, 12800, 15700, 4740, 6950, 11800, 12100, 20600, 14600,
+    14600, 8900, 10600, 14200, 14100, 14100, 12500, 7530, 13400, 17600,
+    13400, 19200, 16900, 15500, 14500, 21900, 10400, 7460
+};
 
-// Prior distributions for GEV parameters [ξ, α, κ]
+Console.WriteLine("Bayesian Estimation of Normal Distribution Parameters");
+Console.WriteLine("Tippecanoe River near Delphi, IN (n=48)");
+
+// Prior distributions for Normal(μ, σ)
+// Use weakly informative priors centered on data scale
 var priors = new List<IUnivariateDistribution>
 {
-    new Normal(15000, 5000),      // Location: N(15000, 5000)
-    new Uniform(100, 5000),       // Scale: U(100, 5000)
-    new Uniform(-0.5, 0.5)        // Shape: U(-0.5, 0.5)
+    new Uniform(0, 50000),     // μ: Uniform over reasonable flow range
+    new Uniform(0, 50000)      // σ: Uniform positive
 };
 
-// Log-likelihood
+// Log-likelihood function
 LogLikelihood logLik = (theta) =>
 {
-    double xi = theta[0];
-    double alpha = theta[1];
-    double kappa = theta[2];
-    
-    // Check parameter validity
-    if (alpha <= 0) return double.NegativeInfinity;
-    
-    // Prior
-    double logPrior = priors[0].LogPDF(xi) + priors[1].LogPDF(alpha) + priors[2].LogPDF(kappa);
-    
-    // Likelihood
-    var gev = new GeneralizedExtremeValue(xi, alpha, kappa);
-    if (!gev.ParametersValid) return double.NegativeInfinity;
-    
-    double logData = annualMaxima.Sum(x => gev.LogPDF(x));
-    
-    return logPrior + logData;
+    double mu = theta[0];
+    double sigma = theta[1];
+    if (sigma <= 0) return double.NegativeInfinity;
+
+    var model = new Normal(mu, sigma);
+    return model.LogLikelihood(annualPeaks);
 };
 
-// Sample posterior
+// Run ARWMH sampler
 var sampler = new ARWMH(priors, logLik);
-sampler.WarmupIterations = 3000;
-sampler.Iterations = 10000;
+sampler.PRNGSeed = 12345;
+sampler.WarmupIterations = 2000;
+sampler.Iterations = 5000;
 sampler.NumberOfChains = 4;
 sampler.ThinningInterval = 10;
 
-Console.WriteLine("Sampling posterior distribution...");
 sampler.Sample();
 
-var samples = sampler.ParameterSets;
-Console.WriteLine($"Generated {samples.Length} posterior samples\n");
+// Analyze posterior
+var samples = sampler.Output.SelectMany(chain => chain).ToList();
+string[] paramNames = { "μ (mean)", "σ (std dev)" };
 
-// Parameter estimates
-string[] paramNames = { "Location (ξ)", "Scale (α)", "Shape (κ)" };
-for (int i = 0; i < 3; i++)
+Console.WriteLine($"\nPosterior Summary ({samples.Count} samples):");
+for (int i = 0; i < 2; i++)
 {
-    var vals = samples.Select(s => s.Values[i]).OrderBy(v => v).ToArray();
-    Console.WriteLine($"{paramNames[i]}:");
-    Console.WriteLine($"  Mean: {vals.Average():F2}");
-    Console.WriteLine($"  Median: {Statistics.Percentile(vals, 50):F2}");
-    Console.WriteLine($"  95% CI: [{Statistics.Percentile(vals, 2.5):F2}, {Statistics.Percentile(vals, 97.5):F2}]");
+    var vals = samples.Select(s => s.Values[i]).ToArray();
+    Console.WriteLine($"  {paramNames[i]}:");
+    Console.WriteLine($"    Mean:   {vals.Average():F1}");
+    Console.WriteLine($"    SD:     {Statistics.StandardDeviation(vals):F1}");
+    Console.WriteLine($"    95% CI: [{Statistics.Percentile(vals, 0.025):F1}, " +
+                     $"{Statistics.Percentile(vals, 0.975):F1}]");
 }
 
-// Posterior predictive quantiles
-Console.WriteLine("\nPosterior Predictive 100-year Flood:");
-var q100 = samples.Select(s =>
-{
-    var dist = new GeneralizedExtremeValue(s.Values[0], s.Values[1], s.Values[2]);
-    return dist.InverseCDF(0.99);
-}).OrderBy(q => q).ToArray();
+// Expected results (validated against rstan):
+//   μ:  mean ≈ 12664, sd ≈ 707
+//   σ:  mean ≈ 4844,  sd ≈ 519
 
-Console.WriteLine($"  Mean: {q100.Average():F0} cfs");
-Console.WriteLine($"  Median: {Statistics.Percentile(q100, 50):F0} cfs");
-Console.WriteLine($"  95% CI: [{Statistics.Percentile(q100, 2.5):F0}, {Statistics.Percentile(q100, 97.5):F0}] cfs");
+// MAP estimate
+Console.WriteLine($"\nMAP estimate: μ={sampler.MAP.Values[0]:F1}, σ={sampler.MAP.Values[1]:F1}");
 ```
+
+### Post-Processing with MCMCResults
+
+The `MCMCResults` class provides structured post-processing of MCMC output, including summary statistics, convergence diagnostics, kernel density estimates, and histograms for each parameter:
+
+```cs
+using Numerics.Sampling.MCMC;
+
+// After running the sampler, create results object
+var results = new MCMCResults(sampler, alpha: 0.1);
+
+// Access structured parameter summaries
+Console.WriteLine("Parameter Summary:");
+Console.WriteLine($"{"Param",-8} {"Mean",10} {"Median",10} {"SD",10} {"5%",10} {"95%",10} {"R-hat",8} {"ESS",8}");
+
+for (int i = 0; i < results.ParameterResults.Length; i++)
+{
+    var stats = results.ParameterResults[i].SummaryStatistics;
+    Console.WriteLine($"{paramNames[i],-8} {stats.Mean,10:F2} {stats.Median,10:F2} " +
+                      $"{stats.StandardDeviation,10:F2} {stats.LowerCI,10:F2} " +
+                      $"{stats.UpperCI,10:F2} {stats.Rhat,8:F4} {stats.ESS,8:F0}");
+}
+
+// MAP and posterior mean estimates
+Console.WriteLine($"\nMAP: [{string.Join(", ", results.MAP.Values.Select(v => v.ToString("F2")))}]");
+Console.WriteLine($"Posterior Mean: [{string.Join(", ", results.PosteriorMean.Values.Select(v => v.ToString("F2")))}]");
+
+// Access all posterior samples
+Console.WriteLine($"\nTotal posterior samples: {results.Output.Count}");
+
+// Access individual chain results
+if (results.MarkovChains != null)
+{
+    for (int c = 0; c < results.MarkovChains.Length; c++)
+    {
+        Console.WriteLine($"  Chain {c}: {results.MarkovChains[c].Count} samples");
+    }
+}
+```
+
+**`MCMCResults` properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ParameterResults` | `ParameterResults[]` | Per-parameter statistics, KDE, and histograms |
+| `MAP` | `ParameterSet` | Maximum a posteriori estimate |
+| `PosteriorMean` | `ParameterSet` | Mean of posterior samples |
+| `Output` | `List<ParameterSet>` | All posterior samples (aggregated across chains) |
+| `MarkovChains` | `List<ParameterSet>[]` | Per-chain sample lists |
+| `AcceptanceRates` | `double[]` | Acceptance rate for each chain |
+| `MeanLogLikelihood` | `List<double>` | Average log-likelihood per iteration |
+
+**`ParameterStatistics` properties** (via `ParameterResults[i].SummaryStatistics`):
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Mean` | `double` | Posterior mean |
+| `Median` | `double` | Posterior median |
+| `StandardDeviation` | `double` | Posterior standard deviation |
+| `LowerCI` | `double` | Lower confidence interval (default 5th percentile) |
+| `UpperCI` | `double` | Upper confidence interval (default 95th percentile) |
+| `Rhat` | `double` | Gelman-Rubin convergence diagnostic |
+| `ESS` | `double` | Effective sample size |
+| `N` | `int` | Total sample count |
 
 ## Thinning
 
@@ -530,6 +664,7 @@ sampler.Iterations = 5000;           // Kept samples
 - **ARWMH**: 2000-3000 (adapts during warmup)
 - **DEMCz**: 1500-3000 (converges faster)
 - **HMC**: 1000-2000 (efficient exploration)
+- **NUTS**: 1000-2000 (step size adapts during warmup)
 - **Rule of thumb**: Warmup ≥ 50% of main iterations
 
 ## Best Practices
@@ -564,7 +699,7 @@ sampler.Iterations = 5000;
 // Low dimensions (< 5): RWMH or ARWMH
 // Medium (5-20): ARWMH (default choice)
 // High (20+): DEMCz or DEMCzs
-// Smooth posteriors: HMC
+// Smooth posteriors: NUTS (preferred) or HMC
 // Conjugate models: Gibbs
 ```
 
@@ -593,9 +728,16 @@ if (double.IsNaN(logLik) || double.IsInfinity(logLik))
 ## Comparing Samplers
 
 ```cs
+using Numerics.Sampling.MCMC;
+using Numerics.Mathematics.LinearAlgebra;
+using System.Linq;
+
+// RWMH requires a proposal covariance matrix
+var rwmhProposal = Matrix.Identity(priors.Count) * 0.1;
+
 var samplers = new (string Name, MCMCSampler Sampler)[]
 {
-    ("RWMH", new RWMH(priors, logLik)),
+    ("RWMH", new RWMH(priors, logLik, rwmhProposal)),
     ("ARWMH", new ARWMH(priors, logLik)),
     ("DEMCz", new DEMCz(priors, logLik))
 };
@@ -604,14 +746,65 @@ foreach (var (name, sampler) in samplers)
 {
     sampler.WarmupIterations = 2000;
     sampler.Iterations = 5000;
-    
+
     var watch = System.Diagnostics.Stopwatch.StartNew();
     sampler.Sample();
     watch.Stop();
-    
-    Console.WriteLine($"{name}: {sampler.ParameterSets.Length} samples in {watch.ElapsedMilliseconds}ms");
+
+    int totalSamples = sampler.Output.Sum(chain => chain.Count);
+    Console.WriteLine($"{name}: {totalSamples} samples in {watch.ElapsedMilliseconds}ms");
 }
 ```
+
+## Self-Normalizing Importance Sampling (SNIS)
+
+The `SNIS` sampler performs self-normalizing importance sampling rather than iterative MCMC. It draws independent samples from a proposal distribution and re-weights them by the likelihood. This is useful when the posterior is close to the prior or when a good proposal distribution is available.
+
+```cs
+using Numerics.Sampling.MCMC;
+using Numerics.Distributions;
+
+// Observed data
+double[] observations = { 3.2, 4.8, 5.1, 6.3, 4.9, 5.5, 6.1, 3.8, 5.0, 4.7 };
+
+// Define priors
+var priors = new List<IUnivariateDistribution>
+{
+    new Normal(0, 10),
+    new Uniform(0, 50)
+};
+
+// Log-likelihood function
+// Note: use a lowercase name to avoid shadowing the LogLikelihood delegate type.
+LogLikelihood computeLogLikelihood = (double[] theta) =>
+{
+    double mu = theta[0], sigma = theta[1];
+    if (sigma <= 0) return double.NegativeInfinity;
+    var model = new Normal(mu, sigma);
+    return model.LogLikelihood(observations);
+};
+
+// Naive Monte Carlo (sample from priors)
+var snis = new SNIS(priors, computeLogLikelihood);
+snis.Iterations = 100000;
+snis.Sample();
+
+// With a Multivariate Normal proposal distribution (importance sampling)
+var proposal = new MultivariateNormal(
+    new double[] { 5, 10 },   // mean vector
+    new double[,] { { 4, 0 }, { 0, 25 } }  // covariance matrix
+);
+var snisIS = new SNIS(priors, computeLogLikelihood, proposal);
+snisIS.Iterations = 100000;
+snisIS.Sample();
+```
+
+**Key differences from MCMC samplers:**
+- Single chain only (`NumberOfChains` = 1)
+- No warmup or thinning — all samples contribute
+- Produces weighted samples (weights stored in `ParameterSet.Weight`)
+- No autocorrelation — samples are independent
+- Best for low-dimensional problems with informative proposals
 
 ---
 
@@ -626,6 +819,8 @@ foreach (var (name, sampler) in samplers)
 <a id="4">[4]</a> ter Braak, C. J., & Vrugt, J. A. (2008). Differential evolution Markov chain with snooker updater and fewer chains. *Statistics and Computing*, 18(4), 435-446.
 
 <a id="5">[5]</a> Neal, R. M. (2011). MCMC using Hamiltonian dynamics. *Handbook of Markov Chain Monte Carlo*, 2(11), 2.
+
+<a id="6">[6]</a> Hoffman, M. D., & Gelman, A. (2014). The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. *Journal of Machine Learning Research*, 15(47), 1593-1623.
 
 ---
 

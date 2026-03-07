@@ -96,13 +96,13 @@ The results object contains:
 UnivariateDistributionBase ParentDistribution
 
 // Mode curve: quantiles from parent distribution
-double[,] ModeCurve  // [probability, quantile]
+double[] ModeCurve  // ModeCurve[i] = quantile at probabilities[i]
 
 // Mean curve: expected quantiles from bootstrap ensemble
-double[,] MeanCurve  // [probability, quantile]
+double[] MeanCurve  // MeanCurve[i] = expected quantile at probabilities[i]
 
 // Confidence intervals for quantiles
-double[,] ConfidenceIntervals  // [probability, lower, upper]
+double[,] ConfidenceIntervals  // [i, 0] = lower, [i, 1] = upper
 
 // Bootstrap parameter sets (if recorded)
 ParameterSet[] ParameterSets
@@ -128,10 +128,10 @@ for (int i = 0; i < probabilities.Length; i++)
     double aep = 1 - prob;
     double T = 1.0 / aep;
     
-    double mode = results.ModeCurve[i, 1];     // Point estimate
-    double mean = results.MeanCurve[i, 1];     // Expected value
-    double lower = results.ConfidenceIntervals[i, 1];  // Lower bound
-    double upper = results.ConfidenceIntervals[i, 2];  // Upper bound
+    double mode = results.ModeCurve[i];          // Point estimate
+    double mean = results.MeanCurve[i];          // Expected value
+    double lower = results.ConfidenceIntervals[i, 0];  // Lower bound
+    double upper = results.ConfidenceIntervals[i, 1];  // Upper bound
     
     Console.WriteLine($"{aep:F3} | {T,9:F1} | {mode,8:F0} | {mean,8:F0} | [{lower,6:F0}, {upper,6:F0}]");
 }
@@ -157,10 +157,10 @@ using (var writer = new System.IO.StreamWriter("frequency_curve.csv"))
         double T = 1.0 / aep;
         
         writer.WriteLine($"{p:F4},{aep:F6},{T:F2}," +
-                        $"{results.ModeCurve[i, 1]:F2}," +
-                        $"{results.MeanCurve[i, 1]:F2}," +
-                        $"{results.ConfidenceIntervals[i, 1]:F2}," +
-                        $"{results.ConfidenceIntervals[i, 2]:F2}");
+                        $"{results.ModeCurve[i]:F2}," +
+                        $"{results.MeanCurve[i]:F2}," +
+                        $"{results.ConfidenceIntervals[i, 0]:F2}," +
+                        $"{results.ConfidenceIntervals[i, 1]:F2}");
     }
 }
 
@@ -202,8 +202,8 @@ for (int j = 0; j < gev.NumberOfParameters; j++)
     Console.WriteLine($"\n{paramNames[j]}:");
     Console.WriteLine($"  Mean: {values.Average():F4}");
     Console.WriteLine($"  Std Dev: {Statistics.StandardDeviation(values.ToArray()):F4}");
-    Console.WriteLine($"  5th percentile: {Statistics.Quantile(values.OrderBy(x => x).ToArray(), 0.05):F4}");
-    Console.WriteLine($"  95th percentile: {Statistics.Quantile(values.OrderBy(x => x).ToArray(), 0.95):F4}");
+    Console.WriteLine($"  5th percentile: {Statistics.Percentile(values.ToArray(), 0.05):F4}");
+    Console.WriteLine($"  95th percentile: {Statistics.Percentile(values.ToArray(), 0.95):F4}");
 }
 ```
 
@@ -429,10 +429,10 @@ for (int i = 0; i < returnPeriods.Length; i++)
 {
     int T = returnPeriods[i];
     double aep = 1.0 / T;
-    double point = results.ModeCurve[i, 1];
-    double mean = results.MeanCurve[i, 1];
-    double lower = results.ConfidenceIntervals[i, 1];
-    double upper = results.ConfidenceIntervals[i, 2];
+    double point = results.ModeCurve[i];
+    double mean = results.MeanCurve[i];
+    double lower = results.ConfidenceIntervals[i, 0];
+    double upper = results.ConfidenceIntervals[i, 1];
     
     Console.WriteLine($"{T,6}   {aep,11:F5}      {point,8:F0}  {mean,8:F0}   {lower,8:F0}      {upper,8:F0}");
 }
@@ -455,8 +455,8 @@ Console.WriteLine($"γ:  {gammaValues.Average():F4} ± {Statistics.StandardDevia
 Console.WriteLine($"\nUncertainty Analysis Summary:");
 for (int i = 0; i < returnPeriods.Length; i++)
 {
-    double width = results.ConfidenceIntervals[i, 2] - results.ConfidenceIntervals[i, 1];
-    double relativeWidth = width / results.ModeCurve[i, 1] * 100;
+    double width = results.ConfidenceIntervals[i, 1] - results.ConfidenceIntervals[i, 0];
+    double relativeWidth = width / results.ModeCurve[i] * 100;
     Console.WriteLine($"{returnPeriods[i]}-year: ±{relativeWidth:F1}% relative uncertainty");
 }
 ```
@@ -544,8 +544,8 @@ foreach (var nRep in replicationCounts)
     
     var result = boot.Estimate(new[] { testProb }, alpha: 0.1);
     
-    double estimate = result.ModeCurve[0, 1];
-    double width = result.ConfidenceIntervals[0, 2] - result.ConfidenceIntervals[0, 1];
+    double estimate = result.ModeCurve[0];
+    double width = result.ConfidenceIntervals[0, 1] - result.ConfidenceIntervals[0, 0];
     
     Console.WriteLine($"{nRep,12} | {estimate,15:F0} | {width,8:F0} | {nRep / 1000.0,4:F1}×");
 }
@@ -604,9 +604,9 @@ if (nFailed > bootstrapDists.Length * 0.05)
 
 ```cs
 // Report point estimate ± uncertainty
-double point = results.ModeCurve[0, 1];
-double lower = results.ConfidenceIntervals[0, 1];
-double upper = results.ConfidenceIntervals[0, 2];
+double point = results.ModeCurve[0];
+double lower = results.ConfidenceIntervals[0, 0];
+double upper = results.ConfidenceIntervals[0, 1];
 
 Console.WriteLine($"100-year flood: {point:F0} cfs");
 Console.WriteLine($"90% CI: [{lower:F0}, {upper:F0}] cfs");
@@ -630,7 +630,7 @@ foreach (var n in new[] { 10, 20, 50, 100 })
         ParameterEstimationMethod.MethodOfLinearMoments, n, 1000);
     var testResults = testBoot.Estimate(new[] { 0.99 }, alpha: 0.1);
     
-    double width = testResults.ConfidenceIntervals[0, 2] - testResults.ConfidenceIntervals[0, 1];
+    double width = testResults.ConfidenceIntervals[0, 1] - testResults.ConfidenceIntervals[0, 0];
     Console.WriteLine($"n={n,3}: CI width = {width:F0}");
 }
 ```

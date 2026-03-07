@@ -42,7 +42,7 @@ The bisection method is the simplest root-finding algorithm. It repeatedly bisec
 ### Usage
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 // Find root of f(x) = x² - 4 (roots at x = ±2)
 Func<double, double> f = x => x * x - 4;
@@ -89,7 +89,7 @@ The method maintains a bracketing interval and uses:
 ### Usage
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 // Find root of f(x) = cos(x) - x (root around x ≈ 0.739)
 Func<double, double> f = x => Math.Cos(x) - x;
@@ -156,7 +156,7 @@ f'(x_n) \approx \frac{f(x_n) - f(x_{n-1})}{x_n - x_{n-1}}
 ### Usage
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 // Find root of f(x) = x³ - 2x - 5
 Func<double, double> f = x => x * x * x - 2 * x - 5;
@@ -202,7 +202,7 @@ Geometrically, this finds where the tangent line at $(x_n, f(x_n))$ crosses the 
 ### Usage
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 // Find root of f(x) = x² - 2 (square root of 2)
 Func<double, double> f = x => x * x - 2;
@@ -221,6 +221,7 @@ Console.WriteLine($"Verification: {root}² = {root * root:F12}");
 
 ```cs
 using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 Func<double, double> f = x => x * x - 2;
 Func<double, double> df = x => NumericalDerivative.Derivative(f, x);
@@ -263,7 +264,7 @@ This method uses Newton-Raphson when it's making good progress, but falls back t
 A practical example from financial mathematics - solving the Black-Scholes equation for implied volatility:
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 using Numerics.Mathematics.SpecialFunctions;
 
 // Black-Scholes call option price
@@ -300,7 +301,7 @@ Console.WriteLine($"Verification: BS price = {BlackScholesCall(S, K, T, r, impli
 To find multiple roots, solve in different intervals:
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 // Function with multiple roots: f(x) = sin(x)
 // Roots at x = 0, ±π, ±2π, ...
@@ -334,7 +335,7 @@ foreach (var root in roots)
 Find critical points of a function by solving $f'(x) = 0$:
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 // Find critical points of f(x) = x³ - 3x² + 2
 Func<double, double> f = x => x * x * x - 3 * x * x + 2;
@@ -425,7 +426,7 @@ Both must be satisfied for convergence. The default tolerance is $10^{-8}$.
 ## Error Handling
 
 ```cs
-using Numerics.Mathematics;
+using Numerics.Mathematics.RootFinding;
 
 try
 {

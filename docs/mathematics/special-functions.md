@@ -2,7 +2,7 @@
 
 [← Previous: Linear Algebra](linear-algebra.md) | [Back to Index](../index.md) | [Next: ODE Solvers →](ode-solvers.md)
 
-The ***Numerics*** library provides essential special functions commonly used in statistical distributions, numerical analysis, and scientific computing. These include Gamma, Beta, Error functions, and combinatorial functions.
+The ***Numerics*** library provides essential special functions commonly used in statistical distributions, numerical analysis, and scientific computing. These include Gamma, Beta, Error, Bessel, and combinatorial functions.
 
 ## Gamma Function
 
@@ -24,7 +24,7 @@ Console.WriteLine($"Γ(3.5) = {g3:F3}");
 
 // Verify: Γ(n+1) = n·Γ(n)
 double check = 3.5 * Gamma.Function(3.5);
-Console.WriteLine($"4.5·Γ(3.5) = {check:F3}");
+Console.WriteLine($"3.5·Γ(3.5) = {check:F3}");
 Console.WriteLine($"Γ(4.5) = {Gamma.Function(4.5):F3}");
 ```
 
@@ -87,7 +87,7 @@ Normalized version: P(a,x) = γ(a,x)/Γ(a)
 
 ```cs
 // Regularized incomplete gamma (CDF of Gamma distribution)
-double P = Gamma.Incomplete(x: 3.0, alpha: 2.0);
+double P = Gamma.Incomplete(X: 3.0, alpha: 2.0);
 
 Console.WriteLine($"P(2, 3) = {P:F6}");
 Console.WriteLine("This equals the Gamma(2,1) CDF at x=3");
@@ -250,6 +250,73 @@ int count = combinations.Count();
 Console.WriteLine($"Total: {count} combinations");
 ```
 
+## Bessel Functions
+
+Bessel functions arise in problems with cylindrical symmetry and in directional statistics (e.g., the Von Mises distribution). The library provides modified Bessel functions of the first kind.
+
+### Modified Bessel Functions of the First Kind
+
+```cs
+using Numerics.Mathematics.SpecialFunctions;
+
+// I₀(x) - Modified Bessel function of the first kind, order 0
+double i0 = Bessel.I0(2.5);
+Console.WriteLine($"I₀(2.5) = {i0:F6}");  // ≈ 3.289839
+
+// I₁(x) - Modified Bessel function of the first kind, order 1
+double i1 = Bessel.I1(2.5);
+Console.WriteLine($"I₁(2.5) = {i1:F6}");  // ≈ 2.516716
+
+// Iₙ(x) - Modified Bessel function of the first kind, integer order
+double i_n = Bessel.In(2, 3.0);  // I₂(3.0)
+Console.WriteLine($"I₂(3.0) = {i_n:F6}");
+```
+
+### Log-Space Bessel Computations
+
+For large arguments where the Bessel function overflows, compute in log space manually:
+
+```cs
+// Log I₀(x) - compute manually to avoid overflow for large x
+double x = 500.0;
+double logI0 = Math.Log(Bessel.I0(x));
+Console.WriteLine($"ln(I₀({x})) = {logI0:F4}");
+
+// Log I₁(x)
+double logI1 = Math.Log(Bessel.I1(x));
+Console.WriteLine($"ln(I₁({x})) = {logI1:F4}");
+```
+
+### Bessel Function Ratios
+
+Ratios of Bessel functions appear in maximum likelihood estimation for the Von Mises distribution:
+
+```cs
+// I₁(x)/I₀(x) ratio - used in Von Mises MLE
+double ratio = Bessel.I1(5.0) / Bessel.I0(5.0);
+Console.WriteLine($"I₁(5)/I₀(5) = {ratio:F6}");
+
+// For large kappa, this ratio approaches 1
+double ratioLarge = Bessel.I1(100.0) / Bessel.I0(100.0);
+Console.WriteLine($"I₁(100)/I₀(100) = {ratioLarge:F8}");
+```
+
+### Modified Bessel Functions of the Second Kind
+
+```cs
+// K₀(x) - Modified Bessel function of the second kind, order 0
+double k0 = Bessel.K0(1.0);
+Console.WriteLine($"K₀(1.0) = {k0:F6}");  // ≈ 0.421024
+
+// K₁(x) - Order 1
+double k1 = Bessel.K1(1.0);
+Console.WriteLine($"K₁(1.0) = {k1:F6}");  // ≈ 0.601907
+
+// Kₙ(x) - Integer order
+double k_n = Bessel.Kn(2, 1.5);
+Console.WriteLine($"K₂(1.5) = {k_n:F6}");
+```
+
 ## Practical Applications
 
 ### Example 1: Gamma Distribution Moments
@@ -308,7 +375,7 @@ int k = 5;  // Degrees of freedom
 double x = 8.0;
 
 // CDF at x
-double cdf = Gamma.Incomplete(x: x / 2.0, alpha: k / 2.0);
+double cdf = Gamma.Incomplete(X: x / 2.0, alpha: k / 2.0);
 
 Console.WriteLine($"Chi-squared({k}) CDF at {x}:");
 Console.WriteLine($"  P(X ≤ {x}) = {cdf:F6}");
@@ -373,8 +440,9 @@ Console.WriteLine($"  Relative error = {relativeError:P4}");
 | **Gamma** | Factorial extension | `Function()`, `LogGamma()`, `Digamma()` |
 | **Incomplete Gamma** | Chi-squared, Gamma CDF | `LowerIncomplete()`, `UpperIncomplete()` |
 | **Beta** | Beta distribution | `Function()`, `Incomplete()` |
-| **Error** | Normal distribution | `Function()`, `Erfc()`, `InverseErf()` |
+| **Error** | Normal distribution | `Function()`, `Erfc()`, `InverseErf()`, `InverseErfc()` |
 | **Factorial** | Combinatorics | `Function()`, `BinomialCoefficient()` |
+| **Bessel** | Cylindrical, directional stats | `I0()`, `I1()`, `In()`, `K0()`, `K1()`, `Kn()`, `J0()`, `J1()`, `Jn()`, `Y0()`, `Y1()`, `Yn()` |
 
 ## Implementation Notes
 

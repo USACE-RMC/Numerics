@@ -187,17 +187,17 @@ Console.WriteLine($"  τ₄ (L-kurtosis): {lMoments[3]:F4}");
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
 
-// Single percentile (k as decimal: 0-100)
-double median = Statistics.Percentile(data, 50);  // 50th percentile
-double p90 = Statistics.Percentile(data, 90);     // 90th percentile
-double p95 = Statistics.Percentile(data, 95);     // 95th percentile
+// Single percentile (k in [0, 1])
+double median = Statistics.Percentile(data, 0.50);  // 50th percentile
+double p90 = Statistics.Percentile(data, 0.90);     // 90th percentile
+double p95 = Statistics.Percentile(data, 0.95);     // 95th percentile
 
 Console.WriteLine($"Median (50th percentile): {median:F2}");
 Console.WriteLine($"90th percentile: {p90:F2}");
 Console.WriteLine($"95th percentile: {p95:F2}");
 
 // Multiple percentiles at once (more efficient)
-double[] percentiles = Statistics.Percentile(data, new double[] { 25, 50, 75, 90, 95 });
+double[] percentiles = Statistics.Percentile(data, new double[] { 0.25, 0.50, 0.75, 0.90, 0.95 });
 
 Console.WriteLine("\nPercentiles:");
 Console.WriteLine($"  25th: {percentiles[0]:F2}");
@@ -208,7 +208,7 @@ Console.WriteLine($"  95th: {percentiles[4]:F2}");
 
 // Note: Can specify if data is already sorted for efficiency
 bool isSorted = false;
-double q25 = Statistics.Percentile(data, 25, dataIsSorted: isSorted);
+double q25 = Statistics.Percentile(data, 0.25, dataIsSorted: isSorted);
 ```
 
 ### Five-Number Summary
@@ -246,11 +246,11 @@ double[] sevenNum = Statistics.SevenNumberSummary(data);
 
 Console.WriteLine("Seven-Number Summary:");
 Console.WriteLine($"  Minimum: {sevenNum[0]:F2}");
-Console.WriteLine($"  10th percentile: {sevenNum[1]:F2}");
+Console.WriteLine($"  5th percentile: {sevenNum[1]:F2}");
 Console.WriteLine($"  Q1 (25th): {sevenNum[2]:F2}");
 Console.WriteLine($"  Median (50th): {sevenNum[3]:F2}");
 Console.WriteLine($"  Q3 (75th): {sevenNum[4]:F2}");
-Console.WriteLine($"  90th percentile: {sevenNum[5]:F2}");
+Console.WriteLine($"  95th percentile: {sevenNum[5]:F2}");
 Console.WriteLine($"  Maximum: {sevenNum[6]:F2}");
 ```
 
@@ -299,7 +299,7 @@ double pearson = Correlation.Pearson(x, y);
 double spearman = Correlation.Spearman(x, y);
 
 // Kendall tau correlation
-double kendall = Correlation.Kendall(x, y);
+double kendall = Correlation.KendallsTau(x, y);
 
 Console.WriteLine($"Pearson r: {pearson:F3}");
 Console.WriteLine($"Spearman ρ: {spearman:F3}");
@@ -319,6 +319,8 @@ else
 ### Rank Statistics
 
 ```cs
+using System.Linq;
+
 double[] data = { 5.2, 3.1, 7.8, 3.1, 9.2, 5.2 };
 
 // Compute ranks (in-place, modifies array)
@@ -348,11 +350,8 @@ using Numerics.Distributions;
 double[] sample = new Normal(0, 1).GenerateRandomValues(1000);
 
 // Estimate entropy using kernel density
-Func<double, double> pdf = x =>
-{
-    var kde = new KernelDensity(sample, bandwidth: 0.5);
-    return kde.PDF(x);
-};
+var kde = new KernelDensity(sample, KernelDensity.KernelType.Gaussian, 0.5);
+Func<double, double> pdf = x => kde.PDF(x);
 
 double entropy = Statistics.Entropy(sample, pdf);
 
@@ -370,7 +369,7 @@ Leave-one-out resampling for standard error estimation:
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
 
 // Define a statistic function (e.g., median)
-Func<IList<double>, double> medianFunc = sample => Statistics.Percentile(sample.ToArray(), 50);
+Func<IList<double>, double> medianFunc = sample => Statistics.Percentile(sample.ToArray(), 0.50);
 
 // Jackknife standard error
 double jackknifeSE = Statistics.JackKnifeStandardError(data, medianFunc);
@@ -378,49 +377,71 @@ double jackknifeSE = Statistics.JackKnifeStandardError(data, medianFunc);
 Console.WriteLine($"Median: {medianFunc(data):F2}");
 Console.WriteLine($"Jackknife SE: {jackknifeSE:F3}");
 
-// Get all jackknife samples
-double[] jackknifeValues = Statistics.JackKnifeSample(data, medianFunc);
+// Get all jackknife samples (returns null if data is empty)
+double[]? jackknifeValues = Statistics.JackKnifeSample(data, medianFunc);
 
-Console.WriteLine($"Jackknife samples: {jackknifeValues.Length}");
-Console.WriteLine($"Mean of jackknife estimates: {jackknifeValues.Average():F2}");
+if (jackknifeValues != null)
+{
+    Console.WriteLine($"Jackknife samples: {jackknifeValues.Length}");
+    Console.WriteLine($"Mean of jackknife estimates: {jackknifeValues.Average():F2}");
+}
 ```
 
 ## Practical Examples
 
-### Example 1: Complete Data Summary
+### Example 1: Complete Streamflow Data Summary
+
+This example analyzes the Tippecanoe River annual peak streamflow data. Statistics are validated against R's `base`, `psych`, `EnvStats`, and `lmom` packages.
+
+**Data source:** Rao, A. R. & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press, Table 5.1.1.
+See also: [`example-data/tippecanoe-river-streamflow.csv`](../example-data/tippecanoe-river-streamflow.csv)
 
 ```cs
 using Numerics.Data.Statistics;
 
-double[] annualRainfall = { 850, 920, 780, 1050, 890, 950, 820, 1100, 870, 980 };
+// Tippecanoe River near Delphi, IN — 48 years of annual peak streamflow (cfs)
+double[] annualPeaks = {
+    6290, 2700, 13100, 16900, 14600, 9600, 7740, 8490, 8130, 12000,
+    17200, 15000, 12400, 6960, 6500, 5840, 10400, 18800, 21400, 22600,
+    14200, 11000, 12800, 15700, 4740, 6950, 11800, 12100, 20600, 14600,
+    14600, 8900, 10600, 14200, 14100, 14100, 12500, 7530, 13400, 17600,
+    13400, 19200, 16900, 15500, 14500, 21900, 10400, 7460
+};
 
-Console.WriteLine("Annual Rainfall Analysis (mm)");
-Console.WriteLine("=" + new string('=', 50));
+Console.WriteLine("Tippecanoe River Annual Peak Streamflow Analysis (cfs)");
+Console.WriteLine("=" + new string('=', 55));
 
 // Central tendency
 Console.WriteLine("\nCentral Tendency:");
-Console.WriteLine($"  Mean: {Statistics.Mean(annualRainfall):F1} mm");
-Console.WriteLine($"  Median: {Statistics.Percentile(annualRainfall, 50):F1} mm");
+Console.WriteLine($"  Mean:           {Statistics.Mean(annualPeaks):F1} cfs");
+Console.WriteLine($"  Median:         {Statistics.Percentile(annualPeaks, 0.50):F1} cfs");
 
 // Dispersion
 Console.WriteLine("\nDispersion:");
-Console.WriteLine($"  Range: {Statistics.Minimum(annualRainfall):F0} - {Statistics.Maximum(annualRainfall):F0} mm");
-Console.WriteLine($"  Std Dev: {Statistics.StandardDeviation(annualRainfall):F1} mm");
-Console.WriteLine($"  CV: {Statistics.CoefficientOfVariation(annualRainfall):P1}");
+Console.WriteLine($"  Range:          {Statistics.Minimum(annualPeaks):F0} - {Statistics.Maximum(annualPeaks):F0} cfs");
+Console.WriteLine($"  Std Dev:        {Statistics.StandardDeviation(annualPeaks):F1} cfs");
+Console.WriteLine($"  CV:             {Statistics.CoefficientOfVariation(annualPeaks):P1}");
 
 // Shape
 Console.WriteLine("\nShape:");
-Console.WriteLine($"  Skewness: {Statistics.Skewness(annualRainfall):F3}");
-Console.WriteLine($"  Kurtosis: {Statistics.Kurtosis(annualRainfall):F3}");
+Console.WriteLine($"  Skewness:       {Statistics.Skewness(annualPeaks):F4}");
+Console.WriteLine($"  Kurtosis:       {Statistics.Kurtosis(annualPeaks):F4}");
 
-// Percentiles
-var percentiles = Statistics.Percentile(annualRainfall, new double[] { 10, 25, 50, 75, 90 });
-Console.WriteLine("\nPercentiles:");
-Console.WriteLine($"  10th: {percentiles[0]:F1} mm");
-Console.WriteLine($"  25th: {percentiles[1]:F1} mm");
-Console.WriteLine($"  50th: {percentiles[2]:F1} mm");
-Console.WriteLine($"  75th: {percentiles[3]:F1} mm");
-Console.WriteLine($"  90th: {percentiles[4]:F1} mm");
+// L-Moments (more robust for hydrological data)
+double[] lMoments = Statistics.LinearMoments(annualPeaks);
+Console.WriteLine("\nL-Moments:");
+Console.WriteLine($"  λ₁ (L-mean):    {lMoments[0]:F1}");
+Console.WriteLine($"  λ₂ (L-scale):   {lMoments[1]:F1}");
+Console.WriteLine($"  τ₃ (L-skew):    {lMoments[2]:F4}");
+Console.WriteLine($"  τ₄ (L-kurtosis):{lMoments[3]:F4}");
+
+// Percentiles (five-number summary)
+Console.WriteLine("\nFive-Number Summary:");
+Console.WriteLine($"  Min:  {Statistics.Minimum(annualPeaks):F0} cfs");
+Console.WriteLine($"  Q1:   {Statistics.Percentile(annualPeaks, 0.25):F0} cfs");
+Console.WriteLine($"  Q2:   {Statistics.Percentile(annualPeaks, 0.50):F0} cfs");
+Console.WriteLine($"  Q3:   {Statistics.Percentile(annualPeaks, 0.75):F0} cfs");
+Console.WriteLine($"  Max:  {Statistics.Maximum(annualPeaks):F0} cfs");
 ```
 
 ### Example 2: Comparing Two Datasets
@@ -443,8 +464,8 @@ double sdBefore = Statistics.StandardDeviation(before);
 double sdAfter = Statistics.StandardDeviation(after);
 Console.WriteLine($"{"Std Dev",-20} | {sdBefore,10:F2} | {sdAfter,10:F2} | {sdAfter - sdBefore,10:F2}");
 
-double medBefore = Statistics.Percentile(before, 50);
-double medAfter = Statistics.Percentile(after, 50);
+double medBefore = Statistics.Percentile(before, 0.50);
+double medAfter = Statistics.Percentile(after, 0.50);
 Console.WriteLine($"{"Median",-20} | {medBefore,10:F2} | {medAfter,10:F2} | {medAfter - medBefore,10:F2}");
 
 // Effect size (Cohen's d)

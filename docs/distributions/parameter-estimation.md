@@ -225,8 +225,8 @@ var weibull = new Weibull();
 weibull.Estimate(observations, ParameterEstimationMethod.MaximumLikelihood);
 
 Console.WriteLine($"Weibull Parameters (MLE):");
-Console.WriteLine($"  Scale (α): {weibull.Alpha:F3}");
-Console.WriteLine($"  Shape (β): {weibull.Beta:F3}");
+Console.WriteLine($"  Scale (λ): {weibull.Lambda:F3}");
+Console.WriteLine($"  Shape (κ): {weibull.Kappa:F3}");
 
 // Compute log-likelihood at fitted parameters
 double logLikelihood = 0;
@@ -371,10 +371,10 @@ For simpler distributions:
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9 };
 
-// Exponential - one parameter
+// Exponential - two parameters (location + scale)
 var exponential = new Exponential();
 exponential.Estimate(data, ParameterEstimationMethod.MethodOfMoments);
-Console.WriteLine($"Exponential λ = {exponential.Lambda:F4}");
+Console.WriteLine($"Exponential ξ = {exponential.Xi:F4}, α = {exponential.Alpha:F4}");
 
 // Log-Normal - two parameters
 var lognormal = new LogNormal();
@@ -384,74 +384,121 @@ Console.WriteLine($"LogNormal μ = {lognormal.Mu:F4}, σ = {lognormal.Sigma:F4}"
 // Weibull - two parameters  
 var weibull = new Weibull();
 weibull.Estimate(data, ParameterEstimationMethod.MethodOfLinearMoments);
-Console.WriteLine($"Weibull α = {weibull.Alpha:F4}, β = {weibull.Beta:F4}");
+Console.WriteLine($"Weibull λ = {weibull.Lambda:F4}, κ = {weibull.Kappa:F4}");
 ```
 
-## Practical Workflow Example
+## Tutorial: Complete Flood Frequency Analysis
 
-Complete workflow for flood frequency analysis:
+This tutorial demonstrates a complete distribution fitting workflow using real streamflow data from the White River near Nora, Indiana. The data and expected results are drawn from published references [[4]](#4) and validated against the R `lmom` package [[2]](#2).
+
+**Data source:** Rao, A. R. & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press, Table 7.1.2.
+See also: [`example-data/white-river-nora-floods.csv`](../example-data/white-river-nora-floods.csv)
 
 ```cs
 using Numerics.Distributions;
 using Numerics.Data.Statistics;
 
-// Step 1: Load and prepare data
-double[] annualPeakFlows = LoadFloodData(); // Your data loading function
-Console.WriteLine($"Sample size: {annualPeakFlows.Length}");
-Console.WriteLine($"Sample mean: {annualPeakFlows.Average():F0}");
-Console.WriteLine($"Sample std dev: {Statistics.StandardDeviation(annualPeakFlows):F0}");
+// White River near Nora, Indiana — 62 years of annual peak streamflow (cfs)
+// Source: Rao & Hamed (2000), Table 7.1.2
+double[] annualPeaks = {
+    23200, 2950, 10300, 23200, 4540, 9960, 10800, 26900, 23300, 20400,
+    8480, 3150, 9380, 32400, 20800, 11100, 7270, 9600, 14600, 14300,
+    22500, 14700, 12700, 9740, 3050, 8830, 12000, 30400, 27000, 15200,
+    8040, 11700, 20300, 22700, 30400, 9180, 4870, 14700, 12800, 13700,
+    7960, 9830, 12500, 10700, 13200, 14700, 14300, 4050, 14600, 14400,
+    19200, 7160, 12100, 8650, 10600, 24500, 14400, 6300, 9560, 15800,
+    14300, 28700
+};
 
-// Step 2: Compute sample L-moments
-double[] lMoments = Statistics.LinearMoments(annualPeakFlows);
+Console.WriteLine($"Record length: {annualPeaks.Length} years");
+Console.WriteLine($"Range: {annualPeaks.Min():F0} - {annualPeaks.Max():F0} cfs");
+
+// Step 1: Compute sample L-moments
+// L-moments are more robust than product moments for small to moderate samples.
+// Validated against R lmom::samlmu()
+double[] lMoments = Statistics.LinearMoments(annualPeaks);
+
 Console.WriteLine($"\nSample L-moments:");
-Console.WriteLine($"  λ₁ = {lMoments[0]:F0}");
-Console.WriteLine($"  λ₂ = {lMoments[1]:F0}");
-Console.WriteLine($"  τ₃ = {lMoments[2]:F4}");
-Console.WriteLine($"  τ₄ = {lMoments[3]:F4}");
+Console.WriteLine($"  λ₁ (L-location): {lMoments[0]:F1}");
+Console.WriteLine($"  λ₂ (L-scale):    {lMoments[1]:F1}");
+Console.WriteLine($"  τ₃ (L-skewness): {lMoments[2]:F4}");
+Console.WriteLine($"  τ₄ (L-kurtosis): {lMoments[3]:F4}");
 
-// Step 3: Fit multiple candidate distributions
+// Step 2: Fit candidate distributions using L-moments
 var candidates = new List<(string Name, IUnivariateDistribution Dist)>
 {
-    ("LP3", new LogPearsonTypeIII()),
-    ("GEV", new GeneralizedExtremeValue()),
+    ("LP3",    new LogPearsonTypeIII()),
+    ("GEV",    new GeneralizedExtremeValue()),
     ("Gumbel", new Gumbel()),
-    ("PIII", new PearsonTypeIII())
+    ("PIII",   new PearsonTypeIII())
 };
 
 foreach (var (name, dist) in candidates)
 {
-    dist.Estimate(annualPeakFlows, ParameterEstimationMethod.MethodOfLinearMoments);
-    
-    Console.WriteLine($"\n{name} fitted:");
-    var paramNames = dist.ParameterNamesShortForm;
-    var paramValues = dist.GetParameters;
+    dist.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
+    Console.WriteLine($"\n{name} fitted parameters:");
+    var pNames = dist.ParameterNamesShortForm;
+    var pValues = dist.GetParameters;
     for (int i = 0; i < dist.NumberOfParameters; i++)
+        Console.WriteLine($"  {pNames[i]} = {pValues[i]:F4}");
+}
+
+// Step 3: Compare estimation methods for GEV
+// Textbook (Rao & Hamed, Example 7.1.1, p. 218) provides MOM results for comparison.
+Console.WriteLine("\nGEV: Comparing estimation methods:");
+foreach (var method in new[] {
+    ParameterEstimationMethod.MethodOfLinearMoments,
+    ParameterEstimationMethod.MethodOfMoments,
+    ParameterEstimationMethod.MaximumLikelihood })
+{
+    var gev = new GeneralizedExtremeValue();
+    try
     {
-        Console.WriteLine($"  {paramNames[i]} = {paramValues[i]:F4}");
+        gev.Estimate(annualPeaks, method);
+        Console.WriteLine($"  {method}: ξ={gev.Xi:F1}, α={gev.Alpha:F1}, κ={gev.Kappa:F4}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"  {method}: Failed — {ex.Message}");
     }
 }
 
-// Step 4: Compare at key quantiles
-var testProbs = new double[] { 0.5, 0.9, 0.98, 0.99, 0.998 };
+// Step 4: Compute flood frequency curve
+Console.WriteLine("\nFlood Frequency Curve (LP3, L-moments):");
+Console.WriteLine("T (years) |    AEP   | Discharge (cfs)");
+Console.WriteLine("----------|----------|----------------");
 
-Console.WriteLine($"\nQuantile Comparison:");
-Console.WriteLine($"AEP   | " + string.Join(" | ", candidates.Select(c => $"{c.Name,8}")));
-Console.WriteLine(new string('-', 60));
-
-foreach (var p in testProbs)
+var lp3 = (LogPearsonTypeIII)candidates[0].Dist;
+foreach (int T in new[] { 2, 5, 10, 25, 50, 100, 200, 500 })
 {
-    double aep = 1 - p;
-    var quantiles = candidates.Select(c => c.Dist.InverseCDF(p));
-    Console.WriteLine($"{aep:F3} | " + string.Join(" | ", quantiles.Select(q => $"{q,8:F0}")));
+    double aep = 1.0 / T;
+    double Q = lp3.InverseCDF(1 - aep);
+    Console.WriteLine($"{T,9} | {aep,8:F5} | {Q,14:F0}");
 }
 
-// Step 5: Select best distribution (using GOF or judgment)
-// See goodness-of-fit documentation for formal selection
-var selectedDist = candidates[0].Dist; // e.g., LP3 for USGS applications
+// Step 5: Compare candidate distributions at key return periods
+Console.WriteLine("\nQuantile Comparison (cfs):");
+Console.Write("   AEP   ");
+foreach (var c in candidates) Console.Write($"| {c.Name,8} ");
+Console.WriteLine();
+Console.WriteLine(new string('-', 55));
 
-// Step 6: Compute design floods
-Console.WriteLine($"\n100-year flood: {selectedDist.InverseCDF(0.99):F0} cfs");
-Console.WriteLine($"500-year flood: {selectedDist.InverseCDF(0.998):F0} cfs");
+foreach (double p in new[] { 0.5, 0.9, 0.98, 0.99, 0.998 })
+{
+    Console.Write($"  {1 - p:F3}  ");
+    foreach (var c in candidates)
+        Console.Write($"| {c.Dist.InverseCDF(p),8:F0} ");
+    Console.WriteLine();
+}
+
+// Step 6: Model selection using AIC
+Console.WriteLine("\nModel Selection (AIC):");
+foreach (var (name, dist) in candidates)
+{
+    double logLik = dist.LogLikelihood(annualPeaks);
+    double aic = GoodnessOfFit.AIC(dist.NumberOfParameters, logLik);
+    Console.WriteLine($"  {name,-8}: AIC = {aic:F1}");
+}
 ```
 
 ## Estimation with Censored Data
@@ -581,6 +628,8 @@ Console.WriteLine("Fitted with historical information included");
 <a id="2">[2]</a> Hosking, J. R. M. (1990). L-moments: Analysis and estimation of distributions using linear combinations of order statistics. *Journal of the Royal Statistical Society: Series B (Methodological)*, 52(1), 105-124.
 
 <a id="3">[3]</a> Mood, A. M., Graybill, F. A., & Boes, D. C. (1974). *Introduction to the Theory of Statistics* (3rd ed.). McGraw-Hill.
+
+<a id="4">[4]</a> Rao, A. R., & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press.
 
 ---
 

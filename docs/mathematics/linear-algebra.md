@@ -43,9 +43,11 @@ var I = Matrix.Identity(3);  // 3x3 identity
 // Zero matrix
 var zeros = new Matrix(3, 3);  // Initialized to zeros by default
 
-// Diagonal matrix
-double[] diag = { 1, 2, 3 };
-var D = Matrix.Diagonal(diag);
+// Diagonal matrix from a vector (static method creates a diagonal matrix)
+var D = Matrix.Diagonal(new Vector(new[] { 1.0, 2.0, 3.0 }));
+
+// Extract diagonal elements from an existing matrix (instance method)
+double[] diagElements = D.Diagonal();  // Returns [1, 2, 3]
 
 Console.WriteLine("Identity Matrix:");
 Console.WriteLine(I.ToString());
@@ -227,17 +229,19 @@ var A = new Matrix(new double[,] {
     { 7, 8, 9 }
 });
 
-// Get row
-Vector row1 = A.GetRow(1);  // Second row: [4, 5, 6]
+// Get row (returns double[])
+double[] row1 = A.Row(1);  // Second row: [4, 5, 6]
 
-// Get column
-Vector col2 = A.GetColumn(2);  // Third column: [3, 6, 9]
+// Get column (returns double[])
+double[] col2 = A.Column(2);  // Third column: [3, 6, 9]
 
-// Set row
-A.SetRow(0, new Vector(new[] { 10.0, 11.0, 12.0 }));
+// Set row values using direct indexing
+for (int j = 0; j < A.NumberOfColumns; j++)
+    A[0, j] = new[] { 10.0, 11.0, 12.0 }[j];
 
-// Set column
-A.SetColumn(1, new Vector(new[] { 20.0, 21.0, 22.0 }));
+// Set column values using direct indexing
+for (int i = 0; i < A.NumberOfRows; i++)
+    A[i, 1] = new[] { 20.0, 21.0, 22.0 }[i];
 
 Console.WriteLine("Modified matrix:");
 Console.WriteLine(A.ToString());
@@ -256,8 +260,8 @@ var v1 = new Vector(new[] { 1.0, 2.0, 3.0 });
 // Create with size
 var v2 = new Vector(5);  // Length 5, initialized to zeros
 
-// Copy constructor
-var v3 = new Vector(v1);
+// Clone a vector
+var v3 = v1.Clone();
 
 Console.WriteLine($"Vector v1: {v1.ToString()}");
 Console.WriteLine($"Length: {v1.Length}");
@@ -271,7 +275,7 @@ Console.WriteLine($"Length: {v1.Length}");
 var a = new Vector(new[] { 1.0, 2.0, 3.0 });
 var b = new Vector(new[] { 4.0, 5.0, 6.0 });
 
-double dot = a.DotProduct(b);  // 1*4 + 2*5 + 3*6 = 32
+double dot = Vector.DotProduct(a, b);  // 1*4 + 2*5 + 3*6 = 32
 
 Console.WriteLine($"a · b = {dot}");
 ```
@@ -285,8 +289,8 @@ double norm = v.Norm();  // √(3² + 4²) = 5
 
 Console.WriteLine($"||v|| = {norm}");
 
-// Unit vector
-var u = v.Normalize();  // u = v / ||v||
+// Unit vector (normalize manually)
+var u = v / v.Norm();  // u = v / ||v||
 
 Console.WriteLine($"Unit vector: {u.ToString()}");
 Console.WriteLine($"||u|| = {u.Norm():F10}");  // Should be 1.0
@@ -305,7 +309,7 @@ var v3 = v1 + v2;
 var v4 = v2 - v1;
 
 // Scalar multiplication
-var v5 = v1 * 2.0;  // or 2.0 * v1
+var v5 = v1 * 2.0;
 
 Console.WriteLine($"v1 + v2 = {v3.ToString()}");
 Console.WriteLine($"v2 - v1 = {v4.ToString()}");
@@ -474,6 +478,118 @@ Console.WriteLine($"Manhattan distance: {manhattan:F1}");
 - Inverse is computationally expensive - avoid when possible
 - For solving Ax=b, specialized solvers are more efficient than computing A^-1
 
+## Matrix Decompositions
+
+The library provides standard matrix decomposition algorithms for solving linear systems, computing determinants, and analyzing matrix structure.
+
+### LU Decomposition
+
+Factors a square matrix into lower and upper triangular matrices using Gaussian elimination with partial pivoting:
+
+```cs
+using Numerics.Mathematics.LinearAlgebra;
+
+var A = new Matrix(new double[,] {
+    { 2, 1, 1 },
+    { 4, 3, 3 },
+    { 8, 7, 9 }
+});
+
+var lu = new LUDecomposition(A);
+
+// Solve Ax = b
+var b = new Vector(new double[] { 1, 1, 1 });
+Vector x = lu.Solve(b);
+
+// Compute determinant
+double det = lu.Determinant();
+Console.WriteLine($"det(A) = {det:F4}");
+
+// Compute inverse
+Matrix Ainv = lu.InverseA();
+```
+
+### QR Decomposition
+
+Factors a matrix into an orthogonal matrix Q and upper triangular matrix R using Householder reflections:
+
+```cs
+var A = new Matrix(new double[,] {
+    { 1, 1 },
+    { 1, 2 },
+    { 1, 3 }
+});
+
+var qr = new QRDecomposition(A);
+
+// Access factors
+Matrix Q = qr.Q;       // Orthogonal matrix
+Matrix R = qr.RMatrix;  // Upper triangular
+
+// Solve overdetermined system (least squares)
+var b = new Vector(new double[] { 1, 2, 2 });
+Vector x = qr.Solve(b);
+```
+
+### Cholesky Decomposition
+
+Factors a symmetric positive-definite matrix into L*L^T. Commonly used for covariance matrices:
+
+```cs
+// Symmetric positive-definite matrix (e.g., covariance matrix)
+var A = new Matrix(new double[,] {
+    { 4, 2 },
+    { 2, 3 }
+});
+
+var chol = new CholeskyDecomposition(A);
+
+// Check if decomposition succeeded
+Console.WriteLine($"Positive definite: {chol.IsPositiveDefinite}");
+
+// Lower triangular factor
+Matrix L = chol.L;
+
+// Solve Ax = b
+var b = new Vector(new double[] { 1, 1 });
+Vector x = chol.Solve(b);
+
+// Compute log-determinant (numerically stable)
+double logDet = chol.LogDeterminant();
+Console.WriteLine($"log|A| = {logDet:F4}");
+```
+
+### Eigenvalue Decomposition
+
+Computes eigenvalues and eigenvectors of a symmetric matrix (A = V*D*V^T):
+
+```cs
+var A = new Matrix(new double[,] {
+    { 2, 1 },
+    { 1, 3 }
+});
+
+var eigen = new EigenValueDecomposition(A);
+
+// Eigenvalues
+Console.WriteLine("Eigenvalues:");
+for (int i = 0; i < eigen.EigenValues.Length; i++)
+    Console.WriteLine($"  λ{i} = {eigen.EigenValues[i]:F4}");
+
+// Eigenvectors (columns of EigenVectors matrix)
+Console.WriteLine("Eigenvectors:");
+Matrix V = eigen.EigenVectors;
+```
+
+### Choosing a Decomposition
+
+| Decomposition | Matrix Requirements | Best For |
+|---------------|-------------------|----------|
+| **LU** | Square | General linear systems, determinants, inverses |
+| **QR** | Any (m ≥ n) | Least squares, overdetermined systems |
+| **Cholesky** | Symmetric positive-definite | Covariance matrices, efficient solving |
+| **Eigen** | Symmetric | Spectral analysis, PCA, modal analysis |
+
 ## Common Operations Summary
 
 | Operation | Method | Complexity |
@@ -483,7 +599,7 @@ Console.WriteLine($"Manhattan distance: {manhattan:F1}");
 | Inverse | `A.Inverse()` | O(n³) |
 | Determinant | `A.Determinant()` | O(n³) |
 | Vector norm | `v.Norm()` | O(n) |
-| Dot product | `v.DotProduct(w)` | O(n) |
+| Dot product | `Vector.DotProduct(v, w)` | O(n) |
 
 ---
 

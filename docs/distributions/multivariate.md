@@ -1,8 +1,8 @@
 # Multivariate Distributions
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Descriptive Statistics →](../statistics/descriptive.md)
 
-The ***Numerics*** library provides the **Multivariate Normal** distribution for modeling correlated random variables. This distribution is fundamental in multivariate statistics, risk assessment, and uncertainty quantification.
+The ***Numerics*** library provides several multivariate distributions for modeling correlated random variables: the **Multivariate Normal**, **Multivariate Student-t**, **Dirichlet**, and **Multinomial** distributions. These are fundamental in multivariate statistics, risk assessment, and uncertainty quantification.
 
 ## Multivariate Normal Distribution
 
@@ -280,8 +280,8 @@ for (int i = 0; i < nYears; i++)
 Console.WriteLine($"Portfolio Analysis ({nYears} simulations):");
 Console.WriteLine($"  Mean return: {portfolioReturns.Average():P2}");
 Console.WriteLine($"  Volatility: {Statistics.StandardDeviation(portfolioReturns):P2}");
-Console.WriteLine($"  5th percentile: {Statistics.Percentile(portfolioReturns.OrderBy(r => r).ToArray(), 5):P2}");
-Console.WriteLine($"  95th percentile: {Statistics.Percentile(portfolioReturns.OrderBy(r => r).ToArray(), 95):P2}");
+Console.WriteLine($"  5th percentile: {Statistics.Percentile(portfolioReturns, 0.05):P2}");
+Console.WriteLine($"  95th percentile: {Statistics.Percentile(portfolioReturns, 0.95):P2}");
 ```
 
 ### Example 2: Multivariate Exceedance Probability
@@ -388,7 +388,7 @@ var diff = new Vector(x.Select((xi, i) => xi - means[i]).ToArray());
 var covMatrix = new Matrix(cov);
 var covInv = covMatrix.Inverse();
 
-double mahalanobis = Math.Sqrt(diff.DotProduct(covInv.Multiply(diff)));
+double mahalanobis = Math.Sqrt(Vector.DotProduct(diff, covInv.Multiply(diff)));
 
 // Chi-squared test: D² ~ χ²(k) under null hypothesis
 double chiSqCritical = 7.815;  // 95th percentile of χ²(3)
@@ -403,6 +403,174 @@ if (mahalanobis * mahalanobis > chiSqCritical)
     Console.WriteLine("  → Point is an outlier (p < 0.05)");
 else
     Console.WriteLine("  → Point is not an outlier");
+```
+
+## Multivariate Student-t Distribution
+
+The multivariate Student-t distribution generalizes the univariate Student-t to multiple dimensions, providing heavier tails than the multivariate normal. It is used for robust modeling when data may contain outliers.
+
+### Creating Multivariate Student-t Distributions
+
+```cs
+using Numerics.Distributions;
+
+// Bivariate Student-t with 5 degrees of freedom
+double nu = 5;
+double[] mu = { 100, 50 };
+double[,] sigma = {
+    { 225, 75 },
+    { 75, 100 }
+};
+
+var mvt = new MultivariateStudentT(nu, mu, sigma);
+
+Console.WriteLine($"Multivariate Student-t Distribution:");
+Console.WriteLine($"  Dimension: {mvt.Dimension}");
+Console.WriteLine($"  Degrees of freedom: {nu}");
+```
+
+### PDF, CDF, and Sampling
+
+```cs
+// Evaluate density
+double[] x = { 105, 55 };
+double pdf = mvt.PDF(x);
+double logPdf = mvt.LogPDF(x);
+
+Console.WriteLine($"PDF at x: {pdf:E4}");
+Console.WriteLine($"Log-PDF at x: {logPdf:F4}");
+
+// CDF
+double cdf = mvt.CDF(x);
+Console.WriteLine($"CDF at x: {cdf:F6}");
+
+// Generate random samples
+double[,] samples = mvt.GenerateRandomValues(1000, seed: 42);
+```
+
+## Dirichlet Distribution
+
+The Dirichlet distribution Dir(α₁, α₂, ..., αₖ) is a multivariate generalization of the Beta distribution, defined on the probability simplex (components sum to 1). It is the conjugate prior for the categorical and multinomial distributions in Bayesian statistics.
+
+### Creating Dirichlet Distributions
+
+```cs
+using Numerics.Distributions;
+
+// Symmetric Dirichlet with K=3 categories, all alpha=2
+var dir1 = new Dirichlet(dimension: 3, alpha: 2.0);
+
+// Asymmetric Dirichlet with specified concentration parameters
+var dir2 = new Dirichlet(new double[] { 1.0, 2.0, 5.0 });
+
+Console.WriteLine($"Dirichlet Distribution:");
+Console.WriteLine($"  Dimension: {dir2.Dimension}");
+Console.WriteLine($"  Alpha sum: {dir2.AlphaSum}");
+```
+
+### Properties
+
+```cs
+var dir = new Dirichlet(new double[] { 2.0, 3.0, 5.0 });
+
+// Mean vector: E[Xi] = alpha_i / sum(alpha)
+double[] mean = dir.Mean;
+Console.WriteLine($"Mean: [{string.Join(", ", mean.Select(m => m.ToString("F3")))}]");
+
+// Variance vector
+double[] variance = dir.Variance;
+Console.WriteLine($"Variance: [{string.Join(", ", variance.Select(v => v.ToString("F4")))}]");
+
+// Mode (requires all alpha_i > 1)
+double[] mode = dir.Mode;
+Console.WriteLine($"Mode: [{string.Join(", ", mode.Select(m => m.ToString("F3")))}]");
+
+// Covariance between components
+double cov01 = dir.Covariance(0, 1);  // Negative (components are negatively correlated)
+Console.WriteLine($"Cov(X0, X1): {cov01:F4}");
+```
+
+### PDF and Sampling
+
+```cs
+// Evaluate density at a point on the simplex
+double[] x = { 0.2, 0.3, 0.5 };
+double pdf = dir.PDF(x);
+double logPdf = dir.LogPDF(x);
+
+Console.WriteLine($"PDF at x: {pdf:F6}");
+Console.WriteLine($"Log-PDF at x: {logPdf:F4}");
+
+// Generate random samples (each row sums to 1)
+double[,] samples = dir.GenerateRandomValues(1000, seed: 42);
+```
+
+### Application: Bayesian Mixture Weights
+
+```cs
+// Prior for 3-component mixture model weights
+var prior = new Dirichlet(dimension: 3, alpha: 1.0);  // Uniform on simplex
+
+// After observing data, update to posterior
+// (conjugate update: add counts to alpha)
+int[] counts = { 50, 120, 80 };
+double[] posteriorAlpha = { 1.0 + counts[0], 1.0 + counts[1], 1.0 + counts[2] };
+var posterior = new Dirichlet(posteriorAlpha);
+
+Console.WriteLine($"Posterior mean weights: [{string.Join(", ", posterior.Mean.Select(m => m.ToString("F3")))}]");
+```
+
+## Multinomial Distribution
+
+The Multinomial distribution models the number of outcomes in each of K categories over N independent trials, where each trial has a fixed probability vector. It generalizes the Binomial distribution to more than two categories.
+
+### Creating Multinomial Distributions
+
+```cs
+using Numerics.Distributions;
+
+// 10 trials with 3 categories having probabilities 0.2, 0.3, 0.5
+var mult = new Multinomial(10, new double[] { 0.2, 0.3, 0.5 });
+
+Console.WriteLine($"Multinomial Distribution:");
+Console.WriteLine($"  Dimension: {mult.Dimension}");
+Console.WriteLine($"  Number of trials: {mult.NumberOfTrials}");
+```
+
+### Properties
+
+```cs
+// Mean vector: E[Xi] = N * p_i
+double[] mean = mult.Mean;
+Console.WriteLine($"Mean: [{string.Join(", ", mean.Select(m => m.ToString("F1")))}]");
+
+// Variance vector: Var[Xi] = N * p_i * (1 - p_i)
+double[] variance = mult.Variance;
+Console.WriteLine($"Variance: [{string.Join(", ", variance.Select(v => v.ToString("F2")))}]");
+
+// Covariance: Cov(Xi, Xj) = -N * p_i * p_j
+double cov01 = mult.Covariance(0, 1);
+Console.WriteLine($"Cov(X0, X1): {cov01:F2}");
+```
+
+### PMF and Sampling
+
+```cs
+// Probability mass function
+double[] counts = { 2, 3, 5 };
+double pmf = mult.PDF(counts);
+double logPmf = mult.LogPMF(counts);
+
+Console.WriteLine($"P(X = [2,3,5]): {pmf:F6}");
+
+// Generate random samples (each row sums to N)
+double[,] samples = mult.GenerateRandomValues(1000, seed: 42);
+
+// Weighted categorical sampling (static utility)
+var rng = new Random(42);
+double[] weights = { 1.0, 3.0, 6.0 };
+int category = Multinomial.Sample(weights, rng);
+Console.WriteLine($"Sampled category: {category}");
 ```
 
 ## Key Concepts
@@ -484,12 +652,101 @@ Console.WriteLine("Independent MVN → Diagonal covariance matrix");
 
 ---
 
+## Bivariate Empirical Distribution
+
+The `BivariateEmpirical` class represents a bivariate empirical CDF defined on a grid of values. It is useful when the joint distribution is known only through tabulated CDF values rather than a parametric form.
+
+```cs
+using Numerics.Distributions;
+
+// Define grid values
+double[] x1Values = { 100, 200, 300, 400, 500 };  // e.g., flow (cfs)
+double[] x2Values = { 10, 20, 30, 40 };            // e.g., stage (ft)
+
+// Define CDF values on the grid (must be non-decreasing, values in [0, 1])
+double[,] pValues = {
+    { 0.01, 0.02, 0.03, 0.04 },
+    { 0.05, 0.15, 0.20, 0.22 },
+    { 0.10, 0.35, 0.50, 0.55 },
+    { 0.15, 0.50, 0.75, 0.82 },
+    { 0.20, 0.60, 0.90, 1.00 }
+};
+
+// Create bivariate empirical distribution
+var bivariate = new BivariateEmpirical(x1Values, x2Values, pValues);
+
+// Evaluate CDF at a point
+double prob = bivariate.CDF(250, 25);
+Console.WriteLine($"P(X1 ≤ 250, X2 ≤ 25) = {prob:F4}");
+
+// Optional: apply transforms for interpolation
+var bivariateLog = new BivariateEmpirical(
+    x1Values, x2Values, pValues,
+    x1Transform: Transform.Logarithmic,
+    x2Transform: Transform.None,
+    probabilityTransform: Transform.NormalZ
+);
+```
+
+**Properties:**
+- `X1Values`, `X2Values` — grid axis values
+- `ProbabilityValues` — CDF values on the grid
+- `Dimension` — always 2
+- Supports `Transform.None`, `Transform.Logarithmic`, and `Transform.NormalZ` for interpolation
+
+**Note:** The `PDF()` method returns `double.NaN` because this is a purely empirical CDF — no density function is defined.
+
+### Practical Example: Joint Flood Stage-Duration Exceedance
+
+```cs
+using Numerics.Distributions;
+using Numerics.Data;
+
+// Define flood stage grid (ft)
+double[] stages = { 10, 12, 14, 16, 18, 20 };
+// Define flood duration grid (hr)
+double[] durations = { 6, 12, 24, 48, 72 };
+
+// Joint CDF values P(Stage ≤ s, Duration ≤ d)
+// Based on observed flood event records
+double[,] jointCDF = {
+    { 0.30, 0.35, 0.38, 0.39, 0.40 },
+    { 0.40, 0.50, 0.55, 0.57, 0.58 },
+    { 0.45, 0.60, 0.70, 0.73, 0.75 },
+    { 0.48, 0.65, 0.78, 0.83, 0.85 },
+    { 0.49, 0.68, 0.82, 0.90, 0.93 },
+    { 0.50, 0.70, 0.85, 0.95, 1.00 }
+};
+
+// Create with log transform on stages for better interpolation
+var jointDist = new BivariateEmpirical(
+    stages, durations, jointCDF,
+    x1Transform: Transform.Logarithmic,
+    x2Transform: Transform.None,
+    probabilityTransform: Transform.NormalZ
+);
+
+// Probability that a flood has stage ≤ 15 ft AND duration ≤ 36 hr
+double prob = jointDist.CDF(15, 36);
+Console.WriteLine($"P(Stage ≤ 15, Duration ≤ 36hr) = {prob:F4}");
+
+// Joint exceedance probability
+double jointExceedance = 1 - jointDist.CDF(16, 48);
+Console.WriteLine($"P(Stage > 16 AND/OR Duration > 48hr) = {jointExceedance:F4}");
+```
+
+---
+
 ## References
 
 <a id="1">[1]</a> Tong, Y. L. (2012). *The Multivariate Normal Distribution*. Springer Science & Business Media.
 
 <a id="2">[2]</a> Kotz, S., Balakrishnan, N., & Johnson, N. L. (2004). *Continuous Multivariate Distributions, Volume 1: Models and Applications* (2nd ed.). John Wiley & Sons.
 
+<a id="3">[3]</a> Kotz, S., Balakrishnan, N. & Johnson, N. L. (2000). *Continuous Multivariate Distributions, Volume 1: Models and Applications* (2nd ed.). Wiley. Chapter 49 (Dirichlet distribution).
+
+<a id="4">[4]</a> Johnson, N. L., Kotz, S. & Balakrishnan, N. (1997). *Discrete Multivariate Distributions*. Wiley. Chapter 35 (Multinomial distribution).
+
 ---
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Descriptive Statistics →](../statistics/descriptive.md)

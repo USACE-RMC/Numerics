@@ -45,7 +45,9 @@ Console.WriteLine($"Double (0,1): {u4:F6}");
 ### Using with Distributions
 
 ```cs
+using Numerics.Sampling;
 using Numerics.Distributions;
+using Numerics.Data.Statistics;
 
 var rng = new MersenneTwister(12345);
 
@@ -103,6 +105,8 @@ Console.WriteLine($"\nPoint at index 100: ({pointAt100[0]:F4}, {pointAt100[1]:F4
 ### Sobol vs. Pseudo-Random
 
 ```cs
+using Numerics.Sampling;
+
 int n = 100;
 var random = new MersenneTwister(123);
 var sobol = new SobolSequence(2);
@@ -133,6 +137,7 @@ Stratified sampling for better parameter space coverage [[3]](#3):
 
 ```cs
 using Numerics.Sampling;
+using Numerics.Distributions;
 
 // Generate Latin Hypercube sample
 int sampleSize = 50;
@@ -192,6 +197,8 @@ for (int i = 0; i < Math.Min(5, sampleSize); i++)
 ### Example 1: Monte Carlo Integration
 
 ```cs
+using Numerics.Sampling;
+
 // Integrate f(x) = x² from 0 to 1 using different methods
 
 Func<double, double> f = x => x * x;
@@ -227,6 +234,10 @@ Console.WriteLine("\nQMC typically has smaller error for same sample size");
 ### Example 2: Uncertainty Propagation
 
 ```cs
+using Numerics.Sampling;
+using Numerics.Distributions;
+using Numerics.Data.Statistics;
+
 // Model: y = a*x + b*x² where a, b are uncertain
 
 var normal_a = new Normal(2.0, 0.3);
@@ -265,6 +276,8 @@ Console.WriteLine("\nLHS typically more stable with fewer samples");
 ### Example 3: Global Optimization Initialization
 
 ```cs
+using Numerics.Sampling;
+
 // Initialize population for global optimization
 
 int popSize = 20;
@@ -302,6 +315,9 @@ Console.WriteLine("\nLHS ensures good coverage of parameter space");
 ### Example 4: Sensitivity Analysis
 
 ```cs
+using Numerics.Sampling;
+using Numerics.Data.Statistics;
+
 // Compute Sobol sensitivity indices using quasi-random sampling
 
 Func<double[], double> model = x => 
@@ -385,6 +401,8 @@ for (int j = 0; j < dim; j++)
 ### Setting Seeds
 
 ```cs
+using Numerics.Sampling;
+
 // Pseudo-random - use same seed for reproducibility
 var rng1 = new MersenneTwister(12345);
 var rng2 = new MersenneTwister(12345);

@@ -150,7 +150,7 @@ Simple gradient-based optimization with line search:
 
 ```cs
 var gd = new GradientDescent(Rosenbrock, 2, initial, lower, upper);
-gd.LearningRate = 0.001; // Step size
+gd.Alpha = 0.001; // Step size (learning rate)
 gd.Minimize();
 ```
 
@@ -160,7 +160,7 @@ Adaptive Moment Estimation, popular in machine learning applications [[3]](#3):
 
 ```cs
 var adam = new ADAM(Rosenbrock, 2, initial, lower, upper);
-adam.LearningRate = 0.001;
+adam.Alpha = 0.001;
 adam.Beta1 = 0.9;  // First moment decay
 adam.Beta2 = 0.999; // Second moment decay
 adam.Minimize();
@@ -181,9 +181,7 @@ Uses the golden ratio to bracket the minimum:
 ```cs
 Func<double, double> f1d = x => Math.Pow(x - 2, 2) + 3;
 
-var golden = new GoldenSection(f1d, 1);
-golden.LowerBounds = new[] { 0.0 };
-golden.UpperBounds = new[] { 5.0 };
+var golden = new GoldenSection(f1d, 0.0, 5.0);
 golden.Minimize();
 
 Console.WriteLine($"Minimum at x = {golden.BestParameterSet.Values[0]:F6}");
@@ -194,9 +192,7 @@ Console.WriteLine($"Minimum at x = {golden.BestParameterSet.Values[0]:F6}");
 Combines golden section search with parabolic interpolation for faster convergence:
 
 ```cs
-var brent = new BrentSearch(f1d, 1);
-brent.LowerBounds = new[] { 0.0 };
-brent.UpperBounds = new[] { 5.0 };
+var brent = new BrentSearch(f1d, 0.0, 5.0);
 brent.Minimize();
 ```
 
@@ -228,7 +224,7 @@ var upper = new double[] { 5.12, 5.12 };
 var de = new DifferentialEvolution(Rastrigin, 2, lower, upper);
 de.PopulationSize = 50;
 de.CrossoverProbability = 0.9;
-de.DifferentialWeight = 0.8;
+de.Mutation = 0.75;
 de.MaxIterations = 1000;
 de.Minimize();
 
@@ -241,7 +237,7 @@ Console.WriteLine($"Function value: {de.BestParameterSet.Fitness:F10}");
 **Parameters**:
 - `PopulationSize`: Number of candidate solutions (default = 10 × dimensions)
 - `CrossoverProbability`: Probability of crossover (default = 0.9)
-- `DifferentialWeight`: Scaling factor for mutation (default = 0.8)
+- `Mutation`: Scaling factor for mutation (default = 0.75)
 
 ### Particle Swarm Optimization
 
@@ -250,9 +246,6 @@ PSO simulates social behavior of bird flocking or fish schooling [[5]](#5). Part
 ```cs
 var pso = new ParticleSwarm(Rastrigin, 2, lower, upper);
 pso.PopulationSize = 40;
-pso.InertiaWeight = 0.7;
-pso.CognitiveWeight = 1.5; // Personal best influence
-pso.SocialWeight = 1.5;    // Global best influence
 pso.Minimize();
 
 Console.WriteLine($"Solution: [{pso.BestParameterSet.Values[0]:F6}, {pso.BestParameterSet.Values[1]:F6}]");
@@ -261,10 +254,7 @@ Console.WriteLine($"Solution: [{pso.BestParameterSet.Values[0]:F6}, {pso.BestPar
 **Advantages**: Fast, simple to implement, works well for continuous problems.
 
 **Parameters**:
-- `PopulationSize`: Number of particles (default = 10 × dimensions)
-- `InertiaWeight`: Momentum (default = 0.7)
-- `CognitiveWeight`: Personal best attraction (default = 1.5)
-- `SocialWeight`: Global best attraction (default = 1.5)
+- `PopulationSize`: Number of particles (default = 30)
 
 ### Shuffled Complex Evolution (SCE-UA)
 
@@ -272,8 +262,7 @@ SCE-UA was specifically developed for calibrating hydrological models [[6]](#6).
 
 ```cs
 var sce = new ShuffledComplexEvolution(Rastrigin, 2, lower, upper);
-sce.NumberOfComplexes = 5;
-sce.ComplexSize = 10;
+sce.Complexes = 5;
 sce.MaxIterations = 1000;
 sce.Minimize();
 
@@ -290,7 +279,7 @@ SA mimics the physical process of annealing in metallurgy [[7]](#7). It accepts 
 
 ```cs
 var sa = new SimulatedAnnealing(Rastrigin, 2, lower, upper);
-sa.InitialTemperature = 100.0;
+sa.InitialTemperature = 10.0;
 sa.CoolingRate = 0.95;
 sa.MaxIterations = 10000;
 sa.Minimize();
@@ -301,7 +290,7 @@ Console.WriteLine($"Solution: [{sa.BestParameterSet.Values[0]:F6}, {sa.BestParam
 **Advantages**: Can escape local minima, works for discrete and continuous problems.
 
 **Parameters**:
-- `InitialTemperature`: Starting temperature (default = 100)
+- `InitialTemperature`: Starting temperature (default = 10)
 - `CoolingRate`: Temperature reduction factor (default = 0.95)
 
 ### Multi-Start Optimization
@@ -309,9 +298,9 @@ Console.WriteLine($"Solution: [{sa.BestParameterSet.Values[0]:F6}, {sa.BestParam
 Combines local search with multiple random starting points:
 
 ```cs
-var ms = new MultiStart(Rastrigin, 2, lower, upper);
-ms.LocalMethod = LocalMethod.BFGS; // Choose local optimizer
-ms.NumberOfStarts = 20;
+var initial = new double[] { 0.0, 0.0 };
+var ms = new MultiStart(Rastrigin, 2, initial, lower, upper, LocalMethod.BFGS);
+ms.MaxIterations = 20; // Number of random starts
 ms.Minimize();
 
 Console.WriteLine($"Best solution: [{ms.BestParameterSet.Values[0]:F6}, {ms.BestParameterSet.Values[1]:F6}]");
@@ -326,8 +315,8 @@ Console.WriteLine($"Best solution: [{ms.BestParameterSet.Values[0]:F6}, {ms.Best
 Clustering-based global optimization that avoids redundant local searches:
 
 ```cs
-var mlsl = new MLSL(Rastrigin, 2, lower, upper);
-mlsl.LocalMethod = LocalMethod.BFGS;
+var initial = new double[] { 0.0, 0.0 };
+var mlsl = new MLSL(Rastrigin, 2, initial, lower, upper, LocalMethod.BFGS);
 mlsl.Minimize();
 ```
 
@@ -350,7 +339,7 @@ double Objective(double[] x)
 
 // Constraint: x + y >= 1
 var constraint = new Constraint(
-    x => x[0] + x[1] - 1,  // g(x) >= 0 form
+    x => x[0] + x[1], 2, 1.0,  // g(x) >= value form
     ConstraintType.GreaterThanOrEqualTo
 );
 
@@ -358,9 +347,11 @@ var lower = new double[] { -5, -5 };
 var upper = new double[] { 5, 5 };
 var initial = new double[] { 0, 0 };
 
-var al = new AugmentedLagrange(Objective, 2, initial, lower, upper);
-al.AddConstraint(constraint);
-al.LocalMethod = LocalMethod.BFGS; // Local optimizer for subproblems
+// Create the inner optimizer
+var bfgs = new BFGS(Objective, 2, initial, lower, upper);
+
+// Create the Augmented Lagrange optimizer with constraints
+var al = new AugmentedLagrange(Objective, bfgs, new IConstraint[] { constraint });
 al.MaxIterations = 100;
 al.Minimize();
 
@@ -370,7 +361,7 @@ Console.WriteLine($"Constraint satisfied: {al.BestParameterSet.Values[0] + al.Be
 
 **Constraint Types**:
 - `ConstraintType.EqualTo`: Equality constraint $g(\mathbf{x}) = 0$
-- `ConstraintType.LessThanOrEqualTo`: Inequality constraint $g(\mathbf{x}) \leq 0$
+- `ConstraintType.LesserThanOrEqualTo`: Inequality constraint $g(\mathbf{x}) \leq 0$
 - `ConstraintType.GreaterThanOrEqualTo`: Inequality constraint $g(\mathbf{x}) \geq 0$
 
 **Example: Minimize subject to multiple constraints**:
@@ -386,15 +377,14 @@ double ObjectiveFunc(double[] x)
     return Math.Pow(x[0] - 3, 2) + Math.Pow(x[1] - 2, 2);
 }
 
-var c1 = new Constraint(x => 5 - x[0] - x[1], ConstraintType.GreaterThanOrEqualTo);
-var c2 = new Constraint(x => x[0] - 1, ConstraintType.GreaterThanOrEqualTo);
-var c3 = new Constraint(x => x[1] - 1, ConstraintType.GreaterThanOrEqualTo);
+var c1 = new Constraint(x => x[0] + x[1], 2, 5.0, ConstraintType.LesserThanOrEqualTo);
+var c2 = new Constraint(x => x[0], 2, 1.0, ConstraintType.GreaterThanOrEqualTo);
+var c3 = new Constraint(x => x[1], 2, 1.0, ConstraintType.GreaterThanOrEqualTo);
 
-var constrained = new AugmentedLagrange(ObjectiveFunc, 2, new[] { 2.0, 2.0 }, 
-                                        new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 });
-constrained.AddConstraint(c1);
-constrained.AddConstraint(c2);
-constrained.AddConstraint(c3);
+var innerOptimizer = new BFGS(ObjectiveFunc, 2, new[] { 2.0, 2.0 },
+                              new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 });
+var constrained = new AugmentedLagrange(ObjectiveFunc, innerOptimizer,
+                                        new IConstraint[] { c1, c2, c3 });
 constrained.Minimize();
 
 Console.WriteLine($"Constrained optimum: [{constrained.BestParameterSet.Values[0]:F4}, " +
@@ -429,7 +419,7 @@ double ObjectiveFunction(double[] parameters)
     }
     
     // Compute RMSE
-    double rmse = Statistics.RMSE(observed, simulated);
+    double rmse = GoodnessOfFit.RMSE(observed, simulated);
     return rmse;
 }
 
@@ -439,7 +429,7 @@ var upper = new double[] { 5.0, 3.0 };  // C <= 5.0, α <= 3.0
 
 // Use SCE-UA (recommended for hydrological calibration)
 var optimizer = new ShuffledComplexEvolution(ObjectiveFunction, 2, lower, upper);
-optimizer.NumberOfComplexes = 5;
+optimizer.Complexes = 5;
 optimizer.MaxIterations = 1000;
 optimizer.Minimize();
 
@@ -457,7 +447,7 @@ for (int i = 0; i < observed.Length; i++)
                          Math.Pow(precipitation[i], optimizer.BestParameterSet.Values[1]);
 }
 
-double nse = Statistics.NSE(observed, final_simulated);
+double nse = GoodnessOfFit.NashSutcliffeEfficiency(observed, final_simulated);
 Console.WriteLine($"  NSE = {nse:F4}");
 ```
 
@@ -551,7 +541,7 @@ if (optimizer.Status == OptimizationStatus.Success)
 {
     Console.WriteLine("Optimization converged successfully");
 }
-else if (optimizer.Status == OptimizationStatus.MaxIterationsReached)
+else if (optimizer.Status == OptimizationStatus.MaximumIterationsReached)
 {
     Console.WriteLine("Maximum iterations reached - may not have converged");
 }

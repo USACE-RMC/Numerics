@@ -160,6 +160,12 @@ for (int i = 0; i < N.Length; i += 20)
     double halfLives = t / (Math.Log(2) / lambda);
     Console.WriteLine($"{t,4:F2} | {N[i],6:F1} | {halfLives,10:F3}");
 }
+// Print final time point (the loop step skips the last element)
+{
+    double t = (N.Length - 1) * dt;
+    double halfLives = t / (Math.Log(2) / lambda);
+    Console.WriteLine($"{t,4:F2} | {N[N.Length - 1],6:F1} | {halfLives,10:F3}");
+}
 ```
 
 ### Example 2: Logistic Growth (Population Dynamics)
@@ -198,6 +204,8 @@ for (int i = 0; i < P.Length; i++)
 ```
 
 ### Example 3: Harmonic Oscillator
+
+> **Note:** The `RungeKutta` class handles scalar ODEs only (i.e., a single dependent variable). For systems of ODEs (multiple coupled equations), you must implement the RK4 stepping logic manually, as shown in the examples below.
 
 For second-order ODEs, convert to system of first-order ODEs:
 

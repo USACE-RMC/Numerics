@@ -56,7 +56,7 @@ public double FX(double x)
 
 ### Trapezoidal Rule
 
-The _Integration_ class is a static class that contains the Midpoint Rule, Trapezoidal Rule, Simpson's Rule, and the 10-point Gauss-Legendre integration methods. Let's first compute the integral using the Trapezoidal Rule with 10 bins (or steps):
+The _Integration_ class is a sealed class that contains the Midpoint Rule, Trapezoidal Rule, Simpson's Rule, and the 10-point and 20-point Gauss-Legendre integration methods. Let's first compute the integral using the Trapezoidal Rule with 10 bins (or steps):
 
 ```cs
 double result = Integration.TrapezoidalRule(FX, 0, 1, 10); // 0.25249999999999995
@@ -73,9 +73,9 @@ We can see that this is much more precise.
 Alternatively, the ***Numerics*** library provides a _TrapezoidalRule_ class that extends the basic static method and provides additional functionality for computing integration error estimates:
 
 ```cs
-var trap = new TrapezoidalRule(FX, 0, 1, intervals: 100);
+var trap = new TrapezoidalRule(FX, 0, 1);
 trap.Integrate();
-double result = trap.Result; // 0.25024999999999995
+double result = trap.Result;
 Console.WriteLine($"Function evaluations: {trap.FunctionEvaluations}");
 ```
 
@@ -96,9 +96,9 @@ double result = Integration.SimpsonsRule(FX, 0, 1, 10); // 0.25
 Or using the class-based approach:
 
 ```cs
-var simpson = new SimpsonsRule(FX, 0, 1, intervals: 100);
+var simpson = new SimpsonsRule(FX, 0, 1);
 simpson.Integrate();
-double result = simpson.Result; // 0.25
+double result = simpson.Result;
 ```
 
 **Accuracy**: Simpson's Rule is fourth-order accurate, $O(h^4)$, making it significantly more accurate than the Trapezoidal Rule for smooth functions.
@@ -111,13 +111,21 @@ The Gauss-Legendre method uses optimal polynomial quadrature for smooth function
 \int_{-1}^{1} f(x)\,dx \approx \sum_{i=1}^{n} w_i f(x_i)
 ```
 
-where $x_i$ are roots of Legendre polynomials and $w_i$ are corresponding weights. The ***Numerics*** library provides a 10-point Gauss-Legendre method:
+where $x_i$ are roots of Legendre polynomials and $w_i$ are corresponding weights. The ***Numerics*** library provides both a 10-point and a 20-point Gauss-Legendre method:
 
 ```cs
 double result = Integration.GaussLegendre(FX, 0, 1); // 0.25
 ```
 
 **Accuracy**: The 10-point Gauss-Legendre method is exact for polynomials of degree 19 or less.
+
+For higher accuracy with non-polynomial smooth integrands, use the 20-point variant:
+
+```cs
+double result = Integration.GaussLegendre20(FX, 0, 1); // 0.25
+```
+
+**Accuracy**: The 20-point Gauss-Legendre method is exact for polynomials of degree 39 or less.
 
 ### Midpoint Rule
 
@@ -191,7 +199,8 @@ var gk = new AdaptiveGaussKronrod(FX, 0, 1);
 gk.RelativeTolerance = 1e-12;
 gk.Integrate();
 double result = gk.Result;
-Console.WriteLine($"Estimated error: {gk.Status}");
+Console.WriteLine($"Status: {gk.Status}");
+Console.WriteLine($"Standard error: {gk.StandardError}");
 ```
 
 **Advantages**: Efficient error estimation, reuses function evaluations from the Gauss rule in the Kronrod extension.
@@ -335,7 +344,7 @@ Console.WriteLine($"Result: {result:F6}");
 Console.WriteLine($"Function evaluations: {mc.FunctionEvaluations}");
 ```
 
-With 100,000 samples, we see that the result is close but still has a noticeable error. Now, let's run it again with the default setting, where the maximum iterations are $N=100,000,000$:
+With 100,000 samples, we see that the result is close but still has a noticeable error. Now, let's run it again with the default setting, where the maximum iterations are $N=10,000,000$:
 
 ```cs
 var mc = new MonteCarloIntegration(PI, 2, a, b);
@@ -555,7 +564,7 @@ All integration classes (except the static `Integration` methods) inherit from t
 - `Result`: The computed integral value
 - `Iterations`: Number of iterations performed
 - `FunctionEvaluations`: Number of function evaluations performed
-- `Status`: Integration status (Success, Failure, MaxIterationsReached, etc.)
+- `Status`: Integration status (Success, Failure, MaximumIterationsReached, etc.)
 
 Example of using these properties:
 
@@ -583,7 +592,7 @@ The VEGAS integrator includes a special method for rare event analysis:
 
 ```cs
 var vegas = new Vegas(myFunction, dimensions, min, max);
-vegas.ConfigureForRareEvents(); // Optimizes settings for rare event detection
+vegas.ConfigureForRareEvents(1e-6); // Optimizes settings for rare event detection
 vegas.Integrate();
 ```
 
