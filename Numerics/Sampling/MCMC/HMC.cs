@@ -200,59 +200,70 @@ namespace Numerics.Sampling.MCMC
             // Update the sample count
             SampleCount[index] += 1;
 
-            // Jigger the step size and number of steps
-            var _stepSize = _stepSizeU.InverseCDF(_chainPRNGs[index].NextDouble());
-            var _steps = (int)Math.Ceiling(_stepsU.InverseCDF(_chainPRNGs[index].NextDouble()));
-
-            // Step 1. Sample phi from a N~(0,M)
-            var phi = new Vector(NumberOfParameters);
-            for (int i = 0; i < NumberOfParameters; i++)
-                phi[i] = Math.Sqrt(Mass[i]) * Normal.StandardZ(_chainPRNGs[index].NextDouble());
-
-            // Get kinetic energy of the current state
-            var logKi = -0.5 * QuadraticForm(phi, _inverseMass);
-
-            // Step 2. Perform leapfrog steps to get proposal vector
-            var xp = new Vector(state.Values);
-            phi += GradientFunction(xp.Array) * _stepSize * 0.5;
-            for (int i = 0; i < _steps; i++)
+            try
             {
-                xp += _inverseMass * phi * _stepSize;
+                // Jigger the step size and number of steps
+                var _stepSize = _stepSizeU.InverseCDF(_chainPRNGs[index].NextDouble());
+                var _steps = (int)Math.Ceiling(_stepsU.InverseCDF(_chainPRNGs[index].NextDouble()));
 
-                // Ensure the parameters are feasible (within the constraints)
-                for (int j = 0; j < NumberOfParameters; j++)
+                // Step 1. Sample phi from a N~(0,M)
+                var phi = new Vector(NumberOfParameters);
+                for (int i = 0; i < NumberOfParameters; i++)
+                    phi[i] = Math.Sqrt(Mass[i]) * Normal.StandardZ(_chainPRNGs[index].NextDouble());
+
+                // Get kinetic energy of the current state
+                var logKi = -0.5 * QuadraticForm(phi, _inverseMass);
+
+                // Step 2. Perform leapfrog steps to get proposal vector
+                var xp = new Vector(state.Values);
+                phi += GradientFunction(xp.Array) * _stepSize * 0.5;
+                for (int i = 0; i < _steps; i++)
                 {
-                    if (xp[j] < PriorDistributions[j].Minimum) 
-                        xp[j] = PriorDistributions[j].Minimum + Tools.DoubleMachineEpsilon;
-                    if (xp[j] > PriorDistributions[j].Maximum) 
-                        xp[j] = PriorDistributions[j].Maximum - Tools.DoubleMachineEpsilon;
+                    xp += _inverseMass * phi * _stepSize;
+
+                    // Ensure the parameters are feasible (within the constraints)
+                    for (int j = 0; j < NumberOfParameters; j++)
+                    {
+                        if (xp[j] < PriorDistributions[j].Minimum)
+                            xp[j] = PriorDistributions[j].Minimum + Tools.DoubleMachineEpsilon;
+                        if (xp[j] > PriorDistributions[j].Maximum)
+                            xp[j] = PriorDistributions[j].Maximum - Tools.DoubleMachineEpsilon;
+                    }
+
+                    phi += GradientFunction(xp.Array) * _stepSize * (i == _steps - 1 ? 0.5 : 1.0);
                 }
+                phi *= -1d;
 
-                phi += GradientFunction(xp.Array) * _stepSize * (i == _steps-1 ? 0.5: 1.0);
+                // Get kinetic energy of the proposal state
+                var logKp = -0.5 * QuadraticForm(phi, _inverseMass);
+
+                // Evaluate fitness
+                var logLHp = SafeLogLikelihood(xp.Array);
+                var logLHi = state.Fitness;
+
+                // Calculate the Metropolis ratio
+                var logRatio = logLHp - logLHi + logKp - logKi;
+
+                // Accept the proposal with probability min(1,r)
+                // otherwise leave xi unchanged
+                var logU = Math.Log(_chainPRNGs[index].NextDouble());
+                if (logU <= logRatio)
+                {
+                    // The proposal is accepted
+                    AcceptCount[index] += 1;
+                    return new ParameterSet(xp.Array, logLHp);
+                }
+                else
+                {
+                    return state;
+                }
             }
-            phi *= -1d;
-
-            // Get kinetic energy of the proposal state
-            var logKp = -0.5 * QuadraticForm(phi, _inverseMass);
-
-            // Evaluate fitness
-            var logLHp = SafeLogLikelihood(xp.Array);
-            var logLHi = state.Fitness;
-
-            // Calculate the Metropolis ratio
-            var logRatio = logLHp - logLHi + logKp - logKi;
-
-            // Accept the proposal with probability min(1,r)
-            // otherwise leave xi unchanged
-            var logU = Math.Log(_chainPRNGs[index].NextDouble());
-            if (logU <= logRatio)
+            catch (ArithmeticException)
             {
-                // The proposal is accepted
-                AcceptCount[index] += 1;
-                return new ParameterSet(xp.Array, logLHp);
-            }
-            else
-            {
+                // Non-finite gradient encountered during leapfrog integration.
+                // This occurs when parameters drift into regions where the log-likelihood
+                // returns -Infinity. Reject the proposal and return the current state,
+                // consistent with Metropolis rejection behavior.
                 return state;
             }
 

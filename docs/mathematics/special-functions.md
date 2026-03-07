@@ -63,27 +63,26 @@ Console.WriteLine($"ψ'(2) = {trigamma:F6}");
 
 ### Incomplete Gamma Functions
 
-Used in chi-squared and gamma distributions:
+Used in chi-squared and gamma distributions. These methods return the **regularized** forms P(a,x) and Q(a,x):
 
 ```cs
-// Lower incomplete gamma: γ(a,x) = ∫₀ˣ t^(a-1)e^(-t) dt
-double lowerIncomplete = Gamma.LowerIncomplete(a: 2.0, x: 3.0);
+// Regularized lower incomplete gamma: P(a,x) = γ(a,x) / Γ(a)
+double P = Gamma.LowerIncomplete(a: 2.0, x: 3.0);
 
-// Upper incomplete gamma: Γ(a,x) = ∫ₓ^∞ t^(a-1)e^(-t) dt
-double upperIncomplete = Gamma.UpperIncomplete(a: 2.0, x: 3.0);
+// Regularized upper incomplete gamma: Q(a,x) = Γ(a,x) / Γ(a)
+double Q = Gamma.UpperIncomplete(a: 2.0, x: 3.0);
 
-// Verify: γ(a,x) + Γ(a,x) = Γ(a)
-double sum = lowerIncomplete + upperIncomplete;
-double gamma = Gamma.Function(2.0);
+// Verify: P(a,x) + Q(a,x) = 1
+double sum = P + Q;
 
-Console.WriteLine($"Lower: {lowerIncomplete:F6}");
-Console.WriteLine($"Upper: {upperIncomplete:F6}");
-Console.WriteLine($"Sum: {sum:F6}, Γ(2): {gamma:F6}");
+Console.WriteLine($"P(2, 3): {P:F6}");
+Console.WriteLine($"Q(2, 3): {Q:F6}");
+Console.WriteLine($"P + Q:   {sum:F6}");  // 1.000000
 ```
 
-### Regularized Incomplete Gamma
+### Alternative: Gamma.Incomplete
 
-Normalized version: P(a,x) = γ(a,x)/Γ(a)
+An alternative method with different parameter ordering:
 
 ```cs
 // Regularized incomplete gamma (CDF of Gamma distribution)
@@ -121,18 +120,18 @@ Console.WriteLine($"Γ(2)Γ(3)/Γ(5) = {betaCheck:F6}");
 
 ### Incomplete Beta Function
 
-Used in Beta distribution and Student's t-test:
+Used in Beta distribution and Student's t-test. This returns the **regularized** form Iₓ(a,b) = Bₓ(a,b) / B(a,b), which ranges from 0 to 1:
 
 ```cs
-// Incomplete beta: Bₓ(a,b) = ∫₀ˣ t^(a-1)(1-t)^(b-1) dt
-double incompleteBeta = Beta.Incomplete(a: 2.0, b: 3.0, x: 0.4);
+// Regularized incomplete beta: Iₓ(a,b) = Bₓ(a,b) / B(a,b)
+double Ix = Beta.Incomplete(a: 2.0, b: 3.0, x: 0.4);
 
-Console.WriteLine($"Bₓ(2,3,0.4) = {incompleteBeta:F6}");
-Console.WriteLine("This equals integral from 0 to 0.4");
+Console.WriteLine($"Iₓ(2,3,0.4) = {Ix:F6}");
+Console.WriteLine("This is the CDF of Beta(2,3) at x=0.4");
 
-// Regularized incomplete beta (CDF of Beta distribution)
-double I = incompleteBeta / Beta.Function(2.0, 3.0);
-Console.WriteLine($"I(2,3,0.4) = {I:F6}");
+// To recover the raw (non-regularized) incomplete beta:
+double rawIncomplete = Ix * Beta.Function(2.0, 3.0);
+Console.WriteLine($"Bₓ(2,3,0.4) = {rawIncomplete:F6}");
 ```
 
 ### Inverse Incomplete Beta

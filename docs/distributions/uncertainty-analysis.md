@@ -326,26 +326,33 @@ for (int i = 0; i < probabilities.Length; i++)
 
 ## Bootstrap Moments
 
-Compute product moments and L-moments from bootstrap ensemble:
+Compute product moments and L-moments from the bootstrap ensemble. Both methods return a `double[Replications, 4]` array where each row is one bootstrap replication and each column is a moment:
 
 ```cs
-// Product moments from bootstrap replications
+using Numerics.Data.Statistics;
+
+// Product moments: [replication, moment]
+//   Column 0 = mean, 1 = std dev, 2 = skewness, 3 = kurtosis
 double[,] productMoments = bootstrap.ProductMoments();
 
-Console.WriteLine("Bootstrap Product Moments:");
-Console.WriteLine($"Mean of means: {productMoments[0, 0]:F2}");
-Console.WriteLine($"Mean of std devs: {productMoments[1, 0]:F2}");
-Console.WriteLine($"Mean of skewness: {productMoments[2, 0]:F4}");
-Console.WriteLine($"Mean of kurtosis: {productMoments[3, 0]:F4}");
+int R = productMoments.GetLength(0);  // number of replications
 
-// L-moments from bootstrap replications
+// Summarize across replications for each moment
+Console.WriteLine("Bootstrap Product Moments:");
+Console.WriteLine($"Mean of means:    {Enumerable.Range(0, R).Average(i => productMoments[i, 0]):F2}");
+Console.WriteLine($"Mean of std devs: {Enumerable.Range(0, R).Average(i => productMoments[i, 1]):F2}");
+Console.WriteLine($"Mean of skewness: {Enumerable.Range(0, R).Average(i => productMoments[i, 2]):F4}");
+Console.WriteLine($"Mean of kurtosis: {Enumerable.Range(0, R).Average(i => productMoments[i, 3]):F4}");
+
+// L-moments: [replication, moment]
+//   Column 0 = λ₁, 1 = λ₂, 2 = τ₃, 3 = τ₄
 double[,] lMoments = bootstrap.LinearMoments();
 
 Console.WriteLine("\nBootstrap L-Moments:");
-Console.WriteLine($"Mean λ₁: {lMoments[0, 0]:F2}");
-Console.WriteLine($"Mean λ₂: {lMoments[1, 0]:F2}");
-Console.WriteLine($"Mean τ₃: {lMoments[2, 0]:F4}");
-Console.WriteLine($"Mean τ₄: {lMoments[3, 0]:F4}");
+Console.WriteLine($"Mean λ₁: {Enumerable.Range(0, R).Average(i => lMoments[i, 0]):F2}");
+Console.WriteLine($"Mean λ₂: {Enumerable.Range(0, R).Average(i => lMoments[i, 1]):F2}");
+Console.WriteLine($"Mean τ₃: {Enumerable.Range(0, R).Average(i => lMoments[i, 2]):F4}");
+Console.WriteLine($"Mean τ₄: {Enumerable.Range(0, R).Average(i => lMoments[i, 3]):F4}");
 ```
 
 ## Expected Probability (Rare Events)
@@ -485,11 +492,18 @@ var results2 = bootstrap.Estimate(probs2, alpha: 0.1, distributions: bootstrapDi
 
 ### Custom Quantile Computations
 
+The `Quantiles()` method returns a `double[Replications, probabilities.Count]` array containing the raw quantile value from each bootstrap replication at each probability. You can then compute your own summary statistics:
+
 ```cs
+using Numerics.Data.Statistics;
+
 // Compute quantiles from bootstrap ensemble
 var probsOfInterest = new double[] { 0.9, 0.95, 0.98, 0.99, 0.998 };
 
+// Returns double[Replications, probabilities.Count]
 double[,] quantiles = bootstrap.Quantiles(probsOfInterest);
+
+int R = quantiles.GetLength(0);  // number of replications
 
 Console.WriteLine("Bootstrap Quantiles:");
 Console.WriteLine("Prob   | Mean      | Std Dev   | 5th %ile  | 95th %ile");
@@ -497,19 +511,32 @@ Console.WriteLine("------------------------------------------------------------"
 
 for (int i = 0; i < probsOfInterest.Length; i++)
 {
-    Console.WriteLine($"{probsOfInterest[i]:F3} | {quantiles[i, 0],9:F0} | " +
-                     $"{quantiles[i, 1],9:F0} | {quantiles[i, 2],9:F0} | {quantiles[i, 3],9:F0}");
+    // Extract column for this probability across all replications
+    double[] values = Enumerable.Range(0, R)
+        .Select(r => quantiles[r, i])
+        .Where(v => !double.IsNaN(v))
+        .ToArray();
+
+    double mean = values.Average();
+    double sd = Statistics.StandardDeviation(values);
+    double p05 = Statistics.Percentile(values, 0.05);
+    double p95 = Statistics.Percentile(values, 0.95);
+
+    Console.WriteLine($"{probsOfInterest[i]:F3} | {mean,9:F0} | {sd,9:F0} | {p05,9:F0} | {p95,9:F0}");
 }
 ```
 
 ### Computing Probabilities
 
-Reverse direction - find probabilities for given quantiles:
+Reverse direction — find CDF probabilities for given quantile values. The `Probabilities()` method returns a `double[Replications, quantiles.Count]` array of raw CDF values from each replication:
 
 ```cs
 var designFlows = new double[] { 15000, 20000, 25000, 30000 };
 
-double[,] probabilities = bootstrap.Probabilities(designFlows);
+// Returns double[Replications, quantiles.Count]
+double[,] probs = bootstrap.Probabilities(designFlows);
+
+int R = probs.GetLength(0);
 
 Console.WriteLine("Probabilities for Design Flows:");
 Console.WriteLine("Flow  | Mean Prob | Std Dev   | 5th %ile  | 95th %ile");
@@ -517,11 +544,21 @@ Console.WriteLine("--------------------------------------------------------");
 
 for (int i = 0; i < designFlows.Length; i++)
 {
-    double meanAEP = 1 - probabilities[i, 0];
+    // Extract column for this quantile across all replications
+    double[] values = Enumerable.Range(0, R)
+        .Select(r => probs[r, i])
+        .Where(v => !double.IsNaN(v))
+        .ToArray();
+
+    double meanProb = values.Average();
+    double sd = Statistics.StandardDeviation(values);
+    double p05 = Statistics.Percentile(values, 0.05);
+    double p95 = Statistics.Percentile(values, 0.95);
+
+    double meanAEP = 1 - meanProb;
     double meanT = 1.0 / meanAEP;
-    
-    Console.WriteLine($"{designFlows[i],5:F0} | {probabilities[i, 0],9:F4} | " +
-                     $"{probabilities[i, 1],9:F4} | {probabilities[i, 2],9:F4} | {probabilities[i, 3],9:F4}");
+
+    Console.WriteLine($"{designFlows[i],5:F0} | {meanProb,9:F4} | {sd,9:F4} | {p05,9:F4} | {p95,9:F4}");
     Console.WriteLine($"      | T={meanT:F1} years");
 }
 ```

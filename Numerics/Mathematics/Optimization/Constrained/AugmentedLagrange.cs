@@ -122,34 +122,37 @@ namespace Numerics.Mathematics.Optimization
         public ReadOnlyCollection<double> Nu => new ReadOnlyCollection<double>(_nu);
 
         /// <summary>
-        /// The Augmented Lagrangian objective function. 
+        /// The Augmented Lagrangian objective function.
         /// </summary>
         private double augmentedLagrangianFunction(double[] x)
         {
             double phi = _primaryObjectiveFunction(x);
             double rho2 = 0.5 * rho;
 
-            // For each equality constraint
+            int lambdaIdx = 0, muIdx = 0, nuIdx = 0;
             for (int i = 0; i < _constraints.Length; i++)
             {
                 double actual = _constraints[i].Function(x);
                 double c = 0;
-                
+
                 switch (_constraints[i].Type)
                 {
                     case ConstraintType.EqualTo:
                         c = actual - _constraints[i].Value;
-                        phi += rho2 * Math.Pow(c + _lambda[i] / rho, 2d);
+                        phi += rho2 * Math.Pow(c + _lambda[lambdaIdx] / rho, 2d);
+                        lambdaIdx++;
                         break;
 
                     case ConstraintType.LesserThanOrEqualTo:
                         c = actual - _constraints[i].Value;
-                        if (c > 0) phi += rho2 * Math.Pow(c + _mu[i] / rho, 2d);
+                        if (c > 0) phi += rho2 * Math.Pow(c + _mu[muIdx] / rho, 2d);
+                        muIdx++;
                         break;
 
                     case ConstraintType.GreaterThanOrEqualTo:
                         c = _constraints[i].Value - actual;
-                        if (c > 0) phi += rho2 * Math.Pow(c + _nu[i] / rho, 2d);
+                        if (c > 0) phi += rho2 * Math.Pow(c + _nu[nuIdx] / rho, 2d);
+                        nuIdx++;
                         break;
                 }
             }
@@ -263,6 +266,7 @@ namespace Numerics.Mathematics.Optimization
                 bool feasible = true;
 
                 // Update lambdas
+                int lambdaIdx = 0, muIdx = 0, nuIdx = 0;
                 for (int i = 0; i < _constraints.Length; i++)
                 {
                     double actual = _constraints[i].Function(currentValues);
@@ -273,29 +277,32 @@ namespace Numerics.Mathematics.Optimization
                     {
                         case ConstraintType.EqualTo:
                             c = actual - _constraints[i].Value;
-                            newLambda = _lambda[i] + rho * c;
+                            newLambda = _lambda[lambdaIdx] + rho * c;
                             penalty += Math.Abs(c);
                             feasible = feasible && Math.Abs(c) <= _constraints[i].Tolerance;
                             ICM = Math.Max(ICM, Math.Abs(c));
-                            _lambda[i] = Math.Min(Math.Max(-1e20, newLambda), 1e20);                           
+                            _lambda[lambdaIdx] = Math.Min(Math.Max(-1e20, newLambda), 1e20);
+                            lambdaIdx++;
                             break;
 
                         case ConstraintType.LesserThanOrEqualTo:
                             c = actual - _constraints[i].Value;
-                            newLambda = _mu[i] + rho * c;
+                            newLambda = _mu[muIdx] + rho * c;
                             penalty += c > 0 ? c : 0;
                             feasible = feasible && c <= _constraints[i].Tolerance;
-                            ICM = Math.Max(ICM, Math.Abs(Math.Max(c, -_mu[i] / rho)));
-                            _mu[i] = Math.Min(Math.Max(0.0, newLambda), 1e20);
+                            ICM = Math.Max(ICM, Math.Abs(Math.Max(c, -_mu[muIdx] / rho)));
+                            _mu[muIdx] = Math.Min(Math.Max(0.0, newLambda), 1e20);
+                            muIdx++;
                             break;
 
                         case ConstraintType.GreaterThanOrEqualTo:
                             c = _constraints[i].Value - actual;
-                            newLambda = _nu[i] + rho * c;
+                            newLambda = _nu[nuIdx] + rho * c;
                             penalty += c > 0 ? c : 0;
                             feasible = feasible && c <= _constraints[i].Tolerance;
-                            ICM = Math.Max(ICM, Math.Abs(Math.Max(c, -_nu[i] / rho)));
-                            _nu[i] = Math.Min(Math.Max(0.0, newLambda), 1e20);
+                            ICM = Math.Max(ICM, Math.Abs(Math.Max(c, -_nu[nuIdx] / rho)));
+                            _nu[nuIdx] = Math.Min(Math.Max(0.0, newLambda), 1e20);
+                            nuIdx++;
                             break;
                     }
             }

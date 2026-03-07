@@ -183,5 +183,97 @@ namespace Mathematics.Optimization
             // Multiplier
             Assert.AreEqual(0d, solver.Mu[0]);
         }
+        /// <summary>
+        /// Tests AugmentedLagrange with mixed constraint types (equality + lesser-than + greater-than).
+        /// This previously caused IndexOutOfRangeException due to incorrect multiplier array indexing.
+        /// </summary>
+        /// <remarks>
+        /// Minimize x² + y² subject to:
+        ///   x + y = 4     (equality)
+        ///   x ≤ 3         (lesser-than-or-equal)
+        ///   y ≥ 0.5       (greater-than-or-equal)
+        ///
+        /// Analytical solution: x = 2, y = 2 (unconstrained on equality).
+        /// But with x ≤ 3 and y ≥ 0.5, the equality x+y=4 with min x²+y² gives x=2, y=2.
+        /// All constraints are satisfied at (2,2).
+        /// </remarks>
+        [TestMethod]
+        public void Test_MixedConstraints()
+        {
+            // Objective: minimize x² + y²
+            Func<double[], double> func = (double[] x) =>
+            {
+                return x[0] * x[0] + x[1] * x[1];
+            };
+
+            // Constraints
+            var equalityConstraint = new Constraint(
+                (x) => x[0] + x[1], 2, 4.0, ConstraintType.EqualTo);
+
+            var lessThanConstraint = new Constraint(
+                (x) => x[0], 2, 3.0, ConstraintType.LesserThanOrEqualTo);
+
+            var greaterThanConstraint = new Constraint(
+                (x) => x[1], 2, 0.5, ConstraintType.GreaterThanOrEqualTo);
+
+            // Inner solver
+            var initial = new double[] { 1, 3 };
+            var lower = new double[] { -10, -10 };
+            var upper = new double[] { 10, 10 };
+            var innerSolver = new BFGS(func, 2, initial, lower, upper);
+
+            // Solve with all three constraint types
+            var constraints = new IConstraint[] { equalityConstraint, lessThanConstraint, greaterThanConstraint };
+            var solver = new AugmentedLagrange(func, innerSolver, constraints);
+            solver.Minimize();
+
+            // Solution should be (2, 2)
+            Assert.AreEqual(2.0, solver.BestParameterSet.Values[0], 0.1);
+            Assert.AreEqual(2.0, solver.BestParameterSet.Values[1], 0.1);
+            // Objective = 4+4 = 8
+            Assert.AreEqual(8.0, solver.BestParameterSet.Fitness, 0.5);
+        }
+
+        /// <summary>
+        /// Tests AugmentedLagrange with mixed constraints where the inequality constraints are binding.
+        /// </summary>
+        /// <remarks>
+        /// Minimize (x-5)² + (y-5)² subject to:
+        ///   x + y = 4     (equality, binding)
+        ///   x ≤ 1         (lesser-than, binding)
+        ///   y ≥ 2         (greater-than, not binding since y=3)
+        ///
+        /// Solution: x=1, y=3 (x is capped at 1 by the inequality, y=4-1=3)
+        /// </remarks>
+        [TestMethod]
+        public void Test_MixedConstraints_Binding()
+        {
+            Func<double[], double> func = (double[] x) =>
+            {
+                return Math.Pow(x[0] - 5, 2) + Math.Pow(x[1] - 5, 2);
+            };
+
+            var equalityConstraint = new Constraint(
+                (x) => x[0] + x[1], 2, 4.0, ConstraintType.EqualTo);
+
+            var lessThanConstraint = new Constraint(
+                (x) => x[0], 2, 1.0, ConstraintType.LesserThanOrEqualTo);
+
+            var greaterThanConstraint = new Constraint(
+                (x) => x[1], 2, 2.0, ConstraintType.GreaterThanOrEqualTo);
+
+            var initial = new double[] { 0.5, 3.5 };
+            var lower = new double[] { -10, -10 };
+            var upper = new double[] { 10, 10 };
+            var innerSolver = new BFGS(func, 2, initial, lower, upper);
+
+            var constraints = new IConstraint[] { equalityConstraint, lessThanConstraint, greaterThanConstraint };
+            var solver = new AugmentedLagrange(func, innerSolver, constraints);
+            solver.Minimize();
+
+            // Solution should be (1, 3)
+            Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 0.1);
+            Assert.AreEqual(3.0, solver.BestParameterSet.Values[1], 0.1);
+        }
     }
 }

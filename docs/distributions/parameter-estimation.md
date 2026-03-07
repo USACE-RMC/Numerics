@@ -381,9 +381,9 @@ var lognormal = new LogNormal();
 lognormal.Estimate(data, ParameterEstimationMethod.MethodOfMoments);
 Console.WriteLine($"LogNormal μ = {lognormal.Mu:F4}, σ = {lognormal.Sigma:F4}");
 
-// Weibull - two parameters  
+// Weibull - two parameters (MLE only)
 var weibull = new Weibull();
-weibull.Estimate(data, ParameterEstimationMethod.MethodOfLinearMoments);
+weibull.Estimate(data, ParameterEstimationMethod.MaximumLikelihood);
 Console.WriteLine($"Weibull λ = {weibull.Lambda:F4}, κ = {weibull.Kappa:F4}");
 ```
 
