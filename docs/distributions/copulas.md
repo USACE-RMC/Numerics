@@ -145,7 +145,7 @@ The Frank copula has **no tail dependence** and produces a symmetric dependence 
 |----------|-------|
 | Generator | $\varphi(t) = -\ln\!\left(\frac{e^{-\theta t} - 1}{e^{-\theta} - 1}\right)$ |
 | CDF | $C(u,v) = -\frac{1}{\theta}\ln\!\left(1 + \frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)$ |
-| Parameter range | $\theta \in (-\infty, \infty) \setminus \{0\}$ |
+| Parameter range | $\theta \in (-\infty, \infty) \setminus \lbrace 0\rbrace$ |
 | Tail dependence | $\lambda_L = \lambda_U = 0$ |
 
 The Frank copula is the only Archimedean copula that allows both positive and negative dependence ($\theta > 0$ for positive, $\theta < 0$ for negative).
@@ -195,7 +195,7 @@ var amhCopula = new AMHCopula(0.5);
 | Student-t | Symmetric | $\rho \in [-1, 1]$, $\nu > 2$ | Heavy-tailed joint extremes |
 | Clayton | Lower tail | $\theta \in (0, \infty)$ | Joint low extremes (droughts) |
 | Gumbel | Upper tail | $\theta \in [1, \infty)$ | Joint high extremes (floods) |
-| Frank | None | $\theta \in \mathbb{R} \setminus \{0\}$ | Moderate symmetric dependence |
+| Frank | None | $\theta \in \mathbb{R} \setminus \lbrace 0\rbrace$ | Moderate symmetric dependence |
 | Joe | Upper tail | $\theta \in [1, \infty)$ | Strong upper tail dependence |
 | AMH | None | $\theta \in [-1, 1]$ | Weak dependence structures |
 

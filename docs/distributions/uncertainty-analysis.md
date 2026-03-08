@@ -28,7 +28,7 @@ x^{*}_{b,1}, x^{*}_{b,2}, \ldots, x^{*}_{b,n} \sim \hat{F}(\hat{\theta}), \quad 
 \hat{Q}^{*}_b = \hat{F}^{-1}(p \mid \hat{\theta}^{*}_b), \quad b = 1, 2, \ldots, B
 ```
 
-**Step 4.** The empirical distribution of $\{\hat{Q}^{*}_1, \hat{Q}^{*}_2, \ldots, \hat{Q}^{*}_B\}$ approximates the sampling distribution of the quantile estimator $\hat{Q}$.
+**Step 4.** The empirical distribution of $\lbrace\hat{Q}^{*}_1, \hat{Q}^{*}_2, \ldots, \hat{Q}^{*}_B\rbrace$ approximates the sampling distribution of the quantile estimator $\hat{Q}$.
 
 From this bootstrap distribution, we can compute several useful summaries. The **bootstrap standard error** is the sample standard deviation of the bootstrap replicates:
 
@@ -258,7 +258,7 @@ The Percentile method [[1]](#1) is the simplest bootstrap confidence interval. I
 CI_{1-\alpha} = \left[\hat{Q}^{*}_{(\alpha/2)},\;\hat{Q}^{*}_{(1-\alpha/2)}\right]
 ```
 
-where $\hat{Q}^{*}_{(p)}$ denotes the $p$-th percentile of the bootstrap distribution $\{\hat{Q}^{*}_1, \ldots, \hat{Q}^{*}_B\}$. For a 90% confidence interval ($\alpha = 0.1$), this takes the 5th and 95th percentiles of the bootstrap replicates.
+where $\hat{Q}^{*}_{(p)}$ denotes the $p$-th percentile of the bootstrap distribution $\lbrace\hat{Q}^{*}_1, \ldots, \hat{Q}^{*}_B\rbrace$. For a 90% confidence interval ($\alpha = 0.1$), this takes the 5th and 95th percentiles of the bootstrap replicates.
 
 The Percentile method is intuitive and easy to implement, but it does **not** correct for bias or skewness in the bootstrap distribution. It works well when the bootstrap distribution is approximately symmetric and the estimator is approximately unbiased. This is the default method used by the `Estimate()` method.
 
@@ -405,7 +405,7 @@ where $\tilde{Q} = \hat{Q}^{1/3}$ is the transformed original estimate. The conf
 CI_{1-\alpha} = \left[\left(\tilde{Q} + t^{*}_{(\alpha/2)}\cdot\widetilde{SE}\right)^3,\;\left(\tilde{Q} + t^{*}_{(1-\alpha/2)}\cdot\widetilde{SE}\right)^3\right]
 ```
 
-where $t^{*}_{(p)}$ is the $p$-th percentile of $\{t^{*}_1, \ldots, t^{*}_B\}$, and $\widetilde{SE}$ is the standard deviation of the transformed bootstrap replicates $\{\tilde{Q}^{*}_1, \ldots, \tilde{Q}^{*}_B\}$.
+where $t^{*}_{(p)}$ is the $p$-th percentile of $\lbrace t^{*}_1, \ldots, t^{*}_B\rbrace$, and $\widetilde{SE}$ is the standard deviation of the transformed bootstrap replicates $\lbrace\tilde{Q}^{*}_1, \ldots, \tilde{Q}^{*}_B\rbrace$.
 
 The Bootstrap-t method is the most computationally expensive method because it requires a **double bootstrap**: each of the $B$ outer replications requires an inner bootstrap (300 replications by default) to estimate the standard error. However, it can provide the most accurate coverage probabilities for location parameters and is second-order accurate.
 

@@ -320,7 +320,7 @@ where:
 - $\gamma = 2.38 / \sqrt{2d}$ is the default jump rate (`Jump` property), with $d$ the number of parameters
 - $z_{R_1}$ and $z_{R_2}$ are two randomly selected states from the **population matrix** (a memory of past states from all chains)
 - $e \sim \mathcal{N}(0, b^2)$ is a small noise perturbation with default $b = 10^{-3}$ (`Noise` property)
-- $R_1$ and $R_2$ are drawn uniformly without replacement from $\{1, 2, \ldots, M\}$, where $M$ is the current size of the population matrix
+- $R_1$ and $R_2$ are drawn uniformly without replacement from $\lbrace 1, 2, \ldots, M\rbrace$, where $M$ is the current size of the population matrix
 
 The proposal is accepted using the standard Metropolis ratio in log space:
 
