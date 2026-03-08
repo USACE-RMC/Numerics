@@ -1,5 +1,7 @@
 # Getting Started
 
+[Back to Index](index.md) | [Next: Numerical Integration →](mathematics/integration.md)
+
 This guide will help you get up and running with the ***Numerics*** library quickly.
 
 ## Installation
@@ -352,3 +354,7 @@ for (int i = 0; i < 2; i++)
 ## References
 
 [1] Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P. (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
+
+---
+
+[Back to Index](index.md) | [Next: Numerical Integration →](mathematics/integration.md)

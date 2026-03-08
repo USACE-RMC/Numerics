@@ -1,6 +1,6 @@
 # Machine Learning
 
-[← Previous: Time Series](data/time-series.md) | [Back to Index](index.md) | [Next: MCMC Sampling →](sampling/mcmc.md)
+[← Previous: Multivariate Distributions](../distributions/multivariate.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
 
 The ***Numerics*** library provides machine learning algorithms for both supervised and unsupervised learning tasks. These implementations are designed for engineering and scientific applications including classification, regression, and clustering.
 
@@ -24,7 +24,55 @@ The ***Numerics*** library provides machine learning algorithms for both supervi
 
 ### Generalized Linear Models (GLM)
 
-GLMs extend linear regression to non-normal response distributions [[1]](#1):
+GLMs extend linear regression to non-normal response distributions [[1]](#1). A GLM relates the expected value of the response variable $\mu = E(y)$ to a linear predictor $\eta = X\beta$ through a link function $g$:
+
+```math
+g(\mu) = \eta = X\beta = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_p x_p
+```
+
+The inverse link function maps from the linear predictor back to the mean of the response: $\mu = g^{-1}(\eta)$. Each link function corresponds to a distribution family:
+
+| Link Function | $g(\mu)$ | $g^{-1}(\eta)$ | Distribution Family |
+|---|---|---|---|
+| Identity | $\mu$ | $\eta$ | Normal |
+| Log | $\log(\mu)$ | $\exp(\eta)$ | Poisson |
+| Logit | $\log\!\left(\frac{\mu}{1-\mu}\right)$ | $\frac{1}{1+\exp(-\eta)}$ | Binomial |
+| Probit | $\Phi^{-1}(\mu)$ | $\Phi(\eta)$ | Binomial |
+| CLogLog | $\log(-\log(1-\mu))$ | $1-\exp(-\exp(\eta))$ | Binomial |
+
+**Parameter estimation.** Model parameters $\beta$ are estimated by maximum likelihood estimation (MLE), which maximizes the total log-likelihood over all $n$ observations:
+
+```math
+\hat{\beta} = \arg\max_{\beta} \sum_{i=1}^{n} \ell(\mu_i, y_i)
+```
+
+where the individual log-likelihood contribution $\ell(\mu_i, y_i)$ depends on the distribution family:
+
+- **Normal family** (Identity link):
+
+```math
+\ell(\mu_i, y_i) = -\tfrac{1}{2}(y_i - \mu_i)^2
+```
+
+- **Poisson family** (Log link):
+
+```math
+\ell(\mu_i, y_i) = y_i \log(\mu_i) - \mu_i
+```
+
+- **Binomial family** (Logit, Probit, or CLogLog link):
+
+```math
+\ell(\mu_i, y_i) = y_i \log(\mu_i) + (1 - y_i)\log(1 - \mu_i)
+```
+
+**Model selection.** The Akaike Information Criterion (AIC) balances goodness of fit against model complexity:
+
+```math
+\text{AIC} = 2k - 2\ln(\hat{L})
+```
+
+where $k$ is the number of estimated parameters and $\hat{L}$ is the maximized likelihood. The corrected AIC (AICc) adjusts for small sample sizes, and the Bayesian Information Criterion (BIC) applies a stronger penalty for additional parameters.
 
 ```cs
 using Numerics.MachineLearning;
@@ -101,7 +149,37 @@ for (int i = 0; i < XNew.GetLength(0); i++)
 
 ### Decision Trees
 
-Classification and regression trees [[2]](#2):
+Classification and regression trees [[2]](#2) recursively partition the feature space using binary splits of the form $x_j \leq t$ (left child) and $x_j > t$ (right child), where $x_j$ is a feature and $t$ is a threshold. At each internal node, the algorithm selects the feature and threshold that maximize a splitting criterion.
+
+**Classification trees** use information gain based on Shannon entropy. The entropy of a node $S$ with $C$ classes is:
+
+```math
+H(S) = -\sum_{c=1}^{C} p_c \log(p_c)
+```
+
+where $p_c$ is the proportion of observations belonging to class $c$. The information gain from splitting node $S$ into children $S_L$ and $S_R$ is:
+
+```math
+\text{IG}(S, S_L, S_R) = H(S) - \frac{n_L}{n_S} H(S_L) - \frac{n_R}{n_S} H(S_R)
+```
+
+where $n_L$, $n_R$, and $n_S$ are the number of observations in the left child, right child, and parent node, respectively.
+
+**Regression trees** use variance reduction. The population variance of a node $S$ is:
+
+```math
+\text{Var}(S) = \frac{1}{n_S} \sum_{i \in S} (y_i - \bar{y}_S)^2
+```
+
+The variance reduction from a split is:
+
+```math
+\text{VR}(S, S_L, S_R) = \text{Var}(S) - \frac{n_L}{n_S} \text{Var}(S_L) - \frac{n_R}{n_S} \text{Var}(S_R)
+```
+
+**Leaf node predictions.** For regression, the prediction is the mean of the training observations at the leaf: $\hat{y} = \bar{y}_{\text{leaf}}$. For classification, the prediction is the most frequent class among the leaf observations.
+
+**Stopping criteria.** Tree growth stops when any of the following conditions is met: the maximum depth (`MaxDepth`, default 100) is reached, the number of observations at a node falls below `MinimumSplitSize` (default 2), or all observations at a node belong to the same class.
 
 ```cs
 using Numerics.MachineLearning;
@@ -153,7 +231,19 @@ for (int i = 0; i < predictions.Length; i++)
 
 ### Random Forests
 
-Ensemble of decision trees for improved accuracy [[3]](#3):
+Ensemble of decision trees for improved accuracy [[3]](#3) [[9]](#9). Random forests use bootstrap aggregation (bagging) to reduce variance and improve generalization. Given a training set of $n$ observations, the algorithm builds $B$ independent decision trees (default $B = 1000$), each trained on a bootstrap sample drawn with replacement from the original data.
+
+**Bootstrap sampling.** For each tree $b = 1, \ldots, B$, draw $n$ samples with replacement from the original $n$ observations. On average, each bootstrap sample contains approximately $1 - 1/e \approx 63.2\%$ of the unique training observations, leaving the remainder as out-of-bag (OOB) observations that can be used for validation.
+
+**Feature subsampling.** At each split within a tree, a random subset of features is considered as split candidates. The `Features` property controls the number of candidate features (default $d - 1$, where $d$ is the total number of features). This decorrelates the trees and further reduces variance.
+
+**Aggregation.** The ensemble prediction for a new input $\mathbf{x}$ aggregates the predictions of all $B$ trees:
+
+```math
+\hat{f}_{\text{bag}}(\mathbf{x}) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}_b(\mathbf{x})
+```
+
+For regression, predictions are the direct percentiles across all tree outputs. For classification, predictions are the floor of the percentiles. The `Predict` method returns lower, median, upper, and mean values across the ensemble, providing built-in prediction uncertainty quantification.
 
 ```cs
 using Numerics.MachineLearning;
@@ -218,7 +308,27 @@ for (int i = 0; i < testSamples.GetLength(0); i++)
 
 ### k-Nearest Neighbors (KNN)
 
-Non-parametric classification and regression [[4]](#4):
+Non-parametric classification and regression [[4]](#4). KNN is a lazy learning algorithm that stores the training data and defers computation until prediction time. Given a new input $\mathbf{x}$, the algorithm finds the $k$ nearest training observations using the Euclidean distance:
+
+```math
+d(\mathbf{x}, \mathbf{x}_i) = \sqrt{\sum_{j=1}^{p} (x_j - x_{ij})^2}
+```
+
+where $p$ is the number of features.
+
+**Regression prediction.** For regression, the prediction is an inverse distance weighted average of the $k$ nearest neighbors:
+
+```math
+\hat{y} = \frac{\sum_{i=1}^{k} w_i \cdot y_i}{\sum_{i=1}^{k} w_i}, \quad w_i = \frac{1}{d(\mathbf{x}, \mathbf{x}_i)^2}
+```
+
+If the distance to a neighbor is exactly zero (i.e., the query point coincides with a training point), that neighbor receives a weight of $w_i = 1$ and all other weights are set accordingly.
+
+**Classification prediction.** For classification, the prediction is determined by majority vote among the $k$ nearest neighbors: the class that appears most frequently is assigned to the new observation.
+
+**Choosing $k$.** The choice of $k$ controls the bias-variance tradeoff. A small $k$ produces a flexible model sensitive to noise, while a large $k$ produces smoother decision boundaries at the cost of increased bias. A common rule of thumb is $k = \sqrt{n}$, where $n$ is the number of training observations, though cross-validation is preferred for rigorous selection.
+
+**Curse of dimensionality.** As the number of features $p$ grows, Euclidean distances become increasingly uniform, degrading the discriminative power of nearest neighbor methods. Feature scaling (normalization) is critical because KNN is sensitive to the relative magnitudes of features.
 
 ```cs
 using Numerics.MachineLearning;
@@ -242,9 +352,9 @@ double[] y = { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };  // Binary classification
 var knn = new KNearestNeighbors(X, y, k: 3);
 
 // Predict single sample
-double[] testPoint = { 2.0, 3.0 };
+double[,] testPoint = { { 2.0, 3.0 } };
 double[] prediction = knn.Predict(testPoint);
-Console.WriteLine($"KNN Prediction for [{testPoint[0]}, {testPoint[1]}]: Class {prediction[0]}");
+Console.WriteLine($"KNN Prediction for [{testPoint[0, 0]}, {testPoint[0, 1]}]: Class {prediction[0]}");
 
 // Predict multiple samples
 double[,] testPoints = { { 2.0, 3.0 }, { 7.0, 8.0 } };
@@ -269,7 +379,39 @@ for (int i = 0; i < predictions.Length; i++)
 
 ### Naive Bayes
 
-Probabilistic classifier based on Bayes' theorem [[5]](#5):
+Probabilistic classifier based on Bayes' theorem [[5]](#5). The Naive Bayes classifier applies Bayes' theorem with the assumption of conditional independence among features. Given a feature vector $\mathbf{x} = (x_1, x_2, \ldots, x_p)$, the posterior probability of class $c$ is:
+
+```math
+P(c \mid \mathbf{x}) \propto P(c) \cdot P(\mathbf{x} \mid c)
+```
+
+The conditional independence assumption simplifies the class-conditional likelihood to a product over individual features:
+
+```math
+P(\mathbf{x} \mid c) = \prod_{j=1}^{p} P(x_j \mid c)
+```
+
+This implementation uses Gaussian Naive Bayes, where each feature conditional on the class follows a normal distribution:
+
+```math
+P(x_j \mid c) = \mathcal{N}(x_j \mid \mu_{c,j},\, \sigma_{c,j}) = \frac{1}{\sqrt{2\pi}\,\sigma_{c,j}} \exp\!\left(-\frac{(x_j - \mu_{c,j})^2}{2\sigma_{c,j}^2}\right)
+```
+
+where $\mu_{c,j}$ and $\sigma_{c,j}$ are the mean and standard deviation of feature $j$ within class $c$, estimated from the training data.
+
+**Prior probabilities.** The class prior $P(c)$ is estimated as the relative frequency of class $c$ in the training data:
+
+```math
+P(c) = \frac{n_c}{n}
+```
+
+where $n_c$ is the number of training observations in class $c$ and $n$ is the total number of observations.
+
+**Classification rule.** The predicted class is determined by Maximum A Posteriori (MAP) estimation. Working in log-space for numerical stability:
+
+```math
+\hat{c} = \arg\max_{c} \left[ \log P(c) + \sum_{j=1}^{p} \log \mathcal{N}(x_j \mid \mu_{c,j},\, \sigma_{c,j}) \right]
+```
 
 ```cs
 using Numerics.MachineLearning;
@@ -297,7 +439,7 @@ nb.Train();
 Console.WriteLine($"Naive Bayes trained: {nb.IsTrained}");
 
 // Predict single sample
-double[] testDoc = { 1, 2, 0, 1 };
+double[,] testDoc = { { 1, 2, 0, 1 } };
 double[] prediction = nb.Predict(testDoc);
 Console.WriteLine($"Prediction: Class {prediction[0]}");
 
@@ -320,7 +462,31 @@ for (int i = 0; i < predictions.Length; i++)
 
 ### k-Means Clustering
 
-Partition data into k clusters [[6]](#6):
+Partition data into $k$ clusters [[6]](#6). The $k$-means algorithm seeks to minimize the within-cluster sum of squares (WCSS) objective function:
+
+```math
+J = \sum_{k=1}^{K} \sum_{\mathbf{x} \in C_k} \|\mathbf{x} - \boldsymbol{\mu}_k\|^2
+```
+
+where $C_k$ is the set of observations assigned to cluster $k$ and $\boldsymbol{\mu}_k$ is the centroid (mean) of cluster $k$.
+
+**Lloyd's algorithm.** The algorithm alternates between two steps until convergence:
+
+1. **E-step (assignment):** Assign each observation $\mathbf{x}_i$ to the nearest centroid using Euclidean distance:
+
+```math
+c_i = \arg\min_{k} \|\mathbf{x}_i - \boldsymbol{\mu}_k\|^2
+```
+
+2. **M-step (update):** Recompute each centroid as the mean of all observations assigned to its cluster:
+
+```math
+\boldsymbol{\mu}_k = \frac{1}{|C_k|} \sum_{\mathbf{x} \in C_k} \mathbf{x}
+```
+
+The algorithm converges when the cluster labels do not change between iterations, or when `MaxIterations` (default 1000) is reached.
+
+**$k$-Means++ initialization** [[11]](#11). The default initialization method selects initial centroids that are well-separated. The first centroid is chosen uniformly at random. Each subsequent centroid is selected with probability proportional to $D(\mathbf{x})^2$, where $D(\mathbf{x})$ is the Euclidean distance from $\mathbf{x}$ to the nearest already-chosen centroid. This initialization significantly reduces the chance of poor convergence compared to random initialization.
 
 ```cs
 using Numerics.MachineLearning;
@@ -378,7 +544,37 @@ Console.WriteLine($"\nCluster sizes: [{string.Join(", ", clusterSizes)}]");
 
 ### Gaussian Mixture Models (GMM)
 
-Probabilistic clustering with soft assignments [[7]](#7):
+Probabilistic clustering with soft assignments [[7]](#7) [[10]](#10). A Gaussian Mixture Model represents the data as a mixture of $K$ multivariate Gaussian components. The probability density function of the mixture is:
+
+```math
+p(\mathbf{x}) = \sum_{k=1}^{K} \pi_k \cdot \mathcal{N}(\mathbf{x} \mid \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)
+```
+
+where $\pi_k$ are the mixing weights (with $\sum_k \pi_k = 1$ and $\pi_k \geq 0$), $\boldsymbol{\mu}_k$ is the mean vector, and $\boldsymbol{\Sigma}_k$ is the covariance matrix of component $k$.
+
+**Expectation-Maximization (EM) algorithm.** The parameters are estimated by maximizing the log-likelihood using the EM algorithm, initialized from a $k$-means solution with equal weights and near-identity covariance matrices.
+
+The **E-step** computes the responsibility of each component $k$ for each observation $\mathbf{x}_i$:
+
+```math
+r_{ik} = \frac{\pi_k \cdot \mathcal{N}(\mathbf{x}_i \mid \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)}{\sum_{j=1}^{K} \pi_j \cdot \mathcal{N}(\mathbf{x}_i \mid \boldsymbol{\mu}_j, \boldsymbol{\Sigma}_j)}
+```
+
+The implementation uses the log-sum-exp trick with Cholesky decomposition for numerical stability.
+
+The **M-step** updates the parameters using the responsibilities:
+
+```math
+\pi_k = \frac{1}{n}\sum_{i=1}^{n} r_{ik}, \qquad \boldsymbol{\mu}_k = \frac{\sum_{i=1}^{n} r_{ik}\,\mathbf{x}_i}{\sum_{i=1}^{n} r_{ik}}, \qquad \boldsymbol{\Sigma}_k = \frac{\sum_{i=1}^{n} r_{ik}\,(\mathbf{x}_i - \boldsymbol{\mu}_k)(\mathbf{x}_i - \boldsymbol{\mu}_k)^\top}{\sum_{i=1}^{n} r_{ik}}
+```
+
+**Convergence.** The algorithm iterates until the relative change in log-likelihood falls below `Tolerance` (default $10^{-8}$) or `MaxIterations` (default 1000) is reached. The total log-likelihood is:
+
+```math
+\mathcal{L} = \sum_{i=1}^{n} \log\!\left(\sum_{k=1}^{K} \pi_k \cdot \mathcal{N}(\mathbf{x}_i \mid \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)\right)
+```
+
+**Connection to $k$-means.** GMM generalizes $k$-means: when all covariance matrices are constrained to $\sigma^2 \mathbf{I}$ and $\sigma^2 \to 0$, the soft responsibilities $r_{ik}$ converge to hard 0/1 assignments, recovering the $k$-means solution.
 
 ```cs
 using Numerics.MachineLearning;
@@ -430,7 +626,25 @@ for (int i = 0; i < X.GetLength(0); i++)
 
 ### Jenks Natural Breaks
 
-Optimal classification for univariate data [[8]](#8):
+Optimal classification for univariate data [[8]](#8). The Jenks Natural Breaks algorithm (also known as the Fisher-Jenks algorithm) partitions a sorted univariate dataset into $k$ classes by minimizing the within-class sum of squared deviations while maximizing the between-class separation. The quality of a classification is measured by the Goodness of Variance Fit (GVF):
+
+```math
+\text{GVF} = \frac{\text{SDAM} - \text{SDCM}}{\text{SDAM}}
+```
+
+where SDAM is the sum of squared deviations from the array (overall) mean:
+
+```math
+\text{SDAM} = \sum_{i=1}^{n} (x_i - \bar{x})^2
+```
+
+and SDCM is the sum of squared deviations from the class means:
+
+```math
+\text{SDCM} = \sum_{c=1}^{k} \sum_{x \in C_c} (x - \bar{x}_c)^2
+```
+
+A GVF of 1.0 indicates a perfect fit (zero within-class variance), while values closer to 0 indicate poor classification. The algorithm uses dynamic programming to efficiently find the optimal break points that maximize the GVF, avoiding the exponential cost of exhaustive search over all possible partitions.
 
 ```cs
 using Numerics.MachineLearning;
@@ -807,6 +1021,12 @@ Console.WriteLine($"  KNN (k=3): {(double)knnCorrect / y_test.Length:P1}");
 
 <a id="8">[8]</a> Jenks, G. F. (1967). The data model concept in statistical mapping. *International Yearbook of Cartography*, 7, 186-190.
 
+<a id="9">[9]</a> Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.). Springer.
+
+<a id="10">[10]</a> Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data via the EM algorithm. *Journal of the Royal Statistical Society: Series B*, 39(1), 1-38.
+
+<a id="11">[11]</a> Arthur, D., & Vassilvitskii, S. (2007). k-means++: The advantages of careful seeding. *Proceedings of the 18th Annual ACM-SIAM Symposium on Discrete Algorithms*, 1027-1035.
+
 ---
 
-[← Previous: Time Series](data/time-series.md) | [Back to Index](index.md) | [Next: MCMC Sampling →](sampling/mcmc.md)
+[← Previous: Multivariate Distributions](../distributions/multivariate.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)

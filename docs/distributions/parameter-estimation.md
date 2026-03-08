@@ -27,7 +27,7 @@ public enum ParameterEstimationMethod
 | **Method of Moments** | Simple, fast | Inefficient, biased for small samples | Quick estimates, stable parameters |
 | **Method of Percentiles** | Intuitive, robust | Less efficient | Expert judgment, special cases |
 
-**Recommendation for Hydrological Applications:** L-Moments are recommended by USGS [[1]](#1) for flood frequency analysis due to superior performance with small samples and robustness to outliers.
+**Recommendation for Hydrological Applications:** L-moments are recommended by USGS [[1]](#1) for flood frequency analysis due to superior performance with small samples and robustness to outliers.
 
 ## Using the Estimate() Method
 
@@ -78,7 +78,7 @@ double[] data = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200 };
 // Step 1: Compute L-moments from data
 double[] lMoments = Statistics.LinearMoments(data);
 
-Console.WriteLine("Sample L-Moments:");
+Console.WriteLine("Sample L-moments:");
 Console.WriteLine($"  λ₁ (mean): {lMoments[0]:F2}");
 Console.WriteLine($"  λ₂ (L-scale): {lMoments[1]:F2}");
 Console.WriteLine($"  τ₃ (L-skewness): {lMoments[2]:F4}");
@@ -146,12 +146,58 @@ L-moments are linear combinations of order statistics that provide robust altern
 - Hydrological applications
 - Extreme value analysis
 
+### Mathematical Formulation
+
+L-moments are defined through probability-weighted moments (PWMs). For a random variable $X$ with CDF $F(x)$, the probability-weighted moments are:
+
+```math
+\beta_r = E\left[X \cdot F(X)^r\right] = \int_0^1 x(F) \cdot F^r \, dF, \quad r = 0, 1, 2, \ldots
+```
+
+The first four L-moments are linear combinations of the PWMs:
+
+```math
+\lambda_1 = \beta_0
+```
+
+```math
+\lambda_2 = 2\beta_1 - \beta_0
+```
+
+```math
+\lambda_3 = 6\beta_2 - 6\beta_1 + \beta_0
+```
+
+```math
+\lambda_4 = 20\beta_3 - 30\beta_2 + 12\beta_1 - \beta_0
+```
+
+The L-moment ratios, which are dimensionless and bounded, are defined as:
+
+```math
+\tau = \frac{\lambda_2}{\lambda_1} \quad \text{(L-CV)}, \qquad \tau_3 = \frac{\lambda_3}{\lambda_2} \quad \text{(L-skewness)}, \qquad \tau_4 = \frac{\lambda_4}{\lambda_2} \quad \text{(L-kurtosis)}
+```
+
+L-skewness is bounded in $[-1, 1]$ and L-kurtosis in $[\frac{1}{4}(5\tau_3^2 - 1),\; 1]$, unlike conventional skewness and kurtosis which are unbounded. This boundedness makes L-moment ratios more interpretable and stable.
+
+**Sample estimation.** Given a sorted sample $x_{1:n} \leq x_{2:n} \leq \cdots \leq x_{n:n}$, the unbiased sample PWM estimators are:
+
+```math
+b_r = \frac{1}{n}\sum_{j=r+1}^{n} \frac{\binom{j-1}{r}}{\binom{n-1}{r}} \, x_{j:n}, \quad r = 0, 1, 2, \ldots
+```
+
+The `Statistics.LinearMoments()` method computes these sample PWMs and returns the array $[\lambda_1,\; \lambda_2,\; \tau_3,\; \tau_4]$.
+
+**Why L-moments are preferred for small samples.** Conventional moments involve powers of deviations from the mean, so a single extreme observation can dominate the skewness or kurtosis estimate. L-moments use only linear combinations of order statistics, which makes them far more robust to outliers and nearly unbiased even for samples as small as $n = 10$. For hydrological applications where sample sizes are often 30--60 years of annual data, this robustness is critical.
+
+**L-moment ratio diagrams.** Plotting sample L-skewness ($\tau_3$) against L-kurtosis ($\tau_4$) and comparing to the theoretical curves of candidate distributions is a powerful tool for distribution identification. Each distribution family traces a distinct curve (or point) in L-moment ratio space, making visual comparison straightforward [[2]](#2).
+
 ### Properties of L-Moments
 
-1. **More robust** than conventional moments - less influenced by outliers
+1. **More robust** than conventional moments -- less influenced by outliers
 2. **Less biased** for small samples
-3. **More efficient** - smaller sampling variance
-4. **Bounded** - L-moment ratios are bounded, unlike conventional moments
+3. **More efficient** -- smaller sampling variance
+4. **Bounded** -- L-moment ratios are bounded, unlike conventional moments
 5. **Nearly unbiased** even for very small samples (n = 10)
 
 ### Computing L-Moments
@@ -213,7 +259,53 @@ Console.WriteLine($"{"Sample",-12} | {sampleLM[2],11:F4} | {sampleLM[3],11:F4}")
 
 ## Maximum Likelihood Estimation
 
-MLE finds parameters that maximize the likelihood of observing the data [[3]](#3):
+Maximum Likelihood Estimation (MLE) finds the parameter values that make the observed data most probable under the assumed model [[3]](#3).
+
+### Mathematical Formulation
+
+Given independent observations $x_1, x_2, \ldots, x_n$ from a distribution with PDF $f(x|\boldsymbol{\theta})$, the likelihood function is the joint probability of the data viewed as a function of the parameters:
+
+```math
+L(\boldsymbol{\theta} \,|\, \mathbf{x}) = \prod_{i=1}^{n} f(x_i \,|\, \boldsymbol{\theta})
+```
+
+Because products are numerically unstable, optimization is performed on the log-likelihood:
+
+```math
+\ell(\boldsymbol{\theta}) = \sum_{i=1}^{n} \log f(x_i \,|\, \boldsymbol{\theta})
+```
+
+The MLE is the parameter vector that maximizes the log-likelihood:
+
+```math
+\hat{\boldsymbol{\theta}}_{\text{MLE}} = \underset{\boldsymbol{\theta}}{\text{argmax}} \; \ell(\boldsymbol{\theta})
+```
+
+For some distributions (e.g., Normal, Exponential), the MLE has a closed-form solution. For most distributions used in hydrology (GEV, LP3, Weibull), the optimization must be solved numerically. The library uses constrained optimization with initial values derived from L-moment estimates.
+
+**Fisher Information and standard errors.** The Fisher Information matrix quantifies the curvature of the log-likelihood surface at the maximum:
+
+```math
+\mathcal{I}(\boldsymbol{\theta}) = -E\left[\frac{\partial^2 \ell}{\partial \boldsymbol{\theta} \, \partial \boldsymbol{\theta}^T}\right]
+```
+
+Under regularity conditions, the MLE is asymptotically normal [[5]](#5):
+
+```math
+\sqrt{n}\left(\hat{\boldsymbol{\theta}} - \boldsymbol{\theta}\right) \xrightarrow{d} N\left(\mathbf{0},\; \mathcal{I}(\boldsymbol{\theta})^{-1}\right) \quad \text{as } n \to \infty
+```
+
+This provides approximate standard errors for each parameter:
+
+```math
+\text{SE}(\hat{\theta}_j) \approx \frac{1}{\sqrt{\mathcal{I}(\hat{\boldsymbol{\theta}})_{jj}}}
+```
+
+**Strengths:** Asymptotically efficient (achieves the lowest possible variance among consistent estimators), asymptotically unbiased, invariant under reparameterization, provides a natural framework for model comparison via AIC and BIC.
+
+**Weaknesses:** Requires numerical optimization that may fail to converge, sensitive to outliers, can be biased and inefficient for small samples, requires specification of the full probability model.
+
+### Using MLE
 
 ```cs
 using Numerics.Distributions;
@@ -275,7 +367,49 @@ catch (Exception ex)
 
 ## Method of Moments
 
-MOM matches sample moments with theoretical moments:
+The Method of Moments (MOM) is the oldest and simplest approach to parameter estimation. The core idea is to equate sample moments to the corresponding theoretical moments of the distribution and solve for the unknown parameters.
+
+### Mathematical Formulation
+
+Given a sample $x_1, x_2, \ldots, x_n$, the first four sample moments are the mean, standard deviation, skewness, and kurtosis:
+
+```math
+\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i
+```
+
+```math
+s = \sqrt{\frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2}
+```
+
+```math
+\hat{\gamma} = \frac{n}{(n-1)(n-2)} \sum_{i=1}^{n}\left(\frac{x_i - \bar{x}}{s}\right)^3
+```
+
+```math
+\hat{\kappa} = \frac{n(n+1)}{(n-1)(n-2)(n-3)} \sum_{i=1}^{n}\left(\frac{x_i - \bar{x}}{s}\right)^4 - \frac{3(n-1)^2}{(n-2)(n-3)}
+```
+
+The `Statistics.ProductMoments()` method returns these four quantities as the array $[\bar{x},\; s,\; \hat{\gamma},\; \hat{\kappa}]$.
+
+MOM estimation sets the theoretical moments equal to the sample moments and solves for the distribution parameters. For a two-parameter distribution, only the first two moments (mean and standard deviation) are needed. For three-parameter distributions, skewness is also required.
+
+**Example: Normal distribution.** The Normal($\mu$, $\sigma$) has $E[X] = \mu$ and $\text{SD}[X] = \sigma$. Equating sample to theoretical moments yields:
+
+```math
+\hat{\mu} = \bar{x}, \quad \hat{\sigma} = s
+```
+
+**Example: Gamma distribution.** The Gamma($\kappa$, $\theta$) has $E[X] = \kappa\theta$ and $\text{Var}[X] = \kappa\theta^2$. Solving for the parameters:
+
+```math
+\hat{\kappa} = \frac{\bar{x}^2}{s^2}, \quad \hat{\theta} = \frac{s^2}{\bar{x}}
+```
+
+**Strengths:** Simple, closed-form solutions, always produces estimates, computationally fast.
+
+**Weaknesses:** Not statistically efficient (higher variance than MLE), can produce invalid parameters for skewed distributions, estimates are sensitive to outliers because conventional moments give disproportionate weight to extreme values.
+
+### Using Method of Moments
 
 ```cs
 double[] data = { 100, 105, 98, 110, 95, 102, 108, 97, 103, 106 };
@@ -297,6 +431,53 @@ Console.WriteLine($"  σ = {normal.Sigma:F2}");
 Console.WriteLine($"  Sample mean = {moments[0]:F2}");
 Console.WriteLine($"  Sample std dev = {moments[1]:F2}");
 ```
+
+## Method of Percentiles
+
+The Method of Percentiles (also called least-squares fitting or quantile matching) estimates parameters by matching theoretical quantiles of the distribution to empirical quantiles computed from the data.
+
+### Mathematical Formulation
+
+Given a sorted sample $x_{(1)} \leq x_{(2)} \leq \cdots \leq x_{(n)}$, each observation is assigned a plotting position $p_i$ that estimates $F(x_{(i)})$. A common choice is the Weibull plotting position:
+
+```math
+p_i = \frac{i}{n + 1}
+```
+
+The parameters $\boldsymbol{\theta}$ are then chosen so that the theoretical quantile function (inverse CDF) matches the observed data as closely as possible. For a distribution with quantile function $F^{-1}(p;\,\boldsymbol{\theta})$, the parameters minimize the sum of squared differences:
+
+```math
+\hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta}}{\text{argmin}} \sum_{i=1}^{n} \left[x_{(i)} - F^{-1}(p_i;\,\boldsymbol{\theta})\right]^2
+```
+
+For a two-parameter distribution, it is sufficient to select two percentiles (e.g., the median and the 84th percentile) and solve the resulting system of two equations:
+
+```math
+F^{-1}(p_j;\,\boldsymbol{\theta}) = x_{(j)}, \quad j \in \{j_1,\, j_2\}
+```
+
+**Strengths:** Intuitive and easy to visualize, always produces estimates, moderately robust to outliers in the tails, useful when expert judgment suggests specific quantile targets.
+
+**Weaknesses:** Uses only selected data points or gives equal weight to all quantiles (not statistically efficient), lower precision than MLE or L-moments for most distributions.
+
+## Estimation Method Comparison
+
+The choice of estimation method depends on sample size, data quality, and application requirements. The following table summarizes the key trade-offs:
+
+| Method | Efficiency | Small Samples | Robustness | Complexity | Best For |
+|--------|-----------|---------------|-----------|-----------|---------|
+| **MOM** | Low | Fair | Low | Simple | Quick estimates, stable distributions |
+| **L-Moments** | Moderate--High | Excellent | High | Moderate | Hydrological data, small samples |
+| **MLE** | Highest (asymptotic) | Poor--Fair | Low | Complex | Large samples, model comparison |
+| **Percentiles** | Low | Fair | Moderate | Simple | Visual fitting, expert judgment |
+
+### Rules of Thumb
+
+- **n < 50:** Prefer L-moments. With small samples, robustness matters more than asymptotic efficiency, and L-moment estimates are nearly unbiased.
+- **n > 100:** MLE becomes competitive and provides standard errors via Fisher Information, enabling confidence intervals and hypothesis tests.
+- **Skewed distributions:** L-moments substantially outperform MOM, because conventional skewness estimates are highly variable for small samples.
+- **US flood frequency analysis:** L-moments are recommended by USGS Bulletin 17C [[1]](#1). The Expected Moments Algorithm (EMA) extends the framework to handle censored and historical data.
+- **Model selection:** When comparing candidate distributions, MLE enables the use of information criteria (AIC, BIC) for objective model ranking.
 
 ## Distribution-Specific Estimation
 
@@ -501,26 +682,6 @@ foreach (var (name, dist) in candidates)
 }
 ```
 
-## Estimation with Censored Data
-
-For data with detection limits or censoring:
-
-```cs
-// Low flows below detection limit (left-censored)
-double detectionLimit = 5.0;
-var observed = data.Where(x => x >= detectionLimit).ToArray();
-int nCensored = data.Length - observed.Length;
-
-Console.WriteLine($"Observed: {observed.Length}, Censored: {nCensored}");
-
-// Fit using only observed values
-var lognormal = new LogNormal();
-lognormal.Estimate(observed, ParameterEstimationMethod.MethodOfMoments);
-
-// Note: This is a simple approach. For formal censored data analysis,
-// use MLE with censored likelihood (requires custom implementation)
-```
-
 ## Tips and Best Practices
 
 ### 1. Sample Size Requirements
@@ -630,6 +791,8 @@ Console.WriteLine("Fitted with historical information included");
 <a id="3">[3]</a> Mood, A. M., Graybill, F. A., & Boes, D. C. (1974). *Introduction to the Theory of Statistics* (3rd ed.). McGraw-Hill.
 
 <a id="4">[4]</a> Rao, A. R., & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press.
+
+<a id="5">[5]</a> Casella, G. & Berger, R. L. (2002). *Statistical Inference* (2nd ed.). Duxbury/Thomson.
 
 ---
 

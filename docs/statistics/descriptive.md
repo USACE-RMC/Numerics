@@ -1,8 +1,76 @@
 # Descriptive Statistics
 
-[← Back to Index](../index.md) | [Next: Goodness-of-Fit →](goodness-of-fit.md)
+[← Previous: Time Series](../data/time-series.md) | [Back to Index](../index.md) | [Next: Goodness-of-Fit →](goodness-of-fit.md)
 
 The ***Numerics*** library provides comprehensive functions for computing descriptive statistics from data samples. The `Statistics` class contains static methods for all common statistical measures, sample moments, percentiles, and specialized analyses.
+
+## Mathematical Foundations
+
+This section defines the mathematical formulas underlying the descriptive statistics computed by the library. All formulas have been verified against the source implementation. The library uses numerically stable algorithms internally, but the results are mathematically equivalent to the definitions below.
+
+### Sample Mean
+
+The arithmetic mean of $n$ observations:
+
+```math
+\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i
+```
+
+### Sample Variance (Bessel's Correction)
+
+The unbiased estimator of the population variance divides by $n-1$ rather than $n$. This is known as Bessel's correction, and it compensates for the bias that arises when using the sample mean in place of the true population mean. The `Variance` method returns this estimator:
+
+```math
+s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2
+```
+
+The source code implements this using a numerically stable one-pass recurrence rather than the naive two-pass formula shown above. The two approaches are mathematically equivalent, but the one-pass algorithm avoids catastrophic cancellation when the mean is large relative to the variance.
+
+### Population Variance
+
+When the data represents the entire population (not a sample), the `PopulationVariance` method divides by $n$:
+
+```math
+\sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2
+```
+
+### Skewness (Fisher's Adjusted)
+
+The `Skewness` method computes the bias-corrected Fisher skewness (type 2), which adjusts the raw sample skewness for sample size:
+
+```math
+G_1 = \frac{\sqrt{n(n-1)}}{n-2} \cdot g_1
+```
+
+where $g_1 = m_3 / m_2^{3/2}$ is the sample skewness computed from the central moments $m_k = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^k$.
+
+**Interpretation:**
+- $G_1 > 0$: right-skewed (long right tail)
+- $G_1 < 0$: left-skewed (long left tail)
+- $|G_1| < 0.5$: approximately symmetric
+
+### Excess Kurtosis (Fisher's Adjusted)
+
+The `Kurtosis` method computes bias-corrected excess kurtosis (type 2). Excess kurtosis subtracts 3 from Pearson's kurtosis so that the normal distribution has a value of zero:
+
+```math
+G_2 = \frac{n(n+1)}{(n-1)(n-2)(n-3)} \cdot \frac{\sum(x_i - \bar{x})^4}{s^4} - \frac{3(n-1)^2}{(n-2)(n-3)}
+```
+
+where $s^2 = \frac{1}{n-1}\sum(x_i - \bar{x})^2$ is the sample variance.
+
+**Interpretation:**
+- $G_2 > 0$: leptokurtic (heavier tails than normal)
+- $G_2 < 0$: platykurtic (lighter tails than normal)
+- $G_2 \approx 0$: mesokurtic (similar to normal distribution)
+
+### Coefficient of Variation
+
+The coefficient of variation expresses the standard deviation as a fraction of the mean, providing a dimensionless measure of relative variability:
+
+```math
+\text{CV} = \frac{s}{\bar{x}}
+```
 
 ## Basic Statistics
 
@@ -160,7 +228,35 @@ Console.WriteLine($"  Kurtosis (γ₂): {moments[3]:F3}");
 
 ### Linear Moments (L-Moments)
 
-Linear moments are robust alternatives to product moments [[1]](#1):
+Linear moments (L-moments) are robust alternatives to conventional product moments, introduced by Hosking [[1]](#1). They are defined through probability weighted moments (PWMs), which use order statistics rather than powers of deviations from the mean.
+
+The PWMs are computed as:
+
+```math
+\beta_r = \frac{1}{n}\sum_{i=1}^{n}\frac{\binom{i-1}{r}}{\binom{n-1}{r}} x_{i:n}
+```
+
+where $x_{i:n}$ are the order statistics (sorted data values). The library computes PWMs $\beta_0$ through $\beta_3$, from which the first four L-moments are derived:
+
+```math
+\lambda_1 = \beta_0, \quad \lambda_2 = 2\beta_1 - \beta_0
+```
+
+The `LinearMoments` method returns $\lambda_1$ (L-location), $\lambda_2$ (L-scale), and the L-moment ratios $\tau_3$ (L-skewness) and $\tau_4$ (L-kurtosis):
+
+```math
+\tau_3 = \frac{\lambda_3}{\lambda_2}, \quad \tau_4 = \frac{\lambda_4}{\lambda_2}
+```
+
+where $\lambda_3$ and $\lambda_4$ are the third and fourth L-moments, computed from PWMs $\beta_0$ through $\beta_3$.
+
+**Why use L-moments over product moments?**
+
+- **Robust to outliers**: L-moments are based on order statistics, not powers of deviations, making them far less sensitive to extreme values.
+- **Better estimators for small samples**: When $n < 50$, L-moment estimators have lower bias and variance than product moment estimators.
+- **Unique characterization**: L-moments uniquely characterize a distribution, similar to moment generating functions.
+- **Bounded L-moment ratios**: $-1 \leq \tau_3 \leq 1$ and $\tau_4 \geq (5\tau_3^2 - 1)/4$, which makes them easy to interpret and compare.
+- **Standard in hydrology**: L-moments are the preferred approach for flood frequency analysis per Hosking (1990) [[1]](#1).
 
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
@@ -181,6 +277,14 @@ Console.WriteLine($"  τ₄ (L-kurtosis): {lMoments[3]:F4}");
 ```
 
 ## Percentiles and Quantiles
+
+The library computes percentiles using Type 7 linear interpolation, which is the default method in R and Excel. For a given probability $p \in [0, 1]$:
+
+```math
+Q(p) = x_{\lfloor h \rfloor} + (h - \lfloor h \rfloor)(x_{\lceil h \rceil} - x_{\lfloor h \rfloor})
+```
+
+where $h = (n-1)p$ and $x_i$ are the sorted data values (0-indexed). When $h$ falls exactly on an integer, the result is the corresponding order statistic; otherwise, it linearly interpolates between the two adjacent order statistics.
 
 ### Computing Percentiles
 
@@ -284,7 +388,42 @@ else
 
 ### Correlation
 
-For correlation coefficients, use the `Correlation` class:
+For correlation coefficients, use the `Correlation` class. Three measures are provided, each capturing a different aspect of association between two variables.
+
+**Pearson correlation** measures the strength and direction of the linear relationship between two variables [[3]](#3):
+
+```math
+r = \frac{\sum_{i=1}^{n}(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i - \bar{x})^2 \cdot \sum_{i=1}^{n}(y_i - \bar{y})^2}}
+```
+
+**Spearman rank correlation** is the Pearson correlation applied to the ranks of the data rather than the data values themselves. This makes it a nonparametric measure of monotonic association:
+
+```math
+\rho_s = r(\text{rank}(x), \text{rank}(y))
+```
+
+**Kendall's tau-b** [[4]](#4) measures the strength of ordinal association, adjusted for ties. The library implements tau-b:
+
+```math
+\tau_b = \frac{n_c - n_d}{\sqrt{n_1 \cdot n_2}}
+```
+
+where $n_c$ is the number of concordant pairs, $n_d$ is the number of discordant pairs, $n_1$ is the number of pairs not tied in $x$, and $n_2$ is the number of pairs not tied in $y$.
+
+**When to use which correlation:**
+
+| Correlation | Measures | Robust to Outliers | Handles Nonlinear |
+|------------|----------|-------------------|------------------|
+| Pearson | Linear association | No | No |
+| Spearman | Monotonic association | Yes | Yes (monotonic) |
+| Kendall's $\tau_b$ | Concordance | Yes | Yes (monotonic) |
+
+Rules of thumb:
+- **Pearson**: use for normally distributed data with linear relationships.
+- **Spearman**: use when data has outliers or the relationship is monotonic but not linear.
+- **Kendall's $\tau_b$**: more robust than Spearman for small samples and has better statistical properties. Preferred when there are many tied values.
+
+The `Correlation` class also provides matrix versions (`Pearson(double[,])` and `Spearman(double[,])`) that compute the full $p \times p$ correlation matrix for multivariate data.
 
 ```cs
 using Numerics.Data.Statistics;
@@ -363,7 +502,29 @@ Console.WriteLine($"In bits: {entropy / Math.Log(2):F3}");
 
 ## Jackknife Resampling
 
-Leave-one-out resampling for standard error estimation:
+The jackknife is a resampling technique that estimates the variability of a statistic $\hat{\theta}$ by systematically leaving out one observation at a time. It is particularly useful for estimating standard errors of statistics that lack closed-form variance expressions (e.g., the median, L-moment ratios, or custom estimators).
+
+### Jackknife Standard Error
+
+The `JackKnifeStandardError` method computes:
+
+```math
+\text{SE}_{\text{jack}} = \sqrt{\frac{n-1}{n}\sum_{i=1}^{n}(\hat{\theta}_{(-i)} - \hat{\theta})^2}
+```
+
+where $\hat{\theta}_{(-i)}$ is the statistic computed without the $i$-th observation, and $\hat{\theta}$ is the statistic computed on the full sample.
+
+### Jackknife Bias Estimate
+
+The `JackKnifeSample` method returns the array of leave-one-out estimates $\hat{\theta}_{(-i)}$, from which the jackknife bias estimate can be computed:
+
+```math
+\text{bias}_{\text{jack}} = (n-1)(\bar{\theta}_{(\cdot)} - \hat{\theta})
+```
+
+where $\bar{\theta}_{(\cdot)} = \frac{1}{n}\sum_{i=1}^{n}\hat{\theta}_{(-i)}$ is the mean of the jackknife replications.
+
+Note that the library parallelizes the jackknife loop internally using `Parallel.For`, so it scales well with multi-core processors.
 
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
@@ -505,7 +666,29 @@ Console.WriteLine($"  Winter (DJF): {winterMean:F0} cfs");
 
 ## Running Statistics
 
-For streaming data or very large datasets:
+The `RunningStatistics` class implements Welford's online algorithm [[2]](#2) for numerically stable computation of variance and higher moments in a single pass through the data. This is essential for streaming data or very large datasets where it is impractical to store all values in memory.
+
+### Welford's Algorithm
+
+The classical two-pass approach (compute mean first, then deviations) requires two full scans of the data and storing the entire dataset. Welford's algorithm updates the running mean and sum of squared deviations incrementally with each new observation $x_n$:
+
+```math
+\delta = x_n - M_1^{(n-1)}
+```
+
+```math
+M_1^{(n)} = M_1^{(n-1)} + \frac{\delta}{n}
+```
+
+```math
+M_2^{(n)} = M_2^{(n-1)} + \delta(x_n - M_1^{(n)})
+```
+
+where $M_1$ is the running mean and $M_2$ is the running sum of squared deviations. The sample variance is then $s^2 = M_2 / (n-1)$.
+
+The `RunningStatistics` class extends this to the fourth moment ($M_3$ and $M_4$) for skewness and kurtosis computation. It also supports combining two `RunningStatistics` objects via the `Combine` method (or `+` operator), which is useful for parallel processing -- each thread can accumulate statistics independently and then merge results.
+
+**Available properties:** `Count`, `Minimum`, `Maximum`, `Mean`, `Variance`, `PopulationVariance`, `StandardDeviation`, `PopulationStandardDeviation`, `CoefficientOfVariation`, `Skewness`, `PopulationSkewness`, `Kurtosis`, `PopulationKurtosis`.
 
 ```cs
 using Numerics.Data.Statistics;
@@ -546,6 +729,12 @@ Console.WriteLine($"Max: {runningStats.Maximum:F2}");
 
 <a id="1">[1]</a> Hosking, J. R. M. (1990). L-moments: Analysis and estimation of distributions using linear combinations of order statistics. *Journal of the Royal Statistical Society: Series B (Methodological)*, 52(1), 105-124.
 
+<a id="2">[2]</a> Welford, B. P. (1962). Note on a method for calculating corrected sums of squares and products. *Technometrics*, 4(3), 419-420.
+
+<a id="3">[3]</a> Fisher, R. A. (1930). The moments of the distribution for normal samples of measures of departure from normality. *Proceedings of the Royal Society of London. Series A*, 130(812), 16-28.
+
+<a id="4">[4]</a> Kendall, M. G. (1938). A new measure of rank correlation. *Biometrika*, 30(1/2), 81-93.
+
 ---
 
-[← Back to Index](../index.md) | [Next: Goodness-of-Fit →](goodness-of-fit.md)
+[← Previous: Time Series](../data/time-series.md) | [Back to Index](../index.md) | [Next: Goodness-of-Fit →](goodness-of-fit.md)

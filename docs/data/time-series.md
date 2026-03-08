@@ -1,6 +1,6 @@
 # Time Series
 
-[← Previous: Linear Regression](regression.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
+[← Previous: Linear Regression](regression.md) | [Back to Index](../index.md) | [Next: Descriptive Statistics →](../statistics/descriptive.md)
 
 The ***Numerics*** library provides a comprehensive `TimeSeries` class for working with time-indexed data. This class supports regular and irregular time intervals, statistical operations, transformations, and analysis methods essential for hydrological and environmental data.
 
@@ -721,4 +721,4 @@ for (int m = 1; m <= 12; m++)
 
 ---
 
-[← Previous: Linear Regression](regression.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
+[← Previous: Linear Regression](regression.md) | [Back to Index](../index.md) | [Next: Descriptive Statistics →](../statistics/descriptive.md)

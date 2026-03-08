@@ -135,29 +135,29 @@ var results = sampler.Output;
 | [Numerical Differentiation](mathematics/differentiation.md) | Derivatives, gradients, Hessians, and Jacobians |
 | [Optimization](mathematics/optimization.md) | Local and global optimization algorithms |
 | [Root Finding](mathematics/root-finding.md) | Equation solving methods |
-| [Linear Algebra](mathematics/linear-algebra.md) | Matrix and vector operations |
+| [Linear Algebra](mathematics/linear-algebra.md) | Matrix and vector operations, decompositions |
 | [Special Functions](mathematics/special-functions.md) | Gamma, Beta, Error functions |
-| [ODE Solvers](mathematics/ode-solvers.md) | Runge-Kutta methods |
+| [ODE Solvers](mathematics/ode-solvers.md) | Runge-Kutta methods for initial value problems |
+| **Data** | |
+| [Interpolation](data/interpolation.md) | Interpolation methods and splines |
+| [Linear Regression](data/regression.md) | Linear regression modeling |
+| [Time Series](data/time-series.md) | Time series data structures and analysis |
+| **Statistics** | |
+| [Descriptive Statistics](statistics/descriptive.md) | Summary statistics and moments |
+| [Goodness-of-Fit](statistics/goodness-of-fit.md) | Model evaluation metrics |
+| [Hypothesis Tests](statistics/hypothesis-tests.md) | Statistical hypothesis testing |
 | **Distributions** | |
-| [Univariate Distributions](distributions/univariate.md) | Complete reference for univariate distributions |
-| [Multivariate Distributions](distributions/multivariate.md) | Multivariate Normal distribution |
+| [Univariate Distributions](distributions/univariate.md) | 40+ probability distributions with PDF, CDF, and quantile functions |
 | [Parameter Estimation](distributions/parameter-estimation.md) | Fitting distributions to data |
 | [Uncertainty Analysis](distributions/uncertainty-analysis.md) | Bootstrap and confidence intervals |
 | [Copulas](distributions/copulas.md) | Dependency modeling with copulas |
-| **Statistics** | |
-| [Descriptive Statistics](statistics/descriptive.md) | Summary statistics functions |
-| [Goodness-of-Fit](statistics/goodness-of-fit.md) | Model evaluation metrics |
-| [Hypothesis Tests](statistics/hypothesis-tests.md) | Statistical hypothesis testing |
-| **Data** | |
-| [Interpolation](data/interpolation.md) | Interpolation methods |
-| [Linear Regression](data/regression.md) | Linear regression modeling |
-| [Time Series](data/time-series.md) | Time series data structures and analysis |
+| [Multivariate Distributions](distributions/multivariate.md) | Multivariate Normal, Student-t, Dirichlet, Multinomial |
 | **Machine Learning** | |
-| [Machine Learning](machine-learning.md) | Supervised and unsupervised learning algorithms |
+| [Machine Learning](machine-learning/machine-learning.md) | Supervised and unsupervised learning algorithms |
 | **Sampling** | |
+| [Random Generation](sampling/random-generation.md) | PRNGs, quasi-random, and sampling methods |
 | [MCMC Methods](sampling/mcmc.md) | Markov Chain Monte Carlo samplers |
 | [Convergence Diagnostics](sampling/convergence-diagnostics.md) | MCMC convergence assessment |
-| [Random Generation](sampling/random-generation.md) | PRNGs, quasi-random, and sampling methods |
 | [References](references.md) | Complete bibliography |
 
 ## Namespaces

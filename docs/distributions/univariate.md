@@ -1,6 +1,6 @@
 # Univariate Distributions
 
-[← Back to Index](../index.md) | [Next: Parameter Estimation →](parameter-estimation.md)
+[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Parameter Estimation →](parameter-estimation.md)
 
 The ***Numerics*** library provides over 40 univariate probability distributions for statistical analysis, risk assessment, and uncertainty quantification. All distributions implement a common interface with consistent methods for computing probability density functions (PDF), cumulative distribution functions (CDF), quantiles, and statistical moments.
 
@@ -201,14 +201,440 @@ Console.WriteLine($"CDF(-10) = {cdf:E10}");
 Console.WriteLine($"Log-CDF(-10) = {logCDF:F4}");
 ```
 
+## Distribution Mathematical Definitions
+
+This section provides the mathematical foundations for the most commonly used distributions in ***Numerics***. Understanding the underlying probability density functions (PDF), cumulative distribution functions (CDF), and moment structure is essential for correct application, particularly in safety-critical engineering analysis.
+
+### Normal Distribution
+
+The Normal (Gaussian) distribution is the most widely used continuous distribution. It arises naturally from the Central Limit Theorem, which states that the sum of many independent random variables tends toward a Normal distribution regardless of the underlying distributions. In ***Numerics***, the Normal distribution is parameterized by its mean $\mu$ and standard deviation $\sigma$.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(x - \mu)^2}{2\sigma^2}\right), \quad -\infty < x < \infty
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \Phi\!\left(\frac{x - \mu}{\sigma}\right) = \frac{1}{2}\left[1 + \operatorname{erf}\!\left(\frac{x - \mu}{\sigma\sqrt{2}}\right)\right]
+```
+
+where $\Phi(\cdot)$ is the standard Normal CDF and $\operatorname{erf}(\cdot)$ is the error function.
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \mu$ |
+| Variance | $\operatorname{Var}(X) = \sigma^2$ |
+| Skewness | $\gamma_1 = 0$ |
+| Kurtosis | $\kappa = 3$ |
+
+**Parameters in Numerics:** `Normal(mean, standardDeviation)` where `mean` = $\mu$ and `standardDeviation` = $\sigma > 0$.
+
+```cs
+using Numerics.Distributions;
+
+var normal = new Normal(mean: 100, standardDeviation: 15);
+
+double pdf = normal.PDF(110);        // f(110)
+double cdf = normal.CDF(110);        // P(X <= 110)
+double q95 = normal.InverseCDF(0.95); // 95th percentile
+
+Console.WriteLine($"Mean: {normal.Mean}");           // 100
+Console.WriteLine($"Std Dev: {normal.StandardDeviation}"); // 15
+Console.WriteLine($"Skewness: {normal.Skewness}");   // 0
+```
+
+### Log-Normal Distribution
+
+A random variable $X$ follows a Log-Normal distribution if $\log(X)$ follows a Normal distribution. The Log-Normal distribution is appropriate for strictly positive, right-skewed data arising from multiplicative processes. In ***Numerics***, the Log-Normal is parameterized by the mean and standard deviation of the log-transformed data, and uses base-10 logarithms by default. The `Base` property can be changed to use natural logarithms or any other base.
+
+#### Mathematical Definition
+
+For a general logarithmic base $b$, let $K = 1/\ln(b)$. The PDF and CDF are expressed in terms of $\log_b(x)$.
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{K}{x \sigma \sqrt{2\pi}} \exp\!\left(-\frac{(\log_b x - \mu)^2}{2\sigma^2}\right), \quad x > 0
+```
+
+where $\mu$ and $\sigma$ are the mean and standard deviation of $\log_b(X)$.
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \frac{1}{2}\left[1 + \operatorname{erf}\!\left(\frac{\log_b x - \mu}{\sigma\sqrt{2}}\right)\right]
+```
+
+**Moments (general base $b$, where $\beta = \ln(b)$):**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \exp\!\left[(\mu + \tfrac{1}{2}\sigma^2 \beta)\,\beta\right]$ |
+| Mode | $\exp(\mu / K) = b^{\mu}$ |
+
+**Key relationship:** If $X \sim \text{LogNormal}(\mu, \sigma)$, then $\log_b(X) \sim \text{Normal}(\mu, \sigma)$.
+
+**Parameters in Numerics:** `LogNormal(meanOfLog, standardDeviationOfLog)` where `meanOfLog` = $\mu$ and `standardDeviationOfLog` = $\sigma > 0$. Default base is 10.
+
+```cs
+// Log-Normal with base-10 parameters
+var lognormal = new LogNormal(meanOfLog: 4.5, standardDeviationOfLog: 0.5);
+
+// Default base is 10
+Console.WriteLine($"Base: {lognormal.Base}"); // 10
+
+// Switch to natural log if needed
+lognormal.Base = Math.E;
+
+// Key relationship: log(X) ~ Normal
+double x = lognormal.InverseCDF(0.5);
+Console.WriteLine($"Median: {x:F2}");
+Console.WriteLine($"log10(Median): {Math.Log10(x):F2}"); // equals Mu when Base=10
+```
+
+### Gamma Distribution
+
+The Gamma distribution is a flexible two-parameter family for modeling positive-valued random variables. It generalizes the Exponential distribution and appears frequently in waiting-time problems, rainfall modeling, and Bayesian statistics. The ***Numerics*** library uses the shape/scale parameterization.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{x^{\kappa-1}\, e^{-x/\theta}}{\theta^{\kappa}\,\Gamma(\kappa)}, \quad x > 0
+```
+
+where $\theta > 0$ is the scale parameter and $\kappa > 0$ is the shape parameter. $\Gamma(\cdot)$ is the gamma function.
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \frac{\gamma(\kappa,\, x/\theta)}{\Gamma(\kappa)} = P(\kappa,\, x/\theta)
+```
+
+where $\gamma(\kappa, z)$ is the lower incomplete gamma function and $P(\kappa, z)$ is the regularized lower incomplete gamma function.
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \kappa\theta$ |
+| Variance | $\operatorname{Var}(X) = \kappa\theta^2$ |
+| Skewness | $\gamma_1 = 2/\sqrt{\kappa}$ |
+| Kurtosis | $\kappa_4 = 3 + 6/\kappa$ |
+| Mode | $(\kappa - 1)\theta$ for $\kappa \geq 1$ |
+
+**Special cases:** When $\kappa$ is a positive integer, the Gamma distribution is also known as the Erlang distribution.
+
+**Parameters in Numerics:** `GammaDistribution(scale, shape)` where `scale` = $\theta > 0$ and `shape` = $\kappa > 0$.
+
+```cs
+var gamma = new GammaDistribution(scale: 5, shape: 2);
+
+Console.WriteLine($"Mean: {gamma.Mean}");           // κθ = 10
+Console.WriteLine($"Variance: {gamma.Variance}");   // κθ² = 50
+Console.WriteLine($"Skewness: {gamma.Skewness:F4}"); // 2/√κ
+Console.WriteLine($"Rate (1/θ): {gamma.Rate}");      // 0.2
+
+double cdf = gamma.CDF(15.0);
+double quantile = gamma.InverseCDF(0.95);
+```
+
+### Exponential Distribution
+
+The Exponential distribution models the time between events in a Poisson process. Its defining property is *memorylessness*: the probability of an event occurring in the next $\Delta t$ time units is independent of how much time has already elapsed. In ***Numerics***, the Exponential distribution is a two-parameter (shifted) distribution with location $\xi$ and scale $\alpha$. Setting $\xi = 0$ yields the standard one-parameter Exponential.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{1}{\alpha}\exp\!\left(-\frac{x - \xi}{\alpha}\right), \quad x \geq \xi
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = 1 - \exp\!\left(-\frac{x - \xi}{\alpha}\right), \quad x \geq \xi
+```
+
+**Inverse CDF (Quantile Function):**
+
+```math
+Q(p) = \xi - \alpha \ln(1 - p)
+```
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \xi + \alpha$ |
+| Variance | $\operatorname{Var}(X) = \alpha^2$ |
+| Skewness | $\gamma_1 = 2$ |
+| Kurtosis | $\kappa = 9$ |
+| Mode | $\xi$ |
+
+**Relationship to Gamma:** The Exponential($\xi$, $\alpha$) distribution is a special case of a shifted Gamma distribution with shape $\kappa = 1$.
+
+**Parameters in Numerics:** `Exponential(location, scale)` where `location` = $\xi$ and `scale` = $\alpha > 0$. A single-parameter constructor `Exponential(scale)` sets $\xi = 0$.
+
+```cs
+// Two-parameter (shifted) exponential
+var exp2 = new Exponential(location: 10, scale: 5);
+Console.WriteLine($"Mean: {exp2.Mean}");   // ξ + α = 15
+Console.WriteLine($"Mode: {exp2.Mode}");   // ξ = 10
+
+// One-parameter (standard) exponential
+var exp1 = new Exponential(scale: 5);
+Console.WriteLine($"Mean: {exp1.Mean}");   // α = 5
+Console.WriteLine($"P(X > 10): {exp1.CCDF(10):F4}"); // memoryless property
+```
+
+### Gumbel Distribution (Extreme Value Type I)
+
+The Gumbel distribution is a special case of the Generalized Extreme Value (GEV) distribution with shape parameter $\kappa = 0$. It models the distribution of the maximum (or minimum) of a sample drawn from various distributions with exponentially decaying tails. It is widely used in hydrology for modeling annual maximum floods and in structural engineering for modeling extreme wind loads.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{1}{\alpha}\exp\!\left[-(z + e^{-z})\right], \quad z = \frac{x - \xi}{\alpha}, \quad -\infty < x < \infty
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \exp\!\left(-e^{-z}\right), \quad z = \frac{x - \xi}{\alpha}
+```
+
+**Inverse CDF (Quantile Function):**
+
+```math
+Q(p) = \xi - \alpha \ln(-\ln p)
+```
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \xi + \alpha\gamma_E$ where $\gamma_E \approx 0.5772$ is the Euler-Mascheroni constant |
+| Variance | $\operatorname{Var}(X) = \frac{\pi^2}{6}\alpha^2$ |
+| Skewness | $\gamma_1 \approx 1.1396$ |
+| Kurtosis | $\kappa = 3 + 12/5 = 5.4$ |
+| Mode | $\xi$ |
+| Median | $\xi - \alpha\ln(\ln 2)$ |
+
+**Parameters in Numerics:** `Gumbel(location, scale)` where `location` = $\xi$ and `scale` = $\alpha > 0$.
+
+```cs
+var gumbel = new Gumbel(location: 100, scale: 25);
+
+Console.WriteLine($"Mode: {gumbel.Mode}");      // ξ = 100
+Console.WriteLine($"Mean: {gumbel.Mean:F2}");    // ξ + αγ ≈ 114.43
+Console.WriteLine($"Median: {gumbel.Median:F2}");
+
+// 100-year return period quantile
+double q100 = gumbel.InverseCDF(0.99);
+Console.WriteLine($"1% AEP quantile: {q100:F2}");
+```
+
+### Uniform Distribution
+
+The Uniform distribution assigns equal probability density to all values within a bounded interval $[a, b]$. It represents maximum uncertainty (maximum entropy) given only knowledge of the support bounds. It is commonly used as a non-informative prior in Bayesian analysis and for random number generation.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{1}{b - a}, \quad a \leq x \leq b
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \frac{x - a}{b - a}, \quad a \leq x \leq b
+```
+
+**Inverse CDF (Quantile Function):**
+
+```math
+Q(p) = a + p(b - a)
+```
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \frac{a + b}{2}$ |
+| Variance | $\operatorname{Var}(X) = \frac{(b - a)^2}{12}$ |
+| Skewness | $\gamma_1 = 0$ |
+| Kurtosis | $\kappa = 9/5 = 1.8$ |
+
+**Parameters in Numerics:** `Uniform(min, max)` where `min` = $a$ and `max` = $b \geq a$.
+
+```cs
+var uniform = new Uniform(min: 0, max: 10);
+
+Console.WriteLine($"Mean: {uniform.Mean}");     // 5
+Console.WriteLine($"Std Dev: {uniform.StandardDeviation:F4}"); // 10/√12
+Console.WriteLine($"PDF(5): {uniform.PDF(5)}"); // 0.1 everywhere in [0,10]
+
+double median = uniform.InverseCDF(0.5); // 5
+```
+
+### Triangular Distribution
+
+The Triangular distribution is defined by three parameters: minimum $a$, mode $c$, and maximum $b$. It provides a simple model for uncertainty when only the range and most likely value are known. It is frequently used in risk assessment, project management (PERT analysis), and expert elicitation.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \begin{cases}
+\dfrac{2(x - a)}{(b - a)(c - a)} & a \leq x < c \\[6pt]
+\dfrac{2}{b - a} & x = c \\[6pt]
+\dfrac{2(b - x)}{(b - a)(b - c)} & c < x \leq b
+\end{cases}
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \begin{cases}
+\dfrac{(x - a)^2}{(b - a)(c - a)} & a \leq x \leq c \\[6pt]
+1 - \dfrac{(b - x)^2}{(b - a)(b - c)} & c < x \leq b
+\end{cases}
+```
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \frac{a + b + c}{3}$ |
+| Variance | $\operatorname{Var}(X) = \frac{a^2 + b^2 + c^2 - ab - ac - bc}{18}$ |
+| Mode | $c$ |
+
+**Parameters in Numerics:** `Triangular(min, mode, max)` where `min` = $a$, `mode` = $c$, and `max` = $b$, with $a \leq c \leq b$.
+
+```cs
+var tri = new Triangular(min: 10, mode: 15, max: 25);
+
+Console.WriteLine($"Mean: {tri.Mean:F2}");      // (10+25+15)/3 = 16.67
+Console.WriteLine($"Mode: {tri.Mode}");          // 15
+Console.WriteLine($"Median: {tri.Median:F2}");
+Console.WriteLine($"Std Dev: {tri.StandardDeviation:F2}");
+```
+
+### Beta Distribution
+
+The Beta distribution is defined on the interval $[0, 1]$ and is parameterized by two positive shape parameters $\alpha$ and $\beta$. Its flexibility makes it ideal for modeling random proportions, probabilities, and percentages. In Bayesian statistics, it serves as the conjugate prior for the Bernoulli and Binomial distributions.
+
+#### Mathematical Definition
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha, \beta)}, \quad 0 \leq x \leq 1
+```
+
+where $B(\alpha, \beta)$ is the Beta function:
+
+```math
+B(\alpha, \beta) = \frac{\Gamma(\alpha)\,\Gamma(\beta)}{\Gamma(\alpha + \beta)}
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = I_x(\alpha, \beta)
+```
+
+where $I_x(\alpha, \beta)$ is the regularized incomplete Beta function.
+
+**Moments:**
+
+| Property | Formula |
+|----------|---------|
+| Mean | $E[X] = \frac{\alpha}{\alpha + \beta}$ |
+| Variance | $\operatorname{Var}(X) = \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)}$ |
+| Mode | $\frac{\alpha - 1}{\alpha + \beta - 2}$ for $\alpha, \beta > 1$ |
+| Skewness | $\frac{2(\beta - \alpha)\sqrt{\alpha + \beta + 1}}{(\alpha + \beta + 2)\sqrt{\alpha\beta}}$ |
+
+**Special cases:** $\text{Beta}(1, 1) = \text{Uniform}(0, 1)$.
+
+**Parameters in Numerics:** `BetaDistribution(alpha, beta)` where `alpha` = $\alpha > 0$ and `beta` = $\beta > 0$.
+
+```cs
+var beta = new BetaDistribution(alpha: 2, beta: 5);
+
+Console.WriteLine($"Mean: {beta.Mean:F4}");      // α/(α+β) = 2/7
+Console.WriteLine($"Mode: {beta.Mode:F4}");      // (α-1)/(α+β-2) = 1/5
+Console.WriteLine($"Variance: {beta.Variance:F4}");
+
+// Beta(1,1) is equivalent to Uniform(0,1)
+var betaUniform = new BetaDistribution(alpha: 1, beta: 1);
+Console.WriteLine($"Beta(1,1) PDF(0.5): {betaUniform.PDF(0.5)}"); // 1.0
+```
+
 ## Hydrological Distributions
 
 ### Log-Pearson Type III (LP3)
 
-The LP3 distribution is the standard for USGS flood frequency analysis [[1]](#1):
+The LP3 distribution is the standard distribution for flood frequency analysis in the United States, as prescribed by Bulletin 17C [[1]](#1). It is constructed by applying the Pearson Type III distribution to the logarithms of the data. This means that if $X \sim \text{LP3}$, then $\log_b(X) \sim \text{Pearson Type III}$, where $b$ is the logarithmic base (default base 10 in ***Numerics***).
+
+#### Mathematical Definition
+
+The LP3 distribution is parameterized by the moments of the log-transformed data: $\mu$ (mean of log), $\sigma$ (standard deviation of log), and $\gamma$ (skewness of log). These parameters relate to the underlying Pearson Type III distribution through:
+
+| LP3 Parameter | Pearson Type III Equivalent |
+|---------------|---------------------------|
+| Location $\xi$ | $\mu - 2\sigma/\gamma$ |
+| Scale $\beta$ | $\sigma\gamma/2$ |
+| Shape $\alpha$ | $4/\gamma^2$ |
+
+The PDF and CDF of the LP3 are obtained by applying the Pearson Type III to the log-transformed variable. For a variable $Y = \log_b(X)$:
+
+**Pearson Type III PDF (applied to Y):**
+
+```math
+f_Y(y) = \frac{|y - \xi|^{\alpha-1}\, \exp(-|y - \xi|/|\beta|)}{|\beta|^{\alpha}\,\Gamma(\alpha)}
+```
+
+where the sign conventions depend on the sign of $\gamma$: when $\gamma > 0$, $Y \geq \xi$; when $\gamma < 0$, $Y \leq \xi$.
+
+**Quantile computation:** In practice, LP3 quantiles are computed using the frequency factor approach from Bulletin 17C:
+
+```math
+\log_b(X_p) = \mu + K_p \cdot \sigma
+```
+
+where $K_p$ is the Pearson Type III frequency factor (a function of the skewness $\gamma$ and probability $p$), computed via the Cornish-Fisher or Wilson-Hilferty approximation.
+
+**Moments (of the log-transformed data):**
+
+| Property | Formula |
+|----------|---------|
+| Mean of log | $\mu$ |
+| Std dev of log | $\sigma$ |
+| Skewness of log | $\gamma$ |
+
+When $\gamma = 0$, the LP3 reduces to the Log-Normal distribution.
+
+**Parameters in Numerics:** `LogPearsonTypeIII(meanOfLog, standardDeviationOfLog, skewOfLog)`. Default logarithmic base is 10.
 
 ```cs
 using Numerics.Distributions;
+using Numerics.Data.Statistics;
 
 double[] annualPeakFlows = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200 };
 
@@ -234,7 +660,59 @@ Console.WriteLine($"500-year flood: {q500:F0} cfs");
 
 ### Generalized Extreme Value (GEV)
 
-GEV is widely used for extreme value analysis [[2]](#2):
+The Generalized Extreme Value distribution unifies three classical extreme value distributions into a single three-parameter family [[2]](#2). It is the limiting distribution for block maxima (e.g., annual maximum floods, peak wind speeds) under very general conditions described by the Fisher-Tippett-Gnedenko theorem.
+
+#### Mathematical Definition
+
+The GEV is parameterized by location $\xi$, scale $\alpha > 0$, and shape $\kappa$. The ***Numerics*** library uses the Hosking parameterization where the sign convention for $\kappa$ follows L-moment theory.
+
+**Probability Density Function (PDF):**
+
+```math
+f(x) = \frac{1}{\alpha} \exp\!\left[-(1-\kappa)y - e^{-y}\right]
+```
+
+where the reduced variate $y$ is defined as:
+
+```math
+y = \begin{cases}
+-\dfrac{1}{\kappa}\ln\!\left(1 - \kappa\dfrac{x - \xi}{\alpha}\right) & \kappa \neq 0 \\[6pt]
+\dfrac{x - \xi}{\alpha} & \kappa = 0
+\end{cases}
+```
+
+**Cumulative Distribution Function (CDF):**
+
+```math
+F(x) = \exp(-e^{-y})
+```
+
+**Inverse CDF (Quantile Function):**
+
+```math
+Q(p) = \begin{cases}
+\xi + \dfrac{\alpha}{\kappa}\left[1 - (-\ln p)^{\kappa}\right] & \kappa \neq 0 \\[6pt]
+\xi - \alpha \ln(-\ln p) & \kappa = 0
+\end{cases}
+```
+
+**Support:**
+
+| Shape | Sub-type | Upper/Lower Bound |
+|-------|----------|-------------------|
+| $\kappa = 0$ | Type I (Gumbel) | $-\infty < x < \infty$ |
+| $\kappa > 0$ | Type III (Weibull) | $x \leq \xi + \alpha/\kappa$ (bounded upper tail) |
+| $\kappa < 0$ | Type II (Frechet) | $x \geq \xi + \alpha/\kappa$ (bounded lower tail, heavy upper tail) |
+
+**Moments (exist when $|\kappa| < 1$ for the mean, $|\kappa| < 1/2$ for the variance):**
+
+| Property | Formula ($\kappa \neq 0$) | Formula ($\kappa = 0$, Gumbel) |
+|----------|--------------------------|-------------------------------|
+| Mean | $\xi + \frac{\alpha}{\kappa}[1 - \Gamma(1+\kappa)]$ | $\xi + \alpha\gamma_E$ |
+| Variance | $\frac{\alpha^2}{\kappa^2}[\Gamma(1+2\kappa) - \Gamma^2(1+\kappa)]$ | $\frac{\pi^2}{6}\alpha^2$ |
+| Mode | $\xi + \frac{\alpha}{\kappa}[(1+\kappa)^{-\kappa} - 1]$ | $\xi$ |
+
+**Parameters in Numerics:** `GeneralizedExtremeValue(location, scale, shape)` where `location` = $\xi$, `scale` = $\alpha > 0$, and `shape` = $\kappa$.
 
 ```cs
 // Annual maximum flood data
@@ -249,9 +727,9 @@ Console.WriteLine($"  Scale (α): {gev.Alpha:F2}");
 Console.WriteLine($"  Shape (κ): {gev.Kappa:F4}");
 
 // Interpret shape parameter
-if (gev.Kappa < 0)
+if (gev.Kappa > 0)
     Console.WriteLine("  Type III (Weibull) - bounded upper tail");
-else if (gev.Kappa > 0)
+else if (gev.Kappa < 0)
     Console.WriteLine("  Type II (Fréchet) - heavy upper tail");
 else
     Console.WriteLine("  Type I (Gumbel) - exponential tail");
@@ -333,7 +811,7 @@ Console.WriteLine($"Empirical 90th percentile: {q90:F2}");
 Smooth non-parametric density estimation:
 
 ```cs
-var kde = new KernelDensity(observations, KernelType.Gaussian, 1.5);
+var kde = new KernelDensity(observations, KernelDensity.KernelType.Gaussian, 1.5);
 
 // Smooth PDF
 double density = kde.PDF(15.0);
@@ -554,12 +1032,12 @@ All distributions validate parameters:
 var gev = new GeneralizedExtremeValue();
 
 // Check if parameters are valid
-var params = new double[] { 1000, 200, 0.3 };
-var exception = gev.ValidateParameters(params, throwException: false);
+var parameters = new double[] { 1000, 200, 0.3 };
+var exception = gev.ValidateParameters(parameters, throwException: false);
 
 if (exception == null)
 {
-    gev.SetParameters(params);
+    gev.SetParameters(parameters);
     Console.WriteLine("Parameters are valid");
 }
 else
@@ -600,16 +1078,96 @@ for (int i = 0; i < normal.NumberOfParameters; i++)
 }
 ```
 
+## Parameter Interpretation Guide
+
+Most continuous distributions can be understood through three fundamental types of parameters, each controlling a distinct aspect of the distribution's behavior:
+
+### Location Parameters ($\xi$, $\mu$)
+
+Location parameters shift the entire distribution left or right along the real line without changing its shape or spread. Changing the location parameter translates every quantile by the same amount.
+
+- **Normal:** $\mu$ (mean) shifts the center of symmetry
+- **Gumbel / GEV:** $\xi$ shifts the mode
+- **Exponential:** $\xi$ shifts the lower bound of support
+
+### Scale Parameters ($\alpha$, $\sigma$, $\theta$)
+
+Scale parameters stretch or compress the distribution. Multiplying the scale by a constant $c$ multiplies the standard deviation (and all quantile deviations from the location) by $c$, without changing the shape.
+
+- **Normal:** $\sigma$ (standard deviation) controls the spread
+- **Gumbel / GEV / Exponential:** $\alpha$ controls the spread
+- **Gamma:** $\theta$ scales the distribution; mean = $\kappa\theta$
+
+### Shape Parameters ($\kappa$, $\alpha$, $\beta$, $\gamma$)
+
+Shape parameters control the fundamental character of the distribution: tail weight, skewness, peakedness, and boundedness. Unlike location and scale, changing a shape parameter alters the qualitative behavior of the distribution.
+
+- **GEV:** $\kappa$ determines the tail type (bounded vs. heavy-tailed vs. exponential)
+- **Gamma:** $\kappa$ controls skewness ($2/\sqrt{\kappa}$); as $\kappa \to \infty$, the Gamma approaches the Normal
+- **Beta:** $\alpha$ and $\beta$ jointly control the shape on $[0,1]$; equal values produce symmetry
+- **LP3:** $\gamma$ (skewness of log) controls asymmetry; $\gamma = 0$ reduces LP3 to Log-Normal
+
+## Distribution Relationships
+
+Many distributions in the ***Numerics*** library are connected through limiting cases, transformations, or special parameterizations. Understanding these relationships helps in selecting appropriate models and verifying analytical results.
+
+### Extreme Value Family
+
+```
+GEV(ξ, α, κ)
+├── κ = 0  →  Gumbel(ξ, α)          [Type I: exponential tails]
+├── κ > 0  →  Weibull-type           [Type III: bounded upper tail]
+└── κ < 0  →  Fréchet-type           [Type II: heavy upper tail]
+```
+
+The Gumbel distribution `Gumbel(ξ, α)` is exactly equivalent to `GeneralizedExtremeValue(ξ, α, 0)`.
+
+### Gamma Family
+
+```
+GammaDistribution(θ, κ)
+├── κ = 1        →  Exponential(0, θ)     [memoryless special case]
+├── κ = ν/2, θ=2 →  Chi-Squared(ν)        [sum of squared standard Normals]
+└── κ → ∞       →  Normal(κθ, θ√κ)       [by Central Limit Theorem]
+```
+
+### Logarithmic Transforms
+
+```
+X ~ LogNormal(μ, σ)        ⟺  log(X) ~ Normal(μ, σ)
+X ~ LogPearsonTypeIII(μ, σ, γ)  ⟺  log(X) ~ PearsonTypeIII(μ, σ, γ)
+```
+
+When the LP3 skewness parameter $\gamma = 0$, the LP3 reduces to the Log-Normal distribution.
+
+### Beta and Uniform
+
+```
+Beta(1, 1) = Uniform(0, 1)
+```
+
+The Beta distribution with both shape parameters equal to 1 produces a uniform density on $[0, 1]$.
+
+### Student's t and Normal
+
+```
+Student-t(ν) → Normal(0, 1)  as ν → ∞
+```
+
+The Student's t distribution approaches the standard Normal distribution as the degrees of freedom increase.
+
 ---
 
 ## References
 
-<a id="1">[1]</a> Bulletin 17C: Guidelines for Determining Flood Flow Frequency. (2017). U.S. Geological Survey Techniques and Methods, Book 4, Chapter B5.
+<a id="1">[1]</a> Interagency Advisory Committee on Water Data. (2019). *Guidelines for Determining Flood Flow Frequency, Bulletin 17C*. U.S. Geological Survey Techniques and Methods, Book 4, Chapter B5.
 
 <a id="2">[2]</a> Coles, S. (2001). *An Introduction to Statistical Modeling of Extreme Values*. Springer.
 
 <a id="3">[3]</a> Hosking, J. R. M., & Wallis, J. R. (1997). *Regional Frequency Analysis: An Approach Based on L-Moments*. Cambridge University Press.
 
+<a id="4">[4]</a> Johnson, N. L., Kotz, S., & Balakrishnan, N. (1994-1995). *Continuous Univariate Distributions*, Vols. 1-2 (2nd ed.). Wiley.
+
 ---
 
-[← Back to Index](../index.md) | [Next: Parameter Estimation →](parameter-estimation.md)
+[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Parameter Estimation →](parameter-estimation.md)

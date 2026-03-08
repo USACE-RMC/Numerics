@@ -1,6 +1,6 @@
 # Random Number Generation
 
-[← Previous: Time Series](../data/time-series.md) | [Back to Index](../index.md)
+[← Previous: Machine Learning](../machine-learning/machine-learning.md) | [Back to Index](../index.md) | [Next: MCMC Methods →](mcmc.md)
 
 The ***Numerics*** library provides multiple random number generation methods for different applications. These include high-quality pseudo-random generators, quasi-random sequences, and advanced sampling techniques.
 
@@ -509,4 +509,4 @@ for (int i = 0; i < 3; i++)
 
 ---
 
-[← Previous: Time Series](../data/time-series.md) | [Back to Index](../index.md)
+[← Previous: Machine Learning](../machine-learning/machine-learning.md) | [Back to Index](../index.md) | [Next: MCMC Methods →](mcmc.md)

@@ -152,7 +152,7 @@ This is a consolidated bibliography of all references cited throughout the ***Nu
 
 [49] Neal, R. M. (2011). MCMC using Hamiltonian dynamics. In *Handbook of Markov Chain Monte Carlo* (pp. 113-162). CRC Press.
 
-[50] Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P. C. (2021). Rank-normalization, folding, and localization: An improved R-hat for assessing convergence of MCMC. *Bayesian Analysis*, 16(2), 667-718.
+[50] Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P.-C. (2021). Rank-normalization, folding, and localization: An improved R-hat for assessing convergence of MCMC. *Bayesian Analysis*, 16(2), 667-718.
 
 [51] Vrugt, J. A. (2016). Markov chain Monte Carlo simulation using the DREAM software package: Theory, concepts, and MATLAB implementation. *Environmental Modelling & Software*, 75, 273-316.
 
@@ -235,3 +235,95 @@ This is a consolidated bibliography of all references cited throughout the ***Nu
 [76] Gelman, A., & Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. *Statistical Science*, 7(4), 457-472.
 
 [77] Sobol, I. M. (1967). On the distribution of points in a cube and the approximate evaluation of integrals. *USSR Computational Mathematics and Mathematical Physics*, 7(4), 86-112.
+
+---
+
+## Root Finding (Additional)
+
+[78] Sprott, J. C. (1991). *Numerical Recipes, Routines and Examples in Basic*. Cambridge University Press.
+
+[79] Süli, E., & Mayers, D. (2003). *An Introduction to Numerical Analysis*. Cambridge University Press.
+
+---
+
+## Probability and Statistics (Additional)
+
+[80] Fisher, R. A. (1930). The moments of the distribution for normal samples of measures of departure from normality. *Proceedings of the Royal Society of London. Series A*, 130(812), 16-28.
+
+[81] Welford, B. P. (1962). Note on a method for calculating corrected sums of squares and products. *Technometrics*, 4(3), 419-420.
+
+[82] Kendall, M. G. (1938). A new measure of rank correlation. *Biometrika*, 30(1/2), 81-93.
+
+[83] Mood, A. M., Graybill, F. A., & Boes, D. C. (1974). *Introduction to the Theory of Statistics* (3rd ed.). McGraw-Hill.
+
+[84] Casella, G., & Berger, R. L. (2002). *Statistical Inference* (2nd ed.). Duxbury/Thomson.
+
+---
+
+## Hydrology (Additional)
+
+[85] Rao, A. R., & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press.
+
+---
+
+## Model Evaluation (Additional)
+
+[86] Akaike, H. (1974). A new look at the statistical model identification. *IEEE Transactions on Automatic Control*, 19(6), 716-723.
+
+[87] Schwarz, G. (1978). Estimating the dimension of a model. *Annals of Statistics*, 6(2), 461-464.
+
+[88] Murphy, A. H. (1988). Skill scores based on the mean square error and their relationships to the correlation coefficient. *Monthly Weather Review*, 116(12), 2417-2424.
+
+[89] Kling, H., Fuchs, M., & Paulin, M. (2012). Runoff conditions in the upper Danube basin under an ensemble of climate change scenarios. *Journal of Hydrology*, 424-425, 264-277.
+
+---
+
+## Multivariate Analysis (Additional)
+
+[90] Anderson, T. W. (2003). *An Introduction to Multivariate Statistical Analysis* (3rd ed.). Wiley.
+
+[91] Kotz, S., Balakrishnan, N., & Johnson, N. L. (2000). *Continuous Multivariate Distributions, Volume 1: Models and Applications* (2nd ed.). Wiley.
+
+[92] Johnson, N. L., Kotz, S., & Balakrishnan, N. (1997). *Discrete Multivariate Distributions*. Wiley.
+
+[93] Tong, Y. L. (2012). *The Multivariate Normal Distribution*. Springer Science & Business Media.
+
+[94] Kotz, S., & Nadarajah, S. (2004). *Multivariate t Distributions and Their Applications*. Cambridge University Press.
+
+---
+
+## Goodness-of-Fit Tests (Additional)
+
+[95] Anderson, T. W., & Darling, D. A. (1954). A test of goodness of fit. *Journal of the American Statistical Association*, 49(268), 765-769.
+
+---
+
+## Uncertainty Analysis (Additional)
+
+[96] Efron, B. (1987). Better bootstrap confidence intervals. *Journal of the American Statistical Association*, 82(397), 171-185.
+
+[97] Davison, A. C., & Hinkley, D. V. (1997). *Bootstrap Methods and Their Application*. Cambridge University Press.
+
+---
+
+## MCMC and Bayesian Methods (Additional)
+
+[98] Roberts, G. O., Gelman, A., & Gilks, W. R. (1997). Weak convergence and optimal scaling of random walk Metropolis algorithms. *Annals of Applied Probability*, 7(1), 110-120.
+
+[99] Roberts, G. O., & Rosenthal, J. S. (2001). Optimal scaling for various Metropolis-Hastings algorithms. *Statistical Science*, 16(4), 351-367.
+
+[100] Betancourt, M. (2017). A conceptual introduction to Hamiltonian Monte Carlo. *arXiv preprint arXiv:1701.02434*.
+
+[101] Geyer, C. J. (1992). Practical Markov chain Monte Carlo. *Statistical Science*, 7(4), 473-483.
+
+[102] Flegal, J. M., Haran, M., & Jones, G. L. (2008). Markov chain Monte Carlo: Can we trust the third significant figure? *Statistical Science*, 23(2), 250-260.
+
+---
+
+## Machine Learning (Additional)
+
+[103] Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.). Springer.
+
+[104] Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data via the EM algorithm. *Journal of the Royal Statistical Society: Series B*, 39(1), 1-38.
+
+[105] Arthur, D., & Vassilvitskii, S. (2007). k-means++: The advantages of careful seeding. *Proceedings of the 18th Annual ACM-SIAM Symposium on Discrete Algorithms*, 1027-1035.

@@ -17,6 +17,20 @@ MCMC samplers:
 - How many independent samples do we have?
 - Is the warmup period sufficient?
 
+### Theoretical Foundation
+
+The theoretical justification for MCMC rests on the **ergodic theorem**: under regularity conditions (irreducibility, aperiodicity, positive recurrence), the time average of a function along the Markov chain converges to its expectation under the stationary distribution:
+
+```math
+\frac{1}{N}\sum_{t=1}^{N}f(\theta_t) \;\xrightarrow{\;a.s.\;}\; \mathbb{E}_\pi[f(\theta)] \quad \text{as } N \to \infty
+```
+
+where $\pi$ is the target (posterior) distribution. This guarantee is asymptotic -- for any finite $N$, we need diagnostics to assess whether we are close enough to this limit.
+
+**Burn-in (warmup)** refers to the initial transient phase where the chain has not yet reached the stationary distribution. Samples from this phase are drawn from a distribution that depends on the arbitrary starting point, not from $\pi$. Discarding these samples is essential for valid inference.
+
+**Mixing** describes how quickly the chain "forgets" its current state and explores the full support of $\pi$. A well-mixing chain has rapidly decaying autocorrelation -- the correlation between $\theta_t$ and $\theta_{t+k}$ diminishes quickly with lag $k$. Poorly mixing chains remain in local regions for long periods, producing highly correlated samples and requiring far more iterations to achieve reliable estimates.
+
 ## Gelman-Rubin Statistic (R̂)
 
 The Gelman-Rubin diagnostic compares within-chain and between-chain variance [[1]](#1). Values near 1.0 indicate convergence.
@@ -65,14 +79,60 @@ for (int i = 0; i < rHat.Length; i++)
 | R̂ ≥ 1.2 | Poor convergence | Investigate |
 
 **Formula:**
-```
-R̂ = √(Var_total / W)
 
-Where:
-- W = within-chain variance (average)
-- B = between-chain variance
-- Var_total = ((n-1)/n)W + (1/n)B
+```math
+\hat{R} = \sqrt{\frac{\hat{V}}{W}}
 ```
+Where $W$ is the mean within-chain variance, $B$ is the between-chain variance, and:
+```math
+\hat{V} = \frac{n-1}{n}W + \frac{1}{n}B
+```
+
+### Mathematical Derivation
+
+Consider $m$ chains, each of length $n$, sampling a scalar parameter $\theta$. Let $\theta_{jt}$ denote the $t$-th sample from chain $j$.
+
+**Step 1: Chain means and overall mean.** Compute the mean of each chain and the grand mean across all chains:
+
+```math
+\bar{\theta}_j = \frac{1}{n}\sum_{t=1}^{n}\theta_{jt}, \qquad \bar{\theta}_{..} = \frac{1}{m}\sum_{j=1}^{m}\bar{\theta}_j
+```
+
+**Step 2: Between-chain variance $B$.** This measures how much the chain means differ from each other. Large $B$ relative to the within-chain variability indicates that chains have not converged to the same distribution:
+
+```math
+B = \frac{n}{m-1}\sum_{j=1}^{m}\left(\bar{\theta}_j - \bar{\theta}_{..}\right)^2
+```
+
+The factor $n/(m-1)$ scales $B$ so that it estimates the variance of $\theta$ under stationarity (the scaling by $n$ converts from variance-of-means to variance-of-individual-draws).
+
+**Step 3: Within-chain variance $W$.** This is the average of the individual chain variances. Each chain's variance $s_j^2$ uses the Bessel-corrected estimator:
+
+```math
+s_j^2 = \frac{1}{n-1}\sum_{t=1}^{n}\left(\theta_{jt} - \bar{\theta}_j\right)^2
+```
+
+```math
+W = \frac{1}{m}\sum_{j=1}^{m}s_j^2
+```
+
+**Step 4: Pooled variance estimate.** The pooled estimate combines within-chain and between-chain information:
+
+```math
+\hat{V} = \frac{n-1}{n}\,W + \frac{1}{n}\,B
+```
+
+This is a weighted average that has a key property: $\hat{V}$ **overestimates** the true target variance when chains have not converged, because $B$ captures the additional spread from chains being in different regions. Meanwhile, $W$ **underestimates** the true target variance because each finite chain has only explored a portion of the full parameter space. At convergence, the between-chain contribution vanishes ($B/n \to 0$ relative to $W$), and $\hat{V} \to W$.
+
+**Step 5: The diagnostic ratio.** The potential scale reduction factor is:
+
+```math
+\hat{R} = \sqrt{\frac{\hat{V}}{W}}
+```
+
+Since $\hat{V} \geq W$ in general, we have $\hat{R} \geq 1$. At perfect convergence $\hat{R} = 1$; values substantially above 1 indicate that the chains have not mixed and further sampling is needed.
+
+**Split-$\hat{R}$.** Modern practice [[4]](#4) recommends splitting each chain in half before computing $\hat{R}$, which doubles the number of chains from $m$ to $2m$. This helps detect non-stationarity *within* individual chains -- for example, a chain that drifted during the first half but settled during the second half. The ***Numerics*** implementation does not perform split-$\hat{R}$ automatically; to use this approach, split each chain manually before passing them to `GelmanRubin()`.
 
 ### Common Causes of High R̂
 
@@ -142,13 +202,121 @@ else
 
 ### ESS Formula
 
+```math
+\text{ESS} = \frac{N}{1 + 2\sum_{k=1}^{K} \rho_k}
 ```
-ESS = N / (1 + 2·Σ ρ_k)
+where $N$ is the number of samples, $\rho_k$ is the autocorrelation at lag $k$, and the sum is truncated when $\rho_k$ becomes negligible.
 
-Where:
-- N = number of samples
-- ρ_k = autocorrelation at lag k
-- Sum until ρ_k becomes negligible
+### Mathematical Derivation
+
+The ESS formula arises from analyzing the variance of the sample mean of a correlated sequence. For a stationary process $\{\theta_1, \theta_2, \ldots, \theta_N\}$ with marginal variance $\sigma^2$ and autocorrelation function $\rho_k = \text{Corr}(\theta_t, \theta_{t+k})$, the variance of the sample mean $\bar{\theta} = \frac{1}{N}\sum_{t=1}^{N}\theta_t$ is:
+
+```math
+\text{Var}(\bar{\theta}) = \frac{\sigma^2}{N}\left(1 + 2\sum_{k=1}^{N-1}\left(1 - \frac{k}{N}\right)\rho_k\right)
+```
+
+For large $N$, the $(1 - k/N)$ correction becomes negligible for the lags that matter, and the expression simplifies to:
+
+```math
+\text{Var}(\bar{\theta}) \approx \frac{\sigma^2}{N}\left(1 + 2\sum_{k=1}^{\infty}\rho_k\right)
+```
+
+If the samples were independent, we would have $\rho_k = 0$ for all $k \geq 1$, giving $\text{Var}(\bar{\theta}) = \sigma^2/N$. The effective sample size is defined as the number of *independent* samples that would give the same variance for the sample mean:
+
+```math
+\frac{\sigma^2}{\text{ESS}} = \frac{\sigma^2}{N}\left(1 + 2\sum_{k=1}^{\infty}\rho_k\right)
+```
+
+Solving for ESS:
+
+```math
+\text{ESS} = \frac{N}{1 + 2\sum_{k=1}^{\infty}\rho_k}
+```
+
+The quantity $\tau = 1 + 2\sum_{k=1}^{\infty}\rho_k$ is called the **integrated autocorrelation time**. It represents how many MCMC iterations correspond to one independent draw: $\text{ESS} = N/\tau$.
+
+**Truncation strategy.** In practice, the infinite sum must be truncated. The ***Numerics*** implementation uses a simple truncation rule: the sum is cut off at the first lag $k$ where $\rho_k < 0$. This works because for a well-behaved MCMC chain, the autocorrelation function decays monotonically toward zero and oscillations below zero represent noise rather than genuine correlation.
+
+Geyer (1992) [[3]](#3) proposed a more robust alternative called the **initial positive sequence estimator**, which sums consecutive *pairs* of autocorrelations $(\rho_{2k} + \rho_{2k+1})$ and stops when a pair sum becomes negative. This approach is theoretically guaranteed to produce a non-negative variance estimate. The ***Numerics*** implementation uses the simpler first-negative truncation, which is adequate for chains with good mixing behavior.
+
+**Multi-chain ESS.** When $M$ chains of length $N$ are available, the implementation computes the autocorrelation sum $\rho_m$ for each chain $m$ separately, then averages across chains:
+
+```math
+\bar{\rho} = \frac{1}{M}\sum_{m=1}^{M}\rho_m \qquad \text{where} \quad \rho_m = \sum_{k=1}^{K_m}\hat{\rho}_k^{(m)}
+```
+
+Here $K_m$ is the truncation point for chain $m$ (the first lag at which the autocorrelation is negative). The total effective sample size is then:
+
+```math
+\text{ESS} = \frac{N \cdot M}{1 + 2\bar{\rho}}
+```
+
+This is capped at $N \cdot M$ (the total number of samples) since the effective sample size cannot exceed the actual number of draws.
+
+### ESS Requirements
+
+The minimum ESS needed depends on what posterior summary you are estimating:
+
+| Inference Goal | Minimum ESS | Rationale |
+|---------------|------------|-----------|
+| Posterior mean | 100 | MCSE is approximately 10% of posterior SD |
+| Posterior standard deviation | 200 | Variance estimation requires more samples than mean estimation |
+| 95% credible interval | 400 | Quantile estimation demands greater precision in the tails |
+| Tail probabilities (e.g., $P(\theta > c)$) | 1000+ | Extreme quantiles are estimated from sparse tail samples |
+
+These thresholds are guidelines, not strict rules. For life-safety applications, err on the side of larger ESS.
+
+### ESS per Second
+
+When comparing MCMC samplers, ESS alone is not sufficient -- the computational cost per iteration matters. The **ESS per second** metric accounts for this:
+
+```math
+\text{ESS/s} = \frac{\text{ESS}}{T_{\text{compute}}}
+```
+
+where $T_{\text{compute}}$ is the total wall-clock time for sampling. This metric is critical for sampler selection: Hamiltonian Monte Carlo (HMC) typically achieves higher ESS per iteration than Random Walk Metropolis-Hastings (RWMH) because HMC's proposals are guided by gradient information and produce less correlated samples. However, each HMC iteration requires evaluating the gradient of the log-posterior (and often multiple leapfrog steps), making it more expensive per iteration. The optimal sampler is the one that maximizes ESS/s for the problem at hand.
+
+## Monte Carlo Standard Error (MCSE)
+
+The Monte Carlo Standard Error quantifies the precision of posterior estimates due to finite sampling [[5]](#5). While the posterior standard deviation describes uncertainty about the parameter, the MCSE describes uncertainty about the *estimate itself*.
+
+### Formula
+
+For a posterior mean estimate $\bar{\theta}$ computed from MCMC output with posterior standard deviation $\text{SD}(\theta)$ and effective sample size ESS:
+
+```math
+\text{MCSE} = \frac{\text{SD}(\theta)}{\sqrt{\text{ESS}}}
+```
+
+This is the standard error of the Monte Carlo estimate of $\mathbb{E}_\pi[\theta]$. It tells you how much the posterior mean would vary if you repeated the entire MCMC run.
+
+### Interpretation
+
+A useful rule of thumb is that the MCSE should be less than 5% of the posterior standard deviation:
+
+```math
+\frac{\text{MCSE}}{\text{SD}(\theta)} = \frac{1}{\sqrt{\text{ESS}}} < 0.05 \quad \Longrightarrow \quad \text{ESS} > 400
+```
+
+This means your Monte Carlo error is small relative to the inherent posterior uncertainty. For life-safety applications, a more stringent threshold (e.g., MCSE/SD < 0.02, requiring ESS > 2500) may be appropriate.
+
+### Computing MCSE
+
+```cs
+// Compute MCSE from ESS and posterior standard deviation
+double[] values = samples.Select(s => s.Values[0]).ToArray();
+double sd = Statistics.StandardDeviation(values);
+double mcse = sd / Math.Sqrt(ess[0]);
+
+Console.WriteLine($"Posterior SD:    {sd:F6}");
+Console.WriteLine($"ESS:             {ess[0]:F0}");
+Console.WriteLine($"MCSE:            {mcse:F6}");
+Console.WriteLine($"MCSE/SD ratio:   {mcse / sd:P2}");
+
+if (mcse / sd > 0.05)
+    Console.WriteLine("⚠ MCSE is large relative to posterior SD - increase sampling");
+else
+    Console.WriteLine("✓ MCSE is acceptably small");
 ```
 
 ## Autocorrelation
@@ -165,8 +333,8 @@ Console.WriteLine("-----|------");
 
 for (int lag = 0; lag <= 20; lag += 5)
 {
-    // Access from avgACF[parameter][chain, lag]
-    double acf = avgACF[0][0, lag];  // Parameter 0, Chain 0
+    // Access from avgACF[parameter][lag, column] where column 1 has ACF values
+    double acf = avgACF[0][lag, 1];  // Parameter 0, average ACF at this lag
     Console.WriteLine($"{lag,4} | {acf,5:F3}");
 }
 
@@ -184,6 +352,22 @@ for (int lag = 0; lag <= 20; lag += 5)
 | > 0.6 | Poor mixing | ESS << 0.1N |
 
 ## Minimum Sample Size
+
+The Raftery-Lewis method provides a theoretical lower bound on the number of MCMC samples needed to estimate a particular posterior quantile with specified precision. Given a quantile of interest $q$, tolerance $r$, and desired probability $s$, the minimum sample size is:
+
+```math
+N_{\min} = \frac{q(1 - q)\left[z_{(1+s)/2}\right]^2}{r^2}
+```
+
+where $z_{(1+s)/2}$ is the standard normal quantile (inverse CDF) evaluated at $(1+s)/2$. This formula arises from the normal approximation to the binomial: the indicator $I(\theta \leq \theta_q)$ has variance $q(1-q)$ under the posterior, and $z_{(1+s)/2}$ ensures that the estimate falls within tolerance $r$ of the true quantile with probability $s$. The ***Numerics*** implementation rounds the result to the nearest hundred.
+
+For example, to estimate the 99th percentile ($q = 0.99$) within $\pm 0.01$ ($r = 0.01$) with 95% confidence ($s = 0.95$):
+
+```math
+N_{\min} = \frac{0.99 \times 0.01 \times (1.96)^2}{0.01^2} = \frac{0.0099 \times 3.8416}{0.0001} \approx 380
+```
+
+Note that this is a lower bound assuming independent samples. With autocorrelated MCMC output, the actual number of iterations needed is $N_{\min} \times \tau$, where $\tau$ is the integrated autocorrelation time ($\tau = N/\text{ESS}$).
 
 Determine required sample size for desired precision:
 
@@ -517,6 +701,12 @@ while (rhat.Max() > 1.05 || ess.Min() < 200)
 <a id="1">[1]</a> Gelman, A., & Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. *Statistical Science*, 7(4), 457-472.
 
 <a id="2">[2]</a> Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., & Rubin, D. B. (2013). *Bayesian Data Analysis* (3rd ed.). CRC Press.
+
+<a id="3">[3]</a> Geyer, C. J. (1992). Practical Markov chain Monte Carlo. *Statistical Science*, 7(4), 473-483.
+
+<a id="4">[4]</a> Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P.-C. (2021). Rank-normalization, folding, and localization: An improved R̂ for assessing convergence of MCMC. *Bayesian Analysis*, 16(2), 667-718.
+
+<a id="5">[5]</a> Flegal, J. M., Haran, M., & Jones, G. L. (2008). Markov chain Monte Carlo: Can we trust the third significant figure? *Statistical Science*, 23(2), 250-260.
 
 ---
 
