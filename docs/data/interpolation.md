@@ -1,6 +1,6 @@
 # Data and Interpolation
 
-[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Linear Regression →](regression.md)
+[← Previous: ODE Solvers](../mathematics/ode-solvers.md) | [Back to Index](../index.md) | [Next: Linear Regression →](regression.md)
 
 Interpolation is the process of estimating values between known data points. Given a set of $n$ data points $(x_1, y_1), (x_2, y_2), \ldots, (x_n, y_n)$, interpolation constructs a function $p(x)$ that passes through all the data points, i.e., $p(x_i) = y_i$ for all $i$. This is distinct from regression, which fits a function that approximates the data while minimizing some error criterion.
 
@@ -360,4 +360,4 @@ for (double t = 0; t <= 1; t += 0.2)
 
 ---
 
-[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Linear Regression →](regression.md)
+[← Previous: ODE Solvers](../mathematics/ode-solvers.md) | [Back to Index](../index.md) | [Next: Linear Regression →](regression.md)

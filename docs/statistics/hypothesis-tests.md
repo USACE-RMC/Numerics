@@ -1,6 +1,6 @@
 # Hypothesis Tests
 
-[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](../sampling/convergence-diagnostics.md)
+[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Univariate Distributions →](../distributions/univariate.md)
 
 Statistical hypothesis testing is a method of statistical inference used to decide whether observed data sufficiently support a particular hypothesis. The ***Numerics*** library provides a comprehensive set of hypothesis tests that return **p-values** for making statistical decisions. If the p-value is less than the chosen significance level (typically α = 0.05), the null hypothesis is rejected in favor of the alternative hypothesis.
 
@@ -574,4 +574,4 @@ For trend tests, the **Kendall's tau** correlation (which can be computed from t
 
 ---
 
-[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](../sampling/convergence-diagnostics.md)
+[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Univariate Distributions →](../distributions/univariate.md)

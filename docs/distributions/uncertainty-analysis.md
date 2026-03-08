@@ -6,18 +6,57 @@ Uncertainty analysis quantifies the confidence in estimated distribution paramet
 
 ## Bootstrap Analysis Overview
 
-Bootstrap resampling [[1]](#1) is a nonparametric method for estimating sampling distributions and confidence intervals. It works by:
+Bootstrap resampling [[1]](#1) is a powerful method for estimating sampling distributions and confidence intervals. The core idea is deceptively simple: rather than deriving the sampling distribution of an estimator analytically, approximate it empirically by repeatedly resampling and re-estimating.
 
-1. Resampling the original data with replacement
-2. Fitting the distribution to each bootstrap sample
-3. Computing statistics from the ensemble of fitted distributions
-4. Using percentiles of the bootstrap distribution for confidence intervals
+The ***Numerics*** library implements a **parametric bootstrap**, which generates new samples from the fitted distribution rather than resampling the original observations with replacement. This is the natural approach when working with fitted probability distributions, and is particularly effective for extreme value analysis where the fitted distribution captures tail behavior that the limited observed data cannot.
+
+### The Parametric Bootstrap Algorithm
+
+Given observed data $x_1, x_2, \ldots, x_n$ and a fitted distribution $\hat{F}$ with estimated parameters $\hat{\theta}$, the parametric bootstrap proceeds as follows:
+
+**Step 1.** Generate $B$ bootstrap samples, each of size $n$, by drawing from the fitted distribution:
+
+```math
+x^{*}_{b,1}, x^{*}_{b,2}, \ldots, x^{*}_{b,n} \sim \hat{F}(\hat{\theta}), \quad b = 1, 2, \ldots, B
+```
+
+**Step 2.** For each bootstrap sample $b$, re-estimate the distribution parameters using the same estimation method (e.g., L-moments, MLE) to obtain $\hat{\theta}^{*}_b$.
+
+**Step 3.** Compute the statistic of interest from each refitted distribution. For quantile estimation at non-exceedance probability $p$:
+
+```math
+\hat{Q}^{*}_b = \hat{F}^{-1}(p \mid \hat{\theta}^{*}_b), \quad b = 1, 2, \ldots, B
+```
+
+**Step 4.** The empirical distribution of $\{\hat{Q}^{*}_1, \hat{Q}^{*}_2, \ldots, \hat{Q}^{*}_B\}$ approximates the sampling distribution of the quantile estimator $\hat{Q}$.
+
+From this bootstrap distribution, we can compute several useful summaries. The **bootstrap standard error** is the sample standard deviation of the bootstrap replicates:
+
+```math
+\widehat{SE}_{boot} = \sqrt{\frac{1}{B-1}\sum_{b=1}^{B}\left(\hat{Q}^{*}_b - \bar{Q}^{*}\right)^2}
+```
+
+where $\bar{Q}^{*} = \frac{1}{B}\sum_{b=1}^{B}\hat{Q}^{*}_b$ is the mean of the bootstrap replicates. The **bootstrap estimate of bias** is:
+
+```math
+\widehat{bias} = \bar{Q}^{*} - \hat{Q}
+```
+
+where $\hat{Q}$ is the original point estimate from the parent distribution.
+
+### Why Parametric Bootstrap?
+
+The parametric bootstrap is preferred over the nonparametric bootstrap for flood frequency analysis and similar applications because:
+- It leverages the assumed distributional form to generate realistic samples, including plausible extreme values
+- It produces smoother confidence intervals in the tails where data are sparse
+- It naturally handles the small sample sizes typical of annual peak flow records
+- It maintains consistency with the fitted distribution model used for design
 
 The bootstrap is particularly valuable when:
-- Analytical confidence intervals are unavailable
-- Sample sizes are small to moderate
-- Distribution of estimators is unknown or complex
-- Dealing with extreme value distributions
+- Analytical confidence intervals are unavailable or intractable
+- Sample sizes are small to moderate (common in hydrology)
+- The sampling distribution of the estimator is unknown or complex
+- Dealing with extreme value distributions where tail uncertainty is critical
 
 ## Creating a Bootstrap Analysis
 
@@ -209,11 +248,19 @@ for (int j = 0; j < gev.NumberOfParameters; j++)
 
 ## Confidence Interval Methods
 
-The ***Numerics*** library provides multiple methods for computing bootstrap confidence intervals, each with different properties.
+The ***Numerics*** library provides five methods for computing bootstrap confidence intervals, each with different statistical properties. They range from simple (Percentile) to sophisticated (BCa, Bootstrap-t), trading off computational cost against accuracy of coverage. All methods construct a $(1-\alpha)\times 100\%$ confidence interval for a quantile $\hat{Q}$ at a given non-exceedance probability.
 
 ### 1. Percentile Method (Default)
 
-The simplest method - uses percentiles of the bootstrap distribution:
+The Percentile method [[1]](#1) is the simplest bootstrap confidence interval. It uses the quantiles of the bootstrap distribution directly as confidence limits:
+
+```math
+CI_{1-\alpha} = \left[\hat{Q}^{*}_{(\alpha/2)},\;\hat{Q}^{*}_{(1-\alpha/2)}\right]
+```
+
+where $\hat{Q}^{*}_{(p)}$ denotes the $p$-th percentile of the bootstrap distribution $\{\hat{Q}^{*}_1, \ldots, \hat{Q}^{*}_B\}$. For a 90% confidence interval ($\alpha = 0.1$), this takes the 5th and 95th percentiles of the bootstrap replicates.
+
+The Percentile method is intuitive and easy to implement, but it does **not** correct for bias or skewness in the bootstrap distribution. It works well when the bootstrap distribution is approximately symmetric and the estimator is approximately unbiased. This is the default method used by the `Estimate()` method.
 
 ```cs
 var bootstrap = new BootstrapAnalysis(gev, 
@@ -236,7 +283,29 @@ for (int i = 0; i < probabilities.Length; i++)
 
 ### 2. Bias-Corrected (BC) Method
 
-Corrects for bias in the bootstrap distribution:
+The Bias-Corrected (BC) method [[2]](#2) adjusts the percentiles used for the confidence interval to correct for median bias in the bootstrap distribution. If the estimator is biased, the simple Percentile method produces intervals that are shifted; the BC method fixes this.
+
+First, compute the bias-correction factor $z_0$, which measures how far the bootstrap distribution median is from the original estimate:
+
+```math
+z_0 = \Phi^{-1}\!\left(\frac{\#\{\hat{Q}^{*}_b \le \hat{Q}\}}{B + 1}\right)
+```
+
+where $\Phi^{-1}$ is the inverse of the standard Normal CDF, $\hat{Q}$ is the original point estimate, and the fraction counts the proportion of bootstrap replicates that fall at or below the original estimate. If the estimator is unbiased, approximately half the replicates will be below $\hat{Q}$, giving $z_0 \approx 0$.
+
+The adjusted percentiles for the confidence interval are:
+
+```math
+\alpha_1 = \Phi\!\left(2z_0 + z_{\alpha/2}\right), \quad \alpha_2 = \Phi\!\left(2z_0 + z_{1-\alpha/2}\right)
+```
+
+where $z_{\alpha/2} = \Phi^{-1}(\alpha/2)$ is the standard Normal quantile. The confidence interval is then:
+
+```math
+CI_{1-\alpha} = \left[\hat{Q}^{*}_{(\alpha_1)},\;\hat{Q}^{*}_{(\alpha_2)}\right]
+```
+
+When $z_0 = 0$ (no bias), this reduces to the standard Percentile method. The BC method is better than the Percentile method when the estimator has median bias, which is common for quantile estimators of skewed distributions.
 
 ```cs
 // Bias-corrected CI
@@ -251,7 +320,25 @@ for (int i = 0; i < probabilities.Length; i++)
 
 ### 3. Normal Approximation Method
 
-Assumes normal distribution for bootstrap statistics:
+The Normal method assumes the bootstrap distribution of the statistic is approximately Gaussian. In ***Numerics***, this method applies a cube-root transformation to improve normality before computing the interval, then back-transforms the result:
+
+```math
+\tilde{Q} = \hat{Q}^{1/3}, \quad \tilde{Q}^{*}_b = \left(\hat{Q}^{*}_b\right)^{1/3}
+```
+
+The bootstrap standard error is computed on the transformed scale:
+
+```math
+\widetilde{SE} = \sqrt{\frac{1}{B-1}\sum_{b=1}^{B}\left(\tilde{Q}^{*}_b - \bar{\tilde{Q}}^{*}\right)^2}
+```
+
+The confidence interval is constructed in the transformed space and back-transformed:
+
+```math
+CI_{1-\alpha} = \left[\left(\tilde{Q} + z_{\alpha/2}\cdot\widetilde{SE}\right)^3,\;\left(\tilde{Q} + z_{1-\alpha/2}\cdot\widetilde{SE}\right)^3\right]
+```
+
+where $z_{\alpha/2} = \Phi^{-1}(\alpha/2)$ is the standard Normal quantile. The cube-root transformation is a variance-stabilizing power transformation that makes the method approximately transformation-invariant, improving performance for skewed distributions common in hydrology.
 
 ```cs
 // Normal approximation CI
@@ -266,7 +353,27 @@ for (int i = 0; i < probabilities.Length; i++)
 
 ### 4. BCa (Bias-Corrected and Accelerated)
 
-The most accurate but computationally intensive method [[2]](#2):
+The BCa method [[2]](#2) extends the BC method by adding an **acceleration constant** $\hat{a}$ that corrects for skewness in the bootstrap distribution. This makes the BCa interval **second-order accurate** and **transformation-respecting** -- meaning it gives the same answer regardless of what monotone transformation is applied to the data.
+
+The bias-correction factor $z_0$ is computed the same way as in the BC method. The acceleration constant $\hat{a}$ is estimated using the jackknife. For each observation $i = 1, \ldots, n$, the distribution is re-estimated with that observation removed and the statistic is recomputed, yielding jackknife replicates $\hat{Q}_{(i)}$. The acceleration constant is:
+
+```math
+\hat{a} = \frac{\sum_{i=1}^{n}\left(\hat{Q} - \hat{Q}_{(i)}\right)^3}{6\left[\sum_{i=1}^{n}\left(\hat{Q} - \hat{Q}_{(i)}\right)^2\right]^{3/2}}
+```
+
+where $\hat{Q}$ is the original point estimate and $\hat{Q}_{(i)}$ is the estimate computed from the sample with observation $i$ removed. The acceleration constant measures the rate at which the standard error of $\hat{Q}$ changes as the true parameter value changes.
+
+The adjusted percentiles incorporate both bias correction and acceleration:
+
+```math
+\alpha_1 = \Phi\!\left(z_0 + \frac{z_0 + z_{\alpha/2}}{1 - \hat{a}(z_0 + z_{\alpha/2})}\right), \quad \alpha_2 = \Phi\!\left(z_0 + \frac{z_0 + z_{1-\alpha/2}}{1 - \hat{a}(z_0 + z_{1-\alpha/2})}\right)
+```
+
+The confidence interval is then $CI_{1-\alpha} = [\hat{Q}^{*}_{(\alpha_1)}, \hat{Q}^{*}_{(\alpha_2)}]$.
+
+When $\hat{a} = 0$, the BCa method reduces to the BC method. When both $z_0 = 0$ and $\hat{a} = 0$, it reduces to the Percentile method. The BCa method is the most accurate of the percentile-based methods, but it requires the original sample data and is computationally expensive due to the jackknife (which requires $n$ additional distribution fits).
+
+> **Note:** The `BCaQuantileCI` method requires the original sample data because it re-estimates the distribution parameters internally and performs the jackknife. This means it calls `Estimate()` on the distribution, which will update the distribution's parameters.
 
 ```cs
 // BCa method requires original sample data
@@ -284,7 +391,23 @@ for (int i = 0; i < probabilities.Length; i++)
 
 ### 5. Bootstrap-t Method
 
-Uses studentized bootstrap for improved coverage:
+The Bootstrap-t (studentized bootstrap) method [[3]](#3) is the bootstrap analog of the Student-t confidence interval. Rather than using percentiles of the bootstrap distribution directly, it constructs a pivotal quantity by standardizing each bootstrap replicate by its own standard error. This approach typically achieves the most accurate coverage for location-type parameters.
+
+Like the Normal method, ***Numerics*** applies a cube-root transformation for variance stabilization. For each bootstrap replicate $b$, the method computes both the transformed quantile estimate $\tilde{Q}^{*}_b = (\hat{Q}^{*}_b)^{1/3}$ and its standard error $\widetilde{SE}^{*}_b$ (estimated via an inner bootstrap of 300 replications). The studentized statistic is:
+
+```math
+t^{*}_b = \frac{\tilde{Q} - \tilde{Q}^{*}_b}{\widetilde{SE}^{*}_b}, \quad b = 1, \ldots, B
+```
+
+where $\tilde{Q} = \hat{Q}^{1/3}$ is the transformed original estimate. The confidence interval is constructed using the percentiles of the studentized distribution and the overall bootstrap standard error $\widetilde{SE}$:
+
+```math
+CI_{1-\alpha} = \left[\left(\tilde{Q} + t^{*}_{(\alpha/2)}\cdot\widetilde{SE}\right)^3,\;\left(\tilde{Q} + t^{*}_{(1-\alpha/2)}\cdot\widetilde{SE}\right)^3\right]
+```
+
+where $t^{*}_{(p)}$ is the $p$-th percentile of $\{t^{*}_1, \ldots, t^{*}_B\}$, and $\widetilde{SE}$ is the standard deviation of the transformed bootstrap replicates $\{\tilde{Q}^{*}_1, \ldots, \tilde{Q}^{*}_B\}$.
+
+The Bootstrap-t method is the most computationally expensive method because it requires a **double bootstrap**: each of the $B$ outer replications requires an inner bootstrap (300 replications by default) to estimate the standard error. However, it can provide the most accurate coverage probabilities for location parameters and is second-order accurate.
 
 ```cs
 // Bootstrap-t CI
@@ -679,6 +802,53 @@ foreach (var n in new[] { 10, 20, 50, 100 })
 3. **Not checking convergence** - Monitor failed replications
 4. **Ignoring small sample bias** - Bootstrap can't fix fundamental data limitations
 5. **Overinterpreting precision** - CI width reflects sampling uncertainty only
+
+## Rules of Thumb for Number of Replications
+
+The number of bootstrap replications $B$ directly affects the stability and precision of the results. The following guidelines apply:
+
+| Purpose | Minimum $B$ | Recommended $B$ |
+|---|---|---|
+| Standard error estimation | 200 | 1,000 |
+| Confidence intervals | 1,000 | 10,000 |
+| Precise CI endpoints | 5,000 | 20,000--50,000 |
+| Extreme quantiles (99th percentile and beyond) | 10,000 | 50,000+ |
+
+For life-safety applications, use at least 10,000 replications for confidence intervals and verify convergence by comparing results at different replication counts. The ***Numerics*** library enforces a minimum of 100 replications and a minimum sample size of 10.
+
+## When Bootstrap Fails
+
+The bootstrap is not a universal solution. Practitioners working on safety-critical projects must be aware of these limitations:
+
+- **Very small samples ($n < 15$):** The bootstrap distribution is a poor approximation of the true sampling distribution because the fitted parametric model may itself be unreliable. Confidence intervals will be too narrow (overly optimistic). The ***Numerics*** library enforces $n \ge 10$.
+
+- **Heavy-tailed distributions:** When the underlying distribution has very heavy tails (e.g., GEV with large positive shape parameter), the bootstrap variance estimate can itself be highly variable. More replications are needed, and results should be interpreted cautiously.
+
+- **Dependent data:** The standard parametric bootstrap assumes that observations are independent and identically distributed (i.i.d.). For time series data with serial correlation, the bootstrap underestimates uncertainty. Block bootstrap or other specialized methods are needed for dependent data.
+
+- **Parameters near boundary of parameter space:** If the true parameter lies on or near the boundary of the parameter space (e.g., shape parameter near zero for GEV), the bootstrap distribution may be inconsistent. Some bootstrap replications may fail to converge, which is why the library allows up to 20 retries per replication.
+
+- **Model misspecification:** The parametric bootstrap inherits any bias from the assumed distributional form. If the wrong distribution family is used, the bootstrap confidence intervals may have poor coverage even with large $B$.
+
+## Confidence Interval Method Selection Guide
+
+Choosing the right confidence interval method involves balancing accuracy against computational cost:
+
+| Method | Strengths | Weaknesses | Best For |
+|---|---|---|---|
+| **Percentile** | Simplest, fastest | No bias/skewness correction | Quick estimates; symmetric, unbiased cases |
+| **Normal** | Simple, uses cube-root transform | Assumes approximate normality | Distributions with near-Normal quantile estimators |
+| **Bias-Corrected (BC)** | Corrects for median bias | Does not correct for skewness | Moderately biased estimators |
+| **BCa** | Second-order accurate; handles bias and skewness | Expensive (jackknife); needs original data | Best general-purpose accuracy |
+| **Bootstrap-t** | Most accurate for location parameters; second-order accurate | Most expensive (double bootstrap) | Location parameters; when coverage accuracy is critical |
+
+**Practical recommendations:**
+
+- For **routine analyses**, the Percentile method (default) is adequate and fastest.
+- For **design-level analyses**, use BC or BCa for improved accuracy.
+- For **critical infrastructure** where confidence interval coverage must be precise, consider BCa or Bootstrap-t with $B \ge 20{,}000$.
+- When **computational cost matters**, the Normal method offers a good balance of speed and accuracy through its cube-root variance-stabilizing transform.
+- When in doubt, **compare methods**: if all five methods give similar intervals, any method is adequate. If they disagree substantially, the BCa or Bootstrap-t results should be preferred.
 
 ---
 

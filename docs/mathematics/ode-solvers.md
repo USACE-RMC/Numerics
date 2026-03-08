@@ -1,6 +1,6 @@
 # ODE Solvers
 
-[← Previous: Special Functions](special-functions.md) | [Back to Index](../index.md) | [Next: Hypothesis Tests →](../statistics/hypothesis-tests.md)
+[← Previous: Special Functions](special-functions.md) | [Back to Index](../index.md) | [Next: Interpolation →](../data/interpolation.md)
 
 An ordinary differential equation (ODE) relates a function to its derivatives. The general **initial value problem** has the form:
 
@@ -467,4 +467,4 @@ for (int i = 0; i < steps; i += 100)
 
 ---
 
-[← Previous: Special Functions](special-functions.md) | [Back to Index](../index.md) | [Next: Hypothesis Tests →](../statistics/hypothesis-tests.md)
+[← Previous: Special Functions](special-functions.md) | [Back to Index](../index.md) | [Next: Interpolation →](../data/interpolation.md)

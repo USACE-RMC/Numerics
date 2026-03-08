@@ -1,6 +1,6 @@
 # Numerical Integration
 
-[← Back to Index](../index.md) | [Next: Numerical Differentiation →](differentiation.md)
+[← Previous: Getting Started](../getting-started.md) | [Back to Index](../index.md) | [Next: Numerical Differentiation →](differentiation.md)
 
 Numerical integration, also known as numerical quadrature, is a fundamental technique for approximating definite integrals. It has wide-ranging applications in various scientific and engineering fields. For example, in statistics, the expected value of a random variable is calculated using an integral, and numerical integration can be employed to approximate this expected value. Many problems in engineering and physics cannot be solved analytically and must rely on numerical methods to approximate solutions.
 
@@ -614,4 +614,4 @@ This method adjusts the internal parameters to better handle integrands with ver
 
 ---
 
-[← Back to Index](../index.md) | [Next: Numerical Differentiation →](differentiation.md)
+[← Previous: Getting Started](../getting-started.md) | [Back to Index](../index.md) | [Next: Numerical Differentiation →](differentiation.md)

@@ -1,6 +1,6 @@
 # MCMC Sampling
 
-[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)
+[← Previous: Random Generation](random-generation.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)
 
 Markov Chain Monte Carlo (MCMC) methods sample from complex posterior distributions that are difficult to sample directly. The ***Numerics*** library provides multiple MCMC samplers for Bayesian inference, uncertainty quantification, and parameter estimation with full posterior distributions [[1]](#1).
 
@@ -15,6 +15,58 @@ Markov Chain Monte Carlo (MCMC) methods sample from complex posterior distributi
 | **HMC** | Hamiltonian Monte Carlo | Smooth posteriors | Uses gradient information |
 | **NUTS** | No-U-Turn Sampler | General smooth posteriors | Auto-tuning HMC |
 | **Gibbs** | Gibbs Sampler | Conditional distributions available | No rejections |
+
+## MCMC Fundamentals
+
+Before using any specific sampler, it helps to understand the core theory that underpins all MCMC methods.
+
+### Target Distribution
+
+The goal of MCMC is to draw samples from a posterior distribution that is known only up to a normalizing constant. By Bayes' theorem, the posterior is proportional to the product of the prior and the likelihood:
+
+```math
+\pi(\theta \mid y) \propto \pi(\theta) \cdot L(y \mid \theta)
+```
+
+Taking the logarithm, which is how the Numerics library works internally:
+
+```math
+\log \pi(\theta \mid y) = \log \pi(\theta) + \log L(y \mid \theta) + \text{const}
+```
+
+The `LogLikelihoodFunction` delegate in Numerics should return the sum $\log \pi(\theta) + \log L(y \mid \theta)$, i.e., the unnormalized log-posterior.
+
+### Detailed Balance
+
+A Markov chain with transition kernel $T(\theta \to \theta')$ satisfies **detailed balance** with respect to $\pi$ if:
+
+```math
+\pi(\theta) \, T(\theta \to \theta') = \pi(\theta') \, T(\theta' \to \theta)
+```
+
+This reversibility condition guarantees that $\pi$ is a stationary distribution of the chain. All Metropolis-Hastings-based samplers in Numerics (RWMH, ARWMH, DEMCz, HMC, NUTS) enforce detailed balance through the accept/reject step, while Gibbs sampling satisfies it by construction when sampling from exact conditional distributions.
+
+### Ergodicity
+
+For the chain to converge to the target distribution regardless of its starting point, it must be **ergodic** -- meaning it is irreducible (can reach any region of positive probability) and aperiodic (does not cycle deterministically). In practice, ergodicity requires that the proposal distribution has support that covers the full posterior. The ARWMH sampler explicitly ensures ergodicity by mixing in a small identity-covariance proposal with probability $\beta$.
+
+### Mixing
+
+Mixing describes how quickly the chain "forgets" its starting point and produces effectively independent samples. Good mixing means low autocorrelation between successive states. Gradient-based samplers (HMC, NUTS) typically mix much faster than random-walk samplers because they follow the geometry of the posterior rather than exploring by diffusion. The **effective sample size (ESS)** quantifies mixing: a well-mixing chain has ESS close to the actual number of post-warmup samples.
+
+### Acceptance Rate Guidelines
+
+The acceptance rate is the fraction of proposed moves that are accepted. Acceptance rates that are too high indicate overly timid proposals (small steps), while rates that are too low mean the proposals are too aggressive. The following table summarizes established optimal acceptance rates from the literature:
+
+| Sampler | Optimal Acceptance Rate | Reference |
+|---------|------------------------|-----------|
+| RWMH ($d = 1$) | ~44% | Roberts et al. (1997) [[7]](#7) |
+| RWMH ($d \to \infty$) | ~23.4% | Roberts et al. (1997) [[7]](#7) |
+| HMC | ~65% | Neal (2011) [[5]](#5) |
+| NUTS | ~80% (target $\delta$) | Hoffman & Gelman (2014) [[6]](#6) |
+| DEMCz | Varies by dimension | ter Braak & Vrugt (2008) [[4]](#4) |
+
+These are rules of thumb. In practice, monitor the acceptance rates reported by `MCMCResults.AcceptanceRates` and adjust sampler settings if rates fall outside the expected range.
 
 ## Common MCMC Interface
 
@@ -107,7 +159,37 @@ This gives the log-posterior: `log(p(θ|data)) ∝ log(p(θ)) + log(p(data|θ))`
 
 ## Random Walk Metropolis-Hastings (RWMH)
 
-The simplest and most robust MCMC algorithm [[2]](#2):
+The simplest and most robust MCMC algorithm [[2]](#2).
+
+### Mathematical Foundation
+
+At each iteration, the Metropolis-Hastings algorithm proposes a new state $\theta^*$ from a proposal distribution $q(\theta^* \mid \theta)$ and accepts it with probability:
+
+```math
+\alpha(\theta^* \mid \theta) = \min\left(1, \frac{\pi(\theta^*) \cdot q(\theta \mid \theta^*)}{\pi(\theta) \cdot q(\theta^* \mid \theta)}\right)
+```
+
+In the RWMH implementation (`RWMH.cs`), the proposal is a symmetric multivariate normal centered at the current state:
+
+```math
+\theta^* \sim \mathcal{N}(\theta, \Sigma)
+```
+
+Because the proposal is symmetric -- $q(\theta^* \mid \theta) = q(\theta \mid \theta^*)$ -- the proposal densities cancel in the acceptance ratio, simplifying to:
+
+```math
+\alpha = \min\left(1, \frac{\pi(\theta^*)}{\pi(\theta)}\right)
+```
+
+In log space, which is how the source code computes it:
+
+```math
+\log \alpha = \log \pi(\theta^*) - \log \pi(\theta)
+```
+
+The proposal is accepted if $\log U \leq \log \alpha$, where $U \sim \text{Uniform}(0,1)$. If any proposed parameter falls outside its prior bounds, the proposal is immediately rejected without evaluating the log-likelihood.
+
+The proposal covariance matrix $\Sigma$ must be provided by the user. A common starting point is a scaled identity matrix, but better performance is achieved when $\Sigma$ approximates the shape of the posterior (e.g., from a preliminary optimization).
 
 ```cs
 using Numerics.Sampling.MCMC;
@@ -161,7 +243,35 @@ for (int i = 0; i < priors.Count; i++)
 
 ## Adaptive Random Walk M-H (ARWMH)
 
-ARWMH automatically tunes the proposal distribution during warmup [[3]](#3):
+ARWMH automatically tunes the proposal distribution during warmup [[3]](#3).
+
+### Mathematical Foundation
+
+The key idea behind adaptive MCMC is to learn the proposal covariance from the chain's own history, eliminating the need for manual tuning [[8]](#8). The optimal scaling theory of Roberts and Rosenthal (2001) shows that for Gaussian targets in $d$ dimensions, the optimal proposal covariance is:
+
+```math
+\Sigma_{\text{opt}} = \frac{2.38^2}{d} \, \Sigma_{\text{target}}
+```
+
+where $\Sigma_{\text{target}}$ is the covariance of the target distribution. Since the target covariance is unknown, ARWMH estimates it online from the chain history.
+
+In the Numerics implementation (`ARWMH.cs`), the proposal at iteration $t$ uses a mixture:
+
+```math
+\theta^* \sim \begin{cases} \mathcal{N}\!\left(\theta, \, \frac{0.1^2}{d} \, I_d\right) & \text{with probability } \beta \\ \mathcal{N}\!\left(\theta, \, \frac{2.38^2}{d} \, \hat{\Sigma}_t\right) & \text{with probability } 1-\beta \end{cases}
+```
+
+where:
+
+- $d$ is the number of parameters (`NumberOfParameters`)
+- $\beta = 0.05$ by default (the `Beta` property)
+- $\hat{\Sigma}_t$ is the empirical covariance matrix computed as a running covariance of accepted samples (and current states after warmup)
+- $I_d$ is the $d$-dimensional identity matrix
+- The scale factor $s = 2.38^2/d$ is the `Scale` property
+
+The small identity component (used with probability $\beta$, and also for the first $100 \times d$ samples) ensures **ergodicity**: even if the adaptive covariance estimate is poor, the chain can still reach any region of the parameter space.
+
+The acceptance criterion is identical to RWMH -- since both proposal components are symmetric multivariate normals centered at $\theta$, the Hastings ratio simplifies to the posterior ratio.
 
 ```cs
 var arwmh = new ARWMH(priors, logLikelihood);
@@ -195,7 +305,32 @@ Console.WriteLine("ARWMH automatically tuned proposal during warmup");
 
 ## Differential Evolution MCMC (DEMCz)
 
-Population-based sampler using differential evolution [[4]](#4):
+Population-based sampler using differential evolution [[4]](#4).
+
+### Mathematical Foundation
+
+DEMCz combines differential evolution (DE) with MCMC by using a population of chains and a history of past states to generate proposals. The mutation formula from the source code (`DEMCz.cs`) is:
+
+```math
+\theta^*_i = \theta_i + \gamma \, (z_{R_1} - z_{R_2}) + e
+```
+
+where:
+
+- $\gamma = 2.38 / \sqrt{2d}$ is the default jump rate (`Jump` property), with $d$ the number of parameters
+- $z_{R_1}$ and $z_{R_2}$ are two randomly selected states from the **population matrix** (a memory of past states from all chains)
+- $e \sim \mathcal{N}(0, b^2)$ is a small noise perturbation with default $b = 10^{-3}$ (`Noise` property)
+- $R_1$ and $R_2$ are drawn uniformly without replacement from $\{1, 2, \ldots, M\}$, where $M$ is the current size of the population matrix
+
+The proposal is accepted using the standard Metropolis ratio in log space:
+
+```math
+\log \alpha = \log \pi(\theta^*) - \log \pi(\theta)
+```
+
+To enable **mode-jumping** in multimodal posteriors, the jump rate $\gamma$ is set to $1.0$ with probability equal to `JumpThreshold` (default 0.1). When $\gamma = 1$, the proposal jumps the full difference between two past states, which can bridge gaps between separated modes.
+
+The key insight of DEMCz is that the population matrix $Z$ serves as a memory of past states from **all** chains, providing a rich set of difference vectors for generating proposals. This eliminates the need for a manually specified proposal covariance matrix -- the population automatically learns the scale and orientation of the posterior.
 
 ```cs
 var demcz = new DEMCz(priors, logLikelihood);
@@ -246,7 +381,48 @@ demczs.Sample();
 
 ## Hamiltonian Monte Carlo (HMC)
 
-Uses gradient information for efficient sampling [[5]](#5):
+Uses gradient information for efficient sampling [[5]](#5) [[9]](#9).
+
+### Mathematical Foundation
+
+HMC augments the parameter space with auxiliary momentum variables $\phi$ and simulates Hamiltonian dynamics to generate distant, high-quality proposals. The Hamiltonian is defined as:
+
+```math
+H(\theta, \phi) = U(\theta) + K(\phi) = -\log \pi(\theta) + \frac{1}{2} \phi^T M^{-1} \phi
+```
+
+where $U(\theta) = -\log \pi(\theta)$ is the **potential energy** (negative log-posterior) and $K(\phi)$ is the **kinetic energy**. The mass matrix $M$ is diagonal in the Numerics implementation (the `Mass` vector property).
+
+Hamilton's equations of motion govern the dynamics:
+
+```math
+\frac{d\theta}{dt} = \frac{\partial H}{\partial \phi} = M^{-1}\phi, \qquad \frac{d\phi}{dt} = -\frac{\partial H}{\partial \theta} = \nabla \log \pi(\theta)
+```
+
+These continuous dynamics are approximated using the **leapfrog integrator**, as implemented in `HMC.cs`:
+
+1. Half-step momentum: $\phi \leftarrow \phi + \frac{\varepsilon}{2} \nabla \log \pi(\theta)$
+2. Full-step position: $\theta \leftarrow \theta + \varepsilon \, M^{-1} \phi$
+3. Half-step momentum: $\phi \leftarrow \phi + \frac{\varepsilon}{2} \nabla \log \pi(\theta)$
+
+Steps 2-3 are repeated for $L$ leapfrog steps. After the trajectory, a Metropolis correction accounts for numerical integration error:
+
+```math
+\alpha = \min\left(1, \exp\!\left(-H(\theta^*, \phi^*) + H(\theta, \phi)\right)\right)
+```
+
+In log space, the source code computes this as:
+
+```math
+\log \alpha = \left[\log \pi(\theta^*) - \frac{1}{2}\phi^{*T} M^{-1} \phi^*\right] - \left[\log \pi(\theta) - \frac{1}{2}\phi^T M^{-1} \phi\right]
+```
+
+**Implementation details from `HMC.cs`:**
+
+- The step size $\varepsilon$ is **jittered**: each iteration draws $\varepsilon \sim \text{Uniform}(0, \, 2\varepsilon_0)$ where $\varepsilon_0$ is the `StepSize` property. This avoids resonant trajectories.
+- The number of leapfrog steps $L$ is **jittered**: each iteration draws $L \sim \text{UniformDiscrete}(1, \, 2L_0)$ where $L_0$ is the `Steps` property.
+- The mass vector $M$ is diagonal (default: identity). Users can set it via the `mass` constructor parameter.
+- If no gradient function is provided, numerical finite differences are used via `NumericalDerivative.Gradient`, with probes clamped to prior bounds.
 
 ```cs
 var hmc = new HMC(priors, logLikelihood);
@@ -282,7 +458,64 @@ Console.WriteLine($"Generated {samples.Count} high-quality samples");
 
 ## No-U-Turn Sampler (NUTS)
 
-NUTS automatically tunes the trajectory length that HMC requires as a manual setting, making it the recommended gradient-based sampler for most problems [[6]](#6):
+NUTS automatically tunes the trajectory length that HMC requires as a manual setting, making it the recommended gradient-based sampler for most problems [[6]](#6).
+
+### Mathematical Foundation
+
+NUTS eliminates HMC's most sensitive tuning parameter -- the number of leapfrog steps $L$ -- by automatically determining when to stop the trajectory. It builds a balanced binary tree of leapfrog states using the following procedure:
+
+1. Sample momentum $\phi \sim \mathcal{N}(0, M)$
+2. Recursively double the trajectory in a randomly chosen direction (forward or backward)
+3. Stop when a **U-turn** is detected or the maximum tree depth is reached
+
+The **U-turn criterion** (from `NUTS.cs`) checks whether the trajectory endpoints are moving apart or starting to return:
+
+```math
+(\theta^+ - \theta^-) \cdot \phi^- < 0 \quad \text{or} \quad (\theta^+ - \theta^-) \cdot \phi^+ < 0
+```
+
+where $\theta^+$ and $\theta^-$ are the forward and backward endpoints of the trajectory, and $\phi^+$ and $\phi^-$ are their corresponding momenta. When either dot product is negative, the trajectory has started to curve back on itself.
+
+**Candidate selection** uses multinomial sampling weighted by $\exp(-H)$:
+
+```math
+P(\text{select } \theta_j) = \frac{\exp(-H(\theta_j, \phi_j))}{\sum_k \exp(-H(\theta_k, \phi_k))}
+```
+
+This is implemented via log-sum-exp arithmetic for numerical stability.
+
+**Step size adaptation** uses the dual averaging scheme from Hoffman and Gelman (2014), Algorithm 5. The running statistic $\bar{H}_m$ is updated at each adaptation step $m$:
+
+```math
+\bar{H}_m = \left(1 - \frac{1}{m + t_0}\right)\bar{H}_{m-1} + \frac{1}{m + t_0}(\delta - \alpha_m)
+```
+
+```math
+\log \varepsilon_m = \mu - \frac{\sqrt{m}}{\gamma}\bar{H}_m
+```
+
+where:
+
+- $\delta = 0.80$ is the target acceptance rate (`DELTA_TARGET`)
+- $\gamma = 0.05$ is the adaptation regularization (`GAMMA`)
+- $t_0 = 10$ prevents early instability (`T0`)
+- $\mu = \log(10 \cdot \varepsilon_0)$ is the bias point, with $\varepsilon_0$ the initial step size
+- $\alpha_m$ is the average Metropolis acceptance probability from the current tree
+
+The smoothed step size uses an exponential moving average with decay exponent $\kappa = 0.75$:
+
+```math
+\log \bar{\varepsilon}_m = m^{-\kappa} \log \varepsilon_m + (1 - m^{-\kappa}) \log \bar{\varepsilon}_{m-1}
+```
+
+After warmup, the step size is fixed to $\exp(\log \bar{\varepsilon})$.
+
+**Implementation details from `NUTS.cs`:**
+
+- `MaxTreeDepth` defaults to 10, capping trajectories at $2^{10} = 1024$ leapfrog steps
+- Divergence threshold: if $H - H_0 > 1000$, the trajectory is considered divergent and tree-building stops
+- NUTS always accepts a candidate from the tree (acceptance is built into the multinomial weighting), so `AcceptCount` increments every iteration
+- Step size adaptation occurs only during the warmup phase, with step sizes clamped to $[10^{-10}, \, 10^{5}]$
 
 ```cs
 var nuts = new NUTS(priors, logLikelihood);
@@ -323,6 +556,20 @@ Console.WriteLine($"Parameter 0 - Median: {results.ParameterResults[0].SummarySt
 - `gradientFunction`: Optional analytical gradient, provided as a constructor parameter only (not a settable property). If not provided, numerical finite differences are used.
 
 ## Gibbs Sampler
+
+### Mathematical Foundation
+
+The Gibbs sampler updates each parameter in turn by sampling from its **full conditional distribution** -- the distribution of one parameter given all the others and the data:
+
+```math
+\theta_j^{(t+1)} \sim p\!\left(\theta_j \mid \theta_1^{(t+1)}, \ldots, \theta_{j-1}^{(t+1)}, \theta_{j+1}^{(t)}, \ldots, \theta_d^{(t)}, y\right)
+```
+
+The key property is that **there is no rejection step** -- every proposed sample is accepted. This makes Gibbs sampling highly efficient when the conditional distributions are available in closed form (e.g., conjugate prior-likelihood pairs).
+
+In the Numerics implementation (`Gibbs.cs`), the user provides a `Proposal` delegate with the signature `double[] Proposal(double[] parameters, Random prng)`. This delegate takes the current parameter vector and a pseudo-random number generator, and returns a new parameter vector sampled from the conditional distributions. The sampler always accepts the returned values (no Metropolis step).
+
+Default settings differ from other samplers: the Gibbs sampler uses 1 chain, no thinning (`ThinningInterval = 1`), minimal warmup (`WarmupIterations = 1`), and 100,000 iterations with an output buffer of 10,000 samples.
 
 Samples each parameter conditionally given others:
 
@@ -667,6 +914,32 @@ sampler.Iterations = 5000;           // Kept samples
 - **NUTS**: 1000-2000 (step size adapts during warmup)
 - **Rule of thumb**: Warmup ≥ 50% of main iterations
 
+## Algorithm Selection Guide
+
+Use the following decision tree to choose the most appropriate sampler for your problem:
+
+```
+Do you have gradient information (or a smooth, differentiable log-posterior)?
+├── YES: Use NUTS (auto-tunes trajectory length)
+│   └── If NUTS is too slow per iteration: Try HMC with manually tuned ε, L
+├── NO: How many parameters?
+│   ├── d ≤ 5: ARWMH (simple, robust, self-tuning)
+│   ├── 5 < d ≤ 20: ARWMH or DEMCz
+│   │   └── Multimodal posterior? → DEMCz (population-based exploration)
+│   └── d > 20: DEMCz or DEMCzs
+│       └── Very high dimensions → DEMCzs (snooker update for better mixing)
+└── Conjugate model with known conditional distributions?
+    └── YES: Gibbs (no rejections, maximum efficiency)
+```
+
+**Key trade-offs:**
+
+- **RWMH** is the simplest algorithm and a useful baseline, but requires manual proposal tuning. Use it when you want full control or need a reference sampler.
+- **ARWMH** is the recommended default for most problems without gradients. It eliminates manual tuning and adapts to posterior correlations automatically.
+- **DEMCz / DEMCzs** excel at high-dimensional and multimodal problems. They require more chains (minimum 3, typically 10+) but need no proposal covariance specification.
+- **HMC / NUTS** provide the best mixing per sample for smooth posteriors, but require gradient computation (analytical or numerical). NUTS is preferred over HMC because it eliminates manual trajectory-length tuning.
+- **Gibbs** is maximally efficient when exact conditional distributions are available, but its applicability is limited to conjugate or conditionally tractable models.
+
 ## Best Practices
 
 ### 1. Always Check Convergence
@@ -822,6 +1095,12 @@ snisIS.Sample();
 
 <a id="6">[6]</a> Hoffman, M. D., & Gelman, A. (2014). The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. *Journal of Machine Learning Research*, 15(47), 1593-1623.
 
+<a id="7">[7]</a> Roberts, G. O., Gelman, A., & Gilks, W. R. (1997). Weak convergence and optimal scaling of random walk Metropolis algorithms. *Annals of Applied Probability*, 7(1), 110-120.
+
+<a id="8">[8]</a> Roberts, G. O., & Rosenthal, J. S. (2001). Optimal scaling for various Metropolis-Hastings algorithms. *Statistical Science*, 16(4), 351-367.
+
+<a id="9">[9]</a> Betancourt, M. (2017). A conceptual introduction to Hamiltonian Monte Carlo. *arXiv preprint arXiv:1701.02434*.
+
 ---
 
-[← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)
+[← Previous: Random Generation](random-generation.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](convergence-diagnostics.md)

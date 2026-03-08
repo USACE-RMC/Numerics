@@ -93,14 +93,103 @@ Console.WriteLine($"Verification: f({root}) = {f(root):E3}");
 
 ## Brent's Method
 
-Brent's method combines the robustness of bisection with the speed of secant and inverse quadratic interpolation [[2]](#2). It's generally the best general-purpose root finder.
+Brent's method is the recommended general-purpose root-finding algorithm in the ***Numerics*** library. It combines the guaranteed convergence of bisection with the speed of the secant method and inverse quadratic interpolation, automatically switching between these strategies to achieve robust, fast convergence without requiring derivatives [[2]](#2) [[3]](#3). For the vast majority of root-finding problems, Brent's method should be the first method you reach for.
 
-### Algorithm
+### Mathematical Description
 
-The method maintains a bracketing interval and uses:
-- **Inverse quadratic interpolation** when three points are available
-- **Secant method** when two points are available
-- **Bisection** as a fallback to guarantee convergence
+Brent's method maintains a bracketing interval $[a, b]$ such that $f(a)$ and $f(b)$ have opposite signs, guaranteeing that a root exists within the interval by the Intermediate Value Theorem. At each iteration, it selects one of three strategies to propose the next approximation:
+
+**Bisection.** The simplest strategy: take the midpoint of the current bracket.
+
+```math
+x_{\text{bisect}} = \frac{a + b}{2}
+```
+
+Bisection reduces the bracket by exactly half at each step, giving linear convergence with error bound $|e_n| \leq (b - a) / 2^n$. It is slow but absolutely reliable.
+
+**Secant method.** When only two distinct points are available (i.e., the previous contrapoint $a$ equals the older contrapoint $c$), the algorithm uses the secant formula, which fits a line through the two most recent function values and finds where it crosses zero:
+
+```math
+x_{\text{secant}} = b - f(b) \cdot \frac{b - a}{f(b) - f(a)}
+```
+
+The secant method converges superlinearly with order approximately $\varphi \approx 1.618$ (the golden ratio) for well-behaved functions.
+
+**Inverse quadratic interpolation (IQI).** When three distinct points $a$, $b$, $c$ with distinct function values are available, the algorithm fits an inverse quadratic (a parabola through the three points with $x$ as a function of $y$) and evaluates it at $y = 0$:
+
+```math
+x_{\text{IQI}} = \frac{f_b f_c \cdot a}{(f_a - f_b)(f_a - f_c)} + \frac{f_a f_c \cdot b}{(f_b - f_a)(f_b - f_c)} + \frac{f_a f_b \cdot c}{(f_c - f_a)(f_c - f_b)}
+```
+
+where $f_a = f(a)$, $f_b = f(b)$, $f_c = f(c)$. IQI can converge even faster than the secant method when the function is smooth and the iterates are close to the root.
+
+### How It Works: The Decision Logic
+
+The power of Brent's method lies in how it decides which strategy to use at each step. The algorithm follows a specific decision procedure that ensures it never loses the safety of bisection while taking faster steps whenever possible. Here is the logic as implemented in the ***Numerics*** library:
+
+1. **Maintain the bracket.** The algorithm tracks three points: $b$ (the current best estimate, where $|f(b)|$ is smallest), $a$ (the previous iterate), and $c$ (the contrapoint such that $f(b)$ and $f(c)$ have opposite signs). If $f(b)$ and $f(c)$ have the same sign, the contrapoint is reset to $a$.
+
+2. **Compute the midpoint and tolerance.** At each step, compute:
+
+```math
+x_m = \frac{c - b}{2}, \qquad \text{tol}_1 = 2 \varepsilon_{\text{mach}} |b| + \frac{\text{tol}}{2}
+```
+
+where $\varepsilon_{\text{mach}}$ is machine epsilon and $\text{tol}$ is the user-specified tolerance. If $|x_m| \leq \text{tol}_1$ or $f(b) = 0$, the root has been found.
+
+3. **Try a fast step.** If the previous step $e$ was large enough ($|e| \geq \text{tol}_1$) and $b$ is improving ($|f(a)| > |f(b)|$), then attempt an open method:
+   - If $a = c$ (only two distinct points available), use the **secant method**.
+   - If $a \neq c$ (three distinct points available), use **inverse quadratic interpolation**.
+
+4. **Accept or reject the fast step.** The proposed step $d = p/q$ is accepted only if it satisfies two conditions:
+   - The step must be smaller than three-quarters of the distance to the midpoint: $2|p| < 3 |x_m \cdot q| - |\text{tol}_1 \cdot q|$
+   - The step must be smaller than half the previous step: $2|p| < |e \cdot q|$
+
+   These conditions ensure the method is making adequate progress toward the root. If either condition fails, the algorithm falls back to bisection.
+
+5. **Update.** Apply the accepted step (or bisection fallback) to produce the new iterate $b$, evaluate $f(b)$, and repeat.
+
+This design means that Brent's method takes fast steps when they are safe and productive, but always has bisection as a backstop, so it never diverges.
+
+### Convergence Properties
+
+Brent's method offers a rare combination of guaranteed convergence and fast practical performance:
+
+- **Guaranteed convergence.** Like bisection, the method always maintains a valid bracket around the root. It will converge to a root for any continuous function where the initial interval satisfies $f(a) \cdot f(b) < 0$, regardless of how ill-conditioned the function is.
+
+- **Superlinear convergence in practice.** For smooth, well-behaved functions, the algorithm typically achieves superlinear convergence by spending most iterations in secant or IQI mode. In the best case, IQI converges with order approximately 1.839.
+
+- **Worst case is bisection.** When the function is poorly behaved (discontinuous derivatives, sharp curvature changes, or near-flat regions), the method gracefully degrades to bisection's linear convergence rate of $O(1/2^n)$. This is a floor, not a failure.
+
+- **No pathological failure modes.** Unlike Newton-Raphson, which can cycle, diverge, or overshoot for bad initial guesses, and unlike the secant method, which can leave the bracket entirely, Brent's method has no failure modes beyond exceeding the maximum iteration count.
+
+The convergence tolerance in the ***Numerics*** implementation uses a combined criterion: the root is accepted when the bracket half-width $|x_m|$ is within $\text{tol}_1 = 2\varepsilon_{\text{mach}}|b| + \text{tol}/2$, or when $f(b) = 0$ exactly. This accounts for both absolute and relative precision near the root.
+
+### Why Brent's Method Is the Recommended Default
+
+For solving $f(x) = 0$ in a single variable, Brent's method should be the default choice because:
+
+- **No derivatives needed.** Unlike Newton-Raphson, Brent's method requires only function evaluations. There is no need to derive, implement, or numerically approximate $f'(x)$, which is a significant practical advantage.
+
+- **Guaranteed to converge.** Given a valid bracketing interval where $f(a)$ and $f(b)$ have opposite signs, the method will always find a root. Newton-Raphson and the secant method have no such guarantee.
+
+- **Typically faster than bisection.** While bisection requires approximately $\log_2((b-a)/\varepsilon)$ iterations, Brent's method usually converges in far fewer iterations by exploiting the smoothness of the function. For the test function $f(x) = x^3 - 2x - 5$ on $[2, 3]$, bisection needs 27 iterations while Brent needs only 5.
+
+- **No pathological failure cases.** Newton-Raphson can diverge, oscillate, or cycle when the initial guess is poor, the derivative is near zero, or the function has inflection points. Brent's method avoids all of these failure modes.
+
+- **Handles both well-behaved and ill-conditioned functions.** The adaptive switching between IQI, secant, and bisection means the algorithm performs well across a wide range of function behaviors without requiring the user to diagnose the function's properties in advance.
+
+### When NOT to Use Brent's Method
+
+While Brent's method is the best general-purpose choice, there are situations where a different method is more appropriate:
+
+- **Derivatives are available and the function is smooth.** If you already have an analytical derivative $f'(x)$ and the function is smooth with a good initial guess, Newton-Raphson will converge faster (quadratically vs. superlinearly). For functions where the derivative is cheap to evaluate, the `NewtonRaphson.RobustSolve` method provides Newton's speed with bisection's safety net.
+
+- **Systems of equations or multiple dimensions.** Brent's method is strictly a univariate solver. For systems of nonlinear equations $\mathbf{F}(\mathbf{x}) = \mathbf{0}$, use multidimensional optimization methods such as Nelder-Mead or Newton-based nonlinear solvers.
+
+- **The root is not bracketed.** Brent's method requires an initial interval $[a, b]$ where $f(a)$ and $f(b)$ have opposite signs. If you cannot identify such a bracket, consider using the `Brent.Bracket` helper method (see below), the secant method, or Newton-Raphson which do not require bracketing.
+
+- **The function does not change sign at the root.** For roots of even multiplicity (e.g., $f(x) = x^2$ has a root at $x = 0$ but does not change sign), bracketing methods cannot be used. In these cases, reformulate the problem or use Newton-Raphson on $g(x) = f(x)/f'(x)$.
 
 ### Usage
 
@@ -120,7 +209,44 @@ Console.WriteLine($"Root: {root:F12}");  // 0.739085133215
 Console.WriteLine($"Verification: f({root}) = {f(root):E3}");
 ```
 
-### Example: Finding where two functions intersect
+The `Solve` method accepts the following parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `f` | `Func<double, double>` | (required) | The function to solve |
+| `lowerBound` | `double` | (required) | Lower bound $a$ of the bracketing interval |
+| `upperBound` | `double` | (required) | Upper bound $b$ of the bracketing interval |
+| `tolerance` | `double` | `1e-8` | Desired tolerance for the root |
+| `maxIterations` | `int` | `1000` | Maximum number of iterations |
+| `reportFailure` | `bool` | `true` | If true, throws an exception on failure; if false, returns the last iterate |
+
+### Automatic Bracket Expansion
+
+When you are unsure whether your initial interval brackets the root, the `Brent.Bracket` helper method can expand the interval outward until a sign change is found. It repeatedly expands the interval by a factor of 1.6, testing the function value at each new endpoint:
+
+```cs
+using Numerics.Mathematics.RootFinding;
+
+// We think the root is near x = 5, but are not sure of the bracket
+Func<double, double> f = x => x * x - 25;
+
+double a = 4.0, b = 6.0;
+double fa, fb;
+
+bool found = Brent.Bracket(f, ref a, ref b, out fa, out fb, maxIterations: 10);
+
+if (found)
+{
+    double root = Brent.Solve(f, a, b);
+    Console.WriteLine($"Root: {root:F10}");  // 5.0000000000
+}
+else
+{
+    Console.WriteLine("Could not bracket the root.");
+}
+```
+
+### Example: Finding Where Two Functions Intersect
 
 To find where $f(x) = g(x)$, solve $h(x) = f(x) - g(x) = 0$:
 
@@ -137,19 +263,74 @@ Console.WriteLine($"At this point: f({intersection}) = {f(intersection):F6}");
 Console.WriteLine($"At this point: g({intersection}) = {g(intersection):F6}");
 ```
 
-### Advantages and Disadvantages
+### Example: Hydrologic Design with Manning's Equation
 
-**Advantages:**
-- Very fast convergence (superlinear)
-- Guaranteed to converge with bracketing interval
-- Automatically switches between methods for optimal performance
-- Widely considered the best general-purpose method
+A common civil engineering problem: determine the water depth in a trapezoidal channel that produces a given discharge. Manning's equation relates flow rate to channel geometry:
 
-**Disadvantages:**
-- Requires bracketing interval
-- More complex than simpler methods
+```math
+Q = \frac{1}{n} A R^{2/3} S^{1/2}
+```
 
-**When to use:** Default choice for most root-finding problems.
+where $Q$ is discharge, $n$ is Manning's roughness coefficient, $A$ is cross-sectional area, $R = A/P$ is hydraulic radius, $P$ is wetted perimeter, and $S$ is channel slope. For a trapezoidal channel with bottom width $b_w$ and side slope $z$:
+
+```math
+A = y(b_w + z \cdot y), \qquad P = b_w + 2y\sqrt{1 + z^2}
+```
+
+Given a target discharge, solve for the normal depth $y$:
+
+```cs
+using Numerics.Mathematics.RootFinding;
+
+// Channel parameters
+double n = 0.030;    // Manning's roughness (natural channel)
+double bw = 10.0;    // Bottom width (m)
+double z = 2.0;      // Side slope (horizontal:vertical)
+double S = 0.001;    // Channel slope
+double Qtarget = 50; // Target discharge (m³/s)
+
+// Manning's equation residual: f(y) = Q(y) - Qtarget
+Func<double, double> f = y =>
+{
+    double A = y * (bw + z * y);
+    double P = bw + 2 * y * Math.Sqrt(1 + z * z);
+    double R = A / P;
+    double Q = (1.0 / n) * A * Math.Pow(R, 2.0 / 3.0) * Math.Sqrt(S);
+    return Q - Qtarget;
+};
+
+// Solve for normal depth
+double depth = Brent.Solve(f,
+    lowerBound: 0.01,    // Minimum physical depth
+    upperBound: 20.0,    // Maximum reasonable depth
+    tolerance: 1e-6);
+
+Console.WriteLine($"Normal depth: {depth:F4} m");
+Console.WriteLine($"Verification: Q = {f(depth) + Qtarget:F4} m³/s");
+```
+
+### Example: Controlling Failure Behavior
+
+In production code, you may want to handle convergence failure gracefully rather than allowing exceptions:
+
+```cs
+using Numerics.Mathematics.RootFinding;
+
+Func<double, double> f = x => Math.Cos(x) - x;
+
+// Suppress exception on failure — returns last iterate instead
+double root = Brent.Solve(f, 0, 1,
+    tolerance: 1e-15,       // Very tight tolerance
+    maxIterations: 5,       // Very few iterations allowed
+    reportFailure: false);  // Don't throw on failure
+
+// Always verify the result
+double residual = Math.Abs(f(root));
+if (residual < 1e-10)
+    Console.WriteLine($"Root found: {root:F12}");
+else
+    Console.WriteLine($"Warning: residual {residual:E3} exceeds acceptable threshold");
+```
 
 ## Secant Method
 
@@ -415,15 +596,34 @@ Console.WriteLine($"At x={cp2}: f''(x)={d2f(cp2):F1} → " +
 
 ## Choosing a Root Finding Method
 
+### Method Comparison
+
+The following table provides a comprehensive comparison of all root-finding methods available in the ***Numerics*** library:
+
+| Feature | Bisection | Brent | Secant | Newton-Raphson |
+|---------|-----------|-------|--------|----------------|
+| **Convergence rate** | Linear $O(1/2^n)$ | Superlinear (adaptive) | ~1.618 (golden ratio) | Quadratic |
+| **Requires derivative** | No | No | No | Yes |
+| **Requires bracket** | Yes | Yes | No | No |
+| **Guaranteed convergence** | Yes | Yes | No | No |
+| **Function evals per step** | 1 | 1 | 1 | 2 ($f$ and $f'$) |
+| **Typical iterations** | 30-50 | 5-10 | 5-10 | 4-6 |
+| **Handles discontinuities** | Yes | Yes | Poorly | Poorly |
+| **Risk of divergence** | None | None | Moderate | High |
+| **Best for** | Proof of concept, robustness | General purpose (recommended) | When bracket unavailable | When $f'(x)$ is cheap and smooth |
+
+### Scenario-Based Recommendations
+
 | Scenario | Recommended Method | Notes |
 |----------|-------------------|-------|
-| General purpose | Brent | Best balance of speed and robustness |
-| Have derivative | Newton-Raphson (robust version) | Fastest convergence |
-| No derivative | Secant or Brent | Brent more robust, Secant faster |
-| Difficult function | Bisection | Guaranteed convergence, but slow |
-| Need absolute certainty | Bisection or Brent | Both guarantee convergence |
-| Very smooth function | Newton-Raphson | Quadratic convergence |
-| Poor initial guess | Brent or Robust Newton-Raphson | Fall back to bisection when needed |
+| General purpose | **Brent** | Best balance of speed and robustness |
+| Have analytical derivative | Newton-Raphson (robust version) | Fastest convergence with safety net |
+| No derivative available | Brent | More robust than Secant |
+| Difficult or ill-conditioned function | Bisection or Brent | Guaranteed convergence |
+| Need absolute certainty | Brent | Guaranteed convergence with fast speed |
+| Very smooth function with good guess | Newton-Raphson | Quadratic convergence |
+| Poor or uncertain initial guess | Brent or Robust Newton-Raphson | Fall back to bisection when needed |
+| Cannot bracket the root | Secant or Newton-Raphson | Consider `Brent.Bracket` to find bracket first |
 
 ## Convergence Criteria
 
@@ -525,7 +725,9 @@ Newton-Raphson and Brent are typically fastest, while Bisection is slowest but m
 
 <a id="2">[2]</a> Brent, R. P. (1973). *Algorithms for Minimization Without Derivatives*. Prentice-Hall, Englewood Cliffs, NJ.
 
-<a id="3">[3]</a> Süli, E. & Mayers, D. (2003). *An Introduction to Numerical Analysis*. Cambridge University Press.
+<a id="3">[3]</a> Sprott, J. C. (1991). *Numerical Recipes, Routines and Examples in Basic*. Cambridge University Press.
+
+<a id="4">[4]</a> Süli, E. & Mayers, D. (2003). *An Introduction to Numerical Analysis*. Cambridge University Press.
 
 ---
 
