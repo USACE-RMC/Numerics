@@ -186,7 +186,7 @@ L-skewness is bounded in $[-1, 1]$ and L-kurtosis in $[\frac{1}{4}(5\tau_3^2 - 1
 b_r = \frac{1}{n}\sum_{j=r+1}^{n} \frac{\binom{j-1}{r}}{\binom{n-1}{r}} \, x_{j:n}, \quad r = 0, 1, 2, \ldots
 ```
 
-The `Statistics.LinearMoments()` method computes these sample PWMs and returns the array $[\lambda_1,\; \lambda_2,\; \tau_3,\; \tau_4]$.
+The `Statistics.LinearMoments()` method computes these sample PWMs and returns the array $[\lambda_1, \lambda_2, \tau_3, \tau_4]$.
 
 **Why L-moments are preferred for small samples.** Conventional moments involve powers of deviations from the mean, so a single extreme observation can dominate the skewness or kurtosis estimate. L-moments use only linear combinations of order statistics, which makes them far more robust to outliers and nearly unbiased even for samples as small as $n = 10$. For hydrological applications where sample sizes are often 30--60 years of annual data, this robustness is critical.
 
@@ -389,7 +389,7 @@ s = \sqrt{\frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2}
 \hat{\kappa} = \frac{n(n+1)}{(n-1)(n-2)(n-3)} \sum_{i=1}^{n}\left(\frac{x_i - \bar{x}}{s}\right)^4 - \frac{3(n-1)^2}{(n-2)(n-3)}
 ```
 
-The `Statistics.ProductMoments()` method returns these four quantities as the array $[\bar{x},\; s,\; \hat{\gamma},\; \hat{\kappa}]$.
+The `Statistics.ProductMoments()` method returns these four quantities as the array $[\bar{x}, s, \hat{\gamma}, \hat{\kappa}]$.
 
 MOM estimation sets the theoretical moments equal to the sample moments and solves for the distribution parameters. For a two-parameter distribution, only the first two moments (mean and standard deviation) are needed. For three-parameter distributions, skewness is also required.
 
