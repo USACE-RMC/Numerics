@@ -27,7 +27,7 @@ where:
 D^2(\mathbf{x}) = (\mathbf{x} - \boldsymbol{\mu})^T \boldsymbol{\Sigma}^{-1} (\mathbf{x} - \boldsymbol{\mu})
 ```
 
-The PDF can be expressed compactly in terms of this distance as $f(\mathbf{x}) = (2\pi)^{-k/2} |\boldsymbol{\Sigma}|^{-1/2} \exp(-D^2/2)$. Surfaces of constant density are ellipsoids defined by $D^2 = c$, and the squared Mahalanobis distance follows a chi-squared distribution: $D^2 \sim \chi^2_k$. This property is used for multivariate outlier detection -- a point is flagged as an outlier if $D^2$ exceeds the $\chi^2_k$ critical value at the desired significance level.
+The PDF can be expressed compactly in terms of this distance as $`f(\mathbf{x}) = (2\pi)^{-k/2} |\boldsymbol{\Sigma}|^{-1/2} \exp(-D^2/2)`$. Surfaces of constant density are ellipsoids defined by $D^2 = c$, and the squared Mahalanobis distance follows a chi-squared distribution: $D^2 \sim \chi^2_k$. This property is used for multivariate outlier detection -- a point is flagged as an outlier if $D^2$ exceeds the $\chi^2_k$ critical value at the desired significance level.
 
 **Marginal distributions.** Any subset of variables from a multivariate normal is itself multivariate normal. If the full vector is partitioned as $\mathbf{X} = (\mathbf{X}_a, \mathbf{X}_b)^T$ with corresponding partitioned mean and covariance:
 
@@ -35,7 +35,7 @@ The PDF can be expressed compactly in terms of this distance as $f(\mathbf{x}) =
 \boldsymbol{\mu} = \begin{pmatrix} \boldsymbol{\mu}_a \\ \boldsymbol{\mu}_b \end{pmatrix}, \quad \boldsymbol{\Sigma} = \begin{pmatrix} \boldsymbol{\Sigma}_{aa} & \boldsymbol{\Sigma}_{ab} \\ \boldsymbol{\Sigma}_{ba} & \boldsymbol{\Sigma}_{bb} \end{pmatrix}
 ```
 
-then the marginal distribution is $\mathbf{X}_a \sim \mathcal{N}(\boldsymbol{\mu}_a, \boldsymbol{\Sigma}_{aa})$.
+then the marginal distribution is $`\mathbf{X}_a \sim \mathcal{N}(\boldsymbol{\mu}_a, \boldsymbol{\Sigma}_{aa})`$.
 
 **Conditional distributions.** The conditional distribution of $\mathbf{X}_a$ given $\mathbf{X}_b = \mathbf{x}_b$ is also multivariate normal:
 
