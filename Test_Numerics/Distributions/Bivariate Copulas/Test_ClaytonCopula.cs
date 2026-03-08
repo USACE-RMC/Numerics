@@ -188,5 +188,30 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(80.54073, ((Normal)copula.MarginalDistributionY).Mu, 1E-2);
             Assert.AreEqual(26.11687, ((Normal)copula.MarginalDistributionY).Sigma, 1E-2);
         }
+
+        /// <summary>
+        /// Test the tail dependence coefficients.
+        /// Clayton copula: λ_L = 2^(-1/θ), λ_U = 0.
+        /// </summary>
+        [TestMethod]
+        public void Test_TailDependence()
+        {
+            // θ = 2: λ_L = 2^(-1/2) ≈ 0.70711
+            var copula = new ClaytonCopula(2.0);
+            Assert.AreEqual(0.0, copula.UpperTailDependence, 1E-10, "Clayton copula should have no upper tail dependence.");
+            Assert.AreEqual(Math.Pow(2.0, -0.5), copula.LowerTailDependence, 1E-6, "λ_L should equal 2^(-1/θ) for θ=2.");
+
+            // θ = 1: λ_L = 2^(-1) = 0.5
+            var copula1 = new ClaytonCopula(1.0);
+            Assert.AreEqual(0.5, copula1.LowerTailDependence, 1E-10, "λ_L should equal 0.5 for θ=1.");
+
+            // θ → ∞: λ_L → 1
+            var copulaLarge = new ClaytonCopula(100.0);
+            Assert.IsGreaterThan(0.99, copulaLarge.LowerTailDependence, "λ_L should approach 1 for large θ.");
+
+            // θ ≤ 0: λ_L = 0 (no dependence or negative dependence)
+            var copulaZero = new ClaytonCopula(0.0);
+            Assert.AreEqual(0.0, copulaZero.LowerTailDependence, 1E-10, "λ_L should be 0 for θ ≤ 0.");
+        }
     }
 }

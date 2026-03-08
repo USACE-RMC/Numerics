@@ -160,6 +160,24 @@ namespace Numerics.Distributions.Copulas
             return [u, v];
         }
 
+        /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U = 0.
+        /// The Clayton copula has no upper tail dependence.
+        /// </summary>
+        public override double UpperTailDependence => 0.0;
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L = 2^(-1/θ).
+        /// </summary>
+        public override double LowerTailDependence
+        {
+            get
+            {
+                if (Theta <= 0.0) return 0.0;
+                return Math.Pow(2.0, -1.0 / Theta);
+            }
+        }
+
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {

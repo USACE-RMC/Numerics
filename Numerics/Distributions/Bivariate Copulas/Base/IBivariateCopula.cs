@@ -143,6 +143,16 @@ namespace Numerics.Distributions.Copulas
         double[] InverseCDF(double u, double v);
 
         /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U.
+        /// </summary>
+        double UpperTailDependence { get; }
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L.
+        /// </summary>
+        double LowerTailDependence { get; }
+
+        /// <summary>
         /// Generate random values of a distribution given a sample size.
         /// </summary>
         /// <param name="sampleSize"> Size of random sample to generate. </param>

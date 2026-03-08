@@ -190,6 +190,18 @@ namespace Numerics.Distributions.Copulas
             return [u, v];
         }
 
+        /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U = 0.
+        /// The Normal copula has no upper tail dependence.
+        /// </summary>
+        public override double UpperTailDependence => 0.0;
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L = 0.
+        /// The Normal copula has no lower tail dependence.
+        /// </summary>
+        public override double LowerTailDependence => 0.0;
+
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {

@@ -119,6 +119,12 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public abstract string ShortDisplayName { get; }
 
+        /// <inheritdoc/>
+        public abstract double UpperTailDependence { get; }
+
+        /// <inheritdoc/>
+        public abstract double LowerTailDependence { get; }
+
         #endregion
 
         #region Methods

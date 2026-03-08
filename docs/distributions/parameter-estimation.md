@@ -736,40 +736,61 @@ foreach (var method in methods)
 
 ### 4. Outlier Detection
 
+The Numerics library provides two formal statistical tests for detecting outliers in flood frequency data, both based on the Grubbs-Beck framework.
+
+#### Grubbs-Beck Test
+
+The original Grubbs-Beck test ([Grubbs & Beck, 1972][6]) identifies high and low outlier thresholds at the 10% significance level. The test assumes the log-transformed data follow a normal distribution and uses a critical value $K_n$ based on sample size:
+
+```math
+X_{Hi} = \exp(\bar{y} + K_n \cdot s_y), \quad X_{Lo} = \exp(\bar{y} - K_n \cdot s_y)
+```
+
+where $\bar{y}$ and $s_y$ are the mean and standard deviation of the log-transformed sample.
+
 ```cs
-// Identify potential outliers before estimation
-double[] sorted = data.OrderBy(x => x).ToArray();
-double Q1 = Statistics.Percentile(sorted, 0.25);
-double Q3 = Statistics.Percentile(sorted, 0.75);
-double IQR = Q3 - Q1;
+using Numerics.Data.Statistics;
 
-var outliers = data.Where(x => x < Q1 - 1.5 * IQR || x > Q3 + 1.5 * IQR).ToArray();
+double[] annualPeaks = { 50, 180, 220, 310, 450, 520, 680, 720, 890, 1050, 1200, 5200 };
 
-if (outliers.Length > 0)
+// Original Grubbs-Beck test at 10% significance
+MultipleGrubbsBeckTest.GrubbsBeckTest(annualPeaks, out double XHi, out double XLo);
+
+Console.WriteLine($"High outlier threshold: {XHi:F0} (values above are high outliers)");
+Console.WriteLine($"Low outlier threshold:  {XLo:F0} (values below are low outliers)");
+
+// Identify outliers
+var highOutliers = annualPeaks.Where(x => x > XHi).ToArray();
+var lowOutliers = annualPeaks.Where(x => x < XLo).ToArray();
+Console.WriteLine($"High outliers: {highOutliers.Length}, Low outliers: {lowOutliers.Length}");
+```
+
+#### Multiple Grubbs-Beck Test
+
+The Multiple Grubbs-Beck Test ([Cohn et al., 2013][7]) is a generalization that can detect multiple potentially influential low flows (PILFs). This is particularly important in Bulletin 17C flood frequency analysis, where low outliers can distort the fitted distribution and bias upper-tail quantile estimates.
+
+```cs
+using Numerics.Data.Statistics;
+
+double[] annualPeaks = { 5, 12, 18, 180, 220, 310, 450, 520, 680, 720, 890, 1050 };
+
+// Multiple Grubbs-Beck test — returns count of low outliers
+int numLowOutliers = MultipleGrubbsBeckTest.Function(annualPeaks);
+
+Console.WriteLine($"Number of low outliers detected: {numLowOutliers}");
+
+if (numLowOutliers > 0)
 {
-    Console.WriteLine($"Potential outliers detected: {outliers.Length}");
-    Console.WriteLine("Consider using L-moments (more robust to outliers)");
+    // Sort to identify which values are low outliers
+    double[] sorted = annualPeaks.OrderBy(x => x).ToArray();
+    Console.WriteLine("Low outlier values:");
+    for (int i = 0; i < numLowOutliers; i++)
+        Console.WriteLine($"  {sorted[i]}");
+    Console.WriteLine("Consider censoring these values in LP3 frequency analysis");
 }
 ```
 
-### 5. Historical Information
-
-When historical data exists outside the systematic record:
-
-```cs
-// Combine systematic record with historical peaks
-double[] systematicRecord = { 12.5, 15.3, 11.2, 18.7, 14.1 }; // Recent, complete
-double[] historicalPeaks = { 22.3 };  // Known historical floods
-
-// This is a simplified approach
-// For formal analysis, use Expected Moments Algorithm (EMA)
-var combined = systematicRecord.Concat(historicalPeaks).ToArray();
-
-var lp3 = new LogPearsonTypeIII();
-lp3.Estimate(combined, ParameterEstimationMethod.MethodOfLinearMoments);
-
-Console.WriteLine("Fitted with historical information included");
-```
+> **Guidance:** Use the original Grubbs-Beck test for general-purpose outlier screening. Use the Multiple Grubbs-Beck test specifically for Bulletin 17C flood frequency analysis where multiple low outliers may influence the Log-Pearson Type III fit.
 
 ## Common Pitfalls
 
@@ -793,6 +814,10 @@ Console.WriteLine("Fitted with historical information included");
 <a id="4">[4]</a> Rao, A. R., & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press.
 
 <a id="5">[5]</a> Casella, G. & Berger, R. L. (2002). *Statistical Inference* (2nd ed.). Duxbury/Thomson.
+
+<a id="6">[6]</a> Grubbs, F. E., & Beck, G. (1972). Extension of sample sizes and percentage points for significance tests of outlying observations. *Technometrics*, 14(4), 847-854.
+
+<a id="7">[7]</a> Cohn, T. A., England, J. F., Berenbrock, C. E., Mason, R. R., Stedinger, J. R., & Lamontagne, J. R. (2013). A generalized Grubbs-Beck test statistic for detecting multiple potentially influential low outliers in flood series. *Water Resources Research*, 49(8), 5047-5058.
 
 ---
 

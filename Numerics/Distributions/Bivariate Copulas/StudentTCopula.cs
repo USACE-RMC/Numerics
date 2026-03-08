@@ -365,19 +365,19 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <summary>
-        /// Gets the symmetric tail dependence coefficient λ = λ_L = λ_U.
+        /// Gets the upper tail dependence coefficient λ_U.
         /// </summary>
         /// <remarks>
         /// <para>
         /// The t-copula has symmetric upper and lower tail dependence:
         /// <code>
-        ///     λ = 2 · t_{ν+1}(-√((ν+1)(1-ρ)/(1+ρ)))
+        ///     λ_U = λ_L = 2 · t_{ν+1}(-√((ν+1)(1-ρ)/(1+ρ)))
         /// </code>
         /// where t_{ν+1} is the CDF of the univariate Student's t with ν+1 degrees of freedom.
         /// For ρ = -1, λ = 0. For ρ = 1, λ = 1. As ν → ∞, λ → 0 (Normal copula limit).
         /// </para>
         /// </remarks>
-        public double TailDependence
+        public override double UpperTailDependence
         {
             get
             {
@@ -392,6 +392,12 @@ namespace Numerics.Distributions.Copulas
                 return 2.0 * tDist.CDF(arg);
             }
         }
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L.
+        /// The t-copula has symmetric tail dependence, so λ_L = λ_U.
+        /// </summary>
+        public override double LowerTailDependence => UpperTailDependence;
 
         /// <inheritdoc/>
         public override BivariateCopula Clone()
