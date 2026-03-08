@@ -209,7 +209,7 @@ where $N$ is the number of samples, $\rho_k$ is the autocorrelation at lag $k$, 
 
 ### Mathematical Derivation
 
-The ESS formula arises from analyzing the variance of the sample mean of a correlated sequence. For a stationary process $\{\theta_1, \theta_2, \ldots, \theta_N\}$ with marginal variance $\sigma^2$ and autocorrelation function $\rho_k = \text{Corr}(\theta_t, \theta_{t+k})$, the variance of the sample mean $\bar{\theta} = \frac{1}{N}\sum_{t=1}^{N}\theta_t$ is:
+The ESS formula arises from analyzing the variance of the sample mean of a correlated sequence. For a stationary process $\lbrace\theta_1, \theta_2, \ldots, \theta_N\rbrace$ with marginal variance $\sigma^2$ and autocorrelation function $\rho_k = \text{Corr}(\theta_t, \theta_{t+k})$, the variance of the sample mean $\bar{\theta} = \frac{1}{N}\sum_{t=1}^{N}\theta_t$ is:
 
 ```math
 \text{Var}(\bar{\theta}) = \frac{\sigma^2}{N}\left(1 + 2\sum_{k=1}^{N-1}\left(1 - \frac{k}{N}\right)\rho_k\right)

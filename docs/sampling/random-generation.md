@@ -222,7 +222,7 @@ Latin Hypercube Sampling divides each dimension's range $[0, 1)$ into $n$ equal 
 x_{ij} = \frac{\pi_j(i) + U_{ij}}{n}, \quad i = 0, \ldots, n-1
 ```
 
-where $\pi_j$ is a random permutation of $\{0, 1, \ldots, n-1\}$ (independent for each dimension) and $U_{ij} \sim \text{Uniform}(0, 1)$. The library's `Median` variant replaces $U_{ij}$ with $0.5$, placing each point at the stratum center.
+where $\pi_j$ is a random permutation of $\lbrace 0, 1, \ldots, n-1\rbrace$ (independent for each dimension) and $U_{ij} \sim \text{Uniform}(0, 1)$. The library's `Median` variant replaces $U_{ij}$ with $0.5$, placing each point at the stratum center.
 
 The random permutations are generated using the **Fisher-Yates shuffle**, and each dimension uses an independent Mersenne Twister seeded from a master RNG.
 

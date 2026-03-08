@@ -653,7 +653,7 @@ A random vector $\mathbf{X} = (X_1, X_2, \ldots, X_k)$ follows a multinomial dis
 P(X_1 = x_1, \ldots, X_k = x_k) = \frac{n!}{\prod_{i=1}^{k} x_i!} \prod_{i=1}^{k} p_i^{x_i}
 ```
 
-with constraints $x_i \in \{0, 1, \ldots, n\}$, $\sum_{i=1}^{k} x_i = n$, $p_i \geq 0$, and $\sum_{i=1}^{k} p_i = 1$.
+with constraints $x_i \in \lbrace 0, 1, \ldots, n\rbrace$, $\sum_{i=1}^{k} x_i = n$, $p_i \geq 0$, and $\sum_{i=1}^{k} p_i = 1$.
 
 The multinomial coefficient $n! / \prod x_i!$ counts the number of ways to arrange $n$ trials into $k$ categories with the specified counts.
 
