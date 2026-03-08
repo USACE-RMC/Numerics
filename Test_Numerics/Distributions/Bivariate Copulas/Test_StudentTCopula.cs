@@ -284,11 +284,11 @@ namespace Distributions.BivariateCopulas
         }
 
         /// <summary>
-        /// Test the tail dependence coefficient.
+        /// Test the tail dependence coefficients.
         /// </summary>
         /// <remarks>
         /// The t-copula has symmetric tail dependence:
-        /// λ = 2·t_{ν+1}(-√((ν+1)(1-ρ)/(1+ρ)))
+        /// λ_U = λ_L = 2·t_{ν+1}(-√((ν+1)(1-ρ)/(1+ρ)))
         /// </remarks>
         [TestMethod]
         public void Test_TailDependence()
@@ -296,27 +296,29 @@ namespace Distributions.BivariateCopulas
             // For ρ = 0.5, ν = 4:
             // λ = 2·t_5(-√(5·0.5/1.5)) = 2·t_5(-√(5/3)) = 2·t_5(-1.2910)
             var copula = new StudentTCopula(0.5, 4);
-            double lambda = copula.TailDependence;
-            Assert.IsGreaterThan(0, lambda, "Tail dependence should be positive for finite ν.");
-            Assert.IsLessThan(1, lambda, "Tail dependence should be less than 1.");
+            double lambdaU = copula.UpperTailDependence;
+            double lambdaL = copula.LowerTailDependence;
+            Assert.IsGreaterThan(0, lambdaU, "Upper tail dependence should be positive for finite ν.");
+            Assert.IsLessThan(1, lambdaU, "Upper tail dependence should be less than 1.");
+            Assert.AreEqual(lambdaU, lambdaL, 1E-10, "t-copula tail dependence should be symmetric.");
 
             // ρ = 0, ν = 4: still has tail dependence (this is the key difference from Normal copula)
             var copulaZero = new StudentTCopula(0.0, 4);
-            double lambdaZero = copulaZero.TailDependence;
+            double lambdaZero = copulaZero.UpperTailDependence;
             Assert.IsGreaterThan(0, lambdaZero, "t-copula with ρ=0 still has tail dependence.");
 
             // Higher ν → lower tail dependence (approaching Normal copula with λ=0)
             var copulaHighNu = new StudentTCopula(0.5, 100);
-            double lambdaHighNu = copulaHighNu.TailDependence;
-            Assert.IsLessThan(lambda, lambdaHighNu, "Higher ν should reduce tail dependence.");
+            double lambdaHighNu = copulaHighNu.UpperTailDependence;
+            Assert.IsLessThan(lambdaU, lambdaHighNu, "Higher ν should reduce tail dependence.");
 
             // Higher ρ → higher tail dependence
             var copulaHighRho = new StudentTCopula(0.9, 4);
-            Assert.IsGreaterThan(lambda, copulaHighRho.TailDependence, "Higher ρ should increase tail dependence.");
+            Assert.IsGreaterThan(lambdaU, copulaHighRho.UpperTailDependence, "Higher ρ should increase tail dependence.");
 
             // ρ close to -1: tail dependence approaches 0
             var copulaNegRho = new StudentTCopula(-0.99, 4);
-            Assert.IsLessThan(0.01, copulaNegRho.TailDependence, "Tail dependence should be near 0 for ρ ≈ -1.");
+            Assert.IsLessThan(0.01, copulaNegRho.UpperTailDependence, "Tail dependence should be near 0 for ρ ≈ -1.");
         }
 
         /// <summary>
@@ -453,7 +455,7 @@ namespace Distributions.BivariateCopulas
             Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
 
             // Tail dependence should be data-driven (not user-defined)
-            double lambda = tCopula.TailDependence;
+            double lambda = tCopula.UpperTailDependence;
             Assert.IsGreaterThan(0, lambda, "Tail dependence should be positive.");
             Assert.IsLessThan(1, lambda, "Tail dependence should be less than 1.");
         }

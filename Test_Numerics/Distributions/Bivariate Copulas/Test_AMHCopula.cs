@@ -190,6 +190,22 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(83.76367, ((Normal)copula.MarginalDistributionY).Mu, 1E-2);
             Assert.AreEqual(29.76202, ((Normal)copula.MarginalDistributionY).Sigma, 1E-2);
         }
+
+        /// <summary>
+        /// Test the tail dependence coefficients.
+        /// AMH copula: λ_U = λ_L = 0 (no tail dependence).
+        /// </summary>
+        [TestMethod]
+        public void Test_TailDependence()
+        {
+            var copula = new AMHCopula(0.5);
+            Assert.AreEqual(0.0, copula.UpperTailDependence, 1E-10, "AMH copula should have no upper tail dependence.");
+            Assert.AreEqual(0.0, copula.LowerTailDependence, 1E-10, "AMH copula should have no lower tail dependence.");
+
+            var copulaNeg = new AMHCopula(-0.5);
+            Assert.AreEqual(0.0, copulaNeg.UpperTailDependence, 1E-10, "AMH copula should have no upper tail dependence for negative θ.");
+            Assert.AreEqual(0.0, copulaNeg.LowerTailDependence, 1E-10, "AMH copula should have no lower tail dependence for negative θ.");
+        }
     }
 
 }

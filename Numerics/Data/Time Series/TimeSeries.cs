@@ -30,6 +30,7 @@
 
 using Numerics.Data.Statistics;
 using Numerics.MachineLearning;
+using Numerics.Mathematics;
 using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
@@ -1017,6 +1018,101 @@ namespace Numerics.Data
                     timeSeries.Add(new SeriesOrdinate<DateTime, double>(this[i - 1].Index, sum));
             }
             return timeSeries;
+        }
+
+        /// <summary>
+        /// Performs classical additive seasonal decomposition using FFT-based seasonal extraction.
+        /// </summary>
+        /// <param name="period">The seasonal period (e.g., 12 for monthly data with annual seasonality).</param>
+        /// <returns>
+        /// A tuple containing:
+        /// <list type="bullet">
+        /// <item><description>Trend: The trend component as a TimeSeries (moving average with the given period).</description></item>
+        /// <item><description>Seasonal: The seasonal component as a double array of length equal to the original series.</description></item>
+        /// <item><description>Residual: The residual component as a TimeSeries (defined where the trend is defined).</description></item>
+        /// </list>
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when the period is less than 2 or the series contains fewer than 2 complete periods.</exception>
+        public (TimeSeries Trend, double[] Seasonal, TimeSeries Residual) SeasonalDecompose(int period)
+        {
+            if (period < 2)
+                throw new ArgumentException("Period must be at least 2.", nameof(period));
+            if (Count < 2 * period)
+                throw new ArgumentException("Time series must contain at least 2 complete periods.", nameof(period));
+
+            SortByTime();
+            int n = Count;
+
+            // Step 1: Compute trend via moving average
+            var trend = MovingAverage(period);
+
+            // Step 2: Build full-length arrays and detrend
+            double[] values = new double[n];
+            double[] trendFull = new double[n];
+            bool[] hasTrend = new bool[n];
+
+            for (int i = 0; i < n; i++)
+                values[i] = this[i].Value;
+
+            // Map trend values to original indices
+            // MovingAverage outputs (Count - period + 1) values starting at index (period - 1)
+            int trendStart = period - 1;
+            for (int i = 0; i < trend.Count; i++)
+            {
+                trendFull[trendStart + i] = trend[i].Value;
+                hasTrend[trendStart + i] = true;
+            }
+
+            // Create detrended series
+            double[] detrended = new double[n];
+            for (int i = 0; i < n; i++)
+                detrended[i] = hasTrend[i] ? values[i] - trendFull[i] : 0.0;
+
+            // Step 3: FFT-based seasonal extraction
+            // Pad to power of 2 for FFT
+            int fftLength = (int)Math.Pow(2, Math.Ceiling(Math.Log(n, 2)));
+            if (fftLength < n) fftLength *= 2;
+            double[] fftData = new double[fftLength];
+            Array.Copy(detrended, fftData, n);
+
+            // Forward FFT
+            Fourier.RealFFT(fftData);
+
+            // Identify harmonic bins of the seasonal frequency
+            // Harmonic h corresponds to frequency bin k = round(h * fftLength / period)
+            var harmonicBins = new HashSet<int>();
+            for (int h = 1; ; h++)
+            {
+                int k = (int)Math.Round((double)h * fftLength / period);
+                if (k <= 0 || k >= fftLength / 2) break;
+                harmonicBins.Add(k);
+            }
+
+            // Keep only harmonic frequencies
+            double[] filtered = new double[fftLength];
+            foreach (int k in harmonicBins)
+            {
+                filtered[2 * k] = fftData[2 * k];
+                filtered[2 * k + 1] = fftData[2 * k + 1];
+            }
+
+            // Inverse FFT
+            Fourier.RealFFT(filtered, true);
+
+            // Scale by 2/fftLength as required by the RealFFT inverse transform
+            double[] seasonal = new double[n];
+            for (int i = 0; i < n; i++)
+                seasonal[i] = filtered[i] * 2.0 / fftLength;
+
+            // Step 4: Compute residual
+            var residual = new TimeSeries(TimeInterval);
+            for (int i = 0; i < n; i++)
+            {
+                if (hasTrend[i])
+                    residual.Add(new SeriesOrdinate<DateTime, double>(this[i].Index, values[i] - trendFull[i] - seasonal[i]));
+            }
+
+            return (trend, seasonal, residual);
         }
 
         /// <summary>

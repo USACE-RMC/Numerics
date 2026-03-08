@@ -220,17 +220,17 @@ f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(x - \mu)^2}{2\sigma^2}\ri
 **Cumulative Distribution Function (CDF):**
 
 ```math
-F(x) = \Phi\!\left(\frac{x - \mu}{\sigma}\right) = \frac{1}{2}\left[1 + \operatorname{erf}\!\left(\frac{x - \mu}{\sigma\sqrt{2}}\right)\right]
+F(x) = \Phi\!\left(\frac{x - \mu}{\sigma}\right) = \frac{1}{2}\left[1 + \text{erf}\!\left(\frac{x - \mu}{\sigma\sqrt{2}}\right)\right]
 ```
 
-where $\Phi(\cdot)$ is the standard Normal CDF and $\operatorname{erf}(\cdot)$ is the error function.
+where $\Phi(\cdot)$ is the standard Normal CDF and $\text{erf}(\cdot)$ is the error function.
 
 **Moments:**
 
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \mu$ |
-| Variance | $\operatorname{Var}(X) = \sigma^2$ |
+| Variance | $\text{Var}(X) = \sigma^2$ |
 | Skewness | $\gamma_1 = 0$ |
 | Kurtosis | $\kappa = 3$ |
 
@@ -269,7 +269,7 @@ where $\mu$ and $\sigma$ are the mean and standard deviation of $\log_b(X)$.
 **Cumulative Distribution Function (CDF):**
 
 ```math
-F(x) = \frac{1}{2}\left[1 + \operatorname{erf}\!\left(\frac{\log_b x - \mu}{\sigma\sqrt{2}}\right)\right]
+F(x) = \frac{1}{2}\left[1 + \text{erf}\!\left(\frac{\log_b x - \mu}{\sigma\sqrt{2}}\right)\right]
 ```
 
 **Moments (general base $b$, where $\beta = \ln(b)$):**
@@ -326,7 +326,7 @@ where $\gamma(\kappa, z)$ is the lower incomplete gamma function and $P(\kappa, 
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \kappa\theta$ |
-| Variance | $\operatorname{Var}(X) = \kappa\theta^2$ |
+| Variance | $\text{Var}(X) = \kappa\theta^2$ |
 | Skewness | $\gamma_1 = 2/\sqrt{\kappa}$ |
 | Kurtosis | $\kappa_4 = 3 + 6/\kappa$ |
 | Mode | $(\kappa - 1)\theta$ for $\kappa \geq 1$ |
@@ -376,7 +376,7 @@ Q(p) = \xi - \alpha \ln(1 - p)
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \xi + \alpha$ |
-| Variance | $\operatorname{Var}(X) = \alpha^2$ |
+| Variance | $\text{Var}(X) = \alpha^2$ |
 | Skewness | $\gamma_1 = 2$ |
 | Kurtosis | $\kappa = 9$ |
 | Mode | $\xi$ |
@@ -426,7 +426,7 @@ Q(p) = \xi - \alpha \ln(-\ln p)
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \xi + \alpha\gamma_E$ where $\gamma_E \approx 0.5772$ is the Euler-Mascheroni constant |
-| Variance | $\operatorname{Var}(X) = \frac{\pi^2}{6}\alpha^2$ |
+| Variance | $\text{Var}(X) = \frac{\pi^2}{6}\alpha^2$ |
 | Skewness | $\gamma_1 \approx 1.1396$ |
 | Kurtosis | $\kappa = 3 + 12/5 = 5.4$ |
 | Mode | $\xi$ |
@@ -475,7 +475,7 @@ Q(p) = a + p(b - a)
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \frac{a + b}{2}$ |
-| Variance | $\operatorname{Var}(X) = \frac{(b - a)^2}{12}$ |
+| Variance | $\text{Var}(X) = \frac{(b - a)^2}{12}$ |
 | Skewness | $\gamma_1 = 0$ |
 | Kurtosis | $\kappa = 9/5 = 1.8$ |
 
@@ -521,7 +521,7 @@ F(x) = \begin{cases}
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \frac{a + b + c}{3}$ |
-| Variance | $\operatorname{Var}(X) = \frac{a^2 + b^2 + c^2 - ab - ac - bc}{18}$ |
+| Variance | $\text{Var}(X) = \frac{a^2 + b^2 + c^2 - ab - ac - bc}{18}$ |
 | Mode | $c$ |
 
 **Parameters in Numerics:** `Triangular(min, mode, max)` where `min` = $a$, `mode` = $c$, and `max` = $b$, with $a \leq c \leq b$.
@@ -566,7 +566,7 @@ where $I_x(\alpha, \beta)$ is the regularized incomplete Beta function.
 | Property | Formula |
 |----------|---------|
 | Mean | $E[X] = \frac{\alpha}{\alpha + \beta}$ |
-| Variance | $\operatorname{Var}(X) = \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)}$ |
+| Variance | $\text{Var}(X) = \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)}$ |
 | Mode | $\frac{\alpha - 1}{\alpha + \beta - 2}$ for $\alpha, \beta > 1$ |
 | Skewness | $\frac{2(\beta - \alpha)\sqrt{\alpha + \beta + 1}}{(\alpha + \beta + 2)\sqrt{\alpha\beta}}$ |
 

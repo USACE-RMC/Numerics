@@ -80,7 +80,8 @@ var tCopula = new StudentTCopula(rho, nu);
 double density = tCopula.PDF(u1, u2);
 
 Console.WriteLine($"t-copula density: {density:F4}");
-Console.WriteLine($"Tail dependence: {tCopula.TailDependence:F4}");
+Console.WriteLine($"Upper tail dependence: {tCopula.UpperTailDependence:F4}");
+Console.WriteLine($"Lower tail dependence: {tCopula.LowerTailDependence:F4}");
 ```
 
 ### Archimedean Copulas
@@ -351,13 +352,14 @@ The **lower tail dependence coefficient** is defined analogously as $u \to 0^+$:
 A copula has tail dependence if $\lambda > 0$. This is a critical property for risk analysis: the Normal copula always has $\lambda = 0$, meaning it systematically underestimates joint extreme events. For flood analysis, copulas with upper tail dependence (Gumbel, Joe, Student-t) are preferred.
 
 ```cs
-// Tail dependence comparison
+// Tail dependence comparison using UpperTailDependence / LowerTailDependence properties
 Console.WriteLine("Tail Dependence Properties:");
-Console.WriteLine($"  Student-t(ρ=0.7, ν=5): λ = {new StudentTCopula(0.7, 5).TailDependence:F4}");
-Console.WriteLine($"  Student-t(ρ=0.7, ν=20): λ = {new StudentTCopula(0.7, 20).TailDependence:F4}");
-Console.WriteLine("  Gaussian: λ = 0 (always)");
-Console.WriteLine($"  Clayton(θ=2): λ_L = {Math.Pow(2, -1.0/2):F4}");
-Console.WriteLine($"  Gumbel(θ=2): λ_U = {2 - Math.Pow(2, 1.0/2):F4}");
+Console.WriteLine($"  Student-t(ρ=0.7, ν=5):  λ_U = {new StudentTCopula(0.7, 5).UpperTailDependence:F4}");
+Console.WriteLine($"  Student-t(ρ=0.7, ν=20): λ_U = {new StudentTCopula(0.7, 20).UpperTailDependence:F4}");
+Console.WriteLine($"  Normal(ρ=0.7):           λ_U = {new NormalCopula(0.7).UpperTailDependence:F4}");
+Console.WriteLine($"  Clayton(θ=2):            λ_L = {new ClaytonCopula(2.0).LowerTailDependence:F4}");
+Console.WriteLine($"  Gumbel(θ=2):             λ_U = {new GumbelCopula(2.0).UpperTailDependence:F4}");
+Console.WriteLine($"  Frank(θ=5):              λ_U = {new FrankCopula(5.0).UpperTailDependence:F4}");
 ```
 
 ## Higher-Dimensional Dependence

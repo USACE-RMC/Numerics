@@ -176,5 +176,22 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(84.17168, ((Normal)copula.MarginalDistributionY).Mu, 1E-2);
             Assert.AreEqual(24.58027, ((Normal)copula.MarginalDistributionY).Sigma, 1E-2);
         }
+
+        /// <summary>
+        /// Test the tail dependence coefficients.
+        /// Normal copula: λ_U = λ_L = 0 (no tail dependence).
+        /// </summary>
+        [TestMethod]
+        public void Test_TailDependence()
+        {
+            var copula = new NormalCopula(0.5);
+            Assert.AreEqual(0.0, copula.UpperTailDependence, 1E-10, "Normal copula should have no upper tail dependence.");
+            Assert.AreEqual(0.0, copula.LowerTailDependence, 1E-10, "Normal copula should have no lower tail dependence.");
+
+            // Even with high correlation, Normal copula has zero tail dependence
+            var copulaHigh = new NormalCopula(0.99);
+            Assert.AreEqual(0.0, copulaHigh.UpperTailDependence, 1E-10, "Normal copula should have no tail dependence even with high ρ.");
+            Assert.AreEqual(0.0, copulaHigh.LowerTailDependence, 1E-10, "Normal copula should have no tail dependence even with high ρ.");
+        }
     }
 }

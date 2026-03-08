@@ -551,25 +551,19 @@ for (int i = 0; i < years.Length; i++)
 Console.WriteLine("Annual Peak Flow Trend Analysis");
 Console.WriteLine("=" + new string('=', 50));
 
-// Linear regression for trend
-double[] x = Enumerable.Range(0, peakSeries.Count).Select(i => (double)i).ToArray();
+// Trend analysis using built-in hypothesis tests
+double[] indices = Enumerable.Range(0, peakSeries.Count).Select(i => (double)i).ToArray();
 double[] y = peakSeries.ValuesToArray();
 
-double xMean = x.Average();
-double yMean = y.Average();
+// Parametric: Linear regression t-test (returns p-value)
+double linearPValue = HypothesisTests.LinearTrendTest(indices, y);
+Console.WriteLine($"Linear trend test p-value: {linearPValue:F4}");
 
-double slope = x.Zip(y, (xi, yi) => (xi - xMean) * (yi - yMean)).Sum() /
-               x.Sum(xi => Math.Pow(xi - xMean, 2));
-double intercept = yMean - slope * xMean;
-
-Console.WriteLine($"Trend: {slope:F1} cfs/year");
-Console.WriteLine($"Direction: {(slope > 0 ? "Increasing" : "Decreasing")}");
-
-// Mann-Kendall test for significance (returns p-value)
+// Non-parametric: Mann-Kendall test (returns p-value)
 double mkPValue = HypothesisTests.MannKendallTest(y);
 Console.WriteLine($"Mann-Kendall p-value: {mkPValue:F4}");
 
-if (mkPValue < 0.05)
+if (linearPValue < 0.05 || mkPValue < 0.05)
     Console.WriteLine("Trend is statistically significant (p < 0.05)");
 else
     Console.WriteLine("Trend is not statistically significant");
@@ -582,58 +576,34 @@ A time series can be decomposed into trend ($T_t$), seasonal ($S_t$), and residu
 - **Additive**: $x_t = T_t + S_t + R_t$ — when seasonal fluctuations are roughly constant in magnitude
 - **Multiplicative**: $x_t = T_t \cdot S_t \cdot R_t$ — when seasonal fluctuations scale with the level
 
-A simple decomposition uses the moving average to estimate the trend, then extracts the seasonal pattern from the detrended series:
+The `SeasonalDecompose` method performs classical additive decomposition using a moving average for the trend and FFT-based extraction for the seasonal component:
 
 ```cs
 using System.Linq;
 using Numerics.Data;
 
-// Daily temperature data (3 years)
-int years = 3;
+// Monthly temperature data (5 years)
+int nYears = 5;
+int period = 12;
 var random = new Random(123);
-var dailyTemp = new TimeSeries(TimeInterval.OneDay);
+var monthlyTemp = new TimeSeries(TimeInterval.OneMonth);
 
-for (int day = 0; day < years * 365; day++)
+for (int i = 0; i < nYears * period; i++)
 {
-    double trend = 0.005 * day;   // Slight warming trend
-    double seasonal = 10.0 * Math.Sin(2 * Math.PI * day / 365.0);
-    double noise = (random.NextDouble() - 0.5) * 4;
-    dailyTemp.Add(new SeriesOrdinate<DateTime, double>(
-        new DateTime(2022, 1, 1).AddDays(day), 15 + trend + seasonal + noise));
+    double trend = 15.0 + 0.05 * i;   // Slight warming trend
+    double seasonal = 10.0 * Math.Sin(2 * Math.PI * i / period);
+    double noise = (random.NextDouble() - 0.5) * 2;
+    monthlyTemp.Add(new SeriesOrdinate<DateTime, double>(
+        new DateTime(2020, 1, 1).AddMonths(i), trend + seasonal + noise));
 }
 
-// Step 1: Estimate trend using 365-day moving average
-var trend = dailyTemp.MovingAverage(365);
-
-// Step 2: Detrend — compute residual from trend
-// Step 3: Average by day-of-year to get seasonal component
-var seasonalByDay = new double[365];
-var countByDay = new int[365];
-
-for (int i = 0; i < trend.Count; i++)
-{
-    int dayOfYear = trend[i].Index.DayOfYear - 1;
-    if (dayOfYear < 365)
-    {
-        // Align with original series (MA is offset by half-window)
-        int origIdx = i + 182;  // 365/2
-        if (origIdx < dailyTemp.Count)
-        {
-            seasonalByDay[dayOfYear] += dailyTemp[origIdx].Value - trend[i].Value;
-            countByDay[dayOfYear]++;
-        }
-    }
-}
-
-for (int d = 0; d < 365; d++)
-{
-    if (countByDay[d] > 0)
-        seasonalByDay[d] /= countByDay[d];
-}
+// Decompose into trend, seasonal, and residual components
+var (trend, seasonal, residual) = monthlyTemp.SeasonalDecompose(period);
 
 Console.WriteLine("Seasonal Decomposition:");
 Console.WriteLine($"  Trend range: {trend.MinValue():F1} to {trend.MaxValue():F1}");
-Console.WriteLine($"  Seasonal amplitude: {seasonalByDay.Max() - seasonalByDay.Min():F1}");
+Console.WriteLine($"  Seasonal amplitude: {seasonal.Max() - seasonal.Min():F1}");
+Console.WriteLine($"  Residual count: {residual.Count}");
 ```
 
 ### Example 5: Seasonal Analysis
@@ -643,14 +613,14 @@ using System.Linq;
 using Numerics.Data;
 
 // Multi-year daily data
-int years = 3;
+int nYears = 3;
 int daysPerYear = 365;
 var random = new Random(123);
 
 var dailyTemp = new TimeSeries(TimeInterval.OneDay);
 
 // Generate seasonal temperature pattern
-for (int day = 0; day < years * daysPerYear; day++)
+for (int day = 0; day < nYears * daysPerYear; day++)
 {
     // Sinusoidal pattern + noise
     double seasonalTemp = 15 + 10 * Math.Sin(2 * Math.PI * day / 365.0);
@@ -664,22 +634,14 @@ for (int day = 0; day < years * daysPerYear; day++)
 Console.WriteLine("Seasonal Temperature Analysis");
 Console.WriteLine("=" + new string('=', 50));
 
-// Compute monthly averages
-var monthlyAvg = new Dictionary<int, List<double>>();
-for (int m = 1; m <= 12; m++)
-    monthlyAvg[m] = new List<double>();
+// Compute monthly averages using built-in MonthlySeries
+var monthlyAvgSeries = dailyTemp.MonthlySeries(BlockFunctionType.Average);
 
-foreach (var ord in dailyTemp)
+Console.WriteLine("\nDate       | Avg Temp (°C)");
+Console.WriteLine("-----------|-------------");
+foreach (var ord in monthlyAvgSeries)
 {
-    monthlyAvg[ord.Index.Month].Add(ord.Value);
-}
-
-Console.WriteLine("\nMonth | Avg Temp (°C)");
-Console.WriteLine("------|-------------");
-for (int m = 1; m <= 12; m++)
-{
-    double avg = monthlyAvg[m].Average();
-    Console.WriteLine($"{m,5} | {avg,13:F1}");
+    Console.WriteLine($"{ord.Index:yyyy-MM} | {ord.Value,13:F1}");
 }
 ```
 

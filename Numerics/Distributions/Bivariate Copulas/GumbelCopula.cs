@@ -159,6 +159,23 @@ namespace Numerics.Distributions.Copulas
             return [u, v];
         }
 
+        /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U = 2 - 2^(1/θ).
+        /// </summary>
+        public override double UpperTailDependence
+        {
+            get
+            {
+                return 2.0 - Math.Pow(2.0, 1.0 / Theta);
+            }
+        }
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L = 0.
+        /// The Gumbel copula has no lower tail dependence.
+        /// </summary>
+        public override double LowerTailDependence => 0.0;
+
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
