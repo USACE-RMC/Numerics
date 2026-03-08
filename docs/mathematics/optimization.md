@@ -202,7 +202,31 @@ Global optimization methods are designed to find the global minimum across the e
 
 ### Differential Evolution
 
-Differential Evolution (DE) is a population-based evolutionary algorithm that's very robust for continuous optimization [[4]](#4). It creates trial vectors by combining existing population members.
+Differential Evolution (DE) is a population-based evolutionary algorithm that's very robust for continuous optimization [[4]](#4). For each member $\mathbf{x}_i$ of the population, DE creates a **trial vector** $\mathbf{u}$ using mutation and crossover:
+
+**Mutation** (DE/rand/1): Three distinct population members $\mathbf{x}_{r_0}$, $\mathbf{x}_{r_1}$, $\mathbf{x}_{r_2}$ are randomly selected, and a **mutant vector** is formed:
+
+```math
+\mathbf{v} = \mathbf{x}_{r_0} + G \cdot (\mathbf{x}_{r_1} - \mathbf{x}_{r_2})
+```
+
+where $G$ is a scale factor. In the ***Numerics*** implementation, $G$ is **dithered** with 90% probability: $G = 0.5 + \text{rand}() \times 0.5$, which helps avoid stagnation.
+
+**Crossover** (binomial): The trial vector $\mathbf{u}$ is assembled component-by-component:
+
+```math
+u_j = \begin{cases} v_j & \text{if } \text{rand}() \leq CR \text{ or } j = j_{\text{rand}} \\ x_{i,j} & \text{otherwise} \end{cases}
+```
+
+where $CR$ is the crossover probability and $j_{\text{rand}}$ is a randomly chosen index that ensures at least one component comes from the mutant vector.
+
+**Selection** (greedy): The trial vector replaces the target only if it has equal or better fitness:
+
+```math
+\mathbf{x}_i^{(g+1)} = \begin{cases} \mathbf{u} & \text{if } f(\mathbf{u}) \leq f(\mathbf{x}_i^{(g)}) \\ \mathbf{x}_i^{(g)} & \text{otherwise} \end{cases}
+```
+
+The algorithm converges when the standard deviation of fitness values across the population falls below the tolerance.
 
 ```cs
 using Numerics.Mathematics.Optimization;
@@ -241,7 +265,23 @@ Console.WriteLine($"Function value: {de.BestParameterSet.Fitness:F10}");
 
 ### Particle Swarm Optimization
 
-PSO simulates social behavior of bird flocking or fish schooling [[5]](#5). Particles move through the search space influenced by their own best position and the swarm's best position.
+PSO simulates social behavior of bird flocking or fish schooling [[5]](#5). Each particle $i$ has a position $\mathbf{x}_i$ and velocity $\mathbf{v}_i$ that are updated at each iteration using:
+
+```math
+v_{i,j}^{(t+1)} = w \cdot v_{i,j}^{(t)} + c_1 \cdot r_1 \cdot (p_{i,j} - x_{i,j}^{(t)}) + c_2 \cdot r_2 \cdot (g_j - x_{i,j}^{(t)})
+```
+```math
+x_{i,j}^{(t+1)} = x_{i,j}^{(t)} + v_{i,j}^{(t+1)}
+```
+
+where:
+- $w$ is the **inertia weight**, which decreases linearly from $w_{\max} = 0.9$ to $w_{\min} = 0.4$ over the optimization, balancing exploration (high $w$) and exploitation (low $w$)
+- $c_1 = c_2 = 2.05$ are the cognitive and social acceleration coefficients
+- $r_1, r_2 \sim U(0,1)$ are independent random numbers (per component, per particle)
+- $\mathbf{p}_i$ is particle $i$'s personal best position (best position it has visited)
+- $\mathbf{g}$ is the global best position (best position any particle has visited)
+
+The three terms represent **momentum** (continue in the current direction), **cognitive pull** (return toward personal best), and **social pull** (move toward the swarm's best).
 
 ```cs
 var pso = new ParticleSwarm(Rastrigin, 2, lower, upper);
@@ -251,14 +291,34 @@ pso.Minimize();
 Console.WriteLine($"Solution: [{pso.BestParameterSet.Values[0]:F6}, {pso.BestParameterSet.Values[1]:F6}]");
 ```
 
-**Advantages**: Fast, simple to implement, works well for continuous problems.
+**Advantages**: Fast convergence, simple concept, works well for continuous problems.
 
 **Parameters**:
 - `PopulationSize`: Number of particles (default = 30)
 
 ### Shuffled Complex Evolution (SCE-UA)
 
-SCE-UA was specifically developed for calibrating hydrological models [[6]](#6). It combines complex shuffling with competitive evolution.
+SCE-UA was specifically developed for calibrating hydrological models [[6]](#6). The algorithm partitions the population into $p$ **complexes**, evolves each complex independently using a **Competitive Complex Evolution** (CCE) strategy, then shuffles members between complexes to share information.
+
+The CCE step within each complex proceeds as follows:
+
+1. **Sub-complex selection**: Select $q = D+1$ points from the complex using a trapezoidal probability distribution that favors better-ranked points: $P(i) = \frac{2(N+1-i)}{N(N+1)}$
+
+2. **Reflection**: Compute the centroid $\mathbf{g}$ of all sub-complex points except the worst point $\mathbf{x}_w$, then reflect:
+
+```math
+\mathbf{r} = 2\mathbf{g} - \mathbf{x}_w
+```
+
+3. **Contraction**: If the reflected point is infeasible or worse than $\mathbf{x}_w$, try contraction:
+
+```math
+\mathbf{c} = \frac{\mathbf{g} + \mathbf{x}_w}{2}
+```
+
+4. **Mutation**: If contraction also fails, generate a random point within the smallest bounding box of the complex.
+
+The shuffling step redistributes points across complexes, preventing any single complex from stagnating. This combination of local competitive evolution within complexes and global information sharing between complexes makes SCE-UA particularly effective for the rugged, multimodal objective functions typical of hydrological model calibration.
 
 ```cs
 var sce = new ShuffledComplexEvolution(Rastrigin, 2, lower, upper);
@@ -515,7 +575,14 @@ The `BestParameterSet` contains:
 
 ### Hessian Matrix
 
-When `ComputeHessian = true`, the Hessian at the solution is computed numerically. This provides information about parameter sensitivity and uncertainty:
+When `ComputeHessian = true`, the Hessian at the solution is computed numerically. The Hessian $\mathbf{H}$ is the matrix of second partial derivatives of the objective function, and its eigenvalues reveal important information about the solution:
+
+- **All eigenvalues positive**: The solution is a local minimum (the Hessian is positive definite)
+- **Large eigenvalue**: The objective is highly curved in that direction — the corresponding parameter is well-determined
+- **Small eigenvalue**: The objective is nearly flat — the parameter is poorly determined or identifiable
+- **Near-zero eigenvalue**: Indicates a ridge or valley in the objective surface, suggesting parameter correlation or redundancy
+
+The inverse of the Hessian approximates the covariance matrix of the parameters, so parameter standard errors can be estimated as $SE(\hat{\theta}_i) \approx \sqrt{|H_{ii}^{-1}|}$:
 
 ```cs
 optimizer.ComputeHessian = true;

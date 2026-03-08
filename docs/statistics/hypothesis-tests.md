@@ -16,9 +16,17 @@ All hypothesis tests in ***Numerics*** return **p-values**, not test statistics.
 
 ## t-Tests
 
+The t-test compares sample means using the **t-statistic**, which measures how many standard errors the observed mean is from the hypothesized value. Under the null hypothesis, this statistic follows a Student's t-distribution.
+
 ### One-Sample t-Test
 
-Tests if the sample mean differs from a hypothesized population mean:
+Tests if the sample mean differs from a hypothesized population mean. The test statistic is:
+
+```math
+t = \frac{\bar{x} - \mu_0}{s / \sqrt{n}}
+```
+
+where $\bar{x}$ is the sample mean, $\mu_0$ is the hypothesized mean, $s$ is the sample standard deviation, and $n$ is the sample size. Under $H_0$, $t \sim t_{n-1}$.
 
 ```cs
 using Numerics.Data.Statistics;
@@ -49,7 +57,11 @@ else
 
 #### Equal Variance (Pooled) t-Test
 
-Tests if means of two independent samples are equal, assuming equal variances:
+Tests if means of two independent samples are equal, assuming equal variances. The test uses a **pooled variance** estimate $s_p^2 = \frac{(n_1-1)s_1^2 + (n_2-1)s_2^2}{n_1 + n_2 - 2}$ and the statistic:
+
+```math
+t = \frac{\bar{x}_1 - \bar{x}_2}{s_p\sqrt{1/n_1 + 1/n_2}}, \quad t \sim t_{n_1+n_2-2}
+```
 
 ```cs
 double[] sample1 = { 12.5, 13.2, 11.8, 14.1, 12.9 };
@@ -116,7 +128,13 @@ else
 
 ## F-Test for Variance Equality
 
-Tests if two populations have equal variances:
+Tests if two populations have equal variances. The test statistic is the ratio of sample variances:
+
+```math
+F = \frac{s_1^2}{s_2^2}, \quad F \sim F_{n_1-1, n_2-1}
+```
+
+Values far from 1 (either large or small) suggest unequal variances.
 
 ```cs
 double[] sample1 = { 10, 12, 14, 16, 18 };
@@ -169,7 +187,13 @@ else
 
 ### Jarque-Bera Test
 
-Tests if data follows a normal distribution using skewness and kurtosis:
+Tests if data follows a normal distribution by measuring departures from the skewness ($S=0$) and excess kurtosis ($K=0$) expected under normality. The test statistic is:
+
+```math
+JB = \frac{n}{6}\left(S^2 + \frac{K^2}{4}\right)
+```
+
+where $S$ is the sample skewness and $K$ is the sample excess kurtosis. Under $H_0$, $JB \sim \chi^2_2$ asymptotically.
 
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
@@ -215,7 +239,13 @@ else
 
 ### Ljung-Box Test
 
-Tests for autocorrelation in time series data:
+Tests for autocorrelation in time series data. The test statistic sums squared autocorrelation coefficients:
+
+```math
+Q = n(n+2)\sum_{k=1}^{m}\frac{\hat{\rho}_k^2}{n-k}
+```
+
+where $\hat{\rho}_k$ is the sample autocorrelation at lag $k$, $n$ is the sample size, and $m$ is the number of lags tested. Under $H_0$ (no autocorrelation), $Q \sim \chi^2_m$.
 
 ```cs
 double[] timeSeries = { 12.5, 13.2, 11.8, 14.1, 12.9, 13.5, 12.2, 13.8, 14.5, 13.1 };
@@ -271,7 +301,13 @@ else
 
 ### Mann-Kendall Trend Test
 
-Detects monotonic trends in time series (non-parametric):
+Detects monotonic trends in time series (non-parametric). The test statistic $S$ counts concordant minus discordant pairs:
+
+```math
+S = \sum_{i=1}^{n-1}\sum_{j=i+1}^{n} \text{sgn}(x_j - x_i)
+```
+
+where $\text{sgn}(x) = 1$ if $x > 0$, $-1$ if $x < 0$, and $0$ if $x = 0$. For $n \geq 10$, $S$ is approximately normal with variance $\text{Var}(S) = \frac{n(n-1)(2n+5)}{18}$, and the standardized statistic $Z = S/\sqrt{\text{Var}(S)}$ is used to compute the p-value. A positive $S$ indicates an upward trend; negative indicates downward.
 
 ```cs
 double[] timeSeries = { 10, 12, 11, 15, 14, 18, 17, 21, 20, 24 };
@@ -497,15 +533,29 @@ else
 | Linear trend? | `LinearTrendTest` | Parametric trend test |
 | Unimodal distribution? | `UnimodalityTest` | GMM-based comparison |
 
+## Effect Size
+
+A p-value tells you whether an effect is statistically detectable, but not whether it is practically important. **Effect size** measures the magnitude of a difference independently of sample size.
+
+**Cohen's d** for two-sample comparisons measures the difference in means in units of standard deviations:
+
+```math
+d = \frac{\bar{x}_1 - \bar{x}_2}{s_p}
+```
+
+where $s_p$ is the pooled standard deviation. Conventional thresholds: $|d| < 0.2$ is small, $0.2$–$0.8$ is medium, $> 0.8$ is large. With a large enough sample size, even a tiny $d$ (e.g., 0.01) will produce a significant p-value — but the effect may be meaningless in practice.
+
+For trend tests, the **Kendall's tau** correlation (which can be computed from the Mann-Kendall $S$ statistic) serves as a non-parametric effect size measure: $\tau = S / \binom{n}{2}$.
+
 ## Best Practices
 
-1. **Choose significance level a priori** - Typically α = 0.05, but consider α = 0.10 for exploratory analysis
-2. **Check test assumptions** - Many tests assume normality or independence
-3. **Use non-parametric alternatives** - When assumptions are violated (e.g., Mann-Whitney instead of t-test)
-4. **Report p-values, not just decisions** - p = 0.049 and p = 0.051 are essentially equivalent
-5. **Consider multiple testing corrections** - Bonferroni or FDR when performing many tests
-6. **Report effect sizes** - Statistical significance ≠ practical significance
-7. **Visualize data** - Plots often reveal more than hypothesis tests
+1. **Choose significance level a priori** — Typically $\alpha = 0.05$, but consider $\alpha = 0.10$ for exploratory analysis
+2. **Check test assumptions** — Many tests assume normality or independence
+3. **Use non-parametric alternatives** — When assumptions are violated (e.g., Mann-Whitney instead of t-test)
+4. **Report p-values, not just decisions** — $p = 0.049$ and $p = 0.051$ are essentially equivalent
+5. **Consider multiple testing corrections** — When performing $k$ simultaneous tests, use the Bonferroni correction: reject at $\alpha/k$ instead of $\alpha$
+6. **Report effect sizes** — Statistical significance does not imply practical significance. Always report Cohen's d or an equivalent alongside p-values
+7. **Visualize data** — Plots often reveal more than hypothesis tests
 
 ## Important Notes
 

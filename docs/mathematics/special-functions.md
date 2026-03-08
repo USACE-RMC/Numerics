@@ -2,11 +2,23 @@
 
 [← Previous: Linear Algebra](linear-algebra.md) | [Back to Index](../index.md) | [Next: ODE Solvers →](ode-solvers.md)
 
-The ***Numerics*** library provides essential special functions commonly used in statistical distributions, numerical analysis, and scientific computing. These include Gamma, Beta, Error, Bessel, and combinatorial functions.
+The ***Numerics*** library provides essential special functions commonly used in statistical distributions, numerical analysis, and scientific computing. These functions underpin many of the library's distribution and integration routines — for example, the Normal distribution CDF is computed using the error function, and the Chi-squared CDF uses the incomplete Gamma function.
 
 ## Gamma Function
 
-The Gamma function Γ(x) extends the factorial function to real and complex numbers: Γ(n) = (n-1)! for positive integers.
+The Gamma function is defined by the integral:
+
+```math
+\Gamma(x) = \int_0^{\infty} t^{x-1} e^{-t} \, dt, \quad x > 0
+```
+
+It extends the factorial function to real (and complex) numbers: $\Gamma(n) = (n-1)!$ for positive integers. The defining **recurrence relation** is:
+
+```math
+\Gamma(x+1) = x \cdot \Gamma(x)
+```
+
+Two other important identities are the **reflection formula** $\Gamma(x)\Gamma(1-x) = \frac{\pi}{\sin(\pi x)}$ and the **duplication formula** $\Gamma(x)\Gamma(x + \frac{1}{2}) = \frac{\sqrt{\pi}}{2^{2x-1}}\Gamma(2x)$. The special value $\Gamma(\frac{1}{2}) = \sqrt{\pi}$ follows directly from the reflection formula.
 
 ### Basic Gamma Function
 
@@ -30,7 +42,13 @@ Console.WriteLine($"Γ(4.5) = {Gamma.Function(4.5):F3}");
 
 ### Log-Gamma Function
 
-For large arguments, use log-gamma to avoid overflow:
+For large arguments, $\Gamma(x)$ overflows double-precision floating point. The log-gamma function $\ln \Gamma(x)$ grows much more slowly and is used internally throughout the library for distribution computations. For large $x$, Stirling's approximation gives:
+
+```math
+\ln \Gamma(x) \approx x \ln x - x + \frac{1}{2}\ln\!\left(\frac{2\pi}{x}\right)
+```
+
+Use log-gamma to avoid overflow:
 
 ```cs
 // Regular gamma would overflow for large x
@@ -46,7 +64,7 @@ Console.WriteLine($"ln(Γ(200)) = {logGamma:F2}");
 
 ### Digamma and Trigamma
 
-Derivatives of the log-gamma function:
+The digamma function $\psi(x) = \frac{d}{dx}\ln\Gamma(x) = \frac{\Gamma'(x)}{\Gamma(x)}$ and the trigamma function $\psi'(x) = \frac{d^2}{dx^2}\ln\Gamma(x)$ arise in maximum likelihood estimation for the Gamma, Beta, and Dirichlet distributions. The digamma function satisfies $\psi(x+1) = \psi(x) + \frac{1}{x}$ and for large $x$, $\psi(x) \approx \ln x - \frac{1}{2x}$.
 
 ```cs
 // Digamma: ψ(x) = d/dx[ln(Γ(x))] = Γ'(x)/Γ(x)
@@ -63,7 +81,13 @@ Console.WriteLine($"ψ'(2) = {trigamma:F6}");
 
 ### Incomplete Gamma Functions
 
-Used in chi-squared and gamma distributions. These methods return the **regularized** forms P(a,x) and Q(a,x):
+The **lower incomplete gamma function** is defined as the integral with a finite upper limit:
+
+```math
+\gamma(a, x) = \int_0^{x} t^{a-1} e^{-t} \, dt
+```
+
+The library returns the **regularized** forms $P(a,x) = \gamma(a,x)/\Gamma(a)$ and $Q(a,x) = 1 - P(a,x)$, which range from 0 to 1. These are equivalent to the CDF and survival function of the Gamma distribution — the Chi-squared CDF with $k$ degrees of freedom is $P(k/2, x/2)$.
 
 ```cs
 // Regularized lower incomplete gamma: P(a,x) = γ(a,x) / Γ(a)
@@ -98,7 +122,13 @@ Console.WriteLine($"P(2, {xInv:F3}) = 0.9");
 
 ## Beta Function
 
-The Beta function relates to the Gamma function: B(a,b) = Γ(a)Γ(b)/Γ(a+b)
+The Beta function is defined by the integral:
+
+```math
+B(a,b) = \int_0^1 t^{a-1}(1-t)^{b-1}\,dt = \frac{\Gamma(a)\Gamma(b)}{\Gamma(a+b)}
+```
+
+The relationship to the Gamma function makes computation straightforward via $\ln B(a,b) = \ln\Gamma(a) + \ln\Gamma(b) - \ln\Gamma(a+b)$.
 
 ### Basic Beta Function
 
@@ -120,7 +150,13 @@ Console.WriteLine($"Γ(2)Γ(3)/Γ(5) = {betaCheck:F6}");
 
 ### Incomplete Beta Function
 
-Used in Beta distribution and Student's t-test. This returns the **regularized** form Iₓ(a,b) = Bₓ(a,b) / B(a,b), which ranges from 0 to 1:
+The incomplete Beta function is defined as:
+
+```math
+B_x(a,b) = \int_0^x t^{a-1}(1-t)^{b-1}\,dt
+```
+
+The library returns the **regularized** form $I_x(a,b) = B_x(a,b) / B(a,b)$, which ranges from 0 to 1 and is the CDF of the Beta distribution. It is also used internally for the Student's t-test, the F-distribution CDF, and the binomial distribution CDF.
 
 ```cs
 // Regularized incomplete beta: Iₓ(a,b) = Bₓ(a,b) / B(a,b)
@@ -151,7 +187,13 @@ Console.WriteLine($"Verification: I(2,3,{x:F4}) = {check:F6}");
 
 ## Error Function
 
-The error function is the integral of the Gaussian distribution:
+The error function is defined as the integral:
+
+```math
+\text{erf}(x) = \frac{2}{\sqrt{\pi}} \int_0^x e^{-t^2}\,dt
+```
+
+It is closely related to the Normal distribution CDF: $\Phi(x) = \frac{1}{2}\left[1 + \text{erf}\!\left(\frac{x}{\sqrt{2}}\right)\right]$. The library uses this relationship internally to compute the standard normal CDF. The complementary error function $\text{erfc}(x) = 1 - \text{erf}(x)$ is computed directly (rather than via subtraction) for numerical accuracy when $x$ is large, where $\text{erf}(x) \approx 1$ and the subtraction $1 - \text{erf}(x)$ would lose precision.
 
 ### Error Function and Complement
 
@@ -445,10 +487,20 @@ Console.WriteLine($"  Relative error = {relativeError:P4}");
 
 ## Implementation Notes
 
-- All functions use high-precision approximations
+- All functions use high-precision polynomial or rational approximations
 - Log-space variants prevent overflow for large arguments
-- Inverse functions use Newton-Raphson iteration
-- Special care for edge cases and numerical stability
+- Inverse functions use Newton-Raphson iteration with appropriate starting values
+- Special care for edge cases: $\Gamma(x)$ near poles at non-positive integers, $\text{erf}(x)$ for large $|x|$, incomplete gamma/beta for extreme parameter ratios
+
+---
+
+## References
+
+<a id="1">[1]</a> M. Abramowitz and I. A. Stegun, *Handbook of Mathematical Functions*, New York: Dover Publications, 1964.
+
+<a id="2">[2]</a> W. H. Press, S. A. Teukolsky, W. T. Vetterling and B. P. Flannery, *Numerical Recipes: The Art of Scientific Computing*, 3rd ed., Cambridge, UK: Cambridge University Press, 2007.
+
+<a id="3">[3]</a> NIST Digital Library of Mathematical Functions, https://dlmf.nist.gov/.
 
 ---
 

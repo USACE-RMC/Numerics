@@ -39,6 +39,22 @@ The bisection method is the simplest root-finding algorithm. It repeatedly bisec
 4. Otherwise, replace either $a$ or $b$ with $c$ based on the sign of $f(c)$
 5. Repeat until convergence
 
+### Convergence Rate
+
+Bisection has **linear convergence** with a constant factor of $1/2$. After $n$ iterations, the error is bounded by:
+
+```math
+|e_n| \leq \frac{b - a}{2^n}
+```
+
+where $b - a$ is the initial interval width. This means each iteration gains approximately one binary digit of accuracy. To achieve a tolerance $\varepsilon$, the number of iterations required is:
+
+```math
+n \geq \frac{\log(b - a) - \log(\varepsilon)}{\log 2}
+```
+
+For example, starting with $[0, 3]$ and tolerance $10^{-10}$, bisection needs at most $\lceil \log_2(3 \times 10^{10}) \rceil = 35$ iterations. This predictability is one of bisection's strengths — you know exactly how many iterations you need before you start.
+
 ### Usage
 
 ```cs
@@ -153,6 +169,16 @@ This approximates the derivative as:
 f'(x_n) \approx \frac{f(x_n) - f(x_{n-1})}{x_n - x_{n-1}}
 ```
 
+### Convergence Rate
+
+The secant method has **superlinear convergence** of order $\varphi = (1 + \sqrt{5})/2 \approx 1.618$ (the golden ratio). Near a simple root $x^*$, the error satisfies:
+
+```math
+|e_{n+1}| \approx \left|\frac{f''(x^*)}{2f'(x^*)}\right|^{\varphi - 1} |e_n|^{\varphi}
+```
+
+This is faster than bisection's linear convergence but slower than Newton's quadratic convergence. However, since the secant method requires only **one function evaluation per iteration** (compared to Newton's two — one for $f$ and one for $f'$), it can be more efficient overall. In terms of function evaluations, the secant method's efficiency index is $\varphi^{1/1} \approx 1.618$, while Newton's is $2^{1/2} \approx 1.414$.
+
 ### Usage
 
 ```cs
@@ -198,6 +224,34 @@ x_{n+1} = x_n - \frac{f(x_n)}{f'(x_n)}
 ```
 
 Geometrically, this finds where the tangent line at $(x_n, f(x_n))$ crosses the x-axis.
+
+### Convergence Rate
+
+Newton-Raphson has **quadratic convergence** near a simple root. If $e_n = x_n - x^*$ is the error at step $n$, then:
+
+```math
+e_{n+1} = -\frac{f''(x^*)}{2f'(x^*)} \cdot e_n^2 + O(e_n^3)
+```
+
+This means the number of correct digits roughly **doubles** each iteration. Starting from $|e_0| = 0.1$, after 4 iterations the error is approximately $10^{-16}$ — near machine precision. This is why Newton's method typically converges in 4–6 iterations.
+
+The constant $C = |f''(x^*)|/(2|f'(x^*)|)$ determines how fast convergence kicks in. When $|f''|$ is large relative to $|f'|$ at the root (i.e., the function curves sharply while crossing zero slowly), the method needs a closer starting point for quadratic convergence to dominate.
+
+For **repeated roots** where $f(x^*) = f'(x^*) = 0$, convergence degrades to linear. In such cases, modified Newton's method using $g(x) = f(x)/f'(x)$ restores quadratic convergence.
+
+### Basin of Attraction
+
+Newton's method is not globally convergent — its behavior depends critically on the initial guess. The **basin of attraction** for a root $x^*$ is the set of starting points $x_0$ from which Newton's method converges to $x^*$.
+
+For polynomials with multiple roots, basins of attraction can have fractal boundaries. Even simple functions can produce surprising behavior:
+
+- For $f(x) = x^3 - 1$ (with roots at $1$, $e^{2\pi i/3}$, $e^{4\pi i/3}$ in the complex plane), the boundary between basins of attraction is a fractal — the Newton fractal.
+
+- For $f(x) = x^3 - 2x + 2$, starting at $x_0 = 0$ produces the cycle $0 \to 1 \to 1 \to \ldots$ that never converges.
+
+- For $f(x) = |x|^a$ where $0 < a < 1/2$, Newton's method diverges from every starting point except the root itself.
+
+A practical rule of thumb: Newton's method converges when $|f(x_0) \cdot f''(x_0)| < |f'(x_0)|^2$ (the Newton-Kantorovich condition). When unsure about the initial guess, use the `RobustSolve` method which falls back to bisection.
 
 ### Usage
 
@@ -470,6 +524,8 @@ Newton-Raphson and Brent are typically fastest, while Bisection is slowest but m
 <a id="1">[1]</a> Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P. (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
 
 <a id="2">[2]</a> Brent, R. P. (1973). *Algorithms for Minimization Without Derivatives*. Prentice-Hall, Englewood Cliffs, NJ.
+
+<a id="3">[3]</a> Süli, E. & Mayers, D. (2003). *An Introduction to Numerical Analysis*. Cambridge University Press.
 
 ---
 

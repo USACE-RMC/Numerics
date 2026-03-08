@@ -36,9 +36,23 @@ Console.WriteLine($"Double [0,1): {u1:F6}");
 Console.WriteLine($"Double (0,1): {u4:F6}");
 ```
 
+### How It Works
+
+The Mersenne Twister (MT19937) maintains an internal state vector of $N = 624$ 32-bit integers. The state evolves through a linear recurrence:
+
+```math
+\mathbf{x}_{k+N} = \mathbf{x}_{k+M} \oplus \left(\mathbf{x}_k^{\text{upper}} \mid \mathbf{x}_{k+1}^{\text{lower}}\right) \cdot A
+```
+
+where $M = 397$, $\oplus$ is bitwise XOR, and $A$ is a carefully chosen matrix that ensures the period equals $2^{19937} - 1$ — a Mersenne prime, hence the name. The state holds $624 \times 32 = 19{,}968$ bits, so the generator cycles through $2^{19937} - 1$ values before repeating (a number with 6,002 digits).
+
+When a random number is requested, the raw state word is **tempered** through a sequence of XOR and shift operations to improve the output's equidistribution properties. The generator is 623-dimensionally equidistributed, meaning that consecutive 623-tuples of 32-bit outputs are uniformly distributed in $[0, 2^{32})^{623}$.
+
+The `GenRandRes53()` method combines two 32-bit outputs to produce a double with full 53-bit mantissa resolution, giving the finest granularity possible in $[0, 1)$.
+
 **Properties:**
-- Period: 2^19937 - 1 (extremely long)
-- Excellent uniformity and independence
+- Period: $2^{19937} - 1$ (a 6,002-digit number)
+- 623-dimensionally equidistributed at 32-bit precision
 - Fast generation
 - Reproducible with seeds
 
@@ -90,14 +104,34 @@ double[] pointAt100 = sobol.SkipTo(100);
 Console.WriteLine($"\nPoint at index 100: ({pointAt100[0]:F4}, {pointAt100[1]:F4})");
 ```
 
+### How It Works
+
+A Sobol sequence is constructed using **direction numbers** — carefully chosen integers that control how each dimension fills the unit interval. The implementation uses the Joe-Kuo direction numbers, supporting up to 21,201 dimensions with 52-bit precision.
+
+Each point in the sequence is generated using **Gray code** indexing. To advance from index $n$ to $n+1$, only a single XOR operation is needed per dimension:
+
+```math
+x_i^{(n+1)} = x_i^{(n)} \oplus v_{i,c}
+```
+
+where $c$ is the position of the rightmost zero bit in $n$, and $v_{i,c}$ is the $c$-th direction number for dimension $i$. This makes generation $O(1)$ per point. The `SkipTo(index)` method uses Gray code conversion $G(n) = n \oplus (n \gg 1)$ to jump directly to any position in $O(\log n)$ operations.
+
+The key property is **low discrepancy**: the star discrepancy $D_N^*$ of $N$ Sobol points in $d$ dimensions satisfies:
+
+```math
+D_N^* = O\left(\frac{(\log N)^d}{N}\right)
+```
+
+By the Koksma-Hlawka inequality, the integration error using quasi-Monte Carlo is bounded by $D_N^* \cdot V(f)$ where $V(f)$ is the variation of the integrand. Compare this to Monte Carlo's $O(1/\sqrt{N})$ rate — for smooth functions, Sobol sequences converge much faster.
+
 **Properties:**
-- Low discrepancy (better coverage than pseudo-random)
-- Deterministic sequence
-- Excellent for integration and optimization
-- Converges faster than Monte Carlo
+- Low discrepancy — points fill space more evenly than pseudo-random
+- Deterministic sequence (same points every time)
+- Up to 21,201 dimensions (Joe-Kuo direction numbers)
+- Integration error $O((\log N)^d / N)$ vs. Monte Carlo's $O(1/\sqrt{N})$
 
 **When to use:**
-- Numerical integration (better than Monte Carlo)
+- Numerical integration (often 10–100× fewer points than Monte Carlo for the same accuracy)
 - Parameter space exploration
 - Optimization initialization
 - Sensitivity analysis
@@ -180,14 +214,34 @@ for (int i = 0; i < Math.Min(5, sampleSize); i++)
 }
 ```
 
+### How It Works
+
+Latin Hypercube Sampling divides each dimension's range $[0, 1)$ into $n$ equal strata of width $1/n$, then places exactly one sample in each stratum. For $d$ dimensions with $n$ samples, the $i$-th sample in dimension $j$ is:
+
+```math
+x_{ij} = \frac{\pi_j(i) + U_{ij}}{n}, \quad i = 0, \ldots, n-1
+```
+
+where $\pi_j$ is a random permutation of $\{0, 1, \ldots, n-1\}$ (independent for each dimension) and $U_{ij} \sim \text{Uniform}(0, 1)$. The library's `Median` variant replaces $U_{ij}$ with $0.5$, placing each point at the stratum center.
+
+The random permutations are generated using the **Fisher-Yates shuffle**, and each dimension uses an independent Mersenne Twister seeded from a master RNG.
+
+The key guarantee is **marginal stratification**: when projected onto any single axis, the $n$ samples fall exactly one per stratum. This eliminates the clustering and gaps that plague simple random sampling. For estimating $E[f(X)]$, the variance of the LHS estimator satisfies:
+
+```math
+\text{Var}[\hat{\mu}_{\text{LHS}}] \leq \text{Var}[\hat{\mu}_{\text{MC}}]
+```
+
+with equality only when $f$ is constant within each stratum. In practice, LHS often achieves the same accuracy as simple Monte Carlo with 5–10× fewer samples.
+
 **Properties:**
-- Stratified sampling (one sample per stratum)
-- Better coverage than simple random sampling
-- Reduced variance in estimates
-- Efficient for small sample sizes
+- Stratified sampling (exactly one sample per stratum in each dimension)
+- Variance reduction over simple random sampling
+- Two variants: random (within-stratum jitter) and median (stratum centers)
+- Most efficient for small to medium sample sizes
 
 **When to use:**
-- Monte Carlo simulation with limited budget
+- Monte Carlo simulation with limited computational budget
 - Sensitivity analysis
 - Calibration with expensive models
 - Risk assessment studies
