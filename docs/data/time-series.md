@@ -185,6 +185,26 @@ ts.Inverse();                   // 1 / x
 
 ## Time Series Analysis
 
+### Autocorrelation
+
+The **autocorrelation function** (ACF) measures the correlation of a time series with a lagged copy of itself. At lag $k$, the sample autocorrelation is:
+
+```math
+\hat{\rho}(k) = \frac{\sum_{t=1}^{n-k}(x_t - \bar{x})(x_{t+k} - \bar{x})}{\sum_{t=1}^{n}(x_t - \bar{x})^2}
+```
+
+where $\bar{x}$ is the sample mean and $n$ is the series length. By definition, $\hat{\rho}(0) = 1$.
+
+Autocorrelation is central to time series analysis: significant autocorrelation at lag $k$ indicates that values $k$ time steps apart are linearly related. For an independent series, $\hat{\rho}(k) \approx 0$ for all $k > 0$, and the approximate 95% confidence bounds are $\pm 1.96 / \sqrt{n}$.
+
+The ***Numerics*** library uses the ACF internally in several statistical tests. The **Ljung-Box test** (`SummaryHypothesisTest()`) checks whether a group of autocorrelations are jointly significant:
+
+```math
+Q = n(n+2) \sum_{k=1}^{h} \frac{\hat{\rho}(k)^2}{n - k}
+```
+
+Under the null hypothesis of independence, $Q \sim \chi^2(h)$.
+
 ### Cumulative Sum
 
 ```cs
@@ -202,6 +222,14 @@ for (int i = 0; i < rainfall.Count; i++)
 ```
 
 ### Differencing
+
+The **difference operator** $\nabla$ removes trends from a time series. The first difference at lag $d$ is:
+
+```math
+\nabla_d x_t = x_t - x_{t-d}
+```
+
+First differencing ($d = 1$) removes a linear trend. Applying the operator twice ($\nabla^2 x_t = \nabla(\nabla x_t)$) removes a quadratic trend. Seasonal differencing uses a lag equal to the seasonal period — for example, $d = 12$ for monthly data with an annual cycle removes the seasonal component directly.
 
 ```cs
 // First difference (change from previous)
@@ -259,28 +287,130 @@ Console.WriteLine($"75th percentile: {p75:F1}");
 
 ### Moving Average
 
+A **simple moving average** (SMA) of period $m$ smooths the series by replacing each value with the average of the preceding $m$ observations:
+
+```math
+\text{SMA}_t = \frac{1}{m} \sum_{j=0}^{m-1} x_{t-j}
+```
+
+The moving average acts as a low-pass filter: it attenuates fluctuations with period shorter than $m$ while preserving longer-term trends. The output series has $n - m + 1$ values because the first $m - 1$ observations lack a full window.
+
+The ***Numerics*** library provides built-in `MovingAverage` and `MovingSum` methods that use a sliding window for $O(n)$ efficiency:
+
 ```cs
-// Compute moving average
-int window = 3;
-var movingAvg = new TimeSeries(ts.TimeInterval);
+var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1),
+                        new[] { 125.0, 130.0, 135.0, 132.0, 138.0, 145.0 });
 
-for (int i = window - 1; i < ts.Count; i++)
-{
-    double sum = 0;
-    for (int j = 0; j < window; j++)
-    {
-        sum += ts[i - j].Value;
-    }
-    double avg = sum / window;
-    movingAvg.Add(new SeriesOrdinate<DateTime, double>(ts[i].Index, avg));
-}
+// Built-in moving average
+var movingAvg = ts.MovingAverage(period: 3);
 
-Console.WriteLine("Original | 3-day Moving Average");
-for (int i = 0; i < ts.Count; i++)
+// Built-in moving sum
+var movingSum = ts.MovingSum(period: 3);
+
+Console.WriteLine("Original | 3-day MA | 3-day Sum");
+for (int i = 0; i < movingAvg.Count; i++)
 {
-    string ma = i < movingAvg.Count ? $"{movingAvg[i].Value:F1}" : "N/A";
-    Console.WriteLine($"{ts[i].Value,8:F1} | {ma,22}");
+    Console.WriteLine($"{movingAvg[i].Index:yyyy-MM-dd}: {movingAvg[i].Value,8:F1} | {movingSum[i].Value,8:F1}");
 }
+```
+
+## Block Series
+
+The ***Numerics*** library can aggregate a time series into annual, monthly, or quarterly blocks using a specified function (minimum, maximum, average, or sum). This is essential for extracting annual maxima for flood frequency analysis, computing monthly means, or aggregating sub-daily data.
+
+### Calendar and Water Year Series
+
+```cs
+// Annual maximum flow (calendar year: Jan–Dec)
+var annualMax = dailyFlow.CalendarYearSeries(BlockFunctionType.Maximum);
+
+// Water year maximum (Oct–Sep, standard in US hydrology)
+var waterYearMax = dailyFlow.CustomYearSeries(startMonth: 10, BlockFunctionType.Maximum);
+
+// Custom season: June–August summer average
+var summerAvg = dailyFlow.CustomYearSeries(
+    startMonth: 6, endMonth: 8, BlockFunctionType.Average);
+```
+
+### Monthly and Quarterly Series
+
+```cs
+// Monthly average flow
+var monthlyAvg = dailyFlow.MonthlySeries(BlockFunctionType.Average);
+
+// Quarterly maximum
+var quarterlyMax = dailyFlow.QuarterlySeries(BlockFunctionType.Maximum);
+```
+
+### Smoothing Before Aggregation
+
+Block methods support optional smoothing before aggregation. For example, to find the annual maximum 7-day average flow (a common low-flow statistic):
+
+```cs
+// Annual maximum of 7-day moving average
+var annualMax7Day = dailyFlow.CalendarYearSeries(
+    BlockFunctionType.Maximum,
+    SmoothingFunctionType.MovingAverage,
+    period: 7);
+```
+
+### Peaks Over Threshold
+
+Extract independent peaks that exceed a threshold, with a minimum separation between events:
+
+```cs
+// Find flood peaks exceeding 500 cfs, at least 7 days apart
+var peaks = dailyFlow.PeaksOverThresholdSeries(
+    threshold: 500.0, minStepsBetweenEvents: 7);
+```
+
+## Time Interval Conversion
+
+Convert between time intervals by aggregation (downsampling) or interpolation (upsampling):
+
+```cs
+// Convert daily to monthly (average)
+var monthly = dailyFlow.ConvertTimeInterval(TimeInterval.OneMonth, average: true);
+
+// Convert daily to monthly (sum — e.g., for precipitation)
+var monthlySum = dailyPrecip.ConvertTimeInterval(TimeInterval.OneMonth, average: false);
+```
+
+When downsampling, `average: true` computes the block mean and `average: false` computes the block sum. When upsampling, `average: true` uses linear interpolation and `average: false` disaggregates proportionally.
+
+## Missing Data Interpolation
+
+The `InterpolateMissingData` method fills gaps using linear interpolation in date-space, but only when the gap is smaller than a specified maximum:
+
+```cs
+// Fill gaps of up to 3 missing values by linear interpolation
+ts.InterpolateMissingData(maxNumberOfMissing: 3);
+```
+
+This prevents unreliable interpolation across long gaps while filling short data dropouts.
+
+## Resampling Methods
+
+### Block Bootstrap
+
+The **block bootstrap** preserves temporal dependence by resampling contiguous blocks rather than individual observations. Given a block size $b$, the method randomly selects blocks of $b$ consecutive values (with replacement) and concatenates them:
+
+```cs
+// Generate a 1000-step synthetic series preserving 30-day temporal structure
+var resampled = ts.ResampleWithBlockBootstrap(
+    timeSteps: 1000, blockSize: 30, seed: 42);
+```
+
+Unlike the standard bootstrap (which destroys autocorrelation), the block bootstrap retains the short-range dependence structure within each block.
+
+### k-Nearest Neighbors
+
+The **k-nearest neighbors** (k-NN) resampling method generates synthetic time series that preserve the multivariate dependence structure. At each step, it finds the $k$ nearest neighbors of the current state in the historical record (using Euclidean distance on standardized values) and randomly selects one as the next value:
+
+```cs
+// Generate synthetic series using 5-nearest neighbors
+var synthetic = ts.ResampleWithKNN(
+    timeSteps: 500, k: 5, seed: 42);
 ```
 
 ## Sorting and Filtering
@@ -445,7 +575,68 @@ else
     Console.WriteLine("Trend is not statistically significant");
 ```
 
-### Example 4: Seasonal Analysis
+### Example 4: Seasonal Decomposition
+
+A time series can be decomposed into trend ($T_t$), seasonal ($S_t$), and residual ($R_t$) components. The two standard models are:
+
+- **Additive**: $x_t = T_t + S_t + R_t$ — when seasonal fluctuations are roughly constant in magnitude
+- **Multiplicative**: $x_t = T_t \cdot S_t \cdot R_t$ — when seasonal fluctuations scale with the level
+
+A simple decomposition uses the moving average to estimate the trend, then extracts the seasonal pattern from the detrended series:
+
+```cs
+using System.Linq;
+using Numerics.Data;
+
+// Daily temperature data (3 years)
+int years = 3;
+var random = new Random(123);
+var dailyTemp = new TimeSeries(TimeInterval.OneDay);
+
+for (int day = 0; day < years * 365; day++)
+{
+    double trend = 0.005 * day;   // Slight warming trend
+    double seasonal = 10.0 * Math.Sin(2 * Math.PI * day / 365.0);
+    double noise = (random.NextDouble() - 0.5) * 4;
+    dailyTemp.Add(new SeriesOrdinate<DateTime, double>(
+        new DateTime(2022, 1, 1).AddDays(day), 15 + trend + seasonal + noise));
+}
+
+// Step 1: Estimate trend using 365-day moving average
+var trend = dailyTemp.MovingAverage(365);
+
+// Step 2: Detrend — compute residual from trend
+// Step 3: Average by day-of-year to get seasonal component
+var seasonalByDay = new double[365];
+var countByDay = new int[365];
+
+for (int i = 0; i < trend.Count; i++)
+{
+    int dayOfYear = trend[i].Index.DayOfYear - 1;
+    if (dayOfYear < 365)
+    {
+        // Align with original series (MA is offset by half-window)
+        int origIdx = i + 182;  // 365/2
+        if (origIdx < dailyTemp.Count)
+        {
+            seasonalByDay[dayOfYear] += dailyTemp[origIdx].Value - trend[i].Value;
+            countByDay[dayOfYear]++;
+        }
+    }
+}
+
+for (int d = 0; d < 365; d++)
+{
+    if (countByDay[d] > 0)
+        seasonalByDay[d] /= countByDay[d];
+}
+
+Console.WriteLine("Seasonal Decomposition:");
+Console.WriteLine($"  Trend range: {trend.MinValue():F1} to {trend.MaxValue():F1}");
+Console.WriteLine($"  Seasonal amplitude: {seasonalByDay.Max() - seasonalByDay.Min():F1}");
+```
+
+### Example 5: Seasonal Analysis
 
 ```cs
 using System.Linq;
@@ -510,8 +701,23 @@ for (int m = 1; m <= 12; m++)
 | Standardize | `Standardize()` | Compare different scales |
 | Cumulative | `CumulativeSum()` | Total accumulation |
 | Difference | `Difference(lag)` | Remove trends |
-| Moving average | Custom loop | Smoothing |
+| Moving average | `MovingAverage(period)` | Smoothing |
+| Moving sum | `MovingSum(period)` | Accumulation over window |
+| Annual block | `CalendarYearSeries()` | Annual statistics |
+| Monthly block | `MonthlySeries()` | Monthly aggregation |
+| Convert interval | `ConvertTimeInterval()` | Up/downsampling |
+| Peaks over threshold | `PeaksOverThresholdSeries()` | Event extraction |
+| Block bootstrap | `ResampleWithBlockBootstrap()` | Synthetic generation |
+| k-NN resampling | `ResampleWithKNN()` | Synthetic generation |
 | Sort | `SortByTime()` | Ensure chronological order |
+
+---
+
+## References
+
+<a id="1">[1]</a> Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.
+
+<a id="2">[2]</a> Kundzewicz, Z. W. & Robson, A. J. (2004). Change detection in hydrological records — a review of the methodology. *Hydrological Sciences Journal*, 49(1), 7–19.
 
 ---
 
