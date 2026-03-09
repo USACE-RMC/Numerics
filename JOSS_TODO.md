@@ -35,7 +35,7 @@ JOSS paper format: https://joss.readthedocs.io/en/latest/paper.html (750-1,750 w
 | # | Requirement | Status | Evidence |
 |---|-------------|--------|----------|
 | 18 | Paper in `paper/paper.md` | MET | `paper/paper.md` with YAML frontmatter |
-| 19 | Bibliography in `paper/paper.bib` | MET | `paper/paper.bib` with 23 references |
+| 19 | Bibliography in `paper/paper.bib` | MET | `paper/paper.bib` with 29 references |
 | 20 | Summary section | MET | Lines 39-41 |
 | 21 | Statement of Need section | MET | Lines 43-54 |
 | 22 | State of the Field section | MET | Lines 56-62 |
@@ -45,7 +45,7 @@ JOSS paper format: https://joss.readthedocs.io/en/latest/paper.html (750-1,750 w
 | 26 | Word count 750-1,750 | MET | ~1,215 words (within range) |
 | 27 | Submitting author ORCID | MET | `0000-0002-4651-9890` for C. Haden Smith |
 | 28 | Author affiliations | MET | 3 affiliations listed |
-| 29 | All references have DOIs where available | MET | 15 DOIs + 7 URLs for web-only resources |
+| 29 | All references have DOIs where available | MET | 21 DOIs + 7 URLs for web-only resources |
 | 30 | Code example in paper | MET | Lines 85-113 (bootstrap uncertainty analysis) |
 
 ### Repository Metadata
@@ -118,7 +118,7 @@ Complete these steps in order before submitting to JOSS.
 
 ## Notes
 
-- **Word limit**: JOSS papers should be 750-1,750 words (https://joss.readthedocs.io/en/latest/paper.html). Current paper is ~1,215 words.
+- **Word limit**: JOSS papers should be 750-1,750 words (https://joss.readthedocs.io/en/latest/paper.html). Current paper is ~1,317 words.
 - **"Jery R. Stedinger"**: This spelling in `paper.bib` is correct (confirmed on USGS publications). Be prepared to explain if a reviewer questions it.
 - **England 2019 vs 2018**: Bulletin 17C was originally published March 2018; the `2019` date refers to the v1.1 revision. Both are acceptable in the literature.
 - **ter Braak citation**: The 2008 paper describes DE-MCzs (with snooker updater). The library has both `DEMCz` and `DEMCzs` classes. The citation is appropriate since the 2008 paper supersedes the 2006 original.
