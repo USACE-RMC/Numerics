@@ -31,6 +31,7 @@
 using System;
 using System.Collections.Generic;
 using Numerics.Mathematics.Optimization;
+using Numerics.Mathematics.RootFinding;
 using Numerics.Mathematics.SpecialFunctions;
 
 namespace Numerics.Distributions
@@ -566,7 +567,7 @@ namespace Numerics.Distributions
                 iter = iter + 1;
             }
             // Solve for T using Brent
-            double ANS = ZBrent(t0, t1, y0, y1, xtol, df, delta, p);
+            double ANS = Brent.Solve(x => NCTDist(x, df, delta) - p, Math.Min(t0, t1), Math.Max(t0, t1), xtol, reportFailure: false);
             return ANS;
         }
 
@@ -595,128 +596,6 @@ namespace Numerics.Distributions
                 var st = new StudentT(N);
                 return st.InverseCDF(P) + D;
             }
-        }
-
-        private double ZBrent(double X1, double X2, double y1, double y2, double Tol, double N, double Dnc, double Perc)
-        {
-            double ZBrentRet = default;
-            // 
-            // Finds the zero of NCTDist(x, n, d) - p given that [x1, x2] brackets the zero and
-            // Y1 = value at X1, Y2 = value at X2.
-            // 
-            // Translated from Numerical Recipes (1986).
-            // William A. Huber, 24 March 2001.
-            // 
-            double a;
-            double b;
-            var c = default(double);
-            double fc;
-            var D = default(double);
-            var e = default(double);
-            double tol1;
-            double xm;
-            double s;
-            double P;
-            double q;
-            double r;
-            double fa;
-            double fb;
-            int iter;
-            const int itmax = 100;
-            const double eps = 0.00000003d;
-            a = X1;
-            b = X2;
-            fa = y1;
-            fb = y2;
-            if (fb * fa > 0d)
-            {
-                throw new ArgumentException("Brent's method failed because the root is not bracketed.");
-            }
-
-            fc = fb;
-            for (iter = 1; iter <= itmax; iter++)
-            {
-                if (fb * fc > 0d)
-                {
-                    c = a;
-                    fc = fa;
-                    D = b - a;
-                    e = D;
-                }
-
-                if (Math.Abs(fc) < Math.Abs(fb))
-                {
-                    a = b;
-                    b = c;
-                    c = a;
-                    fa = fb;
-                    fb = fc;
-                    fc = fa;
-                }
-
-                tol1 = 2.0d * eps * Math.Abs(b) + 0.5d * Tol;
-                xm = 0.5d * (c - b);
-                if (Math.Abs(xm) <= tol1 || fb == 0d)
-                {
-                    return b;
-                }
-
-                if (Math.Abs(e) >= tol1 && Math.Abs(fa) > Math.Abs(fb))
-                {
-                    s = fb / fa;
-                    if (a == c)
-                    {
-                        P = 2.0d * xm * s;
-                        q = 1.0d - s;
-                    }
-                    else
-                    {
-                        q = fa / fc;
-                        r = fb / fc;
-                        P = s * (2.0d * xm * q * (q - r) - (b - a) * (r - 1.0d));
-                        q = (q - 1.0d) * (r - 1.0d) * (s - 1.0d);
-                    }
-
-                    if (P > 0d)
-                        q = -q;
-                    P = Math.Abs(P);
-                    if (2.0d * P < 3.0d * xm * q - Math.Abs(tol1 * q) & 2.0d * P < Math.Abs(e * q))
-                    {
-                        e = D;
-                        D = P / q;
-                    }
-                    else
-                    {
-                        D = xm;
-                        e = D;
-                    }
-                }
-                else
-                {
-                    D = xm;
-                    e = D;
-                }
-
-                a = b;
-                fa = fb;
-                if (Math.Abs(D) > tol1)
-                {
-                    b = b + D;
-                }
-                else if (xm > 0d)  // b = b + SIGN(tol1, xm)
-                {
-                    b = b + Math.Abs(tol1);
-                }
-                else
-                {
-                    b = b - Math.Abs(tol1);
-                }
-
-                fb = NCTDist(b, N, Dnc) - Perc;
-            }
-
-            ZBrentRet = b;
-            return ZBrentRet;
         }
 
         /// <inheritdoc/>

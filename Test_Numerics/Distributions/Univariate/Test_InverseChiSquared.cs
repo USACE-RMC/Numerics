@@ -266,8 +266,8 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.8911780189, dist.CDF(2.0), 1E-6);
 
             // CDF must be non-decreasing
-            Assert.IsLessThan(dist.CDF(0.5), dist.CDF(1.0));
-            Assert.IsLessThan(dist.CDF(1.0), dist.CDF(2.0));
+            Assert.IsLessThan(dist.CDF(1.0), dist.CDF(0.5));
+            Assert.IsLessThan(dist.CDF(2.0), dist.CDF(1.0));
 
             // InverseCDF values from v*sigma / scipy.stats.chi2.isf(p, v)
             Assert.AreEqual(0.6255012152, dist.InverseCDF(0.1), 1E-4);

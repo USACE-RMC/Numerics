@@ -76,14 +76,14 @@ namespace Sampling.MCMC
 
             // Without warmup, R-hat should be high (chains have different initial distributions)
             var rhatNoWarmup = MCMCDiagnostics.GelmanRubin(chains, 0);
-            Assert.IsGreaterThan(rhatNoWarmup[0], 1.1, $"R-hat without warmup should be > 1.1, got {rhatNoWarmup[0]}");
+            Assert.IsGreaterThan(1.1, rhatNoWarmup[0], $"R-hat without warmup should be > 1.1, got {rhatNoWarmup[0]}");
 
             // With warmup=50, R-hat should be close to 1.0 (converged portion only)
             var rhatWithWarmup = MCMCDiagnostics.GelmanRubin(chains, 50);
-            Assert.IsLessThan(rhatWithWarmup[0], 1.1, $"R-hat with warmup=50 should be < 1.1, got {rhatWithWarmup[0]}");
+            Assert.IsLessThan(1.1, rhatWithWarmup[0], $"R-hat with warmup=50 should be < 1.1, got {rhatWithWarmup[0]}");
 
             // Warmup should improve R-hat (make it closer to 1.0)
-            Assert.IsLessThan(rhatWithWarmup[0], rhatNoWarmup[0],
+            Assert.IsLessThan(rhatNoWarmup[0], rhatWithWarmup[0],
                 "R-hat with warmup should be closer to 1.0 than without warmup");
         }
 
