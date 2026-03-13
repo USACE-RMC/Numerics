@@ -244,14 +244,16 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_Kurtosis()
         {
+            // scipy.stats.bernoulli(0).stats(moments='k') => nan
             var b = new Bernoulli(0);
-            Assert.AreEqual(double.PositiveInfinity, b.Kurtosis);
+            Assert.AreEqual(double.NaN, b.Kurtosis);
 
             var b2 = new Bernoulli(0.3d);
             Assert.AreEqual(1.761904762, b2.Kurtosis, 1e-04);
 
+            // scipy.stats.bernoulli(1).stats(moments='k') => nan
             var b3 = new Bernoulli(1);
-            Assert.AreEqual(double.PositiveInfinity,b3.Kurtosis);
+            Assert.AreEqual(double.NaN, b3.Kurtosis);
         }
 
         /// <summary>
@@ -260,14 +262,16 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_Skewness()
         {
+            // scipy.stats.bernoulli(0).stats(moments='s') => nan
             var b = new Bernoulli(0d);
-           Assert.AreEqual(double.PositiveInfinity, b.Skewness);
+            Assert.AreEqual(double.NaN, b.Skewness);
 
             var b2 = new Bernoulli(0.3);
             Assert.AreEqual(0.8728715, b2.Skewness, 1e-04);
 
+            // scipy.stats.bernoulli(1).stats(moments='s') => nan
             var b3 = new Bernoulli(1);
-            Assert.AreEqual(double.NegativeInfinity, b3.Skewness);
+            Assert.AreEqual(double.NaN, b3.Skewness);
         }
 
         /// <summary>
@@ -341,6 +345,31 @@ namespace Distributions.Univariate
             var b4 = new Bernoulli(0.7);
             Assert.AreEqual(1, b4.InverseCDF(0.7));
 
+        }
+
+        /// <summary>
+        /// Verify Bernoulli returns NaN for skewness/kurtosis at boundary probabilities p=0 and p=1.
+        /// Reference: scipy.stats.bernoulli(p).stats(moments='sk') returns nan at p=0,1.
+        /// </summary>
+        [TestMethod()]
+        public void Test_SkewnessKurtosis_Boundary()
+        {
+            // p=0: skewness and kurtosis are undefined (p*q = 0)
+            var b0 = new Bernoulli(0);
+            Assert.AreEqual(double.NaN, b0.Skewness);
+            Assert.AreEqual(double.NaN, b0.Kurtosis);
+
+            // p=1: same
+            var b1 = new Bernoulli(1);
+            Assert.AreEqual(double.NaN, b1.Skewness);
+            Assert.AreEqual(double.NaN, b1.Kurtosis);
+
+            // p=0.5: well-defined
+            // scipy.stats.bernoulli(0.5): skew=0.0, excess_kurt=-2.0, raw_kurt=1.0
+            // Note: this library uses raw kurtosis (= excess + 3)
+            var b5 = new Bernoulli(0.5);
+            Assert.AreEqual(0.0, b5.Skewness, 1E-10);
+            Assert.AreEqual(1.0, b5.Kurtosis, 1E-10);
         }
     }
 }

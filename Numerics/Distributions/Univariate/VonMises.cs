@@ -223,13 +223,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                // Circular kurtosis: κ₂ = A₂(κ) / V² where A₂ = I₂/I₀
-                // For now, return a numerical approximation
-                double a1 = Bessel.I1(_kappa) / Bessel.I0(_kappa);
-                double v = 1d - a1;
-                if (v <= 0) return double.NaN;
-                // The circular kurtosis is not directly comparable to linear kurtosis,
-                // so we return the excess kurtosis of the wrapped distribution
+                // Circular kurtosis is not directly comparable to linear kurtosis
                 return double.NaN;
             }
         }

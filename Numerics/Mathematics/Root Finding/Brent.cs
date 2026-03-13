@@ -191,7 +191,7 @@ namespace Numerics.Mathematics.RootFinding
             }
             else
             {
-                return root;
+                return solutionFound ? root : b;
             }
         }
 

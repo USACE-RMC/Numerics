@@ -177,7 +177,7 @@ namespace Numerics
             var prngs = new Random[dimension];
             for (int i = 0; i < dimension; i++)
             {
-                prngs[i] = random.GetType() == typeof(MersenneTwister) ? new MersenneTwister(random.Next()) : new Random(random.Next());
+                prngs[i] = random is MersenneTwister ? new MersenneTwister(random.Next()) : new Random(random.Next());
                 for (int j = 0; j < length; j++)
                 {
                     values[j, i] = prngs[i].NextDouble();

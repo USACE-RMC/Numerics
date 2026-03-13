@@ -139,7 +139,7 @@ namespace Sampling.MCMC
 
             // Verify we got some results
             Assert.IsNotNull(sampler.MarkovChains);
-            Assert.IsTrue(sampler.MarkovChains.Length > 0, "Expected at least one Markov chain");
+            Assert.IsNotEmpty(sampler.MarkovChains, "Expected at least one Markov chain");
         }
 
     }

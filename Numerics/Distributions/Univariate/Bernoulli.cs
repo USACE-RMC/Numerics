@@ -176,13 +176,21 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Skewness
         {
-            get { return (Complement - Probability) / Math.Sqrt(Probability * Complement); }
+            get
+            {
+                if (Probability == 0d || Probability == 1d) return double.NaN;
+                return (Complement - Probability) / Math.Sqrt(Probability * Complement);
+            }
         }
 
         /// <inheritdoc/>
         public override double Kurtosis
         {
-            get { return 3d + (1.0d - 6d * Complement * Probability) / (Probability * Complement); }
+            get
+            {
+                if (Probability == 0d || Probability == 1d) return double.NaN;
+                return 3d + (1.0d - 6d * Complement * Probability) / (Probability * Complement);
+            }
         }
 
         /// <inheritdoc/>

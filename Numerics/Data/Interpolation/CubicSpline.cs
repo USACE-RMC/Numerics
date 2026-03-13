@@ -65,7 +65,7 @@ namespace Numerics.Data
     {
 
         /// <summary>
-        /// Construct new linear interpolation. 
+        /// Construct new cubic spline interpolation.
         /// </summary>
         /// <param name="xValues">List of x-values.</param>
         /// <param name="yValues">List of y-values.</param>

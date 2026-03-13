@@ -298,7 +298,7 @@ namespace Numerics.Distributions
                 return 0d;
             double v = DegreesOfFreedom;
             double t2 = Sigma;
-            return Gamma.UpperIncomplete(v / 2.0d, v * t2 / 2.0d * x);
+            return Gamma.UpperIncomplete(v / 2.0d, v * t2 / (2.0d * x));
         }
 
         /// <inheritdoc/>
@@ -316,7 +316,7 @@ namespace Numerics.Distributions
                 ValidateParameters([DegreesOfFreedom, Sigma], true);
             double v = DegreesOfFreedom;
             double t2 = Sigma;
-            return  Gamma.InverseUpperIncomplete(v / 2.0d, probability) / (t2 * v / 2.0d);
+            return v * t2 / (2.0d * Gamma.InverseUpperIncomplete(v / 2.0d, probability));
         }
 
         /// <inheritdoc/>

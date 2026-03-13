@@ -241,7 +241,7 @@ namespace Numerics.MachineLearning
                         double min = Tools.Distance(x, centroids.GetRow(0));
                         for (int j = 1; j < c; j++)
                         {
-                            double d = Tools.Distance(x, centroids.GetRow(0));
+                            double d = Tools.Distance(x, centroids.GetRow(j));
 
                             if (d < min)
                                 min = d;

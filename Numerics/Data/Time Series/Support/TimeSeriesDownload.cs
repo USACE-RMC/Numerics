@@ -34,6 +34,8 @@ using System.Linq;
 using System.Net;
 using System.Xml.Linq;
 using System;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Globalization;
@@ -53,6 +55,14 @@ namespace Numerics.Data
     /// </remarks>
     public class TimeSeriesDownload
     {
+        private static readonly HttpClient _defaultClient = new HttpClient() { Timeout = TimeSpan.FromSeconds(60) };
+        private static readonly HttpClient _decompressClient = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+        })
+        { Timeout = TimeSpan.FromSeconds(60) };
+
+        private const string UserAgent = "USACE-Numerics/2.0";
 
         /// <summary>
         /// Checks if there is an Internet connection.
@@ -61,10 +71,9 @@ namespace Numerics.Data
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                 {
-                    client.Timeout = TimeSpan.FromSeconds(5);
-                    await client.GetAsync("https://www.google.com");
+                    await _defaultClient.GetAsync("https://waterservices.usgs.gov/nwis/", cts.Token);
                     return true;
                 }
             }
@@ -184,9 +193,9 @@ namespace Numerics.Data
             
 
             // Check site number
-            if (siteNumber.Length != 11)
+            if (siteNumber.Length != 11 || !Regex.IsMatch(siteNumber, @"^[A-Za-z0-9]{11}$"))
             {
-                throw new ArgumentException("The GHCN site number must be 11-digits long", nameof(siteNumber));
+                throw new ArgumentException("The GHCN site number must be exactly 11 alphanumeric characters.", nameof(siteNumber));
             }
 
             // Check time series type
@@ -197,7 +206,7 @@ namespace Numerics.Data
 
             var timeSeries = new TimeSeries(TimeInterval.OneDay);
             DateTime? previousDate = null;
-            string tempFilePath = Path.Combine(Path.GetTempPath(), $"{siteNumber}.dly");
+            string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.dly");
 
             // Check internet connection
             if (!await IsConnectedToInternet())
@@ -210,9 +219,9 @@ namespace Numerics.Data
  
                 // Download the GHCN file
                 string ghcnBaseUrl = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/";
-                string stationFileUrl = $"{ghcnBaseUrl}{siteNumber}.dly";
-                using (var client = new HttpClient())
+                string stationFileUrl = $"{ghcnBaseUrl}{Uri.EscapeDataString(siteNumber)}.dly";
                 {
+                    var client = _defaultClient;
                     // Request the file and ensure that response headers are read first.
                     using (HttpResponseMessage response = await client.GetAsync(stationFileUrl, HttpCompletionOption.ResponseHeadersRead))
                     {
@@ -275,10 +284,6 @@ namespace Numerics.Data
                     }
                 }
 
-            }
-            catch (Exception)
-            {
-                throw;
             }
             finally
             {
@@ -399,9 +404,8 @@ namespace Numerics.Data
             // Get URL
             string url = CreateURLForUSGSDownload(siteNumber, timeSeriesType);
 
-            try
+            // For daily or instantaneous data, use HttpClient with gzip support
             {
-                // For daily or instantaneous data, use HttpClient with gzip support
                 if (timeSeriesType == TimeSeriesType.DailyDischarge ||
                     timeSeriesType == TimeSeriesType.DailyStage ||
                     timeSeriesType == TimeSeriesType.InstantaneousDischarge ||
@@ -412,23 +416,14 @@ namespace Numerics.Data
                     // Instantaneous RDB has an extra tz_cd column at index 3, pushing the value to index 4
                     int valueIndex = isInstantaneous ? 4 : 3;
 
-                    using (HttpClient client = new HttpClient())
                     {
-                        // Set request headers to accept gzip encoding
-                        client.DefaultRequestHeaders.AcceptEncoding.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue("gzip"));
+                        var client = _decompressClient;
 
                         HttpResponseMessage response = await client.GetAsync(url);
                         response.EnsureSuccessStatusCode();
 
-                        // Ensure the response content is compressed as expected
-                        if (!response.Content.Headers.ContentEncoding.Contains("gzip"))
-                        {
-                            throw new Exception("Response is not compressed as expected.");
-                        }
-
-                        using (Stream compressedStream = await response.Content.ReadAsStreamAsync())
-                        using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
-                        using (StreamReader reader = new StreamReader(decompressionStream))
+                        using (Stream contentStream = await response.Content.ReadAsStreamAsync())
+                        using (StreamReader reader = new StreamReader(contentStream))
                         {
                             string? line;
                             bool isHeader = true;
@@ -484,10 +479,9 @@ namespace Numerics.Data
                 // For peak data (annual max values)
                 else if (timeSeriesType == TimeSeriesType.PeakDischarge || timeSeriesType == TimeSeriesType.PeakStage)
                 {
-                    using (HttpClient client = new HttpClient())
                     {
                         // Download data as string (assumes USGS peak data is not compressed)
-                        textDownload = await client.GetStringAsync(url);
+                        textDownload = await _defaultClient.GetStringAsync(url);
 
                         var lines = textDownload.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
                         foreach (string line in lines)
@@ -539,25 +533,14 @@ namespace Numerics.Data
                 // For field measurements (modernized OGC API)
                 else if (timeSeriesType == TimeSeriesType.MeasuredDischarge || timeSeriesType == TimeSeriesType.MeasuredStage)
                 {
-                    var handler = new HttpClientHandler
                     {
-                        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-                    };
-
-                    using (var client = new HttpClient(handler))
-                    {
-                        client.DefaultRequestHeaders.Add("User-Agent", "Numerics-Library/1.0");
                         var rawText = new System.Text.StringBuilder();
-                        await ParseUSGSOgcApiPages(client, url, timeSeries, rawText);
+                        await ParseUSGSOgcApiPages(_decompressClient, url, timeSeries, rawText);
                         textDownload = rawText.ToString();
                     }
 
                     timeSeries.SortByTime();
                 }
-            }
-            catch (Exception)
-            {
-                throw;
             }
 
             return (timeSeries, textDownload);
@@ -626,7 +609,13 @@ namespace Numerics.Data
                     {
                         if (link.GetProperty("rel").GetString() is "next")
                         {
-                            nextUrl = link.GetProperty("href").GetString();
+                            var candidateUrl = link.GetProperty("href").GetString();
+                            // Validate the URL domain to prevent open redirect
+                            if (candidateUrl != null && Uri.TryCreate(candidateUrl, UriKind.Absolute, out var uri) &&
+                                uri.Host.EndsWith(".usgs.gov", StringComparison.OrdinalIgnoreCase))
+                            {
+                                nextUrl = candidateUrl;
+                            }
                             // Small delay between pages to avoid rate limiting
                             await System.Threading.Tasks.Task.Delay(200);
                             break;
@@ -732,49 +721,16 @@ namespace Numerics.Data
 
             var ts = new TimeSeries(interval);
 
-            // Create HttpClientHandler to bypass proxy if needed
-            var handler = new HttpClientHandler
             {
-                UseProxy = false,  // Bypass corporate proxy
-                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
-            };
+                var client = _decompressClient;
 
-            using (var client = new HttpClient(handler))
-            {
-                // Add browser-like headers to avoid security proxy issues
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-                client.DefaultRequestHeaders.Add("Accept", "text/csv,application/csv,text/plain,*/*");
-                client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
-                client.DefaultRequestHeaders.Add("DNT", "1");
-                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-                client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-
-                // The endpoint returns CSV (possibly gzip-compressed)
+                // The endpoint returns CSV (automatically decompressed by HttpClientHandler)
                 using HttpResponseMessage resp = await client.GetAsync(url);
                 resp.EnsureSuccessStatusCode();
 
                 string csv;
-                byte[] responseBytes = await resp.Content.ReadAsByteArrayAsync();
-
-                // Check if the response is gzip-compressed by checking the magic number
-                // Gzip magic number is 0x1f 0x8b
-                bool isGzipped = responseBytes.Length >= 2 && responseBytes[0] == 0x1f && responseBytes[1] == 0x8b;
-
-                if (isGzipped)
                 {
-                    // Decompress gzip data
-                    using (var compressedStream = new MemoryStream(responseBytes))
-                    using (var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress))
-                    using (var reader = new StreamReader(gzipStream))
-                    {
-                        csv = await reader.ReadToEndAsync();
-                    }
-                }
-                else
-                {
-                    // Read as plain text
-                    csv = System.Text.Encoding.UTF8.GetString(responseBytes);
+                    csv = await resp.Content.ReadAsStringAsync();
                 }
 
                 // Parse the CSV response based on endpoint type
@@ -1033,7 +989,7 @@ namespace Numerics.Data
             using (var client = new HttpClient(handler))
             {
                 // Add browser-like headers to avoid security proxy issues
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
                 client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
                 client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
                 client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
@@ -1156,7 +1112,7 @@ namespace Numerics.Data
             using (var client = new HttpClient(handler2))
             {
                 // Add browser-like headers to avoid security proxy issues
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
                 client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
                 client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
                 client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");

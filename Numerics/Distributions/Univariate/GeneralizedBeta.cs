@@ -271,6 +271,7 @@ namespace Numerics.Distributions
         {
             get
             {
+                if (Alpha <= 1.0d && Beta <= 1.0d) return (Min + Max) / 2.0d;
                 double _mode = (Alpha - 1.0d) / (Alpha + Beta - 2.0d);
                 return _mode * (Max - Min) + Min;
             }

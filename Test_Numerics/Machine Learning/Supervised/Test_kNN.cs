@@ -166,5 +166,37 @@ namespace MachineLearning
 
         }
 
+        /// <summary>
+        /// Verify kNN GetNeighbors returns correct indices for multi-row test input.
+        /// After fix, each row's neighbors are preserved (not just the last row's).
+        /// </summary>
+        [TestMethod]
+        public void Test_GetNeighbors_MultiRow()
+        {
+            // 2D dataset: 12 points in two well-separated clusters
+            // Cluster A near (0,0): indices 0-5
+            // Cluster B near (100,100): indices 6-11
+            var x1 = new double[] { 0, 1, 0, 1, 2, 0, 100, 101, 100, 101, 102, 100 };
+            var x2 = new double[] { 0, 0, 1, 1, 0, 2, 100, 100, 101, 101, 100, 102 };
+            var y = new double[] { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
+            var X_train = new Matrix(new List<double[]> { x1, x2 });
+            var Y_train = new Vector(y);
+
+            var knn = new KNearestNeighbors(X_train, Y_train, 2);
+
+            // Multi-row query: two points near opposite clusters
+            var query = new double[,] { { 0.5, 0.5 }, { 100.5, 100.5 } };
+            var neighbors = knn.GetNeighbors(query);
+            Assert.IsNotNull(neighbors);
+
+            // First query (0.5, 0.5): nearest neighbors should be from cluster A (indices 0-5)
+            Assert.IsLessThan(neighbors[0], 6, $"First query's nearest neighbor should be in cluster A, got index {neighbors[0]}");
+            Assert.IsLessThan(neighbors[1], 6, $"First query's 2nd nearest should be in cluster A, got index {neighbors[1]}");
+
+            // Second query (100.5, 100.5): nearest neighbors should be from cluster B (indices 6-11)
+            Assert.IsGreaterThanOrEqualTo(neighbors[2], 6, $"Second query's nearest neighbor should be in cluster B, got index {neighbors[2]}");
+            Assert.IsGreaterThanOrEqualTo(neighbors[3], 6, $"Second query's 2nd nearest should be in cluster B, got index {neighbors[3]}");
+        }
+
     }
 }

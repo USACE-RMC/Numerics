@@ -225,9 +225,15 @@ namespace Numerics.Sampling.MCMC
                     for (int j = 0; j < NumberOfParameters; j++)
                     {
                         if (xp[j] < PriorDistributions[j].Minimum)
+                        {
                             xp[j] = PriorDistributions[j].Minimum + Tools.DoubleMachineEpsilon;
+                            phi[j] = -phi[j];
+                        }
                         if (xp[j] > PriorDistributions[j].Maximum)
+                        {
                             xp[j] = PriorDistributions[j].Maximum - Tools.DoubleMachineEpsilon;
+                            phi[j] = -phi[j];
+                        }
                     }
 
                     phi += GradientFunction(xp.Array) * _stepSize * (i == _steps - 1 ? 0.5 : 1.0);

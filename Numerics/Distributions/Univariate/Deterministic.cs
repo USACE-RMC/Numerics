@@ -235,8 +235,8 @@ namespace Numerics.Distributions
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]))
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Probability), "The point value must be a number.");
-                return new ArgumentOutOfRangeException(nameof(Probability), "The point value must be a number.");
+                    throw new ArgumentOutOfRangeException(nameof(Value), "The point value must be a number.");
+                return new ArgumentOutOfRangeException(nameof(Value), "The point value must be a number.");
             }
             return null!;
         }

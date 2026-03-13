@@ -64,7 +64,8 @@ namespace Distributions.Univariate
         {
             double true_mean = 4.0d;
             double true_median = 4.0d;
-            double true_stdDev = Math.Sqrt(1.3333333333333333d);
+            // scipy.stats.randint(2, 7).std() = 1.4142135624; N=5, sqrt((N^2-1)/12)
+            double true_stdDev = Math.Sqrt((5.0d * 5.0d - 1.0d) / 12.0d);
             int true_skew = 0;
             double true_kurt = 1.7d;
             double true_pdf = 0.2d;
@@ -178,11 +179,13 @@ namespace Distributions.Univariate
         [TestMethod]
         public void Test_StandardDeviation()
         {
+            // scipy.stats.randint(0, 2).std() = 0.5; N=2, sqrt((4-1)/12) = 0.5
             var U = new UniformDiscrete();
-            Assert.AreEqual(0.288675, U.StandardDeviation, 1e-05);
+            Assert.AreEqual(0.5, U.StandardDeviation, 1e-05);
 
+            // scipy.stats.randint(2, 11).std() = 2.5819888975; N=9, sqrt((81-1)/12)
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(2.3094, U2.StandardDeviation, 1e-04);
+            Assert.AreEqual(2.5819888975, U2.StandardDeviation, 1e-04);
         }
 
         /// <summary>
@@ -260,6 +263,34 @@ namespace Distributions.Univariate
             Assert.AreEqual(0, U.InverseCDF(0));
             Assert.AreEqual(1, U.InverseCDF(1));
             Assert.AreEqual(0, U.InverseCDF(0.3));
+        }
+
+        /// <summary>
+        /// Verify discrete uniform standard deviation uses the correct formula: sqrt((N^2-1)/12).
+        /// Reference: scipy.stats.randint(low, high+1).std()
+        /// </summary>
+        [TestMethod()]
+        public void Test_StandardDeviation_Discrete()
+        {
+            // randint(0, 2).std() = 0.5000000000  {0,1}
+            var u1 = new UniformDiscrete(0, 1);
+            Assert.AreEqual(0.5, u1.StandardDeviation, 1E-6);
+
+            // randint(0, 6).std() = 1.7078251277  {0,...,5}
+            var u2 = new UniformDiscrete(0, 5);
+            Assert.AreEqual(1.7078251277, u2.StandardDeviation, 1E-6);
+
+            // randint(0, 11).std() = 3.1622776602  {0,...,10}
+            var u3 = new UniformDiscrete(0, 10);
+            Assert.AreEqual(3.1622776602, u3.StandardDeviation, 1E-6);
+
+            // randint(1, 7).std() = 1.7078251277  {1,...,6}
+            var u4 = new UniformDiscrete(1, 6);
+            Assert.AreEqual(1.7078251277, u4.StandardDeviation, 1E-6);
+
+            // randint(3, 8).std() = 1.4142135624  {3,...,7}
+            var u5 = new UniformDiscrete(3, 7);
+            Assert.AreEqual(1.4142135624, u5.StandardDeviation, 1E-6);
         }
     }
 

@@ -115,7 +115,7 @@ namespace Numerics.MachineLearning
         #region Members
 
         /// <summary>
-        /// The number of clusters.
+        /// The number of nearest neighbors.
         /// </summary>
         public int K { get; private set; }
 
@@ -273,7 +273,7 @@ namespace Numerics.MachineLearning
         {
             if (NumberOfFeatures != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
-            var result = new int[K];
+            var result = new int[R * K];
             for (int i = 0; i < R; i++)
             {
                 var point = xTest.Row(i);
@@ -288,10 +288,9 @@ namespace Numerics.MachineLearning
 
                 // Sort items and find the k-nearest neighbors
                 Array.Sort(items, (a, b) => a.Distance.CompareTo(b.Distance));
-                var knn = new double[K];
                 for (int j = 0; j < K; j++)
                 {
-                    result[j] = items[j].Index;
+                    result[i * K + j] = items[j].Index;
                 }
             }
 

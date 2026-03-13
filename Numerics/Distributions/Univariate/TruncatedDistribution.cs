@@ -280,7 +280,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Min), "The min must be less than the max.");
                 return new ArgumentOutOfRangeException(nameof(Min), "The min must be less than the max.");
             }
-            if (_Fmin == _Fmax)
+            if (Math.Abs(_Fmin - _Fmax) < 1e-15)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");

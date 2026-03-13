@@ -108,8 +108,10 @@ namespace Numerics.Data
         /// <inheritdoc/>
         public bool IsFixedSize => false;
 
+        private readonly object _syncRoot = new object();
+
         /// <inheritdoc/>
-        public object SyncRoot => _seriesOrdinates.Count > 0 ? _seriesOrdinates[0] : new object();
+        public object SyncRoot => _syncRoot;
 
         /// <inheritdoc/>
         public bool IsSynchronized => false;

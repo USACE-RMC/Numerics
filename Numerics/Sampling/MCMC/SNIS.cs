@@ -176,7 +176,7 @@ namespace Numerics.Sampling.MCMC
             double sum = 0;
             for (int i = 0; i < Iterations; i++)
             {
-                if (!double.IsNaN(MarkovChains[0][i].Weight) || MarkovChains[0][i].Weight != double.MinValue)
+                if (!double.IsNaN(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight != double.MinValue)
                 {
                     sum += Math.Exp(MarkovChains[0][i].Weight - max);
                 }            
@@ -186,7 +186,7 @@ namespace Numerics.Sampling.MCMC
             // Compute the posterior weights
             Parallel.For(0, Iterations, (idx) => 
             {
-                double w = !double.IsNaN(MarkovChains[0][idx].Weight) || MarkovChains[0][idx].Weight != double.MinValue ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
+                double w = !double.IsNaN(MarkovChains[0][idx].Weight) && MarkovChains[0][idx].Weight != double.MinValue ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
                 MarkovChains[0][idx] = new ParameterSet(MarkovChains[0][idx].Values, MarkovChains[0][idx].Fitness, w);
             });
 

@@ -285,5 +285,28 @@ namespace Distributions.Univariate
             Assert.AreEqual(1, x2.InverseCDF(0.3934693),1e-04);
             Assert.AreEqual(5.5, x2.InverseCDF(0.9360721), 1e-04);
         }
+
+        /// <summary>
+        /// Verify ChiSquared PDF does not overflow for large degrees of freedom.
+        /// Reference: scipy.stats.chi2.pdf(x, v)
+        /// </summary>
+        [TestMethod()]
+        public void Test_PDF_LargeDoF()
+        {
+            // chi2(100).pdf(100) = 0.028162503163
+            var x100 = new ChiSquared(100);
+            Assert.AreEqual(0.028162503163, x100.PDF(100), 1E-6);
+
+            // chi2(500).pdf(500) = 0.012611458093
+            var x500 = new ChiSquared(500);
+            Assert.AreEqual(0.012611458093, x500.PDF(500), 1E-6);
+
+            // chi2(1000).pdf(1000) = 0.008919133935 (should NOT be NaN or Infinity)
+            var x1000 = new ChiSquared(1000);
+            double pdf1000 = x1000.PDF(1000);
+            Assert.AreEqual(0.008919133935, pdf1000, 1E-6);
+            Assert.IsFalse(double.IsNaN(pdf1000), "PDF should not be NaN for large DoF.");
+            Assert.IsFalse(double.IsInfinity(pdf1000), "PDF should not be Infinity for large DoF.");
+        }
     }
 }

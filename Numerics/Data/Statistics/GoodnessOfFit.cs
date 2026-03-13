@@ -834,7 +834,7 @@ namespace Numerics.Data.Statistics
             {
                 variance += Tools.Sqr(observedValues[i] - obsMean);
             }
-            double stdDev = Math.Sqrt(variance / n);
+            double stdDev = Math.Sqrt(variance / (n - 1));
 
             return rmse / stdDev;
         }

@@ -506,5 +506,21 @@ namespace Data.Statistics
             double valid = 2.252937012209;
             Assert.AreEqual(valid, test, 1E-10);
         }
+
+        /// <summary>
+        /// Verify HarmonicMean returns NaN when data contains zero, and correct value otherwise.
+        /// Reference: scipy.stats.hmean([1,2,3,4]) = 1.92
+        /// </summary>
+        [TestMethod()]
+        public void Test_HarmonicMean_ZeroGuard()
+        {
+            // scipy.stats.hmean([1,2,3,4]) = 1.92
+            var data1 = new double[] { 1, 2, 3, 4 };
+            Assert.AreEqual(1.92, Numerics.Data.Statistics.Statistics.HarmonicMean(data1), 1E-10);
+
+            // Data with zero should return NaN (not 0 or Infinity)
+            var data2 = new double[] { 1, 2, 0, 4 };
+            Assert.AreEqual(double.NaN, Numerics.Data.Statistics.Statistics.HarmonicMean(data2));
+        }
     }
 }

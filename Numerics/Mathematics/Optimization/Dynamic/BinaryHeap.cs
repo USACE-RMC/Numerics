@@ -45,12 +45,30 @@ namespace Numerics.Mathematics.Optimization
     /// <typeparam name="T">Generic variable to store with each node. Typically used to store important data associated with the network that isn't required for the binary heap.</typeparam>
     public class BinaryHeap<T>
     {
+        /// <summary>
+        /// Represents a node in the binary heap with a weight, index, and value.
+        /// </summary>
         public struct Node
         {
+            /// <summary>
+            /// The weight (priority) of the node.
+            /// </summary>
             public float Weight;
+            /// <summary>
+            /// The index identifier of the node.
+            /// </summary>
             public int Index;
+            /// <summary>
+            /// The value stored in the node.
+            /// </summary>
             public T Value;
 
+            /// <summary>
+            /// Creates a new node with the specified weight, index, and value.
+            /// </summary>
+            /// <param name="nodeWeight">The weight (priority) of the node.</param>
+            /// <param name="nodeIndex">The index identifier of the node.</param>
+            /// <param name="nodeValue">The value to store in the node.</param>
             public Node(float nodeWeight, int nodeIndex, T nodeValue)
             {
                 Weight = nodeWeight;
@@ -65,8 +83,15 @@ namespace Numerics.Mathematics.Optimization
         private int _n = 0; // Number of nodes.
         //private int _p = 0; // Parent Index
 
+        /// <summary>
+        /// The number of nodes in the heap.
+        /// </summary>
         public int Count => _n;
 
+        /// <summary>
+        /// Creates a new binary heap with the specified maximum size.
+        /// </summary>
+        /// <param name="heapSize">The maximum number of nodes the heap can hold.</param>
         public BinaryHeap(int heapSize)
         {
             _heap = new Node[heapSize];

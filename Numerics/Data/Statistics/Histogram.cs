@@ -208,6 +208,7 @@ namespace Numerics.Data.Statistics
             // Get the bin boundaries
             LowerBound = data.Min();
             UpperBound = data.Max();
+            if (UpperBound == LowerBound) UpperBound = LowerBound + 1.0;
             BinWidth = (UpperBound - LowerBound) / NumberOfBins;
             // Add bins
             double xl = LowerBound;
@@ -236,6 +237,7 @@ namespace Numerics.Data.Statistics
             NumberOfBins = numberOfBins;
             LowerBound = data.Min();
             UpperBound = data.Max();
+            if (UpperBound == LowerBound) UpperBound = LowerBound + 1.0;
             BinWidth = (UpperBound - LowerBound) / NumberOfBins;
             // Add bins
             double xl = LowerBound;
@@ -341,6 +343,7 @@ namespace Numerics.Data.Statistics
                 int total = 0;
                 for (int i = 0; i < _bins.Count; i++)
                     total += _bins[i].Frequency;
+                if (total == 0) return double.NaN;
                 int halfTotal = (int)(total / 2d);
                 int m = 0;
                 int v = 0;
@@ -477,7 +480,7 @@ namespace Numerics.Data.Statistics
             SortBins();
             if (value < _bins.First().LowerBound || value > _bins.Last().UpperBound)
             {
-                throw new ArgumentException("value", "The value is not contained with the histogram limits.");
+                throw new ArgumentException("The value is not contained with the histogram limits.", nameof(value));
             }
             int idx = Search.Bisection(value, _binLimits);
             return idx < 0 ? 0 : idx >= _binLimits.Count ? _binLimits.Count - 1 : idx;

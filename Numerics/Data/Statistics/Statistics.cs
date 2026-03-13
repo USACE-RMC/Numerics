@@ -210,7 +210,10 @@ namespace Numerics.Data.Statistics
 
             double sum = 0;
             for (int i = 0; i < data.Count; i++)
+            {
+                if (data[i] <= 0) return double.NaN;
                 sum += 1.0 / data[i];
+            }
             return data.Count / sum;
         }
 

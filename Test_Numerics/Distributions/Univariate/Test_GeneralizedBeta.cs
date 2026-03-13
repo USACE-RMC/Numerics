@@ -338,5 +338,29 @@ namespace Distributions.Univariate
             var b3 = new GeneralizedBeta(5, 100,0,10);
             Assert.AreEqual(0, b3.InverseCDF(0));
         }
+
+        /// <summary>
+        /// Verify GeneralizedBeta Mode for the uniform case (Alpha=Beta=1) returns the midpoint.
+        /// Reference: scipy.stats.beta(a, b) mode = (a-1)/(a+b-2); undefined for a=b=1 (uniform).
+        /// </summary>
+        [TestMethod()]
+        public void Test_Mode_UniformCase()
+        {
+            // Alpha=1, Beta=1 on [0,1] is uniform: mode should be midpoint = 0.5
+            var b1 = new GeneralizedBeta(1, 1, 0, 1);
+            Assert.AreEqual(0.5, b1.Mode, 1E-10);
+
+            // Alpha=2, Beta=5 on [0,1]: mode = (2-1)/(2+5-2) = 0.2
+            var b2 = new GeneralizedBeta(2, 5, 0, 1);
+            Assert.AreEqual(0.2, b2.Mode, 1E-10);
+
+            // Alpha=2, Beta=2 on [0,1]: mode = (2-1)/(2+2-2) = 0.5
+            var b3 = new GeneralizedBeta(2, 2, 0, 1);
+            Assert.AreEqual(0.5, b3.Mode, 1E-10);
+
+            // Alpha=5, Beta=2 on [0,1]: mode = (5-1)/(5+2-2) = 0.8
+            var b4 = new GeneralizedBeta(5, 2, 0, 1);
+            Assert.AreEqual(0.8, b4.Mode, 1E-10);
+        }
     }
 }

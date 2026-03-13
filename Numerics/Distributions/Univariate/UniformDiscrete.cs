@@ -185,7 +185,11 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double StandardDeviation
         {
-            get { return Math.Sqrt((Max - Min) * (Max - Min) / 12.0d); }
+            get
+            {
+                double n = Max - Min + 1;
+                return Math.Sqrt((n * n - 1.0d) / 12.0d);
+            }
         }
 
         /// <inheritdoc/>
