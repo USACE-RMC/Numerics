@@ -152,22 +152,15 @@ namespace Numerics.Data
                 // Try to parse the invariant date string using TryParseExact
                 // If it fails, do a regular try parse.
                 DateTime index = default;
-                var ordAttr = ordinate.Attribute("Index");
-                if (ordAttr != null)
+                double value = double.NaN;
+                var indexAttr = ordinate.Attribute("Index");
+                var valueAttr = ordinate.Attribute("Value");
+                if (indexAttr != null && !DateTime.TryParseExact(indexAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
                 {
-                    if (!DateTime.TryParseExact(ordAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
-                    {
-                        DateTime.TryParse(ordAttr.Value, out index);
-                    }
+                    DateTime.TryParse(indexAttr.Value, out index);
                 }
-
-                double value = 0.0;
-                var ordVal = ordinate.Attribute("Value");
-                if (ordVal != null)
-                {
-                    double.TryParse(ordVal.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
-                }
-                
+                if (valueAttr != null)
+                    double.TryParse(valueAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
                 Add(new SeriesOrdinate<DateTime, double>(index, value));
             }
         }
@@ -195,7 +188,7 @@ namespace Numerics.Data
         /// </summary>
         public DateTime StartDate
         {
-            get { return _seriesOrdinates.Min(x => x.Index); }
+            get { return _seriesOrdinates.Count == 0 ? default : _seriesOrdinates.Min(x => x.Index); }
         }
 
         /// <summary>
@@ -203,7 +196,7 @@ namespace Numerics.Data
         /// </summary>
         public DateTime EndDate
         {
-            get { return _seriesOrdinates.Max(x => x.Index); }
+            get { return _seriesOrdinates.Count == 0 ? default : _seriesOrdinates.Max(x => x.Index); }
         }
 
         /// <summary>
@@ -337,6 +330,7 @@ namespace Numerics.Data
         /// <param name="constant">Factor to divide each value by in the series.</param>
         public void Divide(double constant)
         {
+            if (constant == 0) throw new ArgumentException("Cannot divide by zero.", nameof(constant));
             SuppressCollectionChanged = true;
             for (int i = 0; i <= Count - 1; i++)
             {
@@ -515,7 +509,7 @@ namespace Numerics.Data
             double sum = 0d;
             for (int i = 0; i < Count; i++)
             {
-                if (this[i].Value != default && double.IsNaN(this[i].Value) == false)
+                if (!double.IsNaN(this[i].Value))
                     sum += this[i].Value;
                 timeSeries.Add(this[i].Clone());
                 timeSeries.Last().Value = sum;
@@ -629,7 +623,7 @@ namespace Numerics.Data
                             break;
                         }
                         // the extrapolation case
-                        if (j == Count - 1)
+                        if (j == Count - 1 && i >= 2)
                         {
                             x1 = this[i - 2].Index.ToOADate();
                             x2 = this[i - 1].Index.ToOADate();
@@ -701,6 +695,14 @@ namespace Numerics.Data
             RaiseCollectionChangedReset();
         }
 
+        /// <summary>
+        /// Fills missing dates in a time series with a specified value.
+        /// </summary>
+        /// <param name="timeSeries">The time series to fill.</param>
+        /// <param name="startDate">The start date of the range.</param>
+        /// <param name="endDate">The end date of the range.</param>
+        /// <param name="value">The value to assign to missing dates. Default is 0.0.</param>
+        /// <returns>A new time series with missing dates filled in.</returns>
         public static TimeSeries FillMissingDates(TimeSeries timeSeries, DateTime startDate, DateTime endDate, double value = 0.0)
         {
             if (timeSeries.TimeInterval == TimeInterval.Irregular) throw new Exception("This method does not work with irregular data.");
@@ -708,21 +710,22 @@ namespace Numerics.Data
             // Create a dictionary for fast lookup
             // var lookup = this.ToList().ToDictionary(p => p.Index, p => p.Value);
 
-            var lookup = timeSeries.IndexesToList();
+            var lookup = new Dictionary<DateTime, int>();
+            for (int i = 0; i < timeSeries.Count; i++)
+                lookup[timeSeries[i].Index] = i;
 
             var result = new TimeSeries(timeSeries.TimeInterval);
 
             // Loop over and add values
             for (DateTime date = startDate; date <= endDate; date = AddTimeInterval(date, timeSeries.TimeInterval))
             {
-                var idx = lookup.IndexOf(date);
-                if (idx == -1)
+                if (lookup.TryGetValue(date, out int idx))
                 {
-                    result.Add(new SeriesOrdinate<DateTime, double>(date, value));
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, timeSeries[idx].Value));
                 }
                 else
                 {
-                    result.Add(new SeriesOrdinate<DateTime, double>(date, timeSeries[idx].Value));
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, value));
                 }
             }
 
@@ -956,7 +959,7 @@ namespace Numerics.Data
 
                 case TimeInterval.OneQuarter:
                     {
-                        return endTime > startTime.AddYears(1 * minStepsBetweenEvents);
+                        return endTime > startTime.AddMonths(3 * minStepsBetweenEvents);
                     }
 
                 case TimeInterval.OneYear:
@@ -1383,9 +1386,20 @@ namespace Numerics.Data
         {
             if (Count < 2) return double.NaN;
             double variance = 0d;
-            double t = this[0].Value;
+            // Find first non-NaN value to initialize
+            double t = 0d;
+            int startIdx = 0;
+            for (int i = 0; i < Count; i++)
+            {
+                if (!double.IsNaN(this[i].Value))
+                {
+                    t = this[i].Value;
+                    startIdx = i + 1;
+                    break;
+                }
+            }
             double n = 1;
-            for (int i = 1; i < Count; i++)
+            for (int i = startIdx; i < Count; i++)
             {
                 if (!double.IsNaN(this[i].Value))
                 {
@@ -1412,7 +1426,7 @@ namespace Numerics.Data
         /// <param name="kValues">A list of k-th percentile values.</param>
         public double[] Percentiles(IList<double> kValues)
         {
-            var data = ValuesToArray();
+            var data = ValuesToArray().Where(x => !double.IsNaN(x)).ToArray();
             Array.Sort(data);
             var result = Statistics.Statistics.Percentile(data, kValues, true);
             return result;
@@ -1423,9 +1437,9 @@ namespace Numerics.Data
         /// </summary>
         public double[,] Duration()
         {
-            var result = new double[Count, 2];
-            var pp = PlottingPositions.Weibull(Count);
-            var data = ValuesToArray();
+            var data = ValuesToArray().Where(x => !double.IsNaN(x)).ToArray();
+            var result = new double[data.Length, 2];
+            var pp = PlottingPositions.Weibull(data.Length);
             Array.Sort(data);
             Array.Reverse(data);
             for (int i = 0; i < data.Length; i++)
@@ -1575,12 +1589,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries? smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1594,7 +1604,6 @@ namespace Numerics.Data
             }
 
             // Then, perform block function
-            if (smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
                 var blockData = smoothedSeries.Where(x => x.Index.Year == i).ToList();
@@ -1670,12 +1679,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries? smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1689,7 +1694,6 @@ namespace Numerics.Data
             }
 
             // Then, shift the dates
-            if( smoothedSeries == null) return result;
             int shift = startMonth != 1 ? 12 - startMonth + 1 : 0;
             smoothedSeries = startMonth != 1 ? smoothedSeries.ShiftDatesByMonth(shift) : smoothedSeries;
 
@@ -1777,12 +1781,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // First, perform smoothing function
-            TimeSeries? smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1796,7 +1796,6 @@ namespace Numerics.Data
             }
 
             // Then, perform block function
-            if(smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1890,12 +1889,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries? smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -1908,7 +1903,6 @@ namespace Numerics.Data
                 smoothedSeries = Difference(period);
             }
 
-            if(smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -1987,12 +1981,8 @@ namespace Numerics.Data
             var result = new TimeSeries(TimeInterval.Irregular);
 
             // Create smoothed series
-            TimeSeries? smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -2005,7 +1995,6 @@ namespace Numerics.Data
                 smoothedSeries = Difference(period);
             }
 
-            if (smoothedSeries == null) return result;
             for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
             {
 
@@ -2100,12 +2089,8 @@ namespace Numerics.Data
         public TimeSeries PeaksOverThresholdSeries(double threshold, int minStepsBetweenEvents = 1, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             // Create smoothed time series
-            TimeSeries? smoothedSeries = null;
-            if (smoothingFunction == SmoothingFunctionType.None)
-            {
-                smoothedSeries = Clone();
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            TimeSeries smoothedSeries = Clone();
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
             {
                 smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
             }
@@ -2122,7 +2107,6 @@ namespace Numerics.Data
             int i = 0, idx, idxMax;
             var clusters = new List<int[]>();
 
-            if(smoothedSeries == null) return new TimeSeries(TimeInterval.Irregular);
             while (i < smoothedSeries.Count)
             {
                 if (!double.IsNaN(smoothedSeries[i].Value) && smoothedSeries[i].Value > threshold)
@@ -2213,7 +2197,8 @@ namespace Numerics.Data
             {
                 double val = (currentValue - mean) / stdDev;
                 var kNearest = kNN.GetNeighbors([val]);
-                int selectedIdx = kNearest[prng.Next(k)];
+                if (kNearest == null) continue;
+                int selectedIdx = kNearest[prng.Next(kNearest.Length)];
                 currentValue = this[selectedIdx].Value;
                 currentDate = TimeSeries.AddTimeInterval(currentDate, TimeInterval);
                 timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, currentValue));

@@ -202,7 +202,6 @@ namespace Numerics.Sampling.MCMC
             // Do snooker update
             // Get Jump -- uniform random number between 1.2 and 2.2         
             double G = _g.InverseCDF(_chainPRNGs[index].NextDouble());
-            //double G = 1.7;
 
             // Select another chain, which is in state z
             int c = index;

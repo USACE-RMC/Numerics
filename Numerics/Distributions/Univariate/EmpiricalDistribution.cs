@@ -270,7 +270,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] GetParameters
         {
-            get { throw new NotImplementedException(); }
+            get { return []; }
         }
 
 

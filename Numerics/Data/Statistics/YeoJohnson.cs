@@ -156,10 +156,6 @@ namespace Numerics.Data.Statistics
 
                 // Avoid log of zero or negative values
                 logJacobianSum += Math.Log(Math.Abs(dTdy));
-                //if (dTdy > 0)
-                //    logJacobianSum += Math.Log(Math.Abs(dTdy));
-                //else
-                //    return double.NegativeInfinity; // log-likelihood undefined
             }
             return logJacobianSum;
         }

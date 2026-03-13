@@ -82,11 +82,29 @@ namespace Numerics.Sampling.MCMC
 
         #region Inputs
 
+        /// <summary>
+        /// The pseudo random number generator (PRNG) seed.
+        /// </summary>
         protected int _prngSeed = 12345;
+        /// <summary>
+        /// The number of initial iterations before adaptation begins.
+        /// </summary>
         protected int _initialIterations = 10;
+        /// <summary>
+        /// The number of warmup (burn-in) iterations to discard.
+        /// </summary>
         protected int _warmupIterations = 1750;
+        /// <summary>
+        /// The number of sampling iterations after warmup.
+        /// </summary>
         protected int _iterations = 3500;
+        /// <summary>
+        /// The number of parallel Markov chains to run.
+        /// </summary>
         protected int _numberOfChains = 4;
+        /// <summary>
+        /// The thinning interval for reducing autocorrelation.
+        /// </summary>
         protected int _thinningInterval = 20;
 
         /// <summary>
@@ -308,7 +326,7 @@ namespace Numerics.Sampling.MCMC
             {
                 var ar = new double[NumberOfChains];
                 for (int i = 0; i < NumberOfChains; i++)
-                    ar[i] = (double)AcceptCount[i] / (double)SampleCount[i];
+                    ar[i] = SampleCount[i] > 0 ? (double)AcceptCount[i] / (double)SampleCount[i] : 0d;
                 return ar;
             }
         }
@@ -571,7 +589,7 @@ namespace Numerics.Sampling.MCMC
 
                 // Update progress
                 progress += 1;
-                if (progress % (int)(totalIterations * ProgressChangedRate) == 0)
+                if (progress % Math.Max(1, (int)(totalIterations * ProgressChangedRate)) == 0)
                 {
                     ReportProgress((double)progress / totalIterations);
                 }

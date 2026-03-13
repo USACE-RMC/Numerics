@@ -184,7 +184,7 @@ namespace Numerics.Distributions
                 }
                 else if (_kernelDistribution == KernelType.Gaussian)
                 {
-                    _kernel = new GuassianKernel();
+                    _kernel = new GaussianKernel();
                 }
                 else if (_kernelDistribution == KernelType.Triangular)
                 {
@@ -299,7 +299,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] GetParameters
         {
-            get { throw new NotImplementedException(); }
+            get { return []; }
         }
 
         /// <summary>
@@ -441,7 +441,7 @@ namespace Numerics.Distributions
         /// Gaussian kernel with a mean of 0 and standard deviation of 1.
         /// This is the default kernel.
         /// </summary>
-        private class GuassianKernel : IKernel
+        private class GaussianKernel : IKernel
         {
             public double Function(double x)
             {
@@ -548,6 +548,11 @@ namespace Numerics.Distributions
             _cdfCreated = false;
         }
 
+        /// <summary>
+        /// Set the sample data with associated weights.
+        /// </summary>
+        /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">Weights associated with each data point.</param>
         public void SetSampleData(IList<double> sampleData, IList<double> weights)
         {
             _sampleData = sampleData.ToArray();

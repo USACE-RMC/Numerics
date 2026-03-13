@@ -178,6 +178,24 @@ namespace Distributions.BivariateCopulas
         }
 
         /// <summary>
+        /// Verify NormalCopula CDF with u+v != 1 (where buggy and correct formulas differ).
+        /// Reference: scipy.stats.multivariate_normal.cdf([norm.ppf(u), norm.ppf(v)], cov=[[1,rho],[rho,1]])
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_Asymmetric()
+        {
+            var copula = new NormalCopula(0.5);
+            Assert.AreEqual(0.6871505667, copula.CDF(0.8, 0.8), 1E-2);
+
+            copula = new NormalCopula(-0.3);
+            Assert.AreEqual(0.1718571868, copula.CDF(0.3, 0.7), 1E-2);
+            Assert.AreEqual(0.2015066580, copula.CDF(0.5, 0.5), 1E-2);
+
+            copula = new NormalCopula(0.9);
+            Assert.AreEqual(0.8688649404, copula.CDF(0.9, 0.9), 1E-2);
+        }
+
+        /// <summary>
         /// Test the tail dependence coefficients.
         /// Normal copula: λ_U = λ_L = 0 (no tail dependence).
         /// </summary>

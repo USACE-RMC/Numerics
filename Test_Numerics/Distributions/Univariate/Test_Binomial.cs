@@ -282,5 +282,25 @@ namespace Distributions.Univariate
             var b = new Binomial(0.3, 100);
             Assert.AreEqual(32, b.InverseCDF(0.7));
         }
+
+        /// <summary>
+        /// Verify Binomial InverseCDF correctly returns NumberOfTrials at high probabilities.
+        /// Reference: scipy.stats.binom.ppf(p, n, p_success)
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_Boundary()
+        {
+            // binom(10, 0.5).ppf(0.95) = 8
+            var b1 = new Binomial(0.5, 10);
+            Assert.AreEqual(8, b1.InverseCDF(0.95));
+            // binom(10, 0.5).ppf(0.99) = 9
+            Assert.AreEqual(9, b1.InverseCDF(0.99));
+            // binom(10, 0.5).ppf(1.0) = 10 (must reach NumberOfTrials)
+            Assert.AreEqual(10, b1.InverseCDF(1.0));
+
+            // binom(5, 0.3).ppf(1.0) = 5
+            var b2 = new Binomial(0.3, 5);
+            Assert.AreEqual(5, b2.InverseCDF(1.0));
+        }
     }
 }

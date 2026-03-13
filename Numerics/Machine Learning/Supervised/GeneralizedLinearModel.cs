@@ -388,8 +388,8 @@ namespace Numerics.MachineLearning
                 if (HasIntercept)
                 {
                     initial[0] = (min + max) / 2.0;
-                    lower[0] = initial[0] / 100;
-                    upper[0] = initial[0] * 100;
+                    lower[0] = Math.Min(initial[0] / 100, initial[0] * 100);
+                    upper[0] = Math.Max(initial[0] / 100, initial[0] * 100);
                 }
             }
             else if (LinkType == LinkFunctionType.Log)
@@ -408,8 +408,8 @@ namespace Numerics.MachineLearning
                 if (HasIntercept)
                 {
                     initial[0] = (min + max) / 2.0;
-                    lower[0] = initial[0] / 100;
-                    upper[0] = initial[0] * 100;
+                    lower[0] = Math.Min(initial[0] / 100, initial[0] * 100);
+                    upper[0] = Math.Max(initial[0] / 100, initial[0] * 100);
                 }
             }
             else if (LinkType == LinkFunctionType.Logit)

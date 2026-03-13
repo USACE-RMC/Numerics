@@ -1008,14 +1008,17 @@ namespace Data.TimeSeriesAnalysis
             var (trend, seasonal, residual) = ts.SeasonalDecompose(period);
 
             // Verify trend is returned
-            Assert.IsTrue(trend.Count > 0, "Trend should have values.");
-            Assert.IsTrue(trend.Count <= n, "Trend should not exceed original length.");
+            Assert.IsGreaterThan(trend.Count, 0, "Trend should have values.");
+            Assert.IsLessThanOrEqualTo(trend.Count, n, "Trend should not exceed original length.");
 
             // Verify seasonal has correct length
+            // HasCount does not accept double[] (not IEnumerable), so suppress MSTEST0037
+#pragma warning disable MSTEST0037
             Assert.AreEqual(n, seasonal.Length, "Seasonal should have same length as original.");
+#pragma warning restore MSTEST0037
 
             // Verify residual is returned
-            Assert.IsTrue(residual.Count > 0, "Residual should have values.");
+            Assert.IsGreaterThan(residual.Count, 0, "Residual should have values.");
 
             // Verify the decomposition is additive: original = trend + seasonal + residual
             // This is an exact mathematical identity by construction
@@ -1040,7 +1043,7 @@ namespace Data.TimeSeriesAnalysis
             // Verify seasonal values are not all zero (they should have nonzero amplitude)
             double maxSeasonal = seasonal.Max();
             double minSeasonal = seasonal.Min();
-            Assert.IsTrue(maxSeasonal - minSeasonal > 1.0,
+            Assert.IsGreaterThan(maxSeasonal - minSeasonal, 1.0,
                 "Seasonal component should have nonzero amplitude for sinusoidal input.");
         }
 

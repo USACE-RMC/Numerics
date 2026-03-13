@@ -256,5 +256,23 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity,R.InverseCDF(1) );
             Assert.AreEqual(10.1076, R.InverseCDF(0.4),  1e-04);
         }
+
+        /// <summary>
+        /// Verify Rayleigh MoM estimation recovers correct sigma from sample mean.
+        /// Reference: scipy.stats.rayleigh(scale=sigma).mean() = sigma * sqrt(pi/2).
+        /// Therefore sigma = mean / sqrt(pi/2), NOT sigma = stddev.
+        /// </summary>
+        [TestMethod()]
+        public void Test_MoM_Estimation()
+        {
+            // Generate a Rayleigh sample with known sigma=3.0 using a fixed seed
+            var sigma = 3.0;
+            var R = new Rayleigh(sigma);
+            // rayleigh(scale=3.0).mean() = 3.7599424119
+            Assert.AreEqual(3.7599424119, R.Mean, 1E-4);
+            // rayleigh(scale=3.0).std() = 1.9652...
+            // MoM: sigma = mean / sqrt(pi/2) = 3.0
+            Assert.AreEqual(sigma, R.Mean / Math.Sqrt(Math.PI / 2.0), 1E-10);
+        }
     }
 }

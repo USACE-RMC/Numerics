@@ -210,7 +210,7 @@ namespace Numerics.Distributions
         {
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
-                SetParameters(Statistics.StandardDeviation(sample));
+                SetParameters(Statistics.Mean(sample) / Math.Sqrt(Math.PI / 2.0d));
             }
             else if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
             {

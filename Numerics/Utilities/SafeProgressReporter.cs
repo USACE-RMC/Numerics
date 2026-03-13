@@ -82,8 +82,17 @@ namespace Numerics.Utilities
         private Process _externalProcess = null!;
         private List<SafeProgressReporter> _subProgReporterCollection = new List<SafeProgressReporter>();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        /// <summary>
+        /// Callback for invoking progress event handlers on the synchronization context.
+        /// </summary>
         protected readonly SendOrPostCallback _invokeProgressHandlers;
+        /// <summary>
+        /// Callback for invoking message event handlers on the synchronization context.
+        /// </summary>
         protected readonly SendOrPostCallback _invokeMessageHandlers;
+        /// <summary>
+        /// The synchronization context used for marshaling events to the UI thread.
+        /// </summary>
         protected SynchronizationContext? _synchronizationContext;
 
         /// <summary>
@@ -99,7 +108,12 @@ namespace Numerics.Utilities
         /// <summary>
         /// Returns the message count.
         /// </summary>
-        public int MessageCount { get; private set; }
+        private int _messageCount;
+
+        /// <summary>
+        /// Returns the message count.
+        /// </summary>
+        public int MessageCount => _messageCount;
 
         /// <summary>
         /// Returns the task name.
@@ -189,9 +203,21 @@ namespace Numerics.Utilities
         /// </summary>
         public enum MessageType
         {
+            /// <summary>
+            /// A status message.
+            /// </summary>
             Status,
+            /// <summary>
+            /// A success message.
+            /// </summary>
             Success,
+            /// <summary>
+            /// A warning message.
+            /// </summary>
             Warning,
+            /// <summary>
+            /// A fatal error message.
+            /// </summary>
             FatalError
         }
 
@@ -200,9 +226,24 @@ namespace Numerics.Utilities
         /// </summary>
         public struct MessageContentStruct
         {
+            /// <summary>
+            /// The message text.
+            /// </summary>
             public string Message;
+            /// <summary>
+            /// The type of message.
+            /// </summary>
             public MessageType MessageType;
+            /// <summary>
+            /// The reporter that generated the message.
+            /// </summary>
             public SafeProgressReporter Reporter;
+            /// <summary>
+            /// Creates a new message content structure.
+            /// </summary>
+            /// <param name="message">The message text.</param>
+            /// <param name="messageType">The type of message.</param>
+            /// <param name="reporter">The reporter that generated the message.</param>
             public MessageContentStruct(string message, MessageType messageType, SafeProgressReporter reporter)
             {
                 Message = message;
@@ -395,7 +436,7 @@ namespace Numerics.Utilities
         public void ReportMessage(string message, MessageType messageType = MessageType.Status)
         {
             _synchronizationContext?.Post(_invokeMessageHandlers, new MessageContentStruct(message, messageType, this));
-            MessageCount += 1;
+            System.Threading.Interlocked.Increment(ref _messageCount);
             _previousMessage = message;
             _previousMessageType = messageType;
         }
@@ -407,7 +448,7 @@ namespace Numerics.Utilities
         protected void ReportMessage(MessageContentStruct message)
         {
             _synchronizationContext?.Post(_invokeMessageHandlers, message);
-            MessageCount += 1;
+            System.Threading.Interlocked.Increment(ref _messageCount);
             _previousMessage = message.Message;
             _previousMessageType = message.MessageType;
         }

@@ -137,7 +137,7 @@ namespace Numerics.Distributions.Copulas
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
             }
-            return new ArgumentOutOfRangeException(nameof(Theta),"The parameter is valid.");
+            return null;
         }
 
         /// <inheritdoc/>
@@ -174,7 +174,10 @@ namespace Numerics.Distributions.Copulas
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
-            return MultivariateNormal.BivariateCDF(Normal.StandardZ(1 - u), Normal.StandardZ(1 - v), _theta);
+            // BivariateCDF implements Genz's BVND which computes Phi2(-h,-k;r).
+            // To get the copula C(u,v) = Phi2(Phi^-1(u), Phi^-1(v); r),
+            // we pass -Phi^-1(u) = Phi^-1(1-u) as arguments.
+            return MultivariateNormal.BivariateCDF(-Normal.StandardZ(u), -Normal.StandardZ(v), _theta);
         }
 
         /// <inheritdoc/>

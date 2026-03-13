@@ -65,6 +65,7 @@ namespace Numerics.Data.Statistics
         /// <returns>Returns the 2-sided p-value of the test statistic.</returns>
         public static double OneSampleTtest(IList<double> sample, double populationMean = 0d)
         {
+            if (sample.Count < 2) throw new ArgumentException("Sample must have at least 2 observations.", nameof(sample));
             var meanVar = Statistics.MeanVariance(sample);
             int N = sample.Count;
             double se = Math.Sqrt(meanVar.Item2) / Math.Sqrt(N);
@@ -82,6 +83,7 @@ namespace Numerics.Data.Statistics
         /// <returns>Returns the 2-sided p-value of the test statistic.</returns>
         public static double EqualVarianceTtest(IList<double> sample1, IList<double> sample2)
         {
+            if (sample1.Count + sample2.Count < 3) throw new ArgumentException("Combined sample size must be at least 3.");
             var meanVar1 = Statistics.MeanVariance(sample1);
             var meanVar2 = Statistics.MeanVariance(sample2);
             int N1 = sample1.Count;
@@ -144,10 +146,12 @@ namespace Numerics.Data.Statistics
         /// <returns>Returns the p-value of the test statistic.</returns>
         public static double Ftest(IList<double> sample1, IList<double> sample2)
         {
+            if (sample1.Count < 2 || sample2.Count < 2) throw new ArgumentException("Each sample must have at least 2 observations.");
             var meanVar1 = Statistics.MeanVariance(sample1);
             var meanVar2 = Statistics.MeanVariance(sample2);
             int n1 = sample1.Count, n2 = sample2.Count;
             double ave1 = meanVar1.Item1, var1 = meanVar1.Item2, ave2 = meanVar2.Item1, var2 = meanVar2.Item2, df1, df2, f, pVal;
+            if (var1 == 0 && var2 == 0) return 1.0;
             if (var1 > var2)
             {
                 f = var1 / var2;
@@ -177,6 +181,8 @@ namespace Numerics.Data.Statistics
         /// <param name="pValue">The p-value of the test statistic.</param>
         public static void FtestModels(double sseRestricted, double sseFull, int dfRestricted, int dfFull, out double fStat, out double pValue)
         {
+            if (dfRestricted == dfFull) throw new ArgumentException("Restricted and full model degrees of freedom cannot be equal.");
+            if (dfFull <= 0) throw new ArgumentException("Full model degrees of freedom must be positive.", nameof(dfFull));
             fStat = ((sseRestricted - sseFull) / (dfRestricted - dfFull)) / (sseFull / dfFull);
             pValue = 2.0 * Beta.Incomplete(0.5 * dfFull, 0.5 * dfRestricted, dfFull / (dfFull + dfRestricted * fStat));
             if (pValue > 1.0) pValue = 2d - pValue;
@@ -329,7 +335,6 @@ namespace Numerics.Data.Statistics
             var yVals = new Vector(sample.ToArray());
             var lm = new LinearRegression(xVals, yVals, true);
             var tdist = new StudentT(lm.DegreesOfFreedom);
-            double d = Math.Abs(lm.Parameters[1] / lm.ParameterStandardErrors[1]);
             return (1 - tdist.CDF(Math.Abs(lm.Parameters[1] / lm.ParameterStandardErrors[1]))) * 2;
         }
 

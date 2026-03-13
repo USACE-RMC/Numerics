@@ -636,6 +636,13 @@ namespace Numerics.Distributions
     
         //****************************************************************************80
 
+        /// <summary>
+        /// Computes the bivariate normal CDF.
+        /// </summary>
+        /// <param name="ah">Upper limit for variable X.</param>
+        /// <param name="ak">Upper limit for variable Y.</param>
+        /// <param name="r">The correlation coefficient.</param>
+        /// <returns>The bivariate normal CDF value.</returns>
         public static double bivnor(double ah, double ak, double r)
 
         //****************************************************************************80
@@ -1892,6 +1899,11 @@ namespace Numerics.Distributions
             return result;
         }
 
+        /// <summary>
+        /// Computes the standard normal CDF. Accurate to 1E-15.
+        /// </summary>
+        /// <param name="Z">The Z-score.</param>
+        /// <returns>The standard normal CDF value.</returns>
         public static double MVNPHI(double Z)
         {
             //     

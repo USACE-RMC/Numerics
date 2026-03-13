@@ -847,7 +847,9 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new LogPearsonTypeIII(Mu, Sigma, Gamma);
+            var clone = new LogPearsonTypeIII(Mu, Sigma, Gamma);
+            clone.Base = Base;
+            return clone;
         }
 
        

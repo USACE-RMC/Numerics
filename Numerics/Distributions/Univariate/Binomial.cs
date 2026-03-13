@@ -253,8 +253,8 @@ namespace Numerics.Distributions
             if (double.IsNaN(parameters[1]) || double.IsInfinity(parameters[1]) || parameters[1] <= 0.0d)
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "The number of trials (n) must be positive.");
-                return new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "The number of trials (n) must be positive.");
+                    throw new ArgumentOutOfRangeException(nameof(NumberOfTrials), "The number of trials (n) must be positive.");
+                return new ArgumentOutOfRangeException(nameof(NumberOfTrials), "The number of trials (n) must be positive.");
             }
             return null!;            
         }
@@ -301,7 +301,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters([probability, NumberOfTrials], true);
             double k = 0d;
-            for (int i = 0; i < NumberOfTrials; i++)
+            for (int i = 0; i <= NumberOfTrials; i++)
             {
                 if (CDF(i) >= probability)
                 {

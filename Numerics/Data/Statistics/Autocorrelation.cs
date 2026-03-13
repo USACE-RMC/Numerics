@@ -215,6 +215,7 @@ namespace Numerics.Data.Statistics
             if (acf == null) return null;
 
             double den = acf[0, 1];
+            if (den == 0) return null;
             for (int i = 0; i < acf.GetLength(0); i++)
                 acf[i, 1] /= den;
             return acf;
@@ -239,6 +240,7 @@ namespace Numerics.Data.Statistics
             if (acf == null) return null;
 
             double den = acf[0, 1];
+            if (den == 0) return null;
             for (int i = 0; i < acf.GetLength(0); i++)
                 acf[i, 1] /= den;
             return acf;

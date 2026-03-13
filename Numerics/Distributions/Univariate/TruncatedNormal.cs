@@ -368,7 +368,7 @@ namespace Numerics.Distributions
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
         public ArgumentOutOfRangeException? ValidateParameters(double mean, double standardDeviation, double min, double max, bool throwException)
         {
-            if (double.IsNaN(mean) || double.IsInfinity(Mean))
+            if (double.IsNaN(mean) || double.IsInfinity(mean))
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Mu), "Mean must be a number.");

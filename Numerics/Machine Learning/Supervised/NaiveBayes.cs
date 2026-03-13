@@ -213,7 +213,10 @@ namespace Numerics.MachineLearning
                     // Set means
                     Means[i, j] = u1;
                     // Set standard deviations
-                    StandardDeviations[i, j] = Math.Sqrt((u2 - Math.Pow(u1, 2d)) * (n / (n - 1)));
+                    if (n <= 1)
+                        StandardDeviations[i, j] = 1e-6;
+                    else
+                        StandardDeviations[i, j] = Math.Sqrt(Math.Max(0, (u2 - Math.Pow(u1, 2d)) * (n / (n - 1))));
                 }
 
             }
