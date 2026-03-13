@@ -190,12 +190,12 @@ namespace MachineLearning
             Assert.IsNotNull(neighbors);
 
             // First query (0.5, 0.5): nearest neighbors should be from cluster A (indices 0-5)
-            Assert.IsLessThan(neighbors[0], 6, $"First query's nearest neighbor should be in cluster A, got index {neighbors[0]}");
-            Assert.IsLessThan(neighbors[1], 6, $"First query's 2nd nearest should be in cluster A, got index {neighbors[1]}");
+            Assert.IsLessThan(6, neighbors[0], $"First query's nearest neighbor should be in cluster A, got index {neighbors[0]}");
+            Assert.IsLessThan(6, neighbors[1], $"First query's 2nd nearest should be in cluster A, got index {neighbors[1]}");
 
             // Second query (100.5, 100.5): nearest neighbors should be from cluster B (indices 6-11)
-            Assert.IsGreaterThanOrEqualTo(neighbors[2], 6, $"Second query's nearest neighbor should be in cluster B, got index {neighbors[2]}");
-            Assert.IsGreaterThanOrEqualTo(neighbors[3], 6, $"Second query's 2nd nearest should be in cluster B, got index {neighbors[3]}");
+            Assert.IsGreaterThanOrEqualTo(6, neighbors[2], $"Second query's nearest neighbor should be in cluster B, got index {neighbors[2]}");
+            Assert.IsGreaterThanOrEqualTo(6, neighbors[3], $"Second query's 2nd nearest should be in cluster B, got index {neighbors[3]}");
         }
 
     }
