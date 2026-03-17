@@ -16,12 +16,16 @@ authors:
     corresponding: true
   - name: Woodrow L. Fields
     affiliation: 1
+    orcid: 0009-0008-7454-5552
   - name: Julian Gonzalez
     affiliation: 1
+    orcid: 0009-0009-9058-7653
   - name: Sadie Niblett
     affiliation: 1
+    orcid: 0009-0008-8588-4816
   - name: Brennan Beam
     affiliation: 2
+    orcid: 0009-0003-0515-3727
   - name: Brian Skahill
     orcid: 0000-0002-2164-0301
     affiliation: 3
