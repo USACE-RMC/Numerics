@@ -20,15 +20,15 @@ JOSS paper format: https://joss.readthedocs.io/en/latest/paper.html (750-1,750 w
 | 6 | API documentation | MET | 25+ Markdown files in `docs/`; XML documentation generated from source |
 | 7 | Community guidelines (CONTRIBUTING) | MET | `CONTRIBUTING.md` with bug reports, PRs, DCO, security policy |
 | 8 | Code of Conduct | MET | `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1) |
-| 9 | Automated tests | MET | 1,001 MSTest methods across 149 test classes in `Test_Numerics/` |
+| 9 | Automated tests | MET | 1,006 MSTest methods across 150 test classes in `Test_Numerics/` |
 | 10 | Continuous integration | MET | 3 GitHub Actions workflows (`Integration.yml`, `Snapshot.yml`, `Release.yml`) |
-| 11 | Substantial scholarly effort | MET | 60,000+ LOC library, 34,000+ LOC tests, 224 source files |
+| 11 | Substantial scholarly effort | MET | 60,000+ LOC library, 34,000+ LOC tests, 248 source files |
 | 12 | Sustained development history | MET | 2.5 years (Sep 2023 - Mar 2026), 270+ commits, 7+ contributors |
 | 13 | Statement of need | MET | Paper includes Statement of Need section |
 | 14 | State of the field / related work | MET | Paper includes State of the Field section |
 | 15 | Zero or documented dependencies | MET | Zero runtime dependencies for .NET 8+; polyfills only for .NET Framework 4.8.1 |
 | 16 | Functionality matches claims | MET | All claims verified: 43 distributions, 8 MCMC samplers, 5+ optimizers, copulas, ML, bootstrap |
-| 17 | Software installable | REMAINING | Verify NuGet package `RMC.Numerics` is published and accessible on nuget.org |
+| 17 | Software installable | REMAINING | Publish `RMC.Numerics` to nuget.org (see Step 4 below) |
 
 ### Paper Requirements
 
@@ -54,59 +54,100 @@ JOSS paper format: https://joss.readthedocs.io/en/latest/paper.html (750-1,750 w
 |---|-------------|--------|----------|
 | 31 | CITATION.cff | MET | `CITATION.cff` (CFF v1.2.0, BSD-3-Clause) |
 | 32 | codemeta.json | MET | `codemeta.json` created |
-| 33 | Version tag matching submission | REMAINING | Need to create `v2.0.0` tag |
+| 33 | Version tag matching submission | REMAINING | Need to create `v2.0.0` tag after merge to `main` |
 | 34 | Archived release with DOI | REMAINING | Need Zenodo archive |
 
 ---
 
-## Section B: Step-by-Step Pre-Submission Actions
+## Section B: BES Paper Review Comments (Addressed)
 
-Complete these steps in order before submitting to JOSS.
+| # | Comment | Status | Action |
+|---|---------|--------|--------|
+| 1 | Co-author ORCIDs (Fields, Gonzalez, Niblett, Beam) | PENDING | Follow up with co-authors separately |
+| 2 | "Differential Evolution MCMC" → "Adaptive Differential Evolution MCMC" (line 53) | DONE | Clarifies DE-MCz vs DE-MC |
+| 3 | "needed for reliable calibration" → "commonly applied for Bayesian inference" (line 61) | DONE | More accurate characterization |
 
-### Step 1: Review and Finalize Paper Edits
-- [ ] Review all changes made to `paper/paper.md` (code example, Software Design rewrite, claim softening, ML mention, Gelman-Rubin citation)
-- [ ] Review all changes to `paper/paper.bib` (ribatet fix, hoffman URL, Gelman-Rubin 1992 addition)
-- [ ] Review `CITATION.cff` changes (ORCID, affiliations, date)
-- [ ] Review `README.md` changes (badges, contributing link, doc table reorder)
-- [ ] Proofread final paper for any remaining issues
-- [ ] Optionally encourage co-authors to register ORCIDs and add them to `paper.md`
+---
 
-### Step 2: Verify NuGet Package
-- [ ] Confirm `RMC.Numerics` is published and accessible at https://www.nuget.org/packages/RMC.Numerics/
-- [ ] If not on nuget.org, consider publishing there (JOSS reviewers will try to install it)
-- [ ] Verify installation works: `dotnet add package RMC.Numerics`
+## Section C: Pre-Release Verification
 
-### Step 3: Run Full Test Suite
-- [ ] Run `dotnet test` across all target frameworks to confirm no regressions
-- [ ] Verify all 1,001+ tests pass
+- [ ] Run full test suite across all target frameworks:
+  ```
+  dotnet test --framework net8.0
+  dotnet test --framework net9.0
+  dotnet test --framework net10.0
+  dotnet test --framework net481
+  ```
+- [ ] Confirm all 1,006+ tests pass on every target
+- [ ] Build the NuGet package locally:
+  ```
+  dotnet pack Numerics/Numerics.csproj -c Release
+  ```
+- [ ] Verify the .nupkg contains assemblies for all 4 TFMs
 
-### Step 4: CI Pipeline Transparency (Recommended)
-- [ ] The CI uses shared workflows from `HydrologicEngineeringCenter/dotnet-workflows` which are opaque to reviewers
-- [ ] Consider adding a brief comment in the workflow YAML or a CI section in the README explaining what the pipeline does
-- [ ] The CI config specifies `dotnet-version: '9.0.x'` — consider testing against all target frameworks (8.0, 9.0, 10.0) or documenting that the shared workflow handles multi-targeting
+---
 
-### Step 5: Create Release Tag
-- [ ] Merge the `bugfixes-and-enhancements` branch to `main`
-- [ ] Create git tag: `git tag v2.0.0`
-- [ ] Push tag: `git push origin v2.0.0`
-- [ ] Create a GitHub Release from the tag with release notes
+## Section D: Release Roadmap (Step-by-Step)
 
-### Step 6: Archive on Zenodo
+### Step 1: Create Pull Request to `main`
+- [ ] Push latest `bugfixes-and-enhancements` to origin
+- [ ] Create PR:
+  ```
+  gh pr create --base main --head bugfixes-and-enhancements \
+    --title "v2.0.0: Major update" --body-file RELEASE_NOTES.md
+  ```
+- [ ] Wait for CI (Integration.yml) to pass
+- [ ] Review and merge PR
+
+### Step 2: Tag and GitHub Release
+- [ ] After merge:
+  ```
+  git checkout main && git pull
+  git tag v2.0.0
+  git push origin v2.0.0
+  ```
+- [ ] Create GitHub Release:
+  ```
+  gh release create v2.0.0 --title "v2.0.0 — Major Update" --notes-file RELEASE_NOTES.md
+  ```
+- [ ] `Release.yml` auto-triggers → pushes to internal USACE Nexus
+- [ ] `NuGetPublish.yml` auto-triggers → pushes to nuget.org
+
+### Step 3: One-Time NuGet.org Setup (before first release)
+- [ ] Create/verify nuget.org account at https://www.nuget.org/
+- [ ] Generate API key at https://www.nuget.org/account/apikeys:
+  - Name: `GitHub Actions - Numerics`
+  - Expiration: 365 days
+  - Glob pattern: `RMC.Numerics`
+  - Scopes: "Push new packages and package versions"
+- [ ] Add secret to GitHub repo at https://github.com/USACE-RMC/Numerics/settings/secrets/actions:
+  - Name: `NUGET_ORG_API_KEY`
+  - Value: the API key from above
+
+### Step 4: Verify NuGet Package
+- [ ] Check https://www.nuget.org/packages/RMC.Numerics/ (may take 10-15 min to index)
+- [ ] Test installation:
+  ```
+  dotnet new console -o TestInstall && cd TestInstall
+  dotnet add package RMC.Numerics --version 2.0.0
+  dotnet build
+  ```
+
+### Step 5: Zenodo Archival
 - [ ] Go to https://zenodo.org and log in with GitHub
 - [ ] Enable the `USACE-RMC/Numerics` repository in Zenodo's GitHub integration
 - [ ] Zenodo will automatically archive the GitHub Release and mint a DOI
 - [ ] Copy the Zenodo DOI badge and add it to `README.md`
 - [ ] Update `CITATION.cff` with the Zenodo DOI if desired
 
-### Step 7: Submit to JOSS
+### Step 6: Submit to JOSS
 - [ ] Go to https://joss.theoj.org/papers/new
 - [ ] Enter the repository URL: `https://github.com/USACE-RMC/Numerics`
 - [ ] Enter the Zenodo archive DOI
 - [ ] Confirm software version matches the tagged release
 - [ ] Submit the paper
-- [ ] The JOSS editorial bot will open a review issue — respond promptly to any reviewer questions
 
-### Step 8: Post-Submission
+### Step 7: Post-Submission
 - [ ] Add the JOSS status badge to `README.md` once the review issue is created:
   ```markdown
   [![status](https://joss.theoj.org/papers/<DOI>/status.svg)](https://joss.theoj.org/papers/<DOI>)
@@ -116,9 +157,58 @@ Complete these steps in order before submitting to JOSS.
 
 ---
 
+## Section E: v2.0.0 Release Notes
+
+### v2.0.0 — Major Update
+
+This is a major update to Numerics with 274 files changed, 24,476 insertions, and 4,400 deletions since v1.0.0. Highlights include new distributions, improved MCMC inference, enhanced numerical methods, and comprehensive documentation.
+
+#### New Distributions
+- Dirichlet distribution (multivariate)
+- Multinomial distribution (multivariate)
+- Multivariate Student-t distribution
+- Student-t copula
+
+#### Bayesian Inference & MCMC
+- Improved Gelman-Rubin convergence diagnostics
+- Refactored Noncentral-T to use Brent.Solve
+- Enhanced MCMC sampler reliability and convergence
+
+#### Numerical Methods
+- Linear algebra enhancements
+- Root-finding improvements
+- ODE solver improvements
+- Improved adaptive integration
+
+#### Data & Statistics
+- Time series download improvements
+- Hypothesis test enhancements
+- Enhanced parameter estimation methods
+- Autocorrelation and convergence diagnostics improvements
+
+#### Optimization
+- Comprehensive correctness improvements across all optimizers
+
+#### Machine Learning
+- Documentation consolidation
+- Code quality improvements
+
+#### Infrastructure & Documentation
+- Added .NET 10.0 target framework (now targets net8.0, net9.0, net10.0, net481)
+- Zero runtime dependencies maintained
+- 1,006+ unit tests validated against published references
+- JOSS paper and metadata (CITATION.cff, codemeta.json)
+- CONTRIBUTING.md and CODE_OF_CONDUCT.md
+- 25+ documentation files covering all library capabilities
+- NuGet publishing workflow for nuget.org
+
+---
+
 ## Notes
 
-- **Word limit**: JOSS papers should be 750-1,750 words (https://joss.readthedocs.io/en/latest/paper.html). Current paper is ~1,317 words.
+- **Word limit**: JOSS papers should be 750-1,750 words (https://joss.readthedocs.io/en/latest/paper.html). Current paper is ~1,215 words.
 - **"Jery R. Stedinger"**: This spelling in `paper.bib` is correct (confirmed on USGS publications). Be prepared to explain if a reviewer questions it.
 - **England 2019 vs 2018**: Bulletin 17C was originally published March 2018; the `2019` date refers to the v1.1 revision. Both are acceptable in the literature.
 - **ter Braak citation**: The 2008 paper describes DE-MCzs (with snooker updater). The library has both `DEMCz` and `DEMCzs` classes. The citation is appropriate since the 2008 paper supersedes the 2006 original.
+- **NuGet API key expiration**: The nuget.org API key expires after 365 days max. Set a calendar reminder to regenerate it.
+- **Versioning**: Version is derived from git tags (e.g., `v2.1.0` → package version `2.1.0`). The `.csproj` version is a fallback for local builds only.

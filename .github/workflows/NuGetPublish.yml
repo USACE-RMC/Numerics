@@ -1,0 +1,37 @@
+name: Publish to NuGet.org
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: dotnet build Numerics/Numerics.csproj -c Release -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Test (all frameworks)
+        run: dotnet test -c Release --no-build
+
+      - name: Pack
+        run: dotnet pack Numerics/Numerics.csproj -c Release --no-build -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Push to NuGet.org
+        run: dotnet nuget push "Numerics/bin/Release/RMC.Numerics.${{ steps.version.outputs.VERSION }}.nupkg" --api-key ${{ secrets.NUGET_ORG_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
