@@ -27,7 +27,7 @@ JOSS paper format: https://joss.readthedocs.io/en/latest/paper.html (750-1,750 w
 | 13 | Statement of need | MET | Paper includes Statement of Need section |
 | 14 | State of the field / related work | MET | Paper includes State of the Field section |
 | 15 | Zero or documented dependencies | MET | Zero runtime dependencies for .NET 8+; polyfills only for .NET Framework 4.8.1 |
-| 16 | Functionality matches claims | MET | All claims verified: 43 distributions, 8 MCMC samplers, 5+ optimizers, copulas, ML, bootstrap |
+| 16 | Functionality matches claims | MET | All claims verified: 43 distributions, 8 MCMC samplers (RWMH, ARWMH, DEMCz, DEMCzs, HMC, NUTS, Gibbs, SNIS), 5+ optimizers, copulas, ML, bootstrap |
 | 17 | Software installable | REMAINING | Publish `RMC.Numerics` to nuget.org (see Step 4 below) |
 
 ### Paper Requirements
@@ -63,9 +63,14 @@ JOSS paper format: https://joss.readthedocs.io/en/latest/paper.html (750-1,750 w
 
 | # | Comment | Status | Action |
 |---|---------|--------|--------|
-| 1 | Co-author ORCIDs (Fields, Gonzalez, Niblett, Beam) | PENDING | Follow up with co-authors separately |
+| 1 | Co-author ORCIDs (Fields, Gonzalez, Niblett, Beam) | DONE | All ORCIDs added to paper.md |
 | 2 | "Differential Evolution MCMC" → "Adaptive Differential Evolution MCMC" (line 53) | DONE | Clarifies DE-MCz vs DE-MC |
 | 3 | "needed for reliable calibration" → "commonly applied for Bayesian inference" (line 61) | DONE | More accurate characterization |
+| 4 | Gonzalez: Software Design choppy language | DONE | Rewrote section with accurate base class descriptions, removed First/Second/Third structure |
+| 5 | Gonzalez: Redundant "zero dependencies" in Summary | DONE | Removed from Summary, kept in Software Design where it is explained |
+| 6 | Gonzalez: Why is CI important? | DONE | Added "preventing regressions in numerical accuracy" to CI sentence |
+| 7 | Gonzalez: References not in markdown | N/A | JOSS uses Pandoc + paper.bib to render citations at build time |
+| 8 | MCMC sampler count (was "six", should be "eight") | DONE | Updated Summary and Statement of Need to include DEMCzs and SNIS |
 
 ---
 
