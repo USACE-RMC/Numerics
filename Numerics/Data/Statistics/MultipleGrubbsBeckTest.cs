@@ -233,8 +233,19 @@ namespace Numerics.Data.Statistics
             df = 2.0d * alpha;
             ncp = (MuMP - ZR) / Math.Sqrt(VarMP);
             q = -Math.Sqrt(MuS2 / VarMP) * EtaP;
-            var NCTDist = new NoncentralT(df, ncp);
-            ANS = 1.0d - NCTDist.CDF(q);
+            // Match Fortran FP_TNC_CDF: use normal approximation for df > 20
+            double cdfResult;
+            if (df > 20.0d)
+            {
+                double Z = (q * (1.0d - 1.0d / (4.0d * df)) - ncp) / Math.Sqrt(1.0d + q * q / (2.0d * df));
+                cdfResult = Normal.StandardCDF(Z);
+            }
+            else
+            {
+                var NCTDist = new NoncentralT(df, ncp);
+                cdfResult = NCTDist.CDF(q);
+            }
+            ANS = 1.0d - cdfResult;
             return ANS;
         }
 

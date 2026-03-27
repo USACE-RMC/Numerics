@@ -74,13 +74,13 @@ namespace Numerics.Distributions
             SetParameters(degreesOfFreedom, noncentrality);
         }
 
-        private int _degreesOfFreedom;
+        private double _degreesOfFreedom;
         private double _noncentrality;
        
         /// <summary>
         /// Gets and sets the degrees of freedom ν (nu) of the distribution.
         /// </summary>
-        public int DegreesOfFreedom
+        public double DegreesOfFreedom
         {
             get { return _degreesOfFreedom; }
             set
@@ -260,7 +260,7 @@ namespace Numerics.Distributions
         /// <param name="mu">The noncentrality parameter μ (mu).</param>
         public void SetParameters(double v, double mu)
         {
-            DegreesOfFreedom = (int)v;
+            DegreesOfFreedom = v;
             Noncentrality = mu;
         }
 
@@ -429,8 +429,8 @@ namespace Numerics.Distributions
             // 
             // Note - ITRMAX and ERRMAX may be changed to suit one's needs.
             // 
-            const int ITRMAX = 1000;
-            const double Errmax = 0.0000001d;
+            const int ITRMAX = 10000;
+            const double Errmax = 0.000000001d;
 
             // DATA ITRMAX/100.1/, ERRMAX/1.E-06/
             // 

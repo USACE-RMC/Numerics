@@ -282,7 +282,7 @@ namespace Numerics.Distributions
             k = Math.Floor(k);
             if (k < Minimum)
                 return 0.0d;
-            if (k > Maximum)
+            if (k >= Maximum)
                 return 1.0d;
             return Beta.Incomplete(NumberOfTrials - k, k + 1d, Complement);
         }
@@ -299,7 +299,7 @@ namespace Numerics.Distributions
                 return Maximum;
             // Validate parameters
             if (_parametersValid == false)
-                ValidateParameters([probability, NumberOfTrials], true);
+                ValidateParameters([ProbabilityOfSuccess, NumberOfTrials], true);
             double k = 0d;
             for (int i = 0; i <= NumberOfTrials; i++)
             {

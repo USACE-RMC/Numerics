@@ -114,12 +114,12 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var t = new NoncentralT();
-            Assert.AreEqual(10,t.DegreesOfFreedom);
-            Assert.AreEqual(0, t.Noncentrality);
+            Assert.AreEqual(10d, t.DegreesOfFreedom);
+            Assert.AreEqual(0d, t.Noncentrality);
 
             var t2 = new NoncentralT(1, 1);
-            Assert.AreEqual(1, t2.DegreesOfFreedom);
-            Assert.AreEqual(1, t2.Noncentrality);
+            Assert.AreEqual(1d, t2.DegreesOfFreedom);
+            Assert.AreEqual(1d, t2.Noncentrality);
         }
 
         /// <summary>
