@@ -42,7 +42,7 @@ bibliography: paper.bib
 
 # Summary
 
-Numerics is a free and open-source numerical computing library for .NET, developed by the U.S. Army Corps of Engineers Risk Management Center (USACE-RMC). The library provides over 40 univariate probability distributions with L-moment and maximum likelihood parameter estimation, eight Markov Chain Monte Carlo (MCMC) samplers for Bayesian inference, bootstrap uncertainty quantification, bivariate copulas, optimization algorithms, and numerical methods for integration, differentiation, root finding, and linear algebra. Numerics targets engineers, scientists, and analysts working in infrastructure risk assessment, flood frequency analysis, and Monte Carlo simulation within .NET-based enterprise systems. The library supports .NET 8.0 through 10.0 and .NET Framework 4.8.1 and is validated by over 1,000 unit tests against published reference values.
+Numerics is a free and open-source numerical computing library for .NET, developed by the U.S. Army Corps of Engineers Risk Management Center (USACE-RMC). The library provides 43 univariate probability distributions with L-moment and maximum likelihood parameter estimation, eight Markov Chain Monte Carlo (MCMC) samplers for Bayesian inference, bootstrap uncertainty quantification, bivariate copulas, optimization algorithms, and numerical methods for integration, differentiation, root finding, and linear algebra. Numerics targets engineers, scientists, and analysts working in infrastructure risk assessment, flood frequency analysis, and Monte Carlo simulation within .NET-based enterprise systems. The library supports .NET 8.0 through 10.0 and .NET Framework 4.8.1 and is validated by over 1,000 unit tests against published reference values.
 
 # Statement of Need
 
