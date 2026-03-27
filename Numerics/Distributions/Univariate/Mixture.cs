@@ -761,12 +761,13 @@ namespace Numerics.Distributions
                 // Perform the expectation step
                 newLogLH = EStep(mleParameters);
 
-                // Perform the maximization step
-                mleParameters = MStep(mleParameters);
-
-                // Check convergence after M-step
+                // Check convergence before M-step to avoid pushing parameters
+                // into a degenerate state after the log-likelihood has already converged.
                 if (Math.Abs((oldLogLH - newLogLH) / oldLogLH) < Tolerance)
                     break;
+
+                // Perform the maximization step
+                mleParameters = MStep(mleParameters);
 
                 // Update log-likelihood state
                 oldLogLH = newLogLH;

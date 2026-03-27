@@ -28,13 +28,14 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Numerics.Distributions;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.SpecialFunctions;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 
 namespace Numerics.Data.Statistics
 {
@@ -111,7 +112,7 @@ namespace Numerics.Data.Statistics
             int n2 = sample2.Count;
             double t = Math.Abs((ave1 - ave2) / Math.Sqrt(var1 / n1 + var2 / n2));
             double df = Tools.Sqr(var1 / n1 + var2 / n2) / (Tools.Sqr(var1 / n1) / (n1 - 1) + Tools.Sqr(var2 / n2) / (n2 - 1));
-            var tdist = new StudentT((int)df);
+            var tdist = new StudentT(df);
             return (1d - tdist.CDF(t)) * 2d;
         }
 
@@ -134,7 +135,7 @@ namespace Numerics.Data.Statistics
             cov /= (df = n - 1);
             sd = Math.Sqrt((var1 + var2 - 2.0 * cov) / n);
             double t = Math.Abs((ave1 - ave2) / sd);
-            var tdist = new StudentT((int)df);
+            var tdist = new StudentT(df);
             return (1d - tdist.CDF(t)) * 2d;
         }
 
@@ -348,28 +349,35 @@ namespace Numerics.Data.Statistics
             int n = sample.Count;
             if (n < 10) throw new ArgumentException("The sample size must be greater than or equal to 10.");
 
-            // Fit 1-component GMM (unimodal)
-            var gmm1 = new GaussianMixtureModel(sample.ToArray(), 1);
-            gmm1.Train(12345, true);
-            var logLH1 = gmm1.LogLikelihood;
+            try
+            {
+                // Fit 1-component GMM (unimodal)
+                var gmm1 = new GaussianMixtureModel(sample.ToArray(), 1);
+                gmm1.Train(12345, true);
+                var logLH1 = gmm1.LogLikelihood;
 
-            // Fit 2-component GMM (potentially bimodal)
-            var gmm2 = new GaussianMixtureModel(sample.ToArray(), 2);
-            gmm2.Train(12345, true);
-            var logLH2 = gmm2.LogLikelihood;
+                // Fit 2-component GMM (potentially bimodal)
+                var gmm2 = new GaussianMixtureModel(sample.ToArray(), 2);
+                gmm2.Train(12345, true);
+                var logLH2 = gmm2.LogLikelihood;
 
-            // Compute test statistic: Likelihood Ratio Test
-            double testStat = 2 * (logLH2 - logLH1);
-            int df = 3;
+                // Compute test statistic: Likelihood Ratio Test
+                double testStat = 2 * (logLH2 - logLH1);
+                int df = 3;
 
-            // Compute p-value from chi-square distribution
-            var chiSquared = new ChiSquared(df);
-            double pval = 1.0 - chiSquared.CDF(testStat);
+                // Compute p-value from chi-square distribution
+                var chiSquared = new ChiSquared(df);
+                double pval = 1.0 - chiSquared.CDF(testStat);
 
-            return pval;
+                return pval;
+            }
+            catch (Exception ex) 
+            {
+                Debug.WriteLine($"Error in hypothesis testing: {ex.Message}");
+                return double.NaN;
+            }
 
         }
-
 
     }
 

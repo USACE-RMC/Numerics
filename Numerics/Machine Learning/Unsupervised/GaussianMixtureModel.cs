@@ -296,14 +296,14 @@ namespace Numerics.MachineLearning
             for (int k = 0; k < K; k++)
             {
                 double wgt = 0d;
-                for (int i = 0; i < X.NumberOfRows; i++) 
+                for (int i = 0; i < X.NumberOfRows; i++)
                     wgt += LikelihoodMatrix[i, k];
                 Weights[k] = wgt / X.NumberOfRows;
                 for (int d = 0; d < Dimension; d++)
                 {
                     // Compute centroids
                     double sum = 0;
-                    for (int i = 0; i < X.NumberOfRows; i++) 
+                    for (int i = 0; i < X.NumberOfRows; i++)
                         sum += LikelihoodMatrix[i, k] * X[i, d];
                     Means[k, d] = sum / wgt;
                     // Compute covariance
@@ -317,6 +317,14 @@ namespace Numerics.MachineLearning
                         Sigmas[k][d, j] = sum / wgt;
                     }
                 }
+
+                // Add small regularization to the diagonal to ensure the covariance
+                // matrix remains positive-definite. When a component collapses to very
+                // few points, the covariance can become singular, causing Cholesky
+                // decomposition in the E-step to fail.
+                for (int d = 0; d < Dimension; d++)
+                    MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
+                
             }
         }
 

@@ -108,7 +108,7 @@ namespace Numerics.Distributions
 
         private double _mu;
         private double _sigma;
-        private int _degreesOfFreedom;
+        private double _degreesOfFreedom;
 
         /// <summary>
         /// Gets and sets the location parameter µ (Mu).
@@ -139,7 +139,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the degrees of freedom ν (nu) of the distribution.
         /// </summary>
-        public int DegreesOfFreedom
+        public double DegreesOfFreedom
         {
             get { return _degreesOfFreedom; }
             set
@@ -325,7 +325,7 @@ namespace Numerics.Distributions
         {
             Mu = mu;
             Sigma = sigma;
-            DegreesOfFreedom = (int)v;
+            DegreesOfFreedom = v;
         }
 
         /// <inheritdoc/>
