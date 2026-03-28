@@ -29,9 +29,9 @@
 */
 
 using Numerics.Mathematics.Optimization;
+using Numerics.Utilities;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -77,47 +77,61 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
+        /// Constructs and post-processes MCMC results. 
+        /// </summary>
+        /// <param name="map">The output parameter set that produced the maximum likelihood.</param>
+        /// <param name="parameterSets">The list of parameter sets to process.</param>
+        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
+        public MCMCResults(ParameterSet map, IList<ParameterSet> parameterSets, double alpha = 0.1)
+        {
+            
+            MAP = map.Clone();
+            Output = parameterSets.ToList();
+            ProcessParameterResults(alpha);
+        }
+
+        /// <summary>
         /// The list of sampled Markov Chains.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet>[] MarkovChains { get; private set; }
+        public List<ParameterSet>[]? MarkovChains { get; private set; }
 
         /// <summary>
         /// Output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public List<ParameterSet> Output { get; private set; }
+        public List<ParameterSet> Output { get; private set; } = new List<ParameterSet>();
 
         /// <summary>
         /// The average log-likelihood across each chain for each iteration.
         /// </summary>
         [JsonInclude]
-        public List<double> MeanLogLikelihood { get; private set; }
+        public List<double>? MeanLogLikelihood { get; private set; }
 
         /// <summary>
         /// The acceptance rate for each chain.
         /// </summary>
         [JsonInclude]
-        public double[] AcceptanceRates { get; private set; }
+        public double[] AcceptanceRates { get; private set; } = null!;
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.
         /// </summary>
         [JsonInclude]
-        public ParameterResults[] ParameterResults { get; private set; }
+        public ParameterResults[] ParameterResults { get; private set; } = null!;
 
         /// <summary>
         /// The output parameter set that produced the maximum likelihood.
         /// This is referred to as the maximum a posteriori (MAP).
         /// </summary>
         [JsonInclude]
-        public ParameterSet MAP { get; private set; }
+        public ParameterSet MAP { get; private set; } = new ParameterSet();
 
         /// <summary>
         /// The mean of the posterior distribution of each parameter.
         /// </summary>
         [JsonInclude]
-        public ParameterSet PosteriorMean { get; private set; }
+        public ParameterSet PosteriorMean { get; private set; } = new ParameterSet();
 
         /// <summary>
         /// Process the parameter results.
@@ -147,6 +161,25 @@ namespace Numerics.Sampling.MCMC
             PosteriorMean = new ParameterSet(postMean, postMeanLogLH);
         }
 
+        /// <summary>
+        /// Process a parameter results using the output list.
+        /// </summary>
+        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
+        private void ProcessParameterResults(double alpha = 0.1)
+        {
+            int p = Output.First().Values.Length;
+            var postMean = new double[p];
+            ParameterResults = new ParameterResults[p];
+            for (int i = 0; i < p; i++)
+            {
+                var x = Output.Select(set => set.Values[i]).ToArray();
+                ParameterResults[i] = new ParameterResults(x, alpha);
+                postMean[i] = ParameterResults[i].SummaryStatistics.Mean;
+            }
+            // Set the posterior mean parameter set. 
+            PosteriorMean = new ParameterSet(postMean, double.NaN);
+        }
+
         #region Serialization
 
         /// <summary>
@@ -161,6 +194,8 @@ namespace Numerics.Sampling.MCMC
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 IncludeFields = true
             };
+            options.Converters.Add(new Double2DArrayConverter());
+            options.Converters.Add(new HistogramConverter());
             return JsonSerializer.SerializeToUtf8Bytes(mcmcResults, options);
         }
 
@@ -168,39 +203,16 @@ namespace Numerics.Sampling.MCMC
         /// Creates MCMC Results from a byte array.
         /// </summary>
         /// <param name="bytes">Byte array.</param>
-        public static MCMCResults FromByteArray(byte[] bytes)
+        public static MCMCResults? FromByteArray(byte[] bytes)
         {
             var options = new JsonSerializerOptions
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 IncludeFields = true
             };
-            try
-            {
-                return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
-            }
-            catch
-            {
-                ///Previous serialization used Binary Formatter, which won't deserialize cleanly as JSON. 
-                /// If this fails, then it's probably the bf bytes. fall back to legacy.
-                return FromByteArrayLegacy(bytes);
-            }
-        }
-
-        /// <summary>
-        /// Creates MCMC Results from a byte array.
-        /// </summary>
-        /// <param name="bytes">Byte array.</param>
-        private static MCMCResults FromByteArrayLegacy(byte[] bytes)
-        {
-            using var ms = new MemoryStream();
-            #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
-            var bf = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
-            ms.Write(bytes, 0, bytes.Length);
-            ms.Seek(0L, SeekOrigin.Begin);
-            var obj = bf.Deserialize(ms);
-            #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
-            return (MCMCResults)obj;
+            options.Converters.Add(new Double2DArrayConverter());
+            options.Converters.Add(new HistogramConverter());
+            return JsonSerializer.Deserialize<MCMCResults>(bytes, options);
         }
 
         #endregion

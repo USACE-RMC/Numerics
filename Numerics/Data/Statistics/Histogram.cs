@@ -121,8 +121,7 @@ namespace Numerics.Data.Statistics
             /// </returns>
             public int CompareTo(Bin? other)
             {
-                if (other is null) { return 1; }
-
+                if (other is null) return 1;
                 if (UpperBound > other.LowerBound && LowerBound < other.LowerBound)
                 {
                     throw new ArgumentException(nameof(other), "The bins cannot be overlapping.");
@@ -176,6 +175,26 @@ namespace Numerics.Data.Statistics
                     return hash;
                 }
             }
+        }
+
+        /// <summary>
+        /// Internal constructor for JSON deserialization. Reconstructs a histogram from serialized bin data
+        /// without requiring the original raw data.
+        /// </summary>
+        /// <param name="lowerBound">The lower bound of the histogram.</param>
+        /// <param name="upperBound">The upper bound of the histogram.</param>
+        /// <param name="numberOfBins">The number of bins.</param>
+        /// <param name="binWidth">The bin width.</param>
+        /// <param name="bins">The list of histogram bins.</param>
+        internal Histogram(double lowerBound, double upperBound, int numberOfBins,
+                           double binWidth, List<Bin> bins)
+        {
+            LowerBound = lowerBound;
+            UpperBound = upperBound;
+            NumberOfBins = numberOfBins;
+            BinWidth = binWidth;
+            foreach (var bin in bins)
+                AddBin(bin);
         }
 
         /// <summary>

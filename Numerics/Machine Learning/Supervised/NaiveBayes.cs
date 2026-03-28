@@ -143,12 +143,12 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The means of each feature given each class. 
         /// </summary>
-        public double[,] Means { get; private set; } = null!;
+        public double[,] Means { get; private set; } = new double[0, 0];
 
         /// <summary>
         /// The standard deviations of each feature given each class.
         /// </summary>
-        public double[,] StandardDeviations { get; private set; } = null!;
+        public double[,] StandardDeviations { get; private set; } = new double[0, 0];
 
         /// <summary>
         /// The prior probability for each class.
@@ -228,7 +228,7 @@ namespace Numerics.MachineLearning
         /// Returns the prediction of the Naive Bayes classifier
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
-        public double[] Predict(double[] X)
+        public double[]? Predict(double[] X)
         {
             return Predict(new Matrix(X));
         }
@@ -237,7 +237,7 @@ namespace Numerics.MachineLearning
         /// Returns the prediction of the Naive Bayes classifier
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
-        public double[] Predict(double[,] X)
+        public double[]? Predict(double[,] X)
         {
             return Predict(new Matrix(X));
         }
@@ -246,9 +246,9 @@ namespace Numerics.MachineLearning
         /// Returns the prediction of the Naive Bayes classifier.
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
-        public double[] Predict(Matrix X)
+        public double[]? Predict(Matrix X)
         {
-            if (!IsTrained || X.NumberOfColumns != this.X.NumberOfColumns) return null!;
+            if (!IsTrained || X.NumberOfColumns != this.X.NumberOfColumns) return null;
             var result = new double[X.NumberOfRows];
             for (int i = 0; i < X.NumberOfRows; i++)
             {

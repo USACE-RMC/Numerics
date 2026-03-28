@@ -105,7 +105,19 @@ namespace Numerics.Data
         private List<Ordinate> _ordinates;
 
         /// <inheritdoc/>
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether collection changed events are suppressed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Set this to <c>true</c> before performing a batch of mutations and then
+        /// call <see cref="RaiseCollectionChangedReset"/> when the batch is complete.
+        /// This avoids firing an event for every individual mutation.
+        /// </para>
+        /// </remarks>
+        public bool SuppressCollectionChanged { get; set; } = false;
 
         /// <summary>
         /// Represents if the paired dataset has valid ordinates and order.
@@ -265,20 +277,24 @@ namespace Numerics.Data
         {
             // Get Strictness
             bool strict = false;
-            if (el.Attribute(nameof(StrictX)) != null) { bool.TryParse(el.Attribute(nameof(StrictX)).Value, out strict); }
+            var strictXAttr = el.Attribute(nameof(StrictX));
+            if (strictXAttr != null) { bool.TryParse(strictXAttr.Value, out strict); }
             StrictX = strict;
 
             strict = false;
-            if (el.Attribute(nameof(StrictY)) != null) { bool.TryParse(el.Attribute(nameof(StrictY)).Value, out strict); }
+            var strictYAttr = el.Attribute(nameof(StrictY));
+            if (strictYAttr != null) { bool.TryParse(strictYAttr.Value, out strict); }
             StrictY = strict;
 
             // Get Order
             SortOrder order = SortOrder.None;
-            if (el.Attribute(nameof(OrderX)) != null) { Enum.TryParse(el.Attribute(nameof(OrderX)).Value, out order); }
+            var orderXAttr = el.Attribute(nameof(OrderX));
+            if (orderXAttr != null) { Enum.TryParse(orderXAttr.Value, out order); }
             OrderX = order;
 
             order = SortOrder.None;
-            if (el.Attribute(nameof(OrderY)) != null) { Enum.TryParse(el.Attribute(nameof(OrderY)).Value, out order); }
+            var orderYAttr = el.Attribute(nameof(OrderY));
+            if (orderYAttr != null) { Enum.TryParse(orderYAttr.Value, out order); }
             OrderY = order;
 
             // Ordinates
@@ -298,6 +314,22 @@ namespace Numerics.Data
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Raises a <see cref="NotifyCollectionChangedAction.Reset"/> event
+        /// unconditionally, regardless of the <see cref="SuppressCollectionChanged"/> flag.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Call this after a bulk operation once <see cref="SuppressCollectionChanged"/>
+        /// has been set back to <c>false</c> (or while still <c>true</c> if desired)
+        /// to notify listeners that the collection has changed.
+        /// </para>
+        /// </remarks>
+        public void RaiseCollectionChangedReset()
+        {
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        }
 
         /// <summary>
         /// Get or set the ordinate at a specified index.
@@ -321,14 +353,11 @@ namespace Numerics.Data
                     {
                         if (OrdinateValid(index) == true) { Validate(); }
                     }
-                    //
-                    //We might need to add this check if performance suffers
-                    //if (SupressCollectionChanged == false)
-                    //{
-                    CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldValue));
-                    //}
+                    if (SuppressCollectionChanged == false)
+                    {
+                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldValue, index));
+                    }
                 }
-
             }
         }
 
@@ -427,7 +456,8 @@ namespace Numerics.Data
             if (itemIndex == -1) return false;
             _ordinates.RemoveAt(itemIndex);
             Validate();
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
             return true;
         }
 
@@ -441,7 +471,8 @@ namespace Numerics.Data
             var item = _ordinates[index];
             _ordinates.RemoveAt(index);
             Validate();
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
         }
 
         /// <summary>
@@ -456,7 +487,8 @@ namespace Numerics.Data
             for (int i = index; i < count; i++) { items.Add(_ordinates[i]); }
             _ordinates.RemoveRange(index, count);
             Validate();
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, items, index));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, items, index));
         }
 
         /// <summary>
@@ -467,7 +499,8 @@ namespace Numerics.Data
         {
             _ordinates.Add(item);
             IsValid = OrdinateValid(_ordinates.Count - 1);
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
         }
 
         /// <summary>
@@ -480,7 +513,8 @@ namespace Numerics.Data
             _ordinates.Insert(index, item);
             // only need to set valid state if it is true. if it is already false then inserting can't make it true.
             if (IsValid) IsValid = OrdinateValid(index);
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
         /// <summary>
@@ -488,9 +522,17 @@ namespace Numerics.Data
         /// </summary>
         public void Clear()
         {
+            if (_ordinates.Count == 0)
+                return;
+
+            bool wasSuppressed = SuppressCollectionChanged;
+            SuppressCollectionChanged = true;
             _ordinates.Clear();
+            SuppressCollectionChanged = wasSuppressed;
+
             IsValid = true;
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 
         /// <summary>
@@ -612,7 +654,7 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="obj">The object to compare with the current object.</param>
         /// <returns>True if the specified object is equal to the current object; otherwise, False.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is OrderedPairedData other)
             {
@@ -1432,7 +1474,7 @@ namespace Numerics.Data
         /// and number of points in the search region.</returns>
         public OrderedPairedData LangSimplify(double tolerance, int lookAhead)
         {
-            if (_ordinates == null | lookAhead <= 1 | tolerance <= 0)
+            if (_ordinates == null || lookAhead <= 1 || tolerance <= 0)
                 return this;
 
             List<Ordinate> ordinates = new List<Ordinate>();

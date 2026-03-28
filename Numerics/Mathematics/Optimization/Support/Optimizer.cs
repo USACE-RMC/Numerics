@@ -137,22 +137,22 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The optimal point, or parameter set. 
         /// </summary>
-        public ParameterSet BestParameterSet { get; protected set; }
+        public ParameterSet BestParameterSet { get; protected set; } = new ParameterSet();
 
         /// <summary>
         /// A trace of the parameter set and fitness evaluated until convergence.
         /// </summary>
-        public List<ParameterSet> ParameterSetTrace { get; protected set; } = null!;
+        public List<ParameterSet> ParameterSetTrace { get; protected set; } = new List<ParameterSet>();
 
         /// <summary>
-        /// Determines the optimization method status. 
+        /// Determines the optimization method status.
         /// </summary>
         public OptimizationStatus Status { get; protected set; } = OptimizationStatus.None;
 
         /// <summary>
         /// The numerically differentiated Hessian matrix. This is only computed when the optimization is successful.
         /// </summary>
-        public Matrix Hessian { get; protected set; } = null!;
+        public Matrix? Hessian { get; protected set; }
 
         #endregion
 
@@ -166,7 +166,7 @@ namespace Numerics.Mathematics.Optimization
             BestParameterSet = new ParameterSet();
             ParameterSetTrace = new List<ParameterSet>();
             Status = OptimizationStatus.None;
-            Hessian = null!;
+            Hessian = null;
         }
 
         /// <summary>
@@ -287,7 +287,7 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         /// <param name="status">Optimization status.</param>
         /// <param name="exception">Inner exception.</param>
-        protected virtual void UpdateStatus(OptimizationStatus status, Exception exception = null!)
+        protected virtual void UpdateStatus(OptimizationStatus status, Exception? exception = null)
         {
             Status = status;
             if (status == OptimizationStatus.MaximumIterationsReached)

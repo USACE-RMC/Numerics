@@ -73,9 +73,9 @@ namespace Distributions.Univariate
             double true_a = 3.4885029;
             double true_k = -0.1307169;
 
-            Assert.AreEqual(xi, true_xi, 0.0001d);
-            Assert.AreEqual(a, true_a, 0.0001d);
-            Assert.AreEqual(k, true_k, 0.0001d);
+            Assert.AreEqual(true_xi, xi, 0.0001d);
+            Assert.AreEqual(true_a, a, 0.0001d);
+            Assert.AreEqual(true_k, k, 0.0001d);
 
             var lmom = gno.LinearMomentsFromParameters(gno.GetParameters);
             Assert.AreEqual(9.95751634, lmom[0],  0.0001d);
@@ -125,9 +125,9 @@ namespace Distributions.Univariate
             double true_cdf = 0.912294;
             double true_invcdf = 14.9;
 
-            Assert.AreEqual(pdf, true_pdf, 0.0001d);
-            Assert.AreEqual(cdf, true_cdf, 0.0001d);
-            Assert.AreEqual(invcdf, true_invcdf, 0.0001d);
+            Assert.AreEqual(true_pdf, pdf, 0.0001d);
+            Assert.AreEqual(true_cdf, cdf, 0.0001d);
+            Assert.AreEqual(true_invcdf, invcdf, 0.0001d);
 
         }
 
@@ -214,10 +214,10 @@ namespace Distributions.Univariate
         {
             var dist = new GeneralizedNormal(100, 10, -0.1);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
 

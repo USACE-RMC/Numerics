@@ -94,11 +94,10 @@ namespace Numerics.Mathematics.Optimization
                     Values[i] = outVal;
                 }
             }
-
-            var fitAttr = xElement.Attribute(nameof(Fitness));
-            if (fitAttr != null)
+            var fitnessAttr = xElement.Attribute(nameof(Fitness));
+            if (fitnessAttr != null)
             {
-                double.TryParse(fitAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var fitness);
+                double.TryParse(fitnessAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var fitness);
                 Fitness = fitness;
             }
             var weightAttr = xElement.Attribute(nameof(Weight));

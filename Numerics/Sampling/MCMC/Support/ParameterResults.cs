@@ -50,6 +50,12 @@ namespace Numerics.Sampling.MCMC
     {
 
         /// <summary>
+        /// Parameterless constructor for JSON deserialization.
+        /// </summary>
+        [JsonConstructor]
+        public ParameterResults() { }
+
+        /// <summary>
         /// Constructs new parameter results.
         /// </summary>
         /// <param name="values">List of posterior parameter values, aggregated together from each chain.</param>
@@ -85,24 +91,24 @@ namespace Numerics.Sampling.MCMC
         /// Parameter summary statistics.
         /// </summary>
         [JsonInclude]
-        public ParameterStatistics SummaryStatistics { get; private set; }
+        public ParameterStatistics SummaryStatistics { get; private set; } = null!;
 
         /// <summary>
         /// The kernel density results.
         /// </summary>
         [JsonInclude]
-        public double[,] KernelDensity { get; private set; }
+        public double[,] KernelDensity { get; private set; } = new double[0, 0];
 
         /// <summary>
         /// The histogram results.
         /// </summary>
         [JsonInclude]
-        public Histogram Histogram { get; private set; }
+        public Histogram Histogram { get; private set; } = null!;
 
         /// <summary>
         /// The autocorrelation function for each parameter. This is averaged across each chain.
         /// </summary>
-        public double[,] Autocorrelation { get; set; } = null!;
+        public double[,] Autocorrelation { get; set; } = new double[0, 0];
 
     }
 }

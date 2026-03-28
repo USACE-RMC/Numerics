@@ -117,32 +117,32 @@ namespace Numerics.Data
         /// <summary>
         /// The list of estimated parameter values.
         /// </summary>
-        public List<double> Parameters { get; private set; } = Array.Empty<double>().ToList();
+        public List<double> Parameters { get; private set; } = null!;
 
         /// <summary>
-        /// The list of the estimated parameter names. 
+        /// The list of the estimated parameter names.
         /// </summary>
-        public List<string> ParameterNames { get; private set; } 
+        public List<string> ParameterNames { get; private set; } = null!;
 
         /// <summary>
-        /// The list of the estimated parameter standard errors. 
+        /// The list of the estimated parameter standard errors.
         /// </summary>
-        public List<double> ParameterStandardErrors { get; private set; } = Array.Empty<double>().ToList();
+        public List<double> ParameterStandardErrors { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter t-statistics.
         /// </summary>
-        public List<double> ParameterTStats { get; private set; } = Array.Empty<double>().ToList();
+        public List<double> ParameterTStats { get; private set; } = null!;
 
         /// <summary>
-        /// The estimate parameter covariance matrix. 
+        /// The estimate parameter covariance matrix.
         /// </summary>
-        public Matrix Covariance { get; private set; } = new Matrix(0, 0);
+        public Matrix Covariance { get; private set; } = null!;
 
         /// <summary>
-        /// The residuals of the fitted linear model. 
+        /// The residuals of the fitted linear model.
         /// </summary>
-        public double[] Residuals { get; private set; } = Array.Empty<double>();
+        public double[] Residuals { get; private set; } = null!;
 
         /// <summary>
         /// The model standard error.
@@ -274,6 +274,24 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Prepares the design matrix for prediction by adding an intercept column if needed.
+        /// If the matrix already has the expected number of columns (e.g. internal X), it passes through.
+        /// If it has one fewer column and HasIntercept is true, the intercept column is added.
+        /// </summary>
+        /// <param name="x">The matrix of predictor values.</param>
+        private Matrix PrepareDesignMatrix(Matrix x)
+        {
+            int expected = Parameters.Count;
+            if (x.NumberOfColumns == expected)
+                return x;
+            if (HasIntercept && x.NumberOfColumns == expected - 1)
+                return AddInterceptColumn(x);
+            throw new ArgumentException(
+                $"Expected {expected} columns{(HasIntercept ? $" (or {expected - 1} without intercept)" : "")}, but got {x.NumberOfColumns}.",
+                nameof(x));
+        }
+
+        /// <summary>
         /// Helper method to add an intercept column to the covariate matrix.
         /// </summary>
         /// <param name="x">The matrix of predictor values.</param>
@@ -295,21 +313,10 @@ namespace Numerics.Data
         /// <param name="x">The matrix of predictor values.</param>
         public double[] Predict(Matrix x)
         {
-            var result = new double[x.NumberOfRows];
-            for (int i = 0; i < x.NumberOfRows; i++)
-            {
-                if (HasIntercept == true)
-                {
-                    var values = new List<double>() { 1 };
-                    values.AddRange(x.Row(i));
-                    result[i] = Tools.SumProduct(Parameters, values);
-                }
-                else
-                {
-                    result[i] = Tools.SumProduct(Parameters, x.Row(i));
-                }
-            }
-                
+            var xp = PrepareDesignMatrix(x);
+            var result = new double[xp.NumberOfRows];
+            for (int i = 0; i < xp.NumberOfRows; i++)
+                result[i] = Tools.SumProduct(Parameters, xp.Row(i));
             return result;
         }
 
@@ -320,22 +327,12 @@ namespace Numerics.Data
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% prediction intervals.</param>
         public double[,] PredictionIntervals(Matrix x, double alpha = 0.1)
         {
+            var xp = PrepareDesignMatrix(x);
             var percentiles = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var result = new double[x.NumberOfRows, 3]; // lower, upper, mean
-            for (int i = 0; i < x.NumberOfRows; i++)
+            var result = new double[xp.NumberOfRows, 3]; // lower, upper, mean
+            for (int i = 0; i < xp.NumberOfRows; i++)
             {
-                double mu = 0;
-                if (HasIntercept == true)
-                {
-                    var values = new List<double>() { 1 };
-                    values.AddRange(x.Row(i));
-                    mu = Tools.SumProduct(Parameters, values);
-
-                }
-                else
-                {
-                    mu = Tools.SumProduct(Parameters, x.Row(i));
-                }
+                double mu = Tools.SumProduct(Parameters, xp.Row(i));
                 var s = StandardError;
                 var s2 = s * s;
                 var n = DegreesOfFreedom;
@@ -344,7 +341,6 @@ namespace Numerics.Data
                 result[i, 1] = t.InverseCDF(percentiles[1]);
                 result[i, 2] = mu;
             }
-
             return result;
         }
 

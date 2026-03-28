@@ -4,25 +4,9 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  dotnet-version: '9.0.x'
-
 jobs:
   CI:
-    runs-on: windows-latest                         
-    env:                               
+    uses: HydrologicEngineeringCenter/dotnet-workflows/.github/workflows/integration.yml@main
+    with:
       dotnet-version: '9.0.x'
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        
-    - name: Setup .NET Core SDK ${{ env.dotnet-version }}
-      uses: actions/setup-dotnet@v4
-      with:
-          dotnet-version: ${{ env.dotnet-version }} 
-
-    - name: Test Solution
-      run: dotnet test --nologo -c Release
+      run-tests: true

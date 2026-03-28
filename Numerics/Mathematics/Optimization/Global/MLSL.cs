@@ -120,17 +120,17 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// An array of initial values to evaluate. 
         /// </summary>
-        public double[] InitialValues { get; private set; }
+        public double[] InitialValues { get; private set; } = null!;
 
         /// <summary>
-        /// An array of lower bounds (inclusive) of the interval containing the optimal point. 
+        /// An array of lower bounds (inclusive) of the interval containing the optimal point.
         /// </summary>
-        public double[] LowerBounds { get; private set; }
+        public double[] LowerBounds { get; private set; } = null!;
 
         /// <summary>
         /// An array of upper bounds (inclusive) of the interval containing the optimal point.
         /// </summary>
-        public double[] UpperBounds { get; private set; }
+        public double[] UpperBounds { get; private set; } = null!;
 
         /// <summary>
         /// The pseudo random number generator (PRNG) seed.
@@ -207,7 +207,7 @@ namespace Numerics.Mathematics.Optimization
             double oldFit = double.MaxValue;
             int noImprovement = 0;
             bool cancel = false;
-            Optimizer solver = null!;
+            Optimizer? solver = null;
             var prng = new MersenneTwister(PRNGSeed);
 
             // Set lower and upper bounds and
@@ -378,7 +378,7 @@ namespace Numerics.Mathematics.Optimization
         private Optimizer GetLocalOptimizer(IList<double> initialValues, double relativeTolerance, double absoluteTolerance, ref bool cancel)
         {
             bool localCancel = false;
-            Optimizer solver = null!;
+            Optimizer? solver = null;
 
             // Make sure the parameters are within the bounds.
             for (int i = 0; i < NumberOfParameters; i++)  

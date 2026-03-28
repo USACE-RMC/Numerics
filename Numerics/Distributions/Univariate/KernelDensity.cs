@@ -152,14 +152,14 @@ namespace Numerics.Distributions
             Uniform
         }
 
-        private double[] _sampleData;
+        private double[] _sampleData = null!;
         private double _bandwidth;
         private KernelType _kernelDistribution;
-        private IKernel _kernel;
+        private IKernel _kernel = null!;
         private bool _cdfCreated = false;
-        private OrderedPairedData opd;
+        private OrderedPairedData opd = null!;
         private double u1, u2, u3, u4;
-        private double[] _weights;     // one weight per sample (unnormalised)
+        private double[]? _weights;     // one weight per sample (unnormalised)
         private double _sumW = 1.0;  // Σ wᵢ   (defaults to 1 for un‑weighted case)
 
 
@@ -416,6 +416,13 @@ namespace Numerics.Distributions
         /// </summary>
         private interface IKernel
         {
+            /// <summary>
+            /// Evaluates the kernel function at the specified point.
+            /// </summary>
+            /// <param name="x">The point at which to evaluate the kernel.</param>
+            /// <returns>
+            /// The kernel value.
+            /// </returns>
             double Function(double x);
         }
 
@@ -424,6 +431,17 @@ namespace Numerics.Distributions
         /// </summary>
         private class EpanechnikovKernel : IKernel
         {
+            /// <summary>
+            /// Evaluates the Epanechnikov kernel function at the specified point.
+            /// </summary>
+            /// <param name="x">The point at which to evaluate the kernel.</param>
+            /// <returns>
+            /// The kernel value: 0.75(1-x²) for |x| ≤ 1, and 0 otherwise.
+            /// </returns>
+            /// <remarks>
+            /// The Epanechnikov kernel is optimal in minimizing the mean integrated squared error
+            /// and has compact support on [-1, 1].
+            /// </remarks>
             public double Function(double x)
             {
                 if (Math.Abs(x) <= 1.0d)
@@ -443,6 +461,17 @@ namespace Numerics.Distributions
         /// </summary>
         private class GaussianKernel : IKernel
         {
+            /// <summary>
+            /// Evaluates the Gaussian (Normal) kernel function at the specified point.
+            /// </summary>
+            /// <param name="x">The point at which to evaluate the kernel.</param>
+            /// <returns>
+            /// The standard normal PDF value at x: (1/√(2π)) * exp(-x²/2).
+            /// </returns>
+            /// <remarks>
+            /// This is the default kernel for kernel density estimation. It has infinite support
+            /// and is infinitely differentiable.
+            /// </remarks>
             public double Function(double x)
             {
                 return Normal.StandardPDF(x);
@@ -455,6 +484,18 @@ namespace Numerics.Distributions
         private class TriangularKernel : IKernel
         {
             private Triangular _triangularDist = new Triangular(-1.0d, 0.0d, 1.0d);
+
+            /// <summary>
+            /// Evaluates the triangular kernel function at the specified point.
+            /// </summary>
+            /// <param name="x">The point at which to evaluate the kernel.</param>
+            /// <returns>
+            /// The triangular PDF value at x with minimum -1, mode 0, and maximum 1.
+            /// Returns (1 - |x|) for |x| ≤ 1, and 0 otherwise.
+            /// </returns>
+            /// <remarks>
+            /// The triangular kernel has compact support on [-1, 1] and is computationally efficient.
+            /// </remarks>
             public double Function(double x)
             {
                 return _triangularDist.PDF(x);
@@ -467,6 +508,19 @@ namespace Numerics.Distributions
         private class UniformKernel : IKernel
         {
             private Uniform _uniformDist = new Uniform(-1.0d, 1.0d);
+
+            /// <summary>
+            /// Evaluates the uniform kernel function at the specified point.
+            /// </summary>
+            /// <param name="x">The point at which to evaluate the kernel.</param>
+            /// <returns>
+            /// The uniform PDF value: 0.5 for |x| ≤ 1, and 0 otherwise.
+            /// </returns>
+            /// <remarks>
+            /// The uniform kernel has compact support on [-1, 1] and gives equal weight
+            /// to all points within the bandwidth. This is the simplest kernel but has
+            /// discontinuous derivatives.
+            /// </remarks>
             public double Function(double x)
             {
                 return _uniformDist.PDF(x);
@@ -495,7 +549,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sample">Sample of data, no sorting is assumed.</param>
         /// <param name="w">A list of weights.</param>
-        public double BandwidthRule(IList<double> sample, IList<double> w = null)
+        public double BandwidthRule(IList<double> sample, IList<double>? w = null)
         {
             w ??= Enumerable.Repeat(1.0, sample.Count).ToArray();
             double m = w.Zip(sample, (wi, xi) => wi * xi).Sum() / w.Sum();
@@ -518,7 +572,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return null;
         }
@@ -526,7 +580,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Validate the bandwidth parameter.
         /// </summary>
-        private ArgumentOutOfRangeException ValidateParameters(double value, bool throwException)
+        private ArgumentOutOfRangeException? ValidateParameters(double value, bool throwException)
         {
             if (value <= 0d)
             {

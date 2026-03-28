@@ -1,3 +1,33 @@
+﻿/*
+* NOTICE:
+* The U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC) makes no guarantees about
+* the results, or appropriateness of outputs, obtained from Numerics.
+*
+* LIST OF CONDITIONS:
+* Redistribution and use in source and binary forms, with or without modification, are permitted
+* provided that the following conditions are met:
+* ● Redistributions of source code must retain the above notice, this list of conditions, and the
+* following disclaimer.
+* ● Redistributions in binary form must reproduce the above notice, this list of conditions, and
+* the following disclaimer in the documentation and/or other materials provided with the distribution.
+* ● The names of the U.S. Government, the U.S. Army Corps of Engineers, the Institute for Water
+* Resources, or the Risk Management Center may not be used to endorse or promote products derived
+* from this software without specific prior written permission. Nor may the names of its contributors
+* be used to endorse or promote products derived from this software without specific prior
+* written permission.
+*
+* DISCLAIMER:
+* THIS SOFTWARE IS PROVIDED BY THE U.S. ARMY CORPS OF ENGINEERS RISK MANAGEMENT CENTER
+* (USACE-RMC) "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+* THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL USACE-RMC BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+* SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+* PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+* THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,16 +37,32 @@ using Numerics.Distributions;
 using Numerics.Mathematics.Optimization;
 using Numerics.Sampling.MCMC;
 
-namespace Test_Numerics.Serialization
+namespace Serialization
 {
     /// <summary>
     /// Unit tests for JsonSerializer implementations in UncertaintyAnalysisResults and MCMCResults.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This test class verifies the serialization and deserialization functionality for:
+    /// - UncertaintyAnalysisResults: Bootstrap analysis results with distribution parameters
+    /// - MCMCResults: Markov Chain Monte Carlo sampling results
+    /// </para>
+    /// <para>
+    /// Tests cover normal operation, edge cases (null, empty), and error handling.
+    /// </para>
+    /// </remarks>
     [TestClass]
     public class Test_JsonSerialization
     {
         #region UncertaintyAnalysisResults Tests
 
+        /// <summary>
+        /// Tests basic serialization and deserialization of UncertaintyAnalysisResults with scalar properties.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that AIC, BIC, DIC, and RMSE values are preserved through serialization round-trip.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_BasicSerialization()
         {
@@ -35,6 +81,12 @@ namespace Test_Numerics.Serialization
             Assert.AreEqual(original.RMSE, deserialized.RMSE, 1e-10);
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of 1D arrays (ModeCurve, MeanCurve).
+        /// </summary>
+        /// <remarks>
+        /// Verifies that array dimensions and values are preserved exactly.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_ArraySerialization()
         {
@@ -47,20 +99,29 @@ namespace Test_Numerics.Serialization
 
             // Assert
             Assert.IsNotNull(deserialized.ModeCurve);
-            Assert.AreEqual(original.ModeCurve.Length, deserialized.ModeCurve.Length);
+            var modeCurveLen = original.ModeCurve.Length;
+            Assert.HasCount(modeCurveLen, deserialized.ModeCurve);
             for (int i = 0; i < original.ModeCurve.Length; i++)
             {
                 Assert.AreEqual(original.ModeCurve[i], deserialized.ModeCurve[i], 1e-10);
             }
 
             Assert.IsNotNull(deserialized.MeanCurve);
-            Assert.AreEqual(original.MeanCurve.Length, deserialized.MeanCurve.Length);
+            var meanCurveLen = original.MeanCurve.Length;
+            Assert.HasCount(meanCurveLen, deserialized.MeanCurve);
             for (int i = 0; i < original.MeanCurve.Length; i++)
             {
                 Assert.AreEqual(original.MeanCurve[i], deserialized.MeanCurve[i], 1e-10);
             }
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of 2D arrays (ConfidenceIntervals).
+        /// </summary>
+        /// <remarks>
+        /// Verifies that 2D array dimensions and all element values are preserved correctly.
+        /// Uses the custom Double2DArrayConverter.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_2DArraySerialization()
         {
@@ -85,6 +146,13 @@ namespace Test_Numerics.Serialization
             }
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of complex objects (ParameterSet arrays).
+        /// </summary>
+        /// <remarks>
+        /// Verifies that nested objects with arrays are correctly serialized and deserialized,
+        /// including Fitness, Weight, and Values properties.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_ParameterSetsSerialization()
         {
@@ -95,9 +163,12 @@ namespace Test_Numerics.Serialization
             byte[] serialized = UncertaintyAnalysisResults.ToByteArray(original);
             var deserialized = UncertaintyAnalysisResults.FromByteArray(serialized);
 
+            var origLen = original.ParameterSets.Length;
+            var desLen = deserialized.ParameterSets.Length;
             // Assert
             Assert.IsNotNull(deserialized.ParameterSets);
-            Assert.AreEqual(original.ParameterSets.Length, deserialized.ParameterSets.Length);
+            var parameterSetsLen = original.ParameterSets.Length;
+            Assert.HasCount(parameterSetsLen, deserialized.ParameterSets);
 
             for (int i = 0; i < original.ParameterSets.Length; i++)
             {
@@ -107,7 +178,8 @@ namespace Test_Numerics.Serialization
                 if (original.ParameterSets[i].Values != null)
                 {
                     Assert.IsNotNull(deserialized.ParameterSets[i].Values);
-                    Assert.AreEqual(original.ParameterSets[i].Values.Length, deserialized.ParameterSets[i].Values.Length);
+                    var parameterValuesLen = original.ParameterSets[i].Values.Length;
+                    Assert.HasCount(parameterValuesLen, deserialized.ParameterSets[i].Values);
 
                     for (int j = 0; j < original.ParameterSets[i].Values.Length; j++)
                     {
@@ -117,6 +189,13 @@ namespace Test_Numerics.Serialization
             }
         }
 
+        /// <summary>
+        /// Tests serialization with null properties to verify proper null handling.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that null values are serialized and deserialized correctly without throwing exceptions.
+        /// The JsonSerializerOptions should be configured to handle nulls appropriately.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_NullHandling()
         {
@@ -147,6 +226,13 @@ namespace Test_Numerics.Serialization
             Assert.IsNull(deserialized.MeanCurve);
         }
 
+        /// <summary>
+        /// Tests serialization with empty arrays to verify proper empty collection handling.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that empty arrays (length 0) are preserved through serialization
+        /// and are not converted to null.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_EmptyArrays()
         {
@@ -166,13 +252,20 @@ namespace Test_Numerics.Serialization
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.ParameterSets);
-            Assert.AreEqual(0, deserialized.ParameterSets.Length);
+            Assert.HasCount(0, deserialized.ParameterSets);
             Assert.IsNotNull(deserialized.ModeCurve);
-            Assert.AreEqual(0, deserialized.ModeCurve.Length);
+            Assert.HasCount(0, deserialized.ModeCurve);
             Assert.IsNotNull(deserialized.MeanCurve);
-            Assert.AreEqual(0, deserialized.MeanCurve.Length);
+            Assert.HasCount(0, deserialized.MeanCurve);
         }
 
+        /// <summary>
+        /// Tests deserialization with invalid byte data to verify error handling.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that FromByteArray returns null instead of throwing an exception
+        /// when given invalid JSON data. This is important for robust error handling.
+        /// </remarks>
         [TestMethod]
         public void Test_UncertaintyAnalysisResults_InvalidBytes()
         {
@@ -190,6 +283,12 @@ namespace Test_Numerics.Serialization
 
         #region MCMCResults Tests
 
+        /// <summary>
+        /// Tests basic serialization and deserialization of MCMCResults with acceptance rates.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that scalar arrays like AcceptanceRates are preserved through serialization.
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_BasicSerialization()
         {
@@ -200,10 +299,13 @@ namespace Test_Numerics.Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.AcceptanceRates.Length;
+            var desLen = deserialized.AcceptanceRates.Length;
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.AcceptanceRates);
-            Assert.AreEqual(original.AcceptanceRates.Length, deserialized.AcceptanceRates.Length);
+            var acceptanceRatesLen = original.AcceptanceRates.Length;
+            Assert.HasCount(acceptanceRatesLen, deserialized.AcceptanceRates);
 
             for (int i = 0; i < original.AcceptanceRates.Length; i++)
             {
@@ -211,6 +313,15 @@ namespace Test_Numerics.Serialization
             }
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of Markov chains (jagged array of ParameterSet lists).
+        /// </summary>
+        /// <remarks>
+        /// This is the most complex data structure in MCMCResults. Verifies that:
+        /// - Array dimensions are preserved
+        /// - List lengths are preserved
+        /// - All ParameterSet properties (Fitness, Weight, Values) are correct
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_MarkovChainsSerialization()
         {
@@ -221,14 +332,18 @@ namespace Test_Numerics.Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.MarkovChains.Length;
+            var desLen = deserialized.MarkovChains.Length;
             // Assert
             Assert.IsNotNull(deserialized.MarkovChains);
-            Assert.AreEqual(original.MarkovChains.Length, deserialized.MarkovChains.Length);
+            var markovChainsLen = original.MarkovChains.Length;
+            Assert.HasCount(markovChainsLen, deserialized.MarkovChains);
 
             for (int i = 0; i < original.MarkovChains.Length; i++)
             {
                 Assert.IsNotNull(deserialized.MarkovChains[i]);
-                Assert.AreEqual(original.MarkovChains[i].Count, deserialized.MarkovChains[i].Count);
+                var chainCount = original.MarkovChains[i].Count;
+                Assert.HasCount(chainCount, deserialized.MarkovChains[i]);
 
                 for (int j = 0; j < original.MarkovChains[i].Count; j++)
                 {
@@ -247,6 +362,13 @@ namespace Test_Numerics.Serialization
             }
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of the Output list.
+        /// </summary>
+        /// <remarks>
+        /// The Output list contains all samples from all chains. Verifies that the combined
+        /// output is correctly serialized and deserialized.
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_OutputSerialization()
         {
@@ -259,7 +381,8 @@ namespace Test_Numerics.Serialization
 
             // Assert
             Assert.IsNotNull(deserialized.Output);
-            Assert.AreEqual(original.Output.Count, deserialized.Output.Count);
+            var outputCount = original.Output.Count;
+            Assert.HasCount(outputCount, deserialized.Output);
 
             for (int i = 0; i < original.Output.Count; i++)
             {
@@ -268,6 +391,13 @@ namespace Test_Numerics.Serialization
             }
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of MAP and PosteriorMean ParameterSets.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that the Maximum A Posteriori (MAP) and posterior mean estimates
+        /// are correctly preserved through serialization.
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_MAPandMeanSerialization()
         {
@@ -288,6 +418,13 @@ namespace Test_Numerics.Serialization
             CollectionAssert.AreEqual(original.PosteriorMean.Values, deserialized.PosteriorMean.Values);
         }
 
+        /// <summary>
+        /// Tests serialization and deserialization of MeanLogLikelihood diagnostics.
+        /// </summary>
+        /// <remarks>
+        /// MeanLogLikelihood tracks convergence diagnostics. Verifies that all values
+        /// are preserved correctly.
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_MeanLogLikelihoodSerialization()
         {
@@ -300,7 +437,8 @@ namespace Test_Numerics.Serialization
 
             // Assert
             Assert.IsNotNull(deserialized.MeanLogLikelihood);
-            Assert.AreEqual(original.MeanLogLikelihood.Count, deserialized.MeanLogLikelihood.Count);
+            var meanLogLikelihoodCount = original.MeanLogLikelihood.Count;
+            Assert.HasCount(meanLogLikelihoodCount, deserialized.MeanLogLikelihood);
 
             for (int i = 0; i < original.MeanLogLikelihood.Count; i++)
             {
@@ -308,6 +446,13 @@ namespace Test_Numerics.Serialization
             }
         }
 
+        /// <summary>
+        /// Tests serialization with empty Markov chains to verify edge case handling.
+        /// </summary>
+        /// <remarks>
+        /// Verifies that empty chains (with no samples) are correctly serialized and deserialized.
+        /// This can occur if MCMC sampling fails or is interrupted.
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_EmptyChains()
         {
@@ -331,11 +476,21 @@ namespace Test_Numerics.Serialization
             // Assert
             Assert.IsNotNull(deserialized);
             Assert.IsNotNull(deserialized.MarkovChains);
-            Assert.AreEqual(2, deserialized.MarkovChains.Length);
-            Assert.AreEqual(0, deserialized.MarkovChains[0].Count);
-            Assert.AreEqual(0, deserialized.MarkovChains[1].Count);
+            Assert.HasCount(2, deserialized.MarkovChains);
+            Assert.HasCount(0, deserialized.MarkovChains[0]);
+            Assert.HasCount(0, deserialized.MarkovChains[1]);
         }
 
+        /// <summary>
+        /// Tests serialization with a large dataset to verify performance and correctness at scale.
+        /// </summary>
+        /// <remarks>
+        /// Creates 5 chains with 1000 samples each (5000 total samples) to test:
+        /// - Memory efficiency of serialization
+        /// - Correctness with large data volumes
+        /// - Performance (should complete in reasonable time)
+        /// Tests first and last elements to ensure proper ordering is maintained.
+        /// </remarks>
         [TestMethod]
         public void Test_MCMCResults_LargeDataSet()
         {
@@ -346,9 +501,12 @@ namespace Test_Numerics.Serialization
             byte[] serialized = MCMCResults.ToByteArray(original);
             var deserialized = MCMCResults.FromByteArray(serialized);
 
+            var origLen = original.MarkovChains.Length;
+            var deserializedLen = deserialized.MarkovChains.Length;
             // Assert
             Assert.IsNotNull(deserialized);
-            Assert.AreEqual(original.MarkovChains.Length, deserialized.MarkovChains.Length);
+            var origChainsLen = original.MarkovChains.Length;
+            Assert.HasCount(origChainsLen, deserialized.MarkovChains);
 
             // Verify first and last elements to ensure proper serialization
             var firstOriginal = original.MarkovChains[0][0];
@@ -362,6 +520,15 @@ namespace Test_Numerics.Serialization
             Assert.AreEqual(lastOriginal.Fitness, lastDeserialized.Fitness, 1e-10);
         }
 
+        /// <summary>
+        /// Tests that JsonSerializerOptions are configured correctly for the serializers.
+        /// </summary>
+        /// <remarks>
+        /// Verifies important serialization settings:
+        /// - WriteIndented = false (compact JSON for efficiency)
+        /// - DefaultIgnoreCondition (null handling)
+        /// - IncludeFields = true (serializes public fields in addition to properties)
+        /// </remarks>
         [TestMethod]
         public void Test_JsonSerializerOptions_Configuration()
         {
@@ -382,21 +549,32 @@ namespace Test_Numerics.Serialization
 
             // Assert
             // Verify that WriteIndented is false (no formatting whitespace)
-            Assert.IsFalse(jsonString.Contains("\n"));
-            Assert.IsFalse(jsonString.Contains("  ")); // No indentation
+            Assert.DoesNotContain("\n",jsonString);
+            Assert.DoesNotContain("  ",jsonString); // No indentation
 
             // Verify that null values are not included (DefaultIgnoreCondition)
-            Assert.IsFalse(jsonString.Contains("\"ParentDistribution\":null"));
+            Assert.DoesNotContain("\"ParentDistribution\":null", jsonString);
 
             // Verify that fields are included (IncludeFields = true)
-            Assert.IsTrue(jsonString.Contains("\"AIC\":"));
-            Assert.IsTrue(jsonString.Contains("\"BIC\":"));
+            Assert.Contains("\"AIC\":",jsonString);
+            Assert.Contains("\"BIC\":",jsonString);
         }
 
         #endregion
 
         #region Helper Methods
 
+        /// <summary>
+        /// Creates a sample UncertaintyAnalysisResults instance for testing.
+        /// </summary>
+        /// <returns>
+        /// A UncertaintyAnalysisResults with populated properties including:
+        /// - ParentDistribution (Normal)
+        /// - ParameterSets array with 3 elements
+        /// - ConfidenceIntervals 2D array (3x2)
+        /// - ModeCurve and MeanCurve arrays
+        /// - Scalar diagnostic values (AIC, BIC, DIC, RMSE)
+        /// </returns>
         private UncertaintyAnalysisResults CreateSampleUncertaintyAnalysisResults()
         {
             return new UncertaintyAnalysisResults
@@ -423,6 +601,20 @@ namespace Test_Numerics.Serialization
             };
         }
 
+        /// <summary>
+        /// Creates a sample MCMCResults instance for testing.
+        /// </summary>
+        /// <returns>
+        /// A MCMCResults with:
+        /// - 3 Markov chains with 3 samples each
+        /// - Combined output list
+        /// - MeanLogLikelihood diagnostics
+        /// - AcceptanceRates for each chain
+        /// - MAP and PosteriorMean estimates
+        /// </returns>
+        /// <remarks>
+        /// Uses reflection to set properties with private setters.
+        /// </remarks>
         private MCMCResults CreateSampleMCMCResults()
         {
             var result = new MCMCResults();
@@ -458,6 +650,24 @@ namespace Test_Numerics.Serialization
             return result;
         }
 
+        /// <summary>
+        /// Creates a large MCMCResults instance for performance and stress testing.
+        /// </summary>
+        /// <returns>
+        /// A MCMCResults with:
+        /// - 5 Markov chains with 1000 samples each (5000 total)
+        /// - Random parameter values for realistic data size
+        /// - Full diagnostic information
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Used to test serialization performance with realistic data volumes.
+        /// Uses a fixed random seed (12345) for reproducible test results.
+        /// </para>
+        /// <para>
+        /// Total data size: ~5000 ParameterSets × 2 parameters × 8 bytes = ~80KB minimum
+        /// </para>
+        /// </remarks>
         private MCMCResults CreateLargeMCMCResults()
         {
             var result = new MCMCResults();
