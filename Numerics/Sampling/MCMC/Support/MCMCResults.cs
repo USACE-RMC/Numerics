@@ -192,7 +192,8 @@ namespace Numerics.Sampling.MCMC
             {
                 WriteIndented = false,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                IncludeFields = true
+                IncludeFields = true,
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
             };
             options.Converters.Add(new Double2DArrayConverter());
             options.Converters.Add(new HistogramConverter());
@@ -208,7 +209,8 @@ namespace Numerics.Sampling.MCMC
             var options = new JsonSerializerOptions
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                IncludeFields = true
+                IncludeFields = true,
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
             };
             options.Converters.Add(new Double2DArrayConverter());
             options.Converters.Add(new HistogramConverter());

@@ -163,7 +163,8 @@ namespace Numerics.Distributions
             {
                 WriteIndented = false,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                IncludeFields = true
+                IncludeFields = true,
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
             };
             // Add custom converters for unsupported types
             options.Converters.Add(new Double2DArrayConverter());
@@ -183,7 +184,8 @@ namespace Numerics.Distributions
                 var options = new JsonSerializerOptions
                 {
                     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                    IncludeFields = true
+                    IncludeFields = true,
+                    NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
                 };
                 // Add custom converters for unsupported types
                 options.Converters.Add(new Double2DArrayConverter());
