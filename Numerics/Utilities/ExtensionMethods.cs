@@ -337,7 +337,7 @@ namespace Numerics
             if (length > array.Length)
                 throw new ArgumentException("The subset length must be less than or equal to the array length.");
 
-            Random random = seed > 0 ? new Random(seed) : new Random();
+            var random = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
             var indexes = random.NextIntegers(0, array.Length, length, replace);
             var result = new T[indexes.Length];
             for (int i = 0; i < indexes.Length; i++)
@@ -484,7 +484,7 @@ namespace Numerics
             if (length > array.GetLength(0))
                 throw new ArgumentException("The subset length must be less than or equal to the array length.");
 
-            Random random = seed > 0 ? new Random(seed) : new Random();
+            var random = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
             var indexes = random.NextIntegers(0, array.GetLength(0), length, replace);
             var result = new T[indexes.Length, array.GetLength(1)];
             for (int i = 0; i < indexes.Length; i++)
@@ -561,7 +561,7 @@ namespace Numerics
             if (length > vector.Length)
                 throw new ArgumentException("The subset length must be less than or equal to the vector length.");
 
-            Random random = seed > 0 ? new Random(seed) : new Random();
+            var random = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
             var indexes = random.NextIntegers(0, vector.Length, length, replace);
             var result = new Vector(indexes.Length);
             for (int i = 0; i < indexes.Length; i++)
@@ -687,7 +687,7 @@ namespace Numerics
             if (length > matrix.NumberOfRows)
                 throw new ArgumentException("The subset length must be less than or equal to the number of rows in the matrix.");
 
-            Random random = seed > 0 ? new Random(seed) : new Random();
+            var random = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
             var indexes = random.NextIntegers(0, matrix.NumberOfRows, length, replace);
             var result = new Matrix(indexes.Length, matrix.NumberOfColumns);
             for (int i = 0; i < indexes.Length; i++)

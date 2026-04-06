@@ -34,6 +34,7 @@ using System;
 using System.Linq;
 using Numerics.Data;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling;
 
 namespace Utilities
 {
@@ -82,7 +83,7 @@ namespace Utilities
         [TestMethod]
         public void Test_NextIntegers()
         {
-            var random = new Random();
+            var random = new MersenneTwister(12345);
             var result = random.NextIntegers(5);
             Assert.HasCount(5, result);
         }
@@ -93,7 +94,7 @@ namespace Utilities
         [TestMethod]
         public void Test_NextIntegersMinMax()
         {
-            var random = new Random();
+            var random = new MersenneTwister(12345);
             var result = random.NextIntegers(0, 10, 5);
             Assert.HasCount(5, result);
             for (int i = 0; i < result.Length; i++)
@@ -106,7 +107,7 @@ namespace Utilities
         [TestMethod]
         public void Test_NextIntegers_WithReplacement()
         {
-            var random = new Random(12345);
+            var random = new MersenneTwister(12345);
             var result = random.NextIntegers(0, 1000, 1000, true);
             Assert.AreNotEqual(1000, result.Distinct().Count());
             for (int i = 0; i < result.Length; i++)
@@ -119,7 +120,7 @@ namespace Utilities
         [TestMethod]
         public void Test_NextIntegers_WithoutReplacement()
         {
-            var random = new Random(12345);
+            var random = new MersenneTwister(12345);
             var result = random.NextIntegers(0, 1000, 1000, false);
             Assert.AreEqual(1000, result.Distinct().Count());
             for (int i = 0; i < result.Length; i++)
@@ -132,7 +133,7 @@ namespace Utilities
         [TestMethod]
         public void Test_NextDoubles()
         {
-            var random = new Random();
+            var random = new MersenneTwister(12345);
             var result = random.NextDoubles(5);
             Assert.HasCount(5, result);
             for (int i = 0; i < result.Length; i++)
@@ -145,7 +146,7 @@ namespace Utilities
         [TestMethod]
         public void Test_NextDoubles2D()
         {
-            var random = new Random();
+            var random = new MersenneTwister(12345);
             var result = random.NextDoubles(5, 3);
             for (int i = 0; i < result.GetLength(0); i++)
             {

@@ -31,6 +31,7 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Sampling;
 
 namespace Distributions.Multivariate
 {
@@ -223,7 +224,7 @@ namespace Distributions.Multivariate
         [TestMethod]
         public void Test_WeightedSample()
         {
-            var rng = new Random(42);
+            var rng = new MersenneTwister(12345);
             var weights = new double[] { 1.0, 3.0, 6.0 }; // 10%, 30%, 60%
             var counts = new int[3];
 
@@ -248,7 +249,7 @@ namespace Distributions.Multivariate
         [TestMethod]
         public void Test_WeightedSample_EdgeCases()
         {
-            var rng = new Random(42);
+            var rng = new MersenneTwister(12345);
             // All weight on one category
             Assert.AreEqual(1, Multinomial.Sample(new double[] { 0.0, 1.0, 0.0 }, rng));
 

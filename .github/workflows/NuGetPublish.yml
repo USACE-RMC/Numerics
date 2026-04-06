@@ -7,6 +7,7 @@ on:
 jobs:
   publish:
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,9 +27,6 @@ jobs:
 
       - name: Build
         run: dotnet build Numerics/Numerics.csproj -c Release -p:Version=${{ steps.version.outputs.VERSION }}
-
-      - name: Test (all frameworks)
-        run: dotnet test -c Release --no-build
 
       - name: Pack
         run: dotnet pack Numerics/Numerics.csproj -c Release --no-build -p:Version=${{ steps.version.outputs.VERSION }}

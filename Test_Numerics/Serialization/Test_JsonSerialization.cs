@@ -35,6 +35,7 @@ using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Mathematics.Optimization;
+using Numerics.Sampling;
 using Numerics.Sampling.MCMC;
 
 namespace Serialization
@@ -671,7 +672,7 @@ namespace Serialization
         private MCMCResults CreateLargeMCMCResults()
         {
             var result = new MCMCResults();
-            var random = new Random(12345);
+            var random = new MersenneTwister(12345);
 
             // Create larger Markov chains
             var chains = new List<ParameterSet>[5];

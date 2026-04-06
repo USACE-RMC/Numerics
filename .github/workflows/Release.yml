@@ -9,7 +9,7 @@ jobs:
   build:
     uses: HydrologicEngineeringCenter/dotnet-workflows/.github/workflows/release.yml@main
     with:
-      dotnet-version: '9.0.x'
+      dotnet-version: '10.0.x'
       project-names: 'Numerics'
       run-tests: true
       nuget-source: 'https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/'

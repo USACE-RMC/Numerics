@@ -33,6 +33,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 using Numerics.Distributions.Copulas;
+using Numerics.Sampling;
 using Numerics.Sampling.MCMC;
 
 namespace Distributions.BivariateCopulas
@@ -238,7 +239,7 @@ namespace Distributions.BivariateCopulas
         public void Test_InverseCDF_RoundTrip()
         {
             var copula = new StudentTCopula(0.6, 5);
-            var rng = new Random(42);
+            var rng = new MersenneTwister(12345);
 
             for (int i = 0; i < 20; i++)
             {
@@ -261,7 +262,7 @@ namespace Distributions.BivariateCopulas
             // With high positive ρ, InverseCDF(u, v) should produce correlated pairs
             var copula = new StudentTCopula(0.8, 5);
             int n = 1000;
-            var rng = new Random(42);
+            var rng = new MersenneTwister(12345);
             double sumProduct = 0;
             double sumU = 0, sumV = 0;
 
