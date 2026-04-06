@@ -15,12 +15,16 @@ authors:
     affiliation: 1
     corresponding: true
   - name: Woodrow L. Fields
+    orcid: 0009-0008-7454-5552
     affiliation: 1
   - name: Julian Gonzalez
+    orcid: 0009-0009-9058-7653
     affiliation: 1
   - name: Sadie Niblett
+    orcid: 0009-0008-8588-4816
     affiliation: 1
   - name: Brennan Beam
+    orcid: 0009-0003-0515-3727
     affiliation: 2
   - name: Brian Skahill
     orcid: 0000-0002-2164-0301
@@ -92,26 +96,31 @@ The following example illustrates a bootstrap uncertainty analysis [@efron1993] 
 ```csharp
 using Numerics.Distributions;
 
-// Generate a synthetic flood record from a Log-Pearson Type III distribution
+// Generate a synthetic flood record
 int n = 80;
 int B = 10000;
-var lp3 = new LogPearsonTypeIII(meanOfLog: 3, standardDeviationOfLog: 0.5, skewOfLog: 0.25);
-double[] sample = lp3.GenerateRandomValues(n, seed: 12345);
+var lp3 = new LogPearsonTypeIII(
+    meanOfLog: 3,
+    standardDeviationOfLog: 0.5,
+    skewOfLog: 0.25);
+double[] sample = lp3.GenerateRandomValues(n, 12345);
 
-// Estimate distribution parameters from the sample using L-moments
-lp3.Estimate(sample, ParameterEstimationMethod.MethodOfLinearMoments);
+// Estimate parameters using L-moments
+lp3.Estimate(sample,ParameterEstimationMethod.MethodOfLinearMoments);
 
 // Configure the bootstrap analysis
-var boot = new BootstrapAnalysis(distribution: lp3,
-                                 estimationMethod: ParameterEstimationMethod.MethodOfLinearMoments,
-                                 sampleSize: n,
-                                 replications: B,
-                                 seed: 12345);
+var boot = new BootstrapAnalysis(
+    distribution: lp3,
+    estimationMethod: ParameterEstimationMethod.MethodOfLinearMoments,
+    sampleSize: n,
+    replications: B,
+    seed: 12345);
 
-// Define non-exceedance probabilities for quantile estimation
-var probabilities = new double[] { 0.999, 0.99, 0.9, 0.8, 0.7, 0.5, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01 };
+// Non-exceedance probabilities for quantile estimation
+var probabilities = new double[] { 0.999, 0.99, 0.9, 0.8, 0.7, 0.5, 0.3, 
+                                   0.2, 0.1, 0.05, 0.02, 0.01 };
 
-// Compute 90% BCa confidence intervals for each quantile
+// Compute 90% BCa confidence intervals
 var CIs = boot.BCaQuantileCI(sample, probabilities, alpha: 0.1);
 ```
 
