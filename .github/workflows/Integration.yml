@@ -8,5 +8,5 @@ jobs:
   CI:
     uses: HydrologicEngineeringCenter/dotnet-workflows/.github/workflows/integration.yml@main
     with:
-      dotnet-version: '9.0.x'
+      dotnet-version: '10.0.x'
       run-tests: true
