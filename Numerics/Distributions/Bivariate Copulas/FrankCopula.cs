@@ -71,7 +71,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="theta">The dependency parameter, θ.</param>
         ///<param name="marginalDistributionX">The X marginal distribution for the copula.</param>
         ///<param name="marginalDistributionY">The Y marginal distribution for the copula.</param>
-        public FrankCopula(double theta, IUnivariateDistribution marginalDistributionX, IUnivariateDistribution marginalDistributionY)
+        public FrankCopula(double theta, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             Theta = theta;
             MarginalDistributionX = marginalDistributionX;
@@ -109,7 +109,7 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
             if (parameter < ThetaMinimum)
             {
@@ -121,12 +121,13 @@ namespace Numerics.Distributions.Copulas
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be less than or equal to " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be less than or equal to " + ThetaMaximum.ToString() + ".");
             }
-            return new ArgumentOutOfRangeException(nameof(Theta),"Parameter is valid.");
+            return null;
         }
 
         /// <inheritdoc/>
         public override double Generator(double t)
         {
+            if (Math.Abs(Theta) < 1e-10) return t;
             return -Math.Log((Math.Exp(-Theta * t) - 1d) / (Math.Exp(-Theta) - 1d));
         }
 
@@ -183,6 +184,18 @@ namespace Numerics.Distributions.Copulas
             return [u, v];
         }
 
+        /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U = 0.
+        /// The Frank copula has no tail dependence.
+        /// </summary>
+        public override double UpperTailDependence => 0.0;
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L = 0.
+        /// The Frank copula has no tail dependence.
+        /// </summary>
+        public override double LowerTailDependence => 0.0;
+
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
@@ -190,12 +203,12 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        public override double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
         {
             var tau = Correlation.KendallsTau(sampleDataX, sampleDataY);
             double L = tau > 0 ? 0.001d : -100d;
             double U = tau > 0 ? 100d : -0.001d;
-            return [L, U];
+            return new double[,] { { L, U } };
         }
 
     }

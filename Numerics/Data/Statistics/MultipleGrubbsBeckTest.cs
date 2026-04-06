@@ -173,10 +173,6 @@ namespace Numerics.Data.Statistics
             return MGBTP;
         }
 
-        private static int _nIn;
-        private static int _rIn;
-        private static double _etaIn;
-
         /// <summary>
         /// Auxiliary routine used to compute p-values (GGCRITP) for a Generalized Grubbs-Beck Test.
         /// </summary>
@@ -187,16 +183,10 @@ namespace Numerics.Data.Statistics
             {
                 return 0.5d;
             }
-            else
-            {
-                _nIn = N;
-                _rIn = R;
-                _etaIn = ETA;
-            }
 
-            // The original FORTRAN source code utilized a globally adaptive Gauss-Kronrod integration method. 
+            // The original FORTRAN source code utilized a globally adaptive Gauss-Kronrod integration method.
             // The number of low outliers computed by this method is consistent with the results from the FORTRAN code.
-            var sr = new AdaptiveGaussKronrod(FGGB, 1E-16, 1 - 1E-16);
+            var sr = new AdaptiveGaussKronrod((pzr) => FGGB(pzr, N, R, ETA), 1E-16, 1 - 1E-16);
             sr.MaxDepth = 25;
             sr.ReportFailure = false;
             sr.Integrate();
@@ -206,16 +196,13 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Auxiliary routine used in GGBCRITP
         /// </summary>
-        private static double FGGB(double PZR)
+        private static double FGGB(double PZR, int N, int R, double ETA)
         {
             double df, MuM, MuS2, VarM, VarS2, CovMS2;
             double EX1, EX2, EX3, EX4;
             double CovMS, VarS, alpha, beta;
             double MuMP, EtaP, H, Lambda, MuS, ncp, q, VarMP, PR, ZR, N2;
             double ANS;
-            int N = _nIn;
-            int R = _rIn;
-            double ETA = _etaIn;
 
             // Compute the value of the r-th smallest obs. based on its order statistic
             N2 = N - R;
@@ -246,8 +233,19 @@ namespace Numerics.Data.Statistics
             df = 2.0d * alpha;
             ncp = (MuMP - ZR) / Math.Sqrt(VarMP);
             q = -Math.Sqrt(MuS2 / VarMP) * EtaP;
-            var NCTDist = new NoncentralT(df, ncp);
-            ANS = 1.0d - NCTDist.CDF(q);
+            // Match Fortran FP_TNC_CDF: use normal approximation for df > 20
+            double cdfResult;
+            if (df > 20.0d)
+            {
+                double Z = (q * (1.0d - 1.0d / (4.0d * df)) - ncp) / Math.Sqrt(1.0d + q * q / (2.0d * df));
+                cdfResult = Normal.StandardCDF(Z);
+            }
+            else
+            {
+                var NCTDist = new NoncentralT(df, ncp);
+                cdfResult = NCTDist.CDF(q);
+            }
+            ANS = 1.0d - cdfResult;
             return ANS;
         }
 
@@ -261,6 +259,7 @@ namespace Numerics.Data.Statistics
         {
             // The following polynomial approximation proposed by Pilon et al. (1985)
             int n = sample.Count;
+            if (sample.Any(x => x <= 0)) throw new ArgumentException("All sample values must be positive for the Grubbs-Beck test.", nameof(sample));
             var logSample = new double[n];
             for (int i = 0; i < n; i++) logSample[i] = Math.Log(sample[i]);
             double mean = Statistics.Mean(logSample);

@@ -108,7 +108,7 @@ namespace Numerics.Distributions
 
         private double _mu;
         private double _sigma;
-        private int _degreesOfFreedom;
+        private double _degreesOfFreedom;
 
         /// <summary>
         /// Gets and sets the location parameter µ (Mu).
@@ -139,7 +139,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the degrees of freedom ν (nu) of the distribution.
         /// </summary>
-        public int DegreesOfFreedom
+        public double DegreesOfFreedom
         {
             get { return _degreesOfFreedom; }
             set
@@ -325,7 +325,7 @@ namespace Numerics.Distributions
         {
             Mu = mu;
             Sigma = sigma;
-            DegreesOfFreedom = (int)v;
+            DegreesOfFreedom = v;
         }
 
         /// <inheritdoc/>
@@ -341,7 +341,7 @@ namespace Numerics.Distributions
         /// <param name="scale">The scale parameter σ (sigma).</param>
         /// <param name="v">The degrees of freedom ν (nu).</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double location, double scale, double v, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double location, double scale, double v, bool throwException)
         {
             if (double.IsNaN(location) || double.IsInfinity(location))
             {
@@ -365,7 +365,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }

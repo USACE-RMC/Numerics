@@ -48,12 +48,26 @@ namespace Numerics.Mathematics.Optimization
         //private readonly RoadSegment[] _segments;
         private readonly Edge[] _edges;
 
-        //public RoadSegment[] Segments { get => _segments; }
+        /// <summary>
+        /// The destination node indices for shortest path computation.
+        /// </summary>
         public int[] DestinationIndices { get => _destinationIndices; }
 
+        /// <summary>
+        /// The incoming edges for each node, indexed by node index.
+        /// </summary>
         public List<Edge>[] IncomingEdges { get => _incomingEdges; }
+
+        /// <summary>
+        /// The outgoing edges for each node, indexed by node index.
+        /// </summary>
         public List<Edge>[] OutgoingEdges { get => _outgoingEdges; }
 
+        /// <summary>
+        /// Creates a new network from the specified edges and destination indices.
+        /// </summary>
+        /// <param name="edges">The edges that define the network.</param>
+        /// <param name="destinationIndices">The destination node indices.</param>
         public Network(Edge[] edges, int[] destinationIndices)
         {
             //_segments = roadSegments;
@@ -88,16 +102,31 @@ namespace Numerics.Mathematics.Optimization
         }
 
 
+        /// <summary>
+        /// Solves the shortest path from all nodes to the specified destination.
+        /// </summary>
+        /// <param name="destinationIndex">The destination node index.</param>
+        /// <returns>A result table with predecessor, edge index, and cumulative weight for each node.</returns>
         public float[,] Solve(int destinationIndex)
         {
             return Dijkstra.Solve(_edges, destinationIndex, _nodeCount, _incomingEdges);
         }
 
+        /// <summary>
+        /// Solves the shortest path from all nodes to the specified destinations.
+        /// </summary>
+        /// <param name="destinationIndices">The destination node indices.</param>
+        /// <returns>A result table with predecessor, edge index, and cumulative weight for each node.</returns>
         public float[,] Solve(int[] destinationIndices)
         {
             return Dijkstra.Solve(_edges, destinationIndices, _nodeCount, _incomingEdges);
         }
 
+        /// <summary>
+        /// Solves the shortest path using custom edge weights.
+        /// </summary>
+        /// <param name="edgeWeights">Custom weights for each edge.</param>
+        /// <returns>A result table with predecessor, edge index, and cumulative weight for each node.</returns>
         public float[,] Solve(float[] edgeWeights)
         {
             Edge[] edges = new Edge[_edges.Length];
@@ -109,7 +138,13 @@ namespace Numerics.Mathematics.Optimization
             return Dijkstra.Solve(edges, _destinationIndices, _nodeCount, _incomingEdges);
         }
 
-        public List<int> GetPath(int[] edgesToRemove, int startNodeIndex)
+        /// <summary>
+        /// Finds an alternative path avoiding the specified edges.
+        /// </summary>
+        /// <param name="edgesToRemove">Edge indices to exclude from the path.</param>
+        /// <param name="startNodeIndex">The starting node index.</param>
+        /// <returns>A list of edge indices forming the alternative path, or null if no path exists.</returns>
+        public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex)
         {
             int[] nodeState = new int[_nodeCount];
             float[] nodeWeightToDestination = new float[_nodeCount];
@@ -348,7 +383,14 @@ namespace Numerics.Mathematics.Optimization
             else return null!;
         }
 
-        public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
+        /// <summary>
+        /// Finds an alternative path avoiding the specified edges, using a pre-computed results table.
+        /// </summary>
+        /// <param name="edgesToRemove">Edge indices to exclude from the path.</param>
+        /// <param name="startNodeIndex">The starting node index.</param>
+        /// <param name="existingResultsTable">A pre-computed shortest path results table.</param>
+        /// <returns>A list of edge indices forming the alternative path, or an empty list if no path exists.</returns>
+        public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
         {
             int[] nodeState = new int[_nodeCount];
             float[] nodeWeightToDestination = new float[_nodeCount];

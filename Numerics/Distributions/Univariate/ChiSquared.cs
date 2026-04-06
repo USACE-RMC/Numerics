@@ -233,7 +233,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="degreesOfFreedom">The degrees of freedom for the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(int degreesOfFreedom, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(int degreesOfFreedom, bool throwException)
         {
             if (degreesOfFreedom < 1.0d)
             {
@@ -246,7 +246,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters((int)parameters[0], throwException);
         }
@@ -259,10 +259,17 @@ namespace Numerics.Distributions
                 ValidateParameters(DegreesOfFreedom, true);
             if (X < Minimum) return 0.0d;
             double v = DegreesOfFreedom;
-            double a = Math.Pow(X, (v - 2.0d) / 2.0d);
-            double b = Math.Exp(-X / 2.0d);
-            double c = Math.Pow(2d, v / 2.0d) * Gamma.Function(v / 2.0d);
-            return a * b / c;
+            // Handle x=0 edge case: PDF(0) = 0 for v>2, 0.5 for v=2, +Inf for v<2
+            if (X == 0.0d)
+            {
+                if (v > 2) return 0.0d;
+                if (v == 2) return 0.5d;
+                return double.PositiveInfinity;
+            }
+            // Compute in log-space to avoid overflow for large degrees of freedom
+            double logPdf = ((v - 2.0d) / 2.0d) * Math.Log(X) - X / 2.0d
+                          - (v / 2.0d) * Math.Log(2.0d) - Gamma.LogGamma(v / 2.0d);
+            return Math.Exp(logPdf);
         }
 
         /// <inheritdoc/>

@@ -66,7 +66,7 @@ namespace Numerics.Mathematics.Integration
         /// <param name="max">The maximum value under which the integral must be computed.</param>
         public AdaptiveGaussKronrod(Func<double, double> function, double min, double max)
         {
-            if (max <= min) throw new ArgumentNullException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
+            if (max <= min) throw new ArgumentOutOfRangeException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
             Function = function ?? throw new ArgumentNullException(nameof(function), "The function cannot be null.");
             a = min;
             b = max;

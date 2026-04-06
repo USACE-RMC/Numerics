@@ -28,6 +28,9 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using System;
+using System.Collections.Generic;
+
 namespace Numerics.Data
 {
     /// <summary>
@@ -62,7 +65,7 @@ namespace Numerics.Data
     {
 
         /// <summary>
-        /// Construct new linear interpolation. 
+        /// Construct new cubic spline interpolation.
         /// </summary>
         /// <param name="xValues">List of x-values.</param>
         /// <param name="yValues">List of y-values.</param>
@@ -75,7 +78,7 @@ namespace Numerics.Data
         /// <summary>
         /// Stores the array of second derivatives.
         /// </summary>
-        private double[] y2 = Array.Empty<double>();
+        private double[] y2 = null!;
 
         /// <summary>
         /// Auxiliary routine to set the second derivatives. If you make changes to the x- or y-values, then you need to call this routine afterwards.

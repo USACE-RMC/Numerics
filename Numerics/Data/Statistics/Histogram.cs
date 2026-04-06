@@ -121,8 +121,7 @@ namespace Numerics.Data.Statistics
             /// </returns>
             public int CompareTo(Bin? other)
             {
-                if (other is null) { return 1; }
-
+                if (other is null) return 1;
                 if (UpperBound > other.LowerBound && LowerBound < other.LowerBound)
                 {
                     throw new ArgumentException(nameof(other), "The bins cannot be overlapping.");
@@ -179,6 +178,26 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Internal constructor for JSON deserialization. Reconstructs a histogram from serialized bin data
+        /// without requiring the original raw data.
+        /// </summary>
+        /// <param name="lowerBound">The lower bound of the histogram.</param>
+        /// <param name="upperBound">The upper bound of the histogram.</param>
+        /// <param name="numberOfBins">The number of bins.</param>
+        /// <param name="binWidth">The bin width.</param>
+        /// <param name="bins">The list of histogram bins.</param>
+        internal Histogram(double lowerBound, double upperBound, int numberOfBins,
+                           double binWidth, List<Bin> bins)
+        {
+            LowerBound = lowerBound;
+            UpperBound = upperBound;
+            NumberOfBins = numberOfBins;
+            BinWidth = binWidth;
+            foreach (var bin in bins)
+                AddBin(bin);
+        }
+
+        /// <summary>
         /// Constructs a histogram based on the data provided. The Rice Rule is used to set the bin sizes.
         /// </summary>
         /// <param name="data">The data to construct a histogram with.</param>
@@ -189,6 +208,7 @@ namespace Numerics.Data.Statistics
             // Get the bin boundaries
             LowerBound = data.Min();
             UpperBound = data.Max();
+            if (UpperBound == LowerBound) UpperBound = LowerBound + 1.0;
             BinWidth = (UpperBound - LowerBound) / NumberOfBins;
             // Add bins
             double xl = LowerBound;
@@ -217,6 +237,7 @@ namespace Numerics.Data.Statistics
             NumberOfBins = numberOfBins;
             LowerBound = data.Min();
             UpperBound = data.Max();
+            if (UpperBound == LowerBound) UpperBound = LowerBound + 1.0;
             BinWidth = (UpperBound - LowerBound) / NumberOfBins;
             // Add bins
             double xl = LowerBound;
@@ -322,6 +343,7 @@ namespace Numerics.Data.Statistics
                 int total = 0;
                 for (int i = 0; i < _bins.Count; i++)
                     total += _bins[i].Frequency;
+                if (total == 0) return double.NaN;
                 int halfTotal = (int)(total / 2d);
                 int m = 0;
                 int v = 0;
@@ -458,7 +480,7 @@ namespace Numerics.Data.Statistics
             SortBins();
             if (value < _bins.First().LowerBound || value > _bins.Last().UpperBound)
             {
-                throw new ArgumentException("value", "The value is not contained with the histogram limits.");
+                throw new ArgumentException("The value is not contained with the histogram limits.", nameof(value));
             }
             int idx = Search.Bisection(value, _binLimits);
             return idx < 0 ? 0 : idx >= _binLimits.Count ? _binLimits.Count - 1 : idx;

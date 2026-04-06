@@ -351,7 +351,7 @@ namespace Numerics.Distributions
         /// <param name="mu">The mean (of log).</param>
         /// <param name="sigma">The standard deviation (of log).</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double mu, double sigma, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double mu, double sigma, bool throwException)
         {
             if (double.IsNaN(mu) || double.IsInfinity(mu))
             {
@@ -369,7 +369,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }
@@ -634,11 +634,13 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
-            // Compute covariance
-            double u2 = Sigma;
+            // Compute covariance in (μ, σ) parameterization of log-space.
+            // Var(μ̂) = σ²/n, Var(σ̂) = σ²/(2n), Cov = 0.
+            // Both MoM and MLE give the same result for Normal (UMVUE).
+            double s2 = Sigma * Sigma;
             var covar = new double[2, 2];
-            covar[0, 0] = Math.Pow(u2, 2d) / sampleSize; // location
-            covar[1, 1] = 2d * Math.Pow(u2, 4d) / sampleSize; // scale
+            covar[0, 0] = s2 / sampleSize; // Var(μ̂)
+            covar[1, 1] = s2 / (2.0 * sampleSize); // Var(σ̂)
             covar[0, 1] = 0.0;
             covar[1, 0] = covar[0, 1];
             return covar;
@@ -665,10 +667,11 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
             double z = Normal.StandardZ(probability);
+            // Q(p) = μ + σ·z(p) in log-space, so ∂Q/∂μ = 1, ∂Q/∂σ = z(p).
             var gradient = new double[]
             {
-                1.0d, // location
-                z / (2d * Sigma) // scale
+                1.0d, // ∂Q/∂μ
+                z     // ∂Q/∂σ
             };
             return gradient;
         }

@@ -90,6 +90,16 @@ namespace Data.TimeSeriesAnalysis
         private const string USGS_4 = "07010000";
 
         /// <summary>
+        /// USGS site number for Susquehanna River at Harrisburg, PA.
+        /// </summary>
+        private const string USGS_5 = "01570500";
+
+        /// <summary>
+        /// USGS site number for Potomac River at Little Falls near Washington, DC.
+        /// </summary>
+        private const string USGS_6 = "01646500";
+
+        /// <summary>
         /// GHCN station: USC00040741.
         /// </summary>
         private const string GHCN_1 = "USC00040741";
@@ -146,13 +156,13 @@ namespace Data.TimeSeriesAnalysis
         private static void AssertDailySeriesMonotonic(TimeSeries ts)
         {
             Assert.IsNotNull(ts, "Time series is null.");
-            Assert.IsGreaterThan( 0, ts.Count);
+            Assert.IsGreaterThan(0, ts.Count);
 
             DateTime? prev = null;
             foreach (var pt in ts)
             {
                 if (prev.HasValue)
-                    Assert.IsTrue(pt.Index >= prev.Value, "Dates not sorted chronologically.");
+                    Assert.IsGreaterThanOrEqualTo(prev.Value, pt.Index, "Dates not sorted chronologically.");
                 prev = pt.Index;
             }
 
@@ -280,14 +290,74 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
-        /// Ensures CHMN rejects unsupported time series types.
+        /// Ensures CHMN rejects unsupported time series types (field measurements not available).
         /// </summary>
         [TestMethod]
         public async Task CHMN_UnsupportedType_Throws()
         {
             await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromCHMN(CHMN_1,
-                    TimeSeriesDownload.TimeSeriesType.PeakDischarge));
+                    TimeSeriesDownload.TimeSeriesType.MeasuredDischarge));
+        }
+
+        /// <summary>
+        /// Tests CHMN instantaneous discharge download (real-time 5-minute data).
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task CHMN_InstantaneousDischarge_Works()
+        {
+            if (!await Online()) return;
+
+            var ts = await TimeSeriesDownload.FromCHMN(CHMN_2,
+                TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Tests CHMN instantaneous stage download (real-time 5-minute data).
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task CHMN_InstantaneousStage_Works()
+        {
+            if (!await Online()) return;
+
+            var ts = await TimeSeriesDownload.FromCHMN(CHMN_2,
+                TimeSeriesDownload.TimeSeriesType.InstantaneousStage);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Tests CHMN peak discharge download (annual instantaneous maximums).
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task CHMN_PeakDischarge_Works()
+        {
+            if (!await Online()) return;
+
+            var ts = await TimeSeriesDownload.FromCHMN(CHMN_1,
+                TimeSeriesDownload.TimeSeriesType.PeakDischarge);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Tests CHMN peak stage download (annual instantaneous maximums).
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task CHMN_PeakStage_Works()
+        {
+            if (!await Online()) return;
+
+            var ts = await TimeSeriesDownload.FromCHMN(CHMN_1,
+                TimeSeriesDownload.TimeSeriesType.PeakStage);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
         }
 
         #endregion
@@ -352,6 +422,98 @@ namespace Data.TimeSeriesAnalysis
             await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await TimeSeriesDownload.FromUSGS(USGS_1,
                     TimeSeriesDownload.TimeSeriesType.DailyPrecipitation));
+        }
+
+        /// <summary>
+        /// Tests USGS field measurement discharge data retrieval from the OGC API.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task USGS_MeasuredDischarge_Works()
+        {
+            if (!await Online()) return;
+
+            var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_5,
+                TimeSeriesDownload.TimeSeriesType.MeasuredDischarge);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsNotNull(raw, "Raw text is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+            Assert.IsFalse(string.IsNullOrEmpty(raw), "Raw text should contain JSON response.");
+
+            // Verify all values are positive (discharge must be > 0)
+            foreach (var pt in ts)
+            {
+                Assert.IsGreaterThan(0, pt.Value, $"Discharge value {pt.Value} at {pt.Index} should be positive.");
+            }
+        }
+
+        /// <summary>
+        /// Tests USGS field measurement stage (gage height) data retrieval from the OGC API.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task USGS_MeasuredStage_Works()
+        {
+            if (!await Online()) return;
+
+            var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_5,
+                TimeSeriesDownload.TimeSeriesType.MeasuredStage);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsNotNull(raw, "Raw text is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+            Assert.IsFalse(string.IsNullOrEmpty(raw), "Raw text should contain JSON response.");
+
+            // Verify all values are positive (gage height must be > 0)
+            foreach (var pt in ts)
+            {
+                Assert.IsGreaterThan(0, pt.Value, $"Gage height value {pt.Value} at {pt.Index} should be positive.");
+            }
+        }
+
+        /// <summary>
+        /// Tests USGS peak stage data retrieval.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task USGS_PeakStage_Works()
+        {
+            if (!await Online()) return;
+
+            var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_3,
+                TimeSeriesDownload.TimeSeriesType.PeakStage);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsNotNull(raw, "Raw text is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Tests USGS instantaneous discharge download.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task USGS_InstantaneousDischarge_Works()
+        {
+            if (!await Online()) return;
+
+            var (ts, _) = await TimeSeriesDownload.FromUSGS(USGS_6,
+                TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Tests USGS instantaneous stage download.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task USGS_InstantaneousStage_Works()
+        {
+            if (!await Online()) return;
+
+            var (ts, _) = await TimeSeriesDownload.FromUSGS(USGS_6,
+                TimeSeriesDownload.TimeSeriesType.InstantaneousStage);
+
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
         }
 
         #endregion
@@ -578,10 +740,79 @@ namespace Data.TimeSeriesAnalysis
             var firstDate = ts.First().Index;
             var lastDate = ts.Last().Index;
 
-            Assert.IsTrue(firstDate >= WinStart.AddDays(-1),
+            Assert.IsGreaterThanOrEqualTo(WinStart.AddDays(-1), firstDate,
                 $"First date {firstDate} is before window start {WinStart}");
-            Assert.IsTrue(lastDate <= WinEnd.AddDays(1),
+            Assert.IsLessThanOrEqualTo(WinEnd.AddDays(1), lastDate,
                 $"Last date {lastDate} is after window end {WinEnd}");
+        }
+
+        /// <summary>
+        /// Validates instantaneous discharge download from BOM.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task BOM_InstantaneousDischarge_Works()
+        {
+            if (!await Online()) return;
+            var ts = await TimeSeriesDownload.FromABOM(BOM_1,
+                TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge,
+                startDate: WinStart, endDate: WinEnd);
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Validates instantaneous stage download from BOM.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task BOM_InstantaneousStage_Works()
+        {
+            if (!await Online()) return;
+            var ts = await TimeSeriesDownload.FromABOM(BOM_3,
+                TimeSeriesDownload.TimeSeriesType.InstantaneousStage,
+                startDate: WinStart, endDate: WinEnd);
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Validates daily precipitation download from BOM.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task BOM_DailyPrecipitation_Works()
+        {
+            if (!await Online()) return;
+            var ts = await TimeSeriesDownload.FromABOM(BOM_1,
+                TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
+                startDate: WinStart, endDate: WinEnd);
+            Assert.IsNotNull(ts, "Time series is null.");
+            Assert.IsGreaterThan(0, ts.Count);
+        }
+
+        /// <summary>
+        /// Tests precipitation unit conversions (mm ↔ inches) for BOM data.
+        /// </summary>
+        [TestMethod, TestCategory("Integration")]
+        public async Task BOM_UnitConversion_Precip_MmIn()
+        {
+            if (!await Online()) return;
+
+            var tsMm = await TimeSeriesDownload.FromABOM(BOM_1,
+                TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
+                depthUnit: TimeSeriesDownload.DepthUnit.Millimeters,
+                startDate: WinStart, endDate: WinEnd);
+
+            var tsIn = await TimeSeriesDownload.FromABOM(BOM_1,
+                TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
+                depthUnit: TimeSeriesDownload.DepthUnit.Inches,
+                startDate: WinStart, endDate: WinEnd);
+
+            const double factor = 25.4;
+            for (int i = 0; i < tsMm.Count; i++)
+            {
+                if (double.IsNaN(tsMm[i].Value) || double.IsNaN(tsIn[i].Value)) continue;
+                if (tsMm[i].Value == 0 && tsIn[i].Value == 0) continue;
+                AssertRoughlyEqual(tsMm[i].Value, tsIn[i].Value * factor);
+            }
         }
 
         #endregion

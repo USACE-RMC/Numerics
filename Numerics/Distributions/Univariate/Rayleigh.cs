@@ -210,7 +210,7 @@ namespace Numerics.Distributions
         {
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
-                SetParameters(Statistics.StandardDeviation(sample));
+                SetParameters(Statistics.Mean(sample) / Math.Sqrt(Math.PI / 2.0d));
             }
             else if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
             {
@@ -259,7 +259,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="scale">The scale parameter σ (sigma).</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double scale, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double scale, bool throwException)
         {
             if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0.0d)
             {
@@ -271,7 +271,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], throwException);
         }

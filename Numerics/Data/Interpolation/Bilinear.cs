@@ -119,7 +119,7 @@ namespace Numerics.Data
             {
                 _useSmartSearch = value;
                 X1LI.UseSmartSearch = value;
-                X1LI.UseSmartSearch = value;
+                X2LI.UseSmartSearch = value;
             }
         }
 

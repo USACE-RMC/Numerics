@@ -97,7 +97,7 @@ namespace Numerics.Functions
         /// <param name="parameters">Array of parameters.</param>
         /// <param name="throwException">Boolean indicating whether to throw the exception or not.</param>
         /// <returns>Nothing if the parameters are valid and the exception if invalid parameters were found.</returns>
-        ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException);
+        ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException);
 
         /// <summary>
         /// Returns the function evaluated at a point x. If function is uncertain, the function is computed at the set confidence level. 

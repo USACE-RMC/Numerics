@@ -401,7 +401,7 @@ namespace Numerics.Distributions
         /// <param name="scale">The scale parameter α (alpha).</param>
         /// <param name="shape">The shape parameter κ (kappa).</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double location, double scale, double shape, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double location, double scale, double shape, bool throwException)
         {
             if (double.IsNaN(location) || double.IsInfinity(location))
             {
@@ -424,7 +424,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }

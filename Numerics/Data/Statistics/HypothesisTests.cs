@@ -28,13 +28,14 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Numerics.Distributions;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.SpecialFunctions;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 
 namespace Numerics.Data.Statistics
 {
@@ -65,6 +66,7 @@ namespace Numerics.Data.Statistics
         /// <returns>Returns the 2-sided p-value of the test statistic.</returns>
         public static double OneSampleTtest(IList<double> sample, double populationMean = 0d)
         {
+            if (sample.Count < 2) throw new ArgumentException("Sample must have at least 2 observations.", nameof(sample));
             var meanVar = Statistics.MeanVariance(sample);
             int N = sample.Count;
             double se = Math.Sqrt(meanVar.Item2) / Math.Sqrt(N);
@@ -82,6 +84,7 @@ namespace Numerics.Data.Statistics
         /// <returns>Returns the 2-sided p-value of the test statistic.</returns>
         public static double EqualVarianceTtest(IList<double> sample1, IList<double> sample2)
         {
+            if (sample1.Count + sample2.Count < 3) throw new ArgumentException("Combined sample size must be at least 3.");
             var meanVar1 = Statistics.MeanVariance(sample1);
             var meanVar2 = Statistics.MeanVariance(sample2);
             int N1 = sample1.Count;
@@ -109,7 +112,7 @@ namespace Numerics.Data.Statistics
             int n2 = sample2.Count;
             double t = Math.Abs((ave1 - ave2) / Math.Sqrt(var1 / n1 + var2 / n2));
             double df = Tools.Sqr(var1 / n1 + var2 / n2) / (Tools.Sqr(var1 / n1) / (n1 - 1) + Tools.Sqr(var2 / n2) / (n2 - 1));
-            var tdist = new StudentT((int)df);
+            var tdist = new StudentT(df);
             return (1d - tdist.CDF(t)) * 2d;
         }
 
@@ -132,7 +135,7 @@ namespace Numerics.Data.Statistics
             cov /= (df = n - 1);
             sd = Math.Sqrt((var1 + var2 - 2.0 * cov) / n);
             double t = Math.Abs((ave1 - ave2) / sd);
-            var tdist = new StudentT((int)df);
+            var tdist = new StudentT(df);
             return (1d - tdist.CDF(t)) * 2d;
         }
 
@@ -144,10 +147,12 @@ namespace Numerics.Data.Statistics
         /// <returns>Returns the p-value of the test statistic.</returns>
         public static double Ftest(IList<double> sample1, IList<double> sample2)
         {
+            if (sample1.Count < 2 || sample2.Count < 2) throw new ArgumentException("Each sample must have at least 2 observations.");
             var meanVar1 = Statistics.MeanVariance(sample1);
             var meanVar2 = Statistics.MeanVariance(sample2);
             int n1 = sample1.Count, n2 = sample2.Count;
             double ave1 = meanVar1.Item1, var1 = meanVar1.Item2, ave2 = meanVar2.Item1, var2 = meanVar2.Item2, df1, df2, f, pVal;
+            if (var1 == 0 && var2 == 0) return 1.0;
             if (var1 > var2)
             {
                 f = var1 / var2;
@@ -177,6 +182,8 @@ namespace Numerics.Data.Statistics
         /// <param name="pValue">The p-value of the test statistic.</param>
         public static void FtestModels(double sseRestricted, double sseFull, int dfRestricted, int dfFull, out double fStat, out double pValue)
         {
+            if (dfRestricted == dfFull) throw new ArgumentException("Restricted and full model degrees of freedom cannot be equal.");
+            if (dfFull <= 0) throw new ArgumentException("Full model degrees of freedom must be positive.", nameof(dfFull));
             fStat = ((sseRestricted - sseFull) / (dfRestricted - dfFull)) / (sseFull / dfFull);
             pValue = 2.0 * Beta.Incomplete(0.5 * dfFull, 0.5 * dfRestricted, dfFull / (dfFull + dfRestricted * fStat));
             if (pValue > 1.0) pValue = 2d - pValue;
@@ -245,7 +252,7 @@ namespace Numerics.Data.Statistics
             int n = sample.Count;
             if (lagMax < 0) lagMax = (int)Math.Floor(Math.Min(10d * Math.Log10(n), n - 1));
             var acf = Autocorrelation.Function(sample, lagMax, Autocorrelation.Type.Correlation);
-            if (acf == null) throw new Exception("Autocorrelation function could not be calculated.");
+            if (acf == null) return double.NaN;
             double Q = 0;
             for (int k = 1; k <= lagMax; k++)
                 Q += Tools.Sqr(acf[k, 1]) / (n - k);
@@ -329,7 +336,6 @@ namespace Numerics.Data.Statistics
             var yVals = new Vector(sample.ToArray());
             var lm = new LinearRegression(xVals, yVals, true);
             var tdist = new StudentT(lm.DegreesOfFreedom);
-            double d = Math.Abs(lm.Parameters[1] / lm.ParameterStandardErrors[1]);
             return (1 - tdist.CDF(Math.Abs(lm.Parameters[1] / lm.ParameterStandardErrors[1]))) * 2;
         }
 
@@ -343,28 +349,35 @@ namespace Numerics.Data.Statistics
             int n = sample.Count;
             if (n < 10) throw new ArgumentException("The sample size must be greater than or equal to 10.");
 
-            // Fit 1-component GMM (unimodal)
-            var gmm1 = new GaussianMixtureModel(sample.ToArray(), 1);
-            gmm1.Train(12345, true);
-            var logLH1 = gmm1.LogLikelihood;
+            try
+            {
+                // Fit 1-component GMM (unimodal)
+                var gmm1 = new GaussianMixtureModel(sample.ToArray(), 1);
+                gmm1.Train(12345, true);
+                var logLH1 = gmm1.LogLikelihood;
 
-            // Fit 2-component GMM (potentially bimodal)
-            var gmm2 = new GaussianMixtureModel(sample.ToArray(), 2);
-            gmm2.Train(12345, true);
-            var logLH2 = gmm2.LogLikelihood;
+                // Fit 2-component GMM (potentially bimodal)
+                var gmm2 = new GaussianMixtureModel(sample.ToArray(), 2);
+                gmm2.Train(12345, true);
+                var logLH2 = gmm2.LogLikelihood;
 
-            // Compute test statistic: Likelihood Ratio Test
-            double testStat = 2 * (logLH2 - logLH1);
-            int df = 3;
+                // Compute test statistic: Likelihood Ratio Test
+                double testStat = 2 * (logLH2 - logLH1);
+                int df = 3;
 
-            // Compute p-value from chi-square distribution
-            var chiSquared = new ChiSquared(df);
-            double pval = 1.0 - chiSquared.CDF(testStat);
+                // Compute p-value from chi-square distribution
+                var chiSquared = new ChiSquared(df);
+                double pval = 1.0 - chiSquared.CDF(testStat);
 
-            return pval;
+                return pval;
+            }
+            catch (Exception ex) 
+            {
+                Debug.WriteLine($"Error in hypothesis testing: {ex.Message}");
+                return double.NaN;
+            }
 
         }
-
 
     }
 

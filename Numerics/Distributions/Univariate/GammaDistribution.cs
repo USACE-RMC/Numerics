@@ -375,7 +375,7 @@ namespace Numerics.Distributions
         /// <param name="scale">The scale parameter θ (theta).</param>
         /// <param name="shape">The shape parameter k.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double scale, double shape, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double scale, double shape, bool throwException)
         {
             if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0.0d)
             {
@@ -393,7 +393,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }
@@ -770,22 +770,60 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            if (estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
+                estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
             {
                 throw new NotImplementedException();
             }
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_theta, _kappa, true);
-            // Compute covariance
-            double alpha = 1d / Theta;
-            double lambda = Kappa;
-            double NA = Gamma.Trigamma(lambda) - 1d / lambda;
+            // Compute covariance in user-facing (θ=scale, κ=shape) parameterization.
+            double t = Theta, k = Kappa;
             var covar = new double[2, 2];
-            covar[0, 0] = Math.Pow(alpha, 2d) * Gamma.Trigamma(lambda) / (sampleSize * lambda * NA); // scale
-            covar[1, 1] = 1d / (sampleSize * NA); // shape
-            covar[0, 1] = alpha / (sampleSize * lambda * NA); // scale & shape
-            covar[1, 0] = covar[0, 1];
+            if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
+            {
+                // MoM asymptotic covariance via (DᵀS⁻¹D)⁻¹/n.
+                // Moment conditions: g₁ = X − κθ, g₂ = (X−κθ)² − κθ².
+                // D = ∂g/∂(θ,κ) = [[-κ, -θ], [-2κθ, -θ²]].
+                // S = E[g·gᵀ] = [[μ₂, μ₃], [μ₃, μ₄−μ₂²]].
+                double t2 = t * t, t3 = t2 * t, t4 = t2 * t2;
+                // Central moments of Gamma(θ, κ)
+                double mu2 = k * t2;
+                double mu3 = 2.0 * k * t3;
+                double mu4 = 3.0 * k * (k + 2.0) * t4;
+                // S matrix and its inverse
+                double S00 = mu2, S01 = mu3, S11 = mu4 - mu2 * mu2;
+                double detS = S00 * S11 - S01 * S01;
+                double Si00 = S11 / detS, Si01 = -S01 / detS, Si11 = S00 / detS;
+                // D matrix
+                double d00 = -k, d01 = -t, d10 = -2.0 * k * t, d11 = -t2;
+                // DᵀS⁻¹
+                double ds00 = d00 * Si00 + d10 * Si01;
+                double ds01 = d00 * Si01 + d10 * Si11;
+                double ds10 = d01 * Si00 + d11 * Si01;
+                double ds11 = d01 * Si01 + d11 * Si11;
+                // Bread = (DᵀS⁻¹)D
+                double b00 = ds00 * d00 + ds01 * d10;
+                double b01 = ds00 * d01 + ds01 * d11;
+                double b11 = ds10 * d01 + ds11 * d11;
+                // Bread⁻¹ / n
+                double detB = b00 * b11 - b01 * b01;
+                covar[0, 0] = b11 / (detB * sampleSize);
+                covar[1, 1] = b00 / (detB * sampleSize);
+                covar[0, 1] = -b01 / (detB * sampleSize);
+                covar[1, 0] = covar[0, 1];
+            }
+            else
+            {
+                // MLE: Fisher information inverse in (θ, κ) space.
+                // Transformed from (α=1/θ, κ) via delta method.
+                double NA = Gamma.Trigamma(k) - 1.0 / k;
+                covar[0, 0] = t * t * Gamma.Trigamma(k) / (sampleSize * k * NA); // Var(θ̂)
+                covar[1, 1] = 1.0 / (sampleSize * NA);                            // Var(κ̂)
+                covar[0, 1] = -t / (sampleSize * k * NA);                         // Cov(θ̂, κ̂) — negative
+                covar[1, 0] = covar[0, 1];
+            }
             return covar;
         }
 
@@ -829,13 +867,11 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_theta, _kappa, true);
-            double alpha = 1d / Theta;
-            double lambda = Kappa;
-            double eps = Math.Sign(alpha);
+            // Q(p) = κθ + √κ·θ·Kp(γ,p) in (θ, κ) parameterization.
             var gradient = new double[]
             {
-                -lambda / Math.Pow(alpha, 2d) * (1.0d + eps / Math.Sqrt(lambda) * FrequencyFactorKp(Skewness, probability)), // scale
-                1.0d / alpha * (1.0d + eps / Math.Sqrt(lambda) * FrequencyFactorKp(Skewness, probability) / 2.0d - 1.0d / lambda * PartialKp(Skewness, probability)) // shape
+                PartialforTheta(probability), // ∂Q/∂θ
+                PartialforKappa(probability)  // ∂Q/∂κ
             };
             return gradient;
         }

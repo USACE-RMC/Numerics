@@ -185,7 +185,11 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double StandardDeviation
         {
-            get { return Math.Sqrt((Max - Min) * (Max - Min) / 12.0d); }
+            get
+            {
+                double n = Max - Min + 1;
+                return Math.Sqrt((n * n - 1.0d) / 12.0d);
+            }
         }
 
         /// <inheritdoc/>
@@ -250,7 +254,7 @@ namespace Numerics.Distributions
         /// <param name="min">The min of the distribution.</param>
         /// <param name="max">The max of the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double min, double max, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double min, double max, bool throwException)
         {
             if (double.IsNaN(min) || double.IsInfinity(min) ||
                 double.IsNaN(max) || double.IsInfinity(max) || min > max)
@@ -263,7 +267,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }

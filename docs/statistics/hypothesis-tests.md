@@ -1,14 +1,32 @@
 # Hypothesis Tests
 
-[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](../sampling/convergence-diagnostics.md)
+[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Univariate Distributions →](../distributions/univariate.md)
 
-The ***Numerics*** library provides statistical hypothesis tests for comparing samples, testing distributions, and detecting trends. These tests are essential for data analysis, model validation, and quality control.
+Statistical hypothesis testing is a method of statistical inference used to decide whether observed data sufficiently support a particular hypothesis. The ***Numerics*** library provides a comprehensive set of hypothesis tests that return **p-values** for making statistical decisions. If the p-value is less than the chosen significance level (typically α = 0.05), the null hypothesis is rejected in favor of the alternative hypothesis.
+
+## Understanding p-values
+
+All hypothesis tests in ***Numerics*** return **p-values**, not test statistics. The p-value represents the probability of obtaining results at least as extreme as the observed data, assuming the null hypothesis is true.
+
+**Decision rule:**
+- p < 0.01: Very strong evidence against H₀
+- p < 0.05: Strong evidence against H₀
+- p < 0.10: Weak evidence against H₀
+- p ≥ 0.10: Insufficient evidence to reject H₀
 
 ## t-Tests
 
+The t-test compares sample means using the **t-statistic**, which measures how many standard errors the observed mean is from the hypothesized value. Under the null hypothesis, this statistic follows a Student's t-distribution.
+
 ### One-Sample t-Test
 
-Test if sample mean differs from hypothesized value:
+Tests if the sample mean differs from a hypothesized population mean. The test statistic is:
+
+```math
+t = \frac{\bar{x} - \mu_0}{s / \sqrt{n}}
+```
+
+where $\bar{x}$ is the sample mean, $\mu_0$ is the hypothesized mean, $s$ is the sample standard deviation, and $n$ is the sample size. Under $H_0$, $t \sim t_{n-1}$.
 
 ```cs
 using Numerics.Data.Statistics;
@@ -16,18 +34,19 @@ using Numerics.Data.Statistics;
 double[] sample = { 12.5, 13.2, 11.8, 14.1, 12.9, 13.5, 12.2, 13.8 };
 double mu0 = 12.0;  // Hypothesized mean
 
-// Compute t-statistic
-double t = HypothesisTests.OneSampleTtest(sample, mu0);
+// Returns the two-sided p-value
+double pValue = HypothesisTests.OneSampleTtest(sample, mu0);
 
 Console.WriteLine($"One-sample t-test:");
-Console.WriteLine($"  t-statistic: {t:F3}");
 Console.WriteLine($"  Sample mean: {Statistics.Mean(sample):F2}");
 Console.WriteLine($"  Hypothesized mean: {mu0:F2}");
+Console.WriteLine($"  p-value: {pValue:F4}");
+Console.WriteLine($"  Degrees of freedom: {sample.Length - 1}");
 
-// Compare with critical value
-int df = sample.Length - 1;
-Console.WriteLine($"  Degrees of freedom: {df}");
-Console.WriteLine("  If |t| > t_critical (e.g., 2.365 for α=0.05, df=7), reject H₀");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Reject H₀ - mean differs significantly from 12.0");
+else
+    Console.WriteLine("  Result: Fail to reject H₀ - insufficient evidence of difference");
 ```
 
 **Hypotheses:**
@@ -38,20 +57,29 @@ Console.WriteLine("  If |t| > t_critical (e.g., 2.365 for α=0.05, df=7), reject
 
 #### Equal Variance (Pooled) t-Test
 
+Tests if means of two independent samples are equal, assuming equal variances. The test uses a **pooled variance** estimate $s_p^2 = \frac{(n_1-1)s_1^2 + (n_2-1)s_2^2}{n_1 + n_2 - 2}$ and the statistic:
+
+```math
+t = \frac{\bar{x}_1 - \bar{x}_2}{s_p\sqrt{1/n_1 + 1/n_2}}, \quad t \sim t_{n_1+n_2-2}
+```
+
 ```cs
 double[] sample1 = { 12.5, 13.2, 11.8, 14.1, 12.9 };
 double[] sample2 = { 15.3, 14.8, 15.9, 14.5, 15.1 };
 
-// Test if means are equal (assuming equal variances)
-double t = HypothesisTests.EqualVarianceTtest(sample1, sample2);
+// Returns the two-sided p-value
+double pValue = HypothesisTests.EqualVarianceTtest(sample1, sample2);
 
 Console.WriteLine($"Equal variance t-test:");
-Console.WriteLine($"  t-statistic: {t:F3}");
 Console.WriteLine($"  Sample 1 mean: {Statistics.Mean(sample1):F2}");
 Console.WriteLine($"  Sample 2 mean: {Statistics.Mean(sample2):F2}");
+Console.WriteLine($"  p-value: {pValue:F4}");
+Console.WriteLine($"  Degrees of freedom: {sample1.Length + sample2.Length - 2}");
 
-int df = sample1.Length + sample2.Length - 2;
-Console.WriteLine($"  Degrees of freedom: {df}");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Significant difference between means");
+else
+    Console.WriteLine("  Result: No significant difference between means");
 ```
 
 **Hypotheses:**
@@ -60,58 +88,71 @@ Console.WriteLine($"  Degrees of freedom: {df}");
 
 #### Unequal Variance (Welch's) t-Test
 
-```cs
-// Test if means are equal (not assuming equal variances)
-double t_welch = HypothesisTests.UnequalVarianceTtest(sample1, sample2);
+Use when variances may be different between groups:
 
-Console.WriteLine($"\nWelch's t-test:");
-Console.WriteLine($"  t-statistic: {t_welch:F3}");
-Console.WriteLine("  Use when variances appear different");
+```cs
+// Returns the two-sided p-value (Welch's approximation for df)
+double pValue = HypothesisTests.UnequalVarianceTtest(sample1, sample2);
+
+Console.WriteLine($"Welch's t-test (unequal variances):");
+Console.WriteLine($"  p-value: {pValue:F4}");
+Console.WriteLine("  Use when variances appear different between groups");
 ```
 
 #### Paired t-Test
 
-For before/after or matched pairs:
+For matched pairs or before/after comparisons:
 
 ```cs
 double[] before = { 120, 135, 118, 142, 128 };
 double[] after = { 115, 130, 112, 138, 125 };
 
-// Test if treatment had effect
-double t_paired = HypothesisTests.PairedTtest(before, after);
+// Returns the two-sided p-value
+double pValue = HypothesisTests.PairedTtest(before, after);
 
 Console.WriteLine($"Paired t-test:");
-Console.WriteLine($"  t-statistic: {t_paired:F3}");
-Console.WriteLine($"  Mean difference: {Statistics.Mean(before) - Statistics.Mean(after):F2}");
+Console.WriteLine($"  Mean before: {Statistics.Mean(before):F1}");
+Console.WriteLine($"  Mean after: {Statistics.Mean(after):F1}");
+Console.WriteLine($"  Mean difference: {Statistics.Mean(before) - Statistics.Mean(after):F1}");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-// Differences
-double[] diffs = new double[before.Length];
-for (int i = 0; i < before.Length; i++)
-    diffs[i] = before[i] - after[i];
-
-Console.WriteLine($"  SE of difference: {Statistics.StandardDeviation(diffs) / Math.Sqrt(diffs.Length):F2}");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Treatment had a significant effect");
+else
+    Console.WriteLine("  Result: No significant treatment effect detected");
 ```
 
 **Hypotheses:**
 - H₀: μ_diff = 0
 - H₁: μ_diff ≠ 0
 
-## F-Test
+## F-Test for Variance Equality
 
-Test equality of variances:
+Tests if two populations have equal variances. The test statistic is the ratio of sample variances:
+
+```math
+F = \frac{s_1^2}{s_2^2}, \quad F \sim F_{n_1-1, n_2-1}
+```
+
+Values far from 1 (either large or small) suggest unequal variances.
 
 ```cs
 double[] sample1 = { 10, 12, 14, 16, 18 };
 double[] sample2 = { 11, 13, 15, 17, 19, 21, 23 };
 
-// Test if variances are equal
-double f = HypothesisTests.Ftest(sample1, sample2);
+// Returns the p-value
+double pValue = HypothesisTests.Ftest(sample1, sample2);
 
 Console.WriteLine($"F-test for equal variances:");
-Console.WriteLine($"  F-statistic: {f:F3}");
 Console.WriteLine($"  Variance 1: {Statistics.Variance(sample1):F2}");
 Console.WriteLine($"  Variance 2: {Statistics.Variance(sample2):F2}");
+Console.WriteLine($"  p-value: {pValue:F4}");
 Console.WriteLine($"  df1 = {sample1.Length - 1}, df2 = {sample2.Length - 1}");
+
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Variances are significantly different");
+else
+    Console.WriteLine("  Result: No significant difference in variances");
 ```
 
 **Hypotheses:**
@@ -120,16 +161,16 @@ Console.WriteLine($"  df1 = {sample1.Length - 1}, df2 = {sample2.Length - 1}");
 
 ### F-Test for Nested Models
 
-Compare restricted and full models:
+Compares restricted and full regression models:
 
 ```cs
-// Example: Testing if additional predictors improve model
+// SSE values from model fitting
 double sseRestricted = 150.0;  // SSE of restricted model
 double sseFull = 120.0;        // SSE of full model
 int dfRestricted = 47;         // n - k_restricted - 1
 int dfFull = 45;               // n - k_full - 1
 
-HypothesisTests.FtestModels(sseRestricted, sseFull, dfRestricted, dfFull, 
+HypothesisTests.FtestModels(sseRestricted, sseFull, dfRestricted, dfFull,
                             out double fStat, out double pValue);
 
 Console.WriteLine($"F-test for model comparison:");
@@ -137,78 +178,90 @@ Console.WriteLine($"  F-statistic: {fStat:F3}");
 Console.WriteLine($"  p-value: {pValue:F4}");
 
 if (pValue < 0.05)
-    Console.WriteLine("  Reject H₀: Full model is significantly better");
+    Console.WriteLine("  Result: Full model is significantly better");
 else
-    Console.WriteLine("  Fail to reject H₀: Models not significantly different");
+    Console.WriteLine("  Result: Models not significantly different");
 ```
 
-## Normality Tests
+## Normality Test
 
 ### Jarque-Bera Test
 
-Tests if data follows normal distribution using skewness and kurtosis:
+Tests if data follows a normal distribution by measuring departures from the skewness ($S=0$) and excess kurtosis ($K=0$) expected under normality. The test statistic is:
+
+```math
+JB = \frac{n}{6}\left(S^2 + \frac{K^2}{4}\right)
+```
+
+where $S$ is the sample skewness and $K$ is the sample excess kurtosis. Under $H_0$, $JB \sim \chi^2_2$ asymptotically.
 
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
 
-// Test for normality
-double jb = HypothesisTests.JarqueBeraTest(data);
+// Returns the p-value (chi-squared with df=2)
+double pValue = HypothesisTests.JarqueBeraTest(data);
 
 Console.WriteLine($"Jarque-Bera normality test:");
-Console.WriteLine($"  JB statistic: {jb:F3}");
 Console.WriteLine($"  Skewness: {Statistics.Skewness(data):F3}");
 Console.WriteLine($"  Kurtosis: {Statistics.Kurtosis(data):F3}");
-Console.WriteLine("  Critical value (α=0.05): 5.99 (χ² with df=2)");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-if (jb < 5.99)
-    Console.WriteLine("  Fail to reject H₀: Data appears normally distributed");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Data is not normally distributed");
 else
-    Console.WriteLine("  Reject H₀: Data not normally distributed");
+    Console.WriteLine("  Result: Cannot reject normality assumption");
 ```
 
 **Hypotheses:**
 - H₀: Data is normally distributed
-- H₁: Data is not normal
+- H₁: Data is not normally distributed
 
-## Randomness Tests
+## Randomness and Independence Tests
 
 ### Wald-Wolfowitz Runs Test
 
-Tests if sequence is random:
+Tests if a sequence is random (tests for independence and stationarity):
 
 ```cs
 double[] sequence = { 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0 };
 
-double z = HypothesisTests.WaldWolfowitzTest(sequence);
+// Returns the two-sided p-value
+double pValue = HypothesisTests.WaldWolfowitzTest(sequence);
 
 Console.WriteLine($"Wald-Wolfowitz runs test:");
-Console.WriteLine($"  z-statistic: {z:F3}");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-if (Math.Abs(z) > 1.96)
-    Console.WriteLine("  Reject H₀: Sequence is not random");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Sequence is not random");
 else
-    Console.WriteLine("  Fail to reject H₀: Sequence appears random");
+    Console.WriteLine("  Result: Cannot reject randomness assumption");
 ```
 
 ### Ljung-Box Test
 
-Tests for autocorrelation in time series:
+Tests for autocorrelation in time series data. The test statistic sums squared autocorrelation coefficients:
+
+```math
+Q = n(n+2)\sum_{k=1}^{m}\frac{\hat{\rho}_k^2}{n-k}
+```
+
+where $\hat{\rho}_k$ is the sample autocorrelation at lag $k$, $n$ is the sample size, and $m$ is the number of lags tested. Under $H_0$ (no autocorrelation), $Q \sim \chi^2_m$.
 
 ```cs
 double[] timeSeries = { 12.5, 13.2, 11.8, 14.1, 12.9, 13.5, 12.2, 13.8, 14.5, 13.1 };
 int lagMax = 5;  // Test lags 1 through 5
 
-double q = HypothesisTests.LjungBoxTest(timeSeries, lagMax);
+// Returns the p-value (chi-squared with df = lagMax)
+double pValue = HypothesisTests.LjungBoxTest(timeSeries, lagMax);
 
 Console.WriteLine($"Ljung-Box test for autocorrelation:");
-Console.WriteLine($"  Q-statistic: {q:F3}");
 Console.WriteLine($"  Lags tested: {lagMax}");
-Console.WriteLine($"  Critical value (α=0.05, df={lagMax}): ~11.07");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-if (q > 11.07)
-    Console.WriteLine("  Reject H₀: Significant autocorrelation present");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Significant autocorrelation detected");
 else
-    Console.WriteLine("  Fail to reject H₀: No significant autocorrelation");
+    Console.WriteLine("  Result: No significant autocorrelation");
 ```
 
 **Hypotheses:**
@@ -219,18 +272,25 @@ else
 
 ### Mann-Whitney U Test
 
-Non-parametric alternative to two-sample t-test:
+Non-parametric alternative to two-sample t-test (tests if distributions differ):
 
 ```cs
-double[] group1 = { 12, 15, 18, 21, 24 };
-double[] group2 = { 10, 13, 16, 19, 22, 25 };
+double[] group1 = { 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42 };
+double[] group2 = { 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40 };
 
-double u = HypothesisTests.MannWhitneyTest(group1, group2);
+// Note: First sample must have length ≤ second sample
+// Combined samples must have length > 20 (here: 11 + 11 = 22)
+// Returns the two-sided p-value
+double pValue = HypothesisTests.MannWhitneyTest(group1, group2);
 
 Console.WriteLine($"Mann-Whitney U test:");
-Console.WriteLine($"  U-statistic: {u:F3}");
-Console.WriteLine("  Tests if distributions are different (rank-based)");
-Console.WriteLine("  No assumption of normality required");
+Console.WriteLine($"  p-value: {pValue:F4}");
+Console.WriteLine("  (Rank-based, no normality assumption required)");
+
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Distributions differ significantly");
+else
+    Console.WriteLine("  Result: No significant difference in distributions");
 ```
 
 **Hypotheses:**
@@ -241,22 +301,28 @@ Console.WriteLine("  No assumption of normality required");
 
 ### Mann-Kendall Trend Test
 
-Detects monotonic trends in time series:
+Detects monotonic trends in time series (non-parametric). The test statistic $S$ counts concordant minus discordant pairs:
+
+```math
+S = \sum_{i=1}^{n-1}\sum_{j=i+1}^{n} \text{sgn}(x_j - x_i)
+```
+
+where $\text{sgn}(x) = 1$ if $x > 0$, $-1$ if $x < 0$, and $0$ if $x = 0$. For $n \geq 10$, $S$ is approximately normal with variance $\text{Var}(S) = \frac{n(n-1)(2n+5)}{18}$, and the standardized statistic $Z = S/\sqrt{\text{Var}(S)}$ is used to compute the p-value. A positive $S$ indicates an upward trend; negative indicates downward.
 
 ```cs
 double[] timeSeries = { 10, 12, 11, 15, 14, 18, 17, 21, 20, 24 };
 
-double s = HypothesisTests.MannKendallTest(timeSeries);
+// Requires sample size ≥ 10
+// Returns the two-sided p-value
+double pValue = HypothesisTests.MannKendallTest(timeSeries);
 
 Console.WriteLine($"Mann-Kendall trend test:");
-Console.WriteLine($"  S-statistic: {s:F3}");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-if (s > 1.96)
-    Console.WriteLine("  Significant increasing trend detected");
-else if (s < -1.96)
-    Console.WriteLine("  Significant decreasing trend detected");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Significant monotonic trend detected");
 else
-    Console.WriteLine("  No significant trend");
+    Console.WriteLine("  Result: No significant trend");
 ```
 
 **Hypotheses:**
@@ -265,190 +331,247 @@ else
 
 ### Linear Trend Test
 
-Tests for linear relationship:
+Tests for significant linear relationship (parametric):
 
 ```cs
 double[] time = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 double[] values = { 10.5, 11.2, 12.8, 13.1, 14.5, 15.2, 16.1, 16.8, 17.5, 18.2 };
 
-double t = HypothesisTests.LinearTrendTest(time, values);
+// Returns the two-sided p-value
+double pValue = HypothesisTests.LinearTrendTest(time, values);
 
 Console.WriteLine($"Linear trend test:");
-Console.WriteLine($"  t-statistic: {t:F3}");
-Console.WriteLine("  Tests if slope is significantly different from zero");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-if (Math.Abs(t) > 2.306)  // Critical value for df=8, α=0.05
-    Console.WriteLine("  Significant linear trend detected");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Significant linear trend detected");
 else
-    Console.WriteLine("  No significant linear trend");
+    Console.WriteLine("  Result: No significant linear trend");
 ```
 
 ## Unimodality Test
 
-Tests if distribution has single peak:
+Tests if distribution has a single peak using Gaussian Mixture Model comparison:
 
 ```cs
 double[] data = { 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10 };
 
-double u = HypothesisTests.UnimodalityTest(data);
+// Requires sample size ≥ 10
+// Returns the p-value (likelihood ratio test with chi-squared df=3)
+double pValue = HypothesisTests.UnimodalityTest(data);
 
 Console.WriteLine($"Unimodality test:");
-Console.WriteLine($"  Test statistic: {u:F3}");
+Console.WriteLine($"  p-value: {pValue:F4}");
 
-if (u < -1.96)
-    Console.WriteLine("  Reject H₀: Data is multimodal");
+if (pValue < 0.05)
+    Console.WriteLine("  Result: Evidence of multimodality (bimodal or more)");
 else
-    Console.WriteLine("  Fail to reject H₀: Data appears unimodal");
+    Console.WriteLine("  Result: Cannot reject unimodality");
 ```
 
-## Practical Examples
+## Hydrological Applications
 
-### Example 1: Comparing Treatment Groups
+### Example 1: Testing for Stationarity in Annual Maximum Floods
+
+A fundamental assumption in flood frequency analysis is that the annual maximum flood series is stationary (no trend over time). This example demonstrates how to test this assumption:
 
 ```cs
 using Numerics.Data.Statistics;
+using Numerics.Distributions;
 
-// Control and treatment groups
-double[] control = { 120, 135, 118, 142, 128, 133, 125, 138 };
-double[] treatment = { 115, 125, 110, 130, 120, 128, 118, 130 };
+// Annual maximum peak flows (cfs) from 1990-2019
+double[] annualMaxFlows = {
+    12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300,
+    14800, 16200, 13100, 18500, 15600, 17800, 12800, 19100, 14300, 16500,
+    13800, 18200, 15100, 17400, 12300, 19800, 14600, 16900, 13500, 18900
+};
 
-Console.WriteLine("Treatment Comparison Study");
+double[] years = Enumerable.Range(1990, annualMaxFlows.Length).Select(y => (double)y).ToArray();
+
+Console.WriteLine("Stationarity Analysis of Annual Maximum Floods");
 Console.WriteLine("=" + new string('=', 50));
+Console.WriteLine($"Record length: {annualMaxFlows.Length} years (1990-2019)");
+Console.WriteLine($"Mean: {Statistics.Mean(annualMaxFlows):F0} cfs");
+Console.WriteLine($"Std Dev: {Statistics.StandardDeviation(annualMaxFlows):F0} cfs");
 
-// Descriptive statistics
-Console.WriteLine($"\nControl: mean={Statistics.Mean(control):F1}, " +
-                 $"SD={Statistics.StandardDeviation(control):F1}");
-Console.WriteLine($"Treatment: mean={Statistics.Mean(treatment):F1}, " +
-                 $"SD={Statistics.StandardDeviation(treatment):F1}");
+// Test 1: Mann-Kendall test for monotonic trend
+double pMK = HypothesisTests.MannKendallTest(annualMaxFlows);
+Console.WriteLine($"\nMann-Kendall Trend Test:");
+Console.WriteLine($"  p-value: {pMK:F4}");
+Console.WriteLine($"  Result: {(pMK < 0.05 ? "Trend detected - stationarity violated" : "No significant trend")}");
 
-// Test for equal variances
-double f = HypothesisTests.Ftest(control, treatment);
-Console.WriteLine($"\nF-test for equal variances: F={f:F3}");
+// Test 2: Linear trend test
+double pLinear = HypothesisTests.LinearTrendTest(years, annualMaxFlows);
+Console.WriteLine($"\nLinear Trend Test:");
+Console.WriteLine($"  p-value: {pLinear:F4}");
+Console.WriteLine($"  Result: {(pLinear < 0.05 ? "Linear trend detected" : "No significant linear trend")}");
 
-// Choose appropriate t-test
-double t;
-if (f < 4.0)  // Approximate F-critical value
+// Test 3: Ljung-Box test for serial correlation
+double pLB = HypothesisTests.LjungBoxTest(annualMaxFlows, lagMax: 5);
+Console.WriteLine($"\nLjung-Box Autocorrelation Test (lag=5):");
+Console.WriteLine($"  p-value: {pLB:F4}");
+Console.WriteLine($"  Result: {(pLB < 0.05 ? "Autocorrelation detected" : "No significant autocorrelation")}");
+
+// Overall assessment
+Console.WriteLine("\n" + new string('-', 50));
+bool isStationary = pMK >= 0.05 && pLinear >= 0.05 && pLB >= 0.05;
+if (isStationary)
 {
-    t = HypothesisTests.EqualVarianceTtest(control, treatment);
-    Console.WriteLine($"Equal variance t-test: t={t:F3}");
+    Console.WriteLine("Assessment: Data appears stationary - proceed with frequency analysis");
 }
 else
 {
-    t = HypothesisTests.UnequalVarianceTtest(control, treatment);
-    Console.WriteLine($"Unequal variance t-test: t={t:F3}");
+    Console.WriteLine("Assessment: Potential non-stationarity detected");
+    Console.WriteLine("Consider: detrending, using shorter record, or non-stationary methods");
 }
-
-if (Math.Abs(t) > 2.145)  // Approximate critical value
-    Console.WriteLine("Conclusion: Significant difference detected (p < 0.05)");
-else
-    Console.WriteLine("Conclusion: No significant difference (p ≥ 0.05)");
 ```
 
-### Example 2: Time Series Analysis
+### Example 2: Comparing Flood Records Between Two Periods
+
+Test whether flood characteristics have changed between historical and recent periods:
 
 ```cs
-double[] monthlyData = { 125, 130, 135, 132, 138, 145, 142, 148, 155, 152, 158, 165 };
+// Split record into two periods
+double[] period1 = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };  // 1990-1999
+double[] period2 = { 14800, 16200, 13100, 18500, 15600, 17800, 12800, 19100, 14300, 16500 };  // 2000-2009
 
-Console.WriteLine("Time Series Analysis");
-Console.WriteLine("=" + new string('=', 50));
+Console.WriteLine("Comparison of Flood Characteristics: 1990s vs 2000s");
+Console.WriteLine("=" + new string('=', 55));
 
-// Test for trend
-double[] months = Enumerable.Range(1, monthlyData.Length).Select(i => (double)i).ToArray();
-double tTrend = HypothesisTests.LinearTrendTest(months, monthlyData);
+Console.WriteLine($"\nPeriod 1 (1990-1999):");
+Console.WriteLine($"  Mean: {Statistics.Mean(period1):F0} cfs");
+Console.WriteLine($"  Std Dev: {Statistics.StandardDeviation(period1):F0} cfs");
 
-Console.WriteLine($"\nLinear trend test: t={tTrend:F3}");
-if (Math.Abs(tTrend) > 2.228)  // Critical value for df=10
-    Console.WriteLine("Significant trend detected");
+Console.WriteLine($"\nPeriod 2 (2000-2009):");
+Console.WriteLine($"  Mean: {Statistics.Mean(period2):F0} cfs");
+Console.WriteLine($"  Std Dev: {Statistics.StandardDeviation(period2):F0} cfs");
 
-// Test for autocorrelation
-double q = HypothesisTests.LjungBoxTest(monthlyData, lagMax: 3);
+// Test for difference in means
+double pMean = HypothesisTests.EqualVarianceTtest(period1, period2);
+Console.WriteLine($"\nt-test for difference in means:");
+Console.WriteLine($"  p-value: {pMean:F4}");
+Console.WriteLine($"  Result: {(pMean < 0.05 ? "Means differ significantly" : "No significant difference in means")}");
 
-Console.WriteLine($"\nLjung-Box test (lag 3): Q={q:F3}");
-if (q > 7.815)  // Chi-squared critical value
-    Console.WriteLine("Significant autocorrelation detected");
+// Test for difference in variances
+double pVar = HypothesisTests.Ftest(period1, period2);
+Console.WriteLine($"\nF-test for difference in variances:");
+Console.WriteLine($"  p-value: {pVar:F4}");
+Console.WriteLine($"  Result: {(pVar < 0.05 ? "Variances differ significantly" : "No significant difference in variances")}");
+
+// Interpretation for flood frequency analysis
+Console.WriteLine("\n" + new string('-', 55));
+if (pMean >= 0.05 && pVar >= 0.05)
+    Console.WriteLine("Conclusion: Records can be combined for frequency analysis");
 else
-    Console.WriteLine("No significant autocorrelation");
-
-// Mann-Kendall for monotonic trend
-double s = HypothesisTests.MannKendallTest(monthlyData);
-
-Console.WriteLine($"\nMann-Kendall test: S={s:F3}");
-if (s > 1.96)
-    Console.WriteLine("Significant increasing trend (non-parametric)");
+    Console.WriteLine("Conclusion: Consider analyzing periods separately or investigating causes");
 ```
 
-### Example 3: Quality Control
+### Example 3: Testing Normality of Log-Transformed Flood Data
+
+Log-Pearson Type III analysis assumes the log-transformed data follows a Pearson Type III distribution. Testing normality of log-transformed data can indicate if a simpler Log-Normal model might suffice:
 
 ```cs
-// Historical process mean
-double mu0 = 50.0;
+double[] annualPeaks = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300,
+                         14800, 16200, 13100, 18500, 15600, 17800, 12800, 19100, 14300, 16500 };
 
-// New sample
-double[] newSample = { 51.2, 52.1, 49.8, 51.5, 50.9, 52.3, 51.0, 50.5 };
+// Log-transform the data
+double[] logPeaks = annualPeaks.Select(x => Math.Log10(x)).ToArray();
 
-Console.WriteLine("Quality Control Check");
-Console.WriteLine("=" + new string('=', 50));
+Console.WriteLine("Normality Test for Log-Transformed Annual Peak Flows");
+Console.WriteLine("=" + new string('=', 55));
 
-// One-sample t-test
-double t = HypothesisTests.OneSampleTtest(newSample, mu0);
+Console.WriteLine($"\nLog-transformed data statistics:");
+Console.WriteLine($"  Mean: {Statistics.Mean(logPeaks):F4}");
+Console.WriteLine($"  Std Dev: {Statistics.StandardDeviation(logPeaks):F4}");
+Console.WriteLine($"  Skewness: {Statistics.Skewness(logPeaks):F4}");
+Console.WriteLine($"  Kurtosis: {Statistics.Kurtosis(logPeaks):F4}");
 
-Console.WriteLine($"\nHistorical mean: {mu0:F1}");
-Console.WriteLine($"Current sample mean: {Statistics.Mean(newSample):F2}");
-Console.WriteLine($"t-statistic: {t:F3}");
-Console.WriteLine($"Critical value (two-tailed, α=0.05): ±2.365");
+// Jarque-Bera test for normality
+double pJB = HypothesisTests.JarqueBeraTest(logPeaks);
 
-if (Math.Abs(t) > 2.365)
+Console.WriteLine($"\nJarque-Bera Normality Test:");
+Console.WriteLine($"  p-value: {pJB:F4}");
+
+if (pJB >= 0.05)
 {
-    Console.WriteLine("\nProcess has shifted significantly!");
-    Console.WriteLine("Action: Investigate and adjust process");
+    Console.WriteLine("  Result: Cannot reject normality of log-transformed data");
+    Console.WriteLine("  Implication: Log-Normal distribution may be appropriate");
 }
 else
 {
-    Console.WriteLine("\nProcess remains in control");
+    Console.WriteLine("  Result: Log-transformed data departs from normality");
+    Console.WriteLine("  Implication: Consider Log-Pearson Type III or GEV distribution");
+}
+
+// Additional check: skewness significance
+double skew = Statistics.Skewness(logPeaks);
+if (Math.Abs(skew) < 0.5)
+{
+    Console.WriteLine($"\n  Note: Skewness ({skew:F3}) is small - Log-Normal may be adequate");
+}
+else
+{
+    Console.WriteLine($"\n  Note: Skewness ({skew:F3}) is substantial - LP3 recommended");
 }
 ```
-
-## Interpreting Results
-
-### p-values
-- p < 0.01: Very strong evidence against H₀
-- p < 0.05: Strong evidence against H₀
-- p < 0.10: Weak evidence against H₀
-- p ≥ 0.10: Insufficient evidence to reject H₀
-
-### Effect Size
-Statistical significance ≠ practical significance. Consider:
-- Cohen's d for t-tests: (mean difference) / pooled SD
-- Small: d = 0.2, Medium: d = 0.5, Large: d = 0.8
-
-### Power
-- Probability of detecting true effect
-- Influenced by sample size, effect size, α level
-- Power ≥ 0.80 typically desired
-
-## Best Practices
-
-1. **Check assumptions** before parametric tests (normality, equal variance)
-2. **Use non-parametric tests** when assumptions violated
-3. **Report effect sizes** along with p-values
-4. **Consider multiple testing** corrections if doing many tests
-5. **Visualize data** before and after testing
-6. **Understand context** - statistical vs practical significance
 
 ## Test Selection Guide
 
-| Question | Test |
-|----------|------|
-| One sample mean vs. value | One-sample t-test |
-| Two independent means | Two-sample t-test (or Mann-Whitney) |
-| Two paired measurements | Paired t-test |
-| Two variances | F-test |
-| Normality | Jarque-Bera |
-| Trend existence | Mann-Kendall |
-| Linear relationship | Linear trend test |
-| Autocorrelation | Ljung-Box |
-| Randomness | Wald-Wolfowitz |
+| Question | Test | Notes |
+|----------|------|-------|
+| One sample mean vs. hypothesized value | `OneSampleTtest` | Parametric, assumes normality |
+| Two independent means (equal variance) | `EqualVarianceTtest` | Use F-test first to check variance equality |
+| Two independent means (unequal variance) | `UnequalVarianceTtest` | Welch's t-test, more robust |
+| Two paired measurements | `PairedTtest` | Before/after, matched pairs |
+| Two variances equal? | `Ftest` | Sensitive to non-normality |
+| Model comparison | `FtestModels` | Nested regression models |
+| Data normally distributed? | `JarqueBeraTest` | Uses skewness and kurtosis |
+| Sequence random? | `WaldWolfowitzTest` | Independence, stationarity |
+| Time series autocorrelation? | `LjungBoxTest` | Tests multiple lags |
+| Distribution difference? | `MannWhitneyTest` | Non-parametric, rank-based |
+| Monotonic trend? | `MannKendallTest` | Non-parametric trend test |
+| Linear trend? | `LinearTrendTest` | Parametric trend test |
+| Unimodal distribution? | `UnimodalityTest` | GMM-based comparison |
+
+## Effect Size
+
+A p-value tells you whether an effect is statistically detectable, but not whether it is practically important. **Effect size** measures the magnitude of a difference independently of sample size.
+
+**Cohen's d** for two-sample comparisons measures the difference in means in units of standard deviations:
+
+```math
+d = \frac{\bar{x}_1 - \bar{x}_2}{s_p}
+```
+
+where $s_p$ is the pooled standard deviation. Conventional thresholds: $|d| < 0.2$ is small, $0.2$–$0.8$ is medium, $> 0.8$ is large. With a large enough sample size, even a tiny $d$ (e.g., 0.01) will produce a significant p-value — but the effect may be meaningless in practice.
+
+For trend tests, the **Kendall's tau** correlation (which can be computed from the Mann-Kendall $S$ statistic) serves as a non-parametric effect size measure: $\tau = S / \binom{n}{2}$.
+
+## Best Practices
+
+1. **Choose significance level a priori** — Typically $\alpha = 0.05$, but consider $\alpha = 0.10$ for exploratory analysis
+2. **Check test assumptions** — Many tests assume normality or independence
+3. **Use non-parametric alternatives** — When assumptions are violated (e.g., Mann-Whitney instead of t-test)
+4. **Report p-values, not just decisions** — $p = 0.049$ and $p = 0.051$ are essentially equivalent
+5. **Consider multiple testing corrections** — When performing $k$ simultaneous tests, use the Bonferroni correction: reject at $\alpha/k$ instead of $\alpha$
+6. **Report effect sizes** — Statistical significance does not imply practical significance. Always report Cohen's d or an equivalent alongside p-values
+7. **Visualize data** — Plots often reveal more than hypothesis tests
+
+## Important Notes
+
+- All tests return **p-values**, not test statistics
+- Two-sided tests are used by default
+- Sample size requirements vary by test (see individual test documentation)
+- For hydrological applications, consider the impact of outliers and measurement uncertainty
 
 ---
 
-[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Convergence Diagnostics →](../sampling/convergence-diagnostics.md)
+## References
+
+<a id="1">[1]</a> Helsel, D. R., Hirsch, R. M., Ryberg, K. R., Archfield, S. A., & Gilroy, E. J. (2020). *Statistical Methods in Water Resources*. U.S. Geological Survey Techniques and Methods, Book 4, Chapter A3.
+
+<a id="2">[2]</a> Hirsch, R. M., Slack, J. R., & Smith, R. A. (1982). Techniques of trend analysis for monthly water quality data. *Water Resources Research*, 18(1), 107-121.
+
+---
+
+[← Previous: Goodness-of-Fit](goodness-of-fit.md) | [Back to Index](../index.md) | [Next: Univariate Distributions →](../distributions/univariate.md)

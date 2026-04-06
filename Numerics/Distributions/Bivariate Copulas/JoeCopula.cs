@@ -71,7 +71,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="theta">The dependency parameter, θ.</param>
         ///<param name="marginalDistributionX">The X marginal distribution for the copula.</param>
         ///<param name="marginalDistributionY">The Y marginal distribution for the copula.</param>
-        public JoeCopula(double theta, IUnivariateDistribution marginalDistributionX, IUnivariateDistribution marginalDistributionY)
+        public JoeCopula(double theta, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             Theta = theta;
             MarginalDistributionX = marginalDistributionX;
@@ -161,6 +161,23 @@ namespace Numerics.Distributions.Copulas
             return [u, v];
         }
 
+        /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U = 2 - 2^(1/θ).
+        /// </summary>
+        public override double UpperTailDependence
+        {
+            get
+            {
+                return 2.0 - Math.Pow(2.0, 1.0 / Theta);
+            }
+        }
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L = 0.
+        /// The Joe copula has no lower tail dependence.
+        /// </summary>
+        public override double LowerTailDependence => 0.0;
+
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
@@ -168,9 +185,9 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        public override double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
         {
-            return [1, 100];
+            return new double[,] { { 1, 100 } };
         }
     }
 }

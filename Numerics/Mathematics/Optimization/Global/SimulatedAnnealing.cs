@@ -120,6 +120,9 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double MinTemperature { get; set; } = 0.1;
 
+        /// <summary>
+        /// The cooling rate for the annealing schedule. Default = 0.95.
+        /// </summary>
         public double CoolingRate { get; set; } = 0.95;
 
         /// <summary>

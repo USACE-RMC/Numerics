@@ -978,5 +978,92 @@ namespace Data.TimeSeriesAnalysis
 
         }
 
+        /// <summary>
+        /// Test the SeasonalDecompose method with a known sinusoidal + linear trend signal.
+        /// </summary>
+        [TestMethod]
+        public void Test_SeasonalDecompose()
+        {
+            // Create a time series: linear trend + sinusoidal seasonal + small noise
+            int period = 12;
+            int nYears = 5;
+            int n = period * nYears; // 60 data points
+            var ts = new TimeSeries(TimeInterval.OneMonth);
+            var startDate = new DateTime(2000, 1, 1);
+
+            double[] truetrend = new double[n];
+            double[] trueSeasonal = new double[n];
+
+            for (int i = 0; i < n; i++)
+            {
+                // Linear trend: 100 + 0.5 * i
+                truetrend[i] = 100.0 + 0.5 * i;
+                // Seasonal: 10 * sin(2π * i / 12)
+                trueSeasonal[i] = 10.0 * Math.Sin(2.0 * Math.PI * i / period);
+                double value = truetrend[i] + trueSeasonal[i];
+                ts.Add(new SeriesOrdinate<DateTime, double>(startDate.AddMonths(i), value));
+            }
+
+            // Decompose
+            var (trend, seasonal, residual) = ts.SeasonalDecompose(period);
+
+            // Verify trend is returned
+            Assert.IsGreaterThan(0, trend.Count, "Trend should have values.");
+            Assert.IsLessThanOrEqualTo(n, trend.Count, "Trend should not exceed original length.");
+
+            // Verify seasonal has correct length
+            // HasCount does not accept double[] (not IEnumerable), so suppress MSTEST0037
+#pragma warning disable MSTEST0037
+            Assert.AreEqual(n, seasonal.Length, "Seasonal should have same length as original.");
+#pragma warning restore MSTEST0037
+
+            // Verify residual is returned
+            Assert.IsGreaterThan(0, residual.Count, "Residual should have values.");
+
+            // Verify the decomposition is additive: original = trend + seasonal + residual
+            // This is an exact mathematical identity by construction
+            for (int i = 0; i < residual.Count; i++)
+            {
+                var residOrd = residual[i];
+                var trendOrd = trend.FirstOrDefault(t => t.Index == residOrd.Index);
+                int origIdx = -1;
+                for (int k = 0; k < n; k++)
+                {
+                    if (ts[k].Index == residOrd.Index) { origIdx = k; break; }
+                }
+                if (trendOrd != null && origIdx >= 0)
+                {
+                    double reconstructed = trendOrd.Value + seasonal[origIdx] + residOrd.Value;
+                    Assert.AreEqual(ts[origIdx].Value, reconstructed, 1E-6,
+                        $"Additive decomposition should hold at index {origIdx}.");
+                }
+            }
+
+            // The seasonal component should capture the sinusoidal signal
+            // Verify seasonal values are not all zero (they should have nonzero amplitude)
+            double maxSeasonal = seasonal.Max();
+            double minSeasonal = seasonal.Min();
+            Assert.IsGreaterThan(1.0, maxSeasonal - minSeasonal,
+                "Seasonal component should have nonzero amplitude for sinusoidal input.");
+        }
+
+        /// <summary>
+        /// Test that SeasonalDecompose throws for invalid inputs.
+        /// </summary>
+        [TestMethod]
+        public void Test_SeasonalDecompose_InvalidInputs()
+        {
+            var ts = new TimeSeries(TimeInterval.OneMonth);
+            var startDate = new DateTime(2000, 1, 1);
+            for (int i = 0; i < 10; i++)
+                ts.Add(new SeriesOrdinate<DateTime, double>(startDate.AddMonths(i), i));
+
+            // Period too small
+            Assert.Throws<ArgumentException>(() => ts.SeasonalDecompose(1));
+
+            // Too few data points for 2 complete periods
+            Assert.Throws<ArgumentException>(() => ts.SeasonalDecompose(12));
+        }
+
     }
 }

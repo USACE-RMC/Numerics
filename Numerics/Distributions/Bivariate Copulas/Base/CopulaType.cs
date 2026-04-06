@@ -65,6 +65,10 @@ namespace Numerics.Distributions.Copulas
         /// <summary>
         /// Normal
         /// </summary>
-        Normal
+        Normal,
+        /// <summary>
+        /// Student's t
+        /// </summary>
+        StudentT
     }
 }

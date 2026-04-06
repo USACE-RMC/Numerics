@@ -229,14 +229,14 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             // Validate probability
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]))
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Probability), "The point value must be a number.");
-                return new ArgumentOutOfRangeException(nameof(Probability), "The point value must be a number.");
+                    throw new ArgumentOutOfRangeException(nameof(Value), "The point value must be a number.");
+                return new ArgumentOutOfRangeException(nameof(Value), "The point value must be a number.");
             }
             return null!;
         }

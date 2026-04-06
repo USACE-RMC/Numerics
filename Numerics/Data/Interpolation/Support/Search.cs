@@ -762,7 +762,7 @@ namespace Numerics.Data
             int XLO = start;
             int XHI;
             int XM;
-            var ASCND = default(bool);
+            var ASCND = orderedPairedData.OrderX == SortOrder.Ascending;
             int INC;
 
             // validate
@@ -816,7 +816,7 @@ namespace Numerics.Data
             XLO = start;
 
             // Perform the hunt search algorithm
-            if (XLO <= 0 | XLO > N)
+            if (XLO <= 0 || XLO > N)
             {
                 // The input guess is not useful.
                 // Go immediately to bisection. 
@@ -849,7 +849,6 @@ namespace Numerics.Data
                 else
                 {
                     // Hunt down
-                    XHI = XLO;
                     XHI = XLO - 1;
                     while (X < orderedPairedData[XLO].X == ASCND)
                     {
@@ -965,7 +964,7 @@ namespace Numerics.Data
             XLO = start;
 
             // Perform the hunt search algorithm
-            if (XLO <= 0 | XLO > N)
+            if (XLO <= 0 || XLO > N)
             {
                 // The input guess is not useful.
                 // Go immediately to bisection. 
@@ -998,7 +997,6 @@ namespace Numerics.Data
                 else
                 {
                     // Hunt down
-                    XHI = XLO;
                     XHI = XLO - 1;
                     while (X < ordinateData[XLO].X == ASCND)
                     {

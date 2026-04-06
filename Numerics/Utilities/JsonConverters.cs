@@ -29,8 +29,10 @@
 */
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Numerics.Data.Statistics;
 using Numerics.Distributions;
 
 namespace Numerics.Utilities
@@ -75,17 +77,17 @@ namespace Numerics.Utilities
         /// <remarks>
         /// Expects JSON in the format: { "rows": int, "cols": int, "data": double[] }
         /// </remarks>
-        public override double[,] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override double[,]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
-                return null!;
+                return null;
 
             if (reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("Expected StartObject token");
 
             int rows = 0;
             int cols = 0;
-            double[]? data = null!;
+            double[]? data = null;
 
             while (reader.Read())
             {
@@ -115,14 +117,16 @@ namespace Numerics.Utilities
             if (data == null || rows == 0 || cols == 0)
                 return new double[0, 0];
 
+            if (data.Length != rows * cols)
+                throw new System.Text.Json.JsonException($"Array dimension mismatch: expected {rows * cols} elements but found {data.Length}.");
+
             double[,] result = new double[rows, cols];
             int index = 0;
             for (int i = 0; i < rows; i++)
             {
                 for (int j = 0; j < cols; j++)
                 {
-                    if (index < data.Length)
-                        result[i, j] = data[index++];
+                    result[i, j] = data[index++];
                 }
             }
 
@@ -214,17 +218,17 @@ namespace Numerics.Utilities
         /// <remarks>
         /// Expects JSON in the format: { "rows": int, "cols": int, "data": string[] }
         /// </remarks>
-        public override string[,] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override string[,]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
-                return null!;
+                return null;
 
             if (reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("Expected StartObject token");
 
             int rows = 0;
             int cols = 0;
-            string[]? data = null!;
+            string[]? data = null;
 
             while (reader.Read())
             {
@@ -368,16 +372,16 @@ namespace Numerics.Utilities
         /// returns null rather than throwing an exception.
         /// </para>
         /// </remarks>
-        public override UnivariateDistributionBase Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override UnivariateDistributionBase? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
-                return null!;
+                return null;
 
             if (reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("Expected StartObject token");
 
             UnivariateDistributionType? distributionType = null;
-            double[]? parameters = null!;
+            double[]? parameters = null;
 
             while (reader.Read())
             {
@@ -408,11 +412,11 @@ namespace Numerics.Utilities
             try
             {
                 var distribution = UnivariateDistributionFactory.CreateDistribution(distributionType.Value);
-                if (distribution != null! && parameters != null && parameters.Length > 0)
+                if (distribution is not null && parameters != null && parameters.Length > 0)
                 {
                     distribution.SetParameters(parameters);
                 }
-                return distribution!;
+                return distribution;
             }
             catch
             {
@@ -443,7 +447,7 @@ namespace Numerics.Utilities
         /// </remarks>
         public override void Write(Utf8JsonWriter writer, UnivariateDistributionBase value, JsonSerializerOptions options)
         {
-            if (value == null!)
+            if (value is null)
             {
                 writer.WriteNullValue();
                 return;
@@ -467,6 +471,195 @@ namespace Numerics.Utilities
                 // If we can't get parameters, write an empty array
                 JsonSerializer.Serialize(writer, new double[0], options);
             }
+
+            writer.WriteEndObject();
+        }
+    }
+
+    /// <summary>
+    /// Custom JSON converter for <see cref="Histogram"/>.
+    /// Serializes and deserializes histogram data without modifying the Histogram class's public API.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This converter serializes a Histogram into a JSON object with its scalar properties
+    /// and a "Bins" array containing each bin's LowerBound, UpperBound, and Frequency.
+    /// </para>
+    /// <para>
+    /// <b>JSON Format:</b>
+    /// <code>
+    /// {
+    ///   "LowerBound": 0.0,
+    ///   "UpperBound": 10.0,
+    ///   "NumberOfBins": 5,
+    ///   "BinWidth": 2.0,
+    ///   "Bins": [
+    ///     { "LowerBound": 0.0, "UpperBound": 2.0, "Frequency": 3 },
+    ///     ...
+    ///   ]
+    /// }
+    /// </code>
+    /// </para>
+    /// </remarks>
+    public class HistogramConverter : JsonConverter<Histogram>
+    {
+        /// <summary>
+        /// Reads and converts JSON to a <see cref="Histogram"/> instance.
+        /// </summary>
+        /// <param name="reader">The JSON reader.</param>
+        /// <param name="typeToConvert">The type to convert.</param>
+        /// <param name="options">Serialization options.</param>
+        /// <returns>
+        /// A Histogram reconstructed from the JSON, or null if the JSON is null.
+        /// </returns>
+        /// <exception cref="JsonException">
+        /// Thrown when the JSON format is invalid (e.g., missing StartObject token).
+        /// </exception>
+        public override Histogram? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+
+            if (reader.TokenType != JsonTokenType.StartObject)
+                throw new JsonException("Expected StartObject token for Histogram.");
+
+            double lowerBound = 0;
+            double upperBound = 0;
+            int numberOfBins = 0;
+            double binWidth = 0;
+            var bins = new List<Histogram.Bin>();
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject)
+                    break;
+
+                if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    string? propertyName = reader.GetString();
+                    reader.Read();
+
+                    switch (propertyName)
+                    {
+                        case "LowerBound":
+                            lowerBound = reader.GetDouble();
+                            break;
+                        case "UpperBound":
+                            upperBound = reader.GetDouble();
+                            break;
+                        case "NumberOfBins":
+                            numberOfBins = reader.GetInt32();
+                            break;
+                        case "BinWidth":
+                            binWidth = reader.GetDouble();
+                            break;
+                        case "Bins":
+                            bins = ReadBins(ref reader);
+                            break;
+                        default:
+                            // Skip unknown properties (e.g., DataCount, Mean, Median, Mode,
+                            // StandardDeviation from old serialization format without converter)
+                            reader.Skip();
+                            break;
+                    }
+                }
+            }
+
+            if (bins.Count == 0)
+                return null;
+
+            return new Histogram(lowerBound, upperBound, numberOfBins, binWidth, bins);
+        }
+
+        /// <summary>
+        /// Reads an array of histogram bins from JSON.
+        /// </summary>
+        /// <param name="reader">The JSON reader positioned at the start of the array.</param>
+        /// <returns>A list of histogram bins.</returns>
+        private static List<Histogram.Bin> ReadBins(ref Utf8JsonReader reader)
+        {
+            var bins = new List<Histogram.Bin>();
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+                return bins;
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray)
+                    break;
+
+                if (reader.TokenType == JsonTokenType.StartObject)
+                {
+                    double lower = 0, upper = 0;
+                    int frequency = 0;
+
+                    while (reader.Read())
+                    {
+                        if (reader.TokenType == JsonTokenType.EndObject)
+                            break;
+
+                        if (reader.TokenType == JsonTokenType.PropertyName)
+                        {
+                            string? name = reader.GetString();
+                            reader.Read();
+
+                            switch (name)
+                            {
+                                case "LowerBound":
+                                    lower = reader.GetDouble();
+                                    break;
+                                case "UpperBound":
+                                    upper = reader.GetDouble();
+                                    break;
+                                case "Frequency":
+                                    frequency = reader.GetInt32();
+                                    break;
+                                default:
+                                    reader.Skip();
+                                    break;
+                            }
+                        }
+                    }
+
+                    bins.Add(new Histogram.Bin(lower, upper, frequency));
+                }
+            }
+
+            return bins;
+        }
+
+        /// <summary>
+        /// Writes a <see cref="Histogram"/> as JSON.
+        /// </summary>
+        /// <param name="writer">The JSON writer.</param>
+        /// <param name="value">The histogram to serialize.</param>
+        /// <param name="options">Serialization options.</param>
+        public override void Write(Utf8JsonWriter writer, Histogram value, JsonSerializerOptions options)
+        {
+            if (value == null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteNumber("LowerBound", value.LowerBound);
+            writer.WriteNumber("UpperBound", value.UpperBound);
+            writer.WriteNumber("NumberOfBins", value.NumberOfBins);
+            writer.WriteNumber("BinWidth", value.BinWidth);
+
+            writer.WritePropertyName("Bins");
+            writer.WriteStartArray();
+            for (int i = 0; i < value.NumberOfBins; i++)
+            {
+                var bin = value[i];
+                writer.WriteStartObject();
+                writer.WriteNumber("LowerBound", bin.LowerBound);
+                writer.WriteNumber("UpperBound", bin.UpperBound);
+                writer.WriteNumber("Frequency", bin.Frequency);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
 
             writer.WriteEndObject();
         }

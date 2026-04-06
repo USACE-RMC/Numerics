@@ -804,8 +804,8 @@ namespace Numerics.Data.Statistics
         /// Lower RSR values indicate better model performance.
         /// </para>
         /// <para>
-        /// <b>Note:</b> This method uses sample standard deviation (N-1 denominator) for the observed values,
-        /// which is consistent with the R hydroGOF package implementation.
+        /// <b>Note:</b> This method uses the population standard deviation (N denominator) for both RMSE and
+        /// observed variability, ensuring RSR = 1.0 when predictions equal the observed mean.
         /// </para>
         /// </remarks>
         public static double RSR(IList<double> observedValues, IList<double> modeledValues)
@@ -828,7 +828,7 @@ namespace Numerics.Data.Statistics
             double rmse = Math.Sqrt(sse / n);
             double obsMean = sumObs / n;
 
-            // Second pass to compute sample standard deviation (using N-1)
+            // Second pass to compute standard deviation
             double variance = 0d;
             for (int i = 0; i < n; i++)
             {

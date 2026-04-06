@@ -1,6 +1,6 @@
 # Optimization
 
-[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Linear Algebra →](linear-algebra.md)
+[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Root Finding →](root-finding.md)
 
 Optimization is the process of finding the parameter set that minimizes (or maximizes) an objective function. The ***Numerics*** library provides a comprehensive suite of local and global optimization algorithms for both unconstrained and constrained problems. These methods are essential for parameter estimation, model calibration, machine learning, and engineering design optimization.
 
@@ -150,7 +150,7 @@ Simple gradient-based optimization with line search:
 
 ```cs
 var gd = new GradientDescent(Rosenbrock, 2, initial, lower, upper);
-gd.LearningRate = 0.001; // Step size
+gd.Alpha = 0.001; // Step size (learning rate)
 gd.Minimize();
 ```
 
@@ -160,7 +160,7 @@ Adaptive Moment Estimation, popular in machine learning applications [[3]](#3):
 
 ```cs
 var adam = new ADAM(Rosenbrock, 2, initial, lower, upper);
-adam.LearningRate = 0.001;
+adam.Alpha = 0.001;
 adam.Beta1 = 0.9;  // First moment decay
 adam.Beta2 = 0.999; // Second moment decay
 adam.Minimize();
@@ -181,9 +181,7 @@ Uses the golden ratio to bracket the minimum:
 ```cs
 Func<double, double> f1d = x => Math.Pow(x - 2, 2) + 3;
 
-var golden = new GoldenSection(f1d, 1);
-golden.LowerBounds = new[] { 0.0 };
-golden.UpperBounds = new[] { 5.0 };
+var golden = new GoldenSection(f1d, 0.0, 5.0);
 golden.Minimize();
 
 Console.WriteLine($"Minimum at x = {golden.BestParameterSet.Values[0]:F6}");
@@ -194,9 +192,7 @@ Console.WriteLine($"Minimum at x = {golden.BestParameterSet.Values[0]:F6}");
 Combines golden section search with parabolic interpolation for faster convergence:
 
 ```cs
-var brent = new BrentSearch(f1d, 1);
-brent.LowerBounds = new[] { 0.0 };
-brent.UpperBounds = new[] { 5.0 };
+var brent = new BrentSearch(f1d, 0.0, 5.0);
 brent.Minimize();
 ```
 
@@ -206,7 +202,31 @@ Global optimization methods are designed to find the global minimum across the e
 
 ### Differential Evolution
 
-Differential Evolution (DE) is a population-based evolutionary algorithm that's very robust for continuous optimization [[4]](#4). It creates trial vectors by combining existing population members.
+Differential Evolution (DE) is a population-based evolutionary algorithm that's very robust for continuous optimization [[4]](#4). For each member $\mathbf{x}_i$ of the population, DE creates a **trial vector** $\mathbf{u}$ using mutation and crossover:
+
+**Mutation** (DE/rand/1): Three distinct population members $\mathbf{x}_{r_0}$, $\mathbf{x}_{r_1}$, $\mathbf{x}_{r_2}$ are randomly selected, and a **mutant vector** is formed:
+
+```math
+\mathbf{v} = \mathbf{x}_{r_0} + G \cdot (\mathbf{x}_{r_1} - \mathbf{x}_{r_2})
+```
+
+where $G$ is a scale factor. In the ***Numerics*** implementation, $G$ is **dithered** with 90% probability: $G = 0.5 + \text{rand}() \times 0.5$, which helps avoid stagnation.
+
+**Crossover** (binomial): The trial vector $\mathbf{u}$ is assembled component-by-component:
+
+```math
+u_j = \begin{cases} v_j & \text{if } \text{rand}() \leq CR \text{ or } j = j_{\text{rand}} \\ x_{i,j} & \text{otherwise} \end{cases}
+```
+
+where $CR$ is the crossover probability and $j_{\text{rand}}$ is a randomly chosen index that ensures at least one component comes from the mutant vector.
+
+**Selection** (greedy): The trial vector replaces the target only if it has equal or better fitness:
+
+```math
+\mathbf{x}_i^{(g+1)} = \begin{cases} \mathbf{u} & \text{if } f(\mathbf{u}) \leq f(\mathbf{x}_i^{(g)}) \\ \mathbf{x}_i^{(g)} & \text{otherwise} \end{cases}
+```
+
+The algorithm converges when the standard deviation of fitness values across the population falls below the tolerance.
 
 ```cs
 using Numerics.Mathematics.Optimization;
@@ -228,7 +248,7 @@ var upper = new double[] { 5.12, 5.12 };
 var de = new DifferentialEvolution(Rastrigin, 2, lower, upper);
 de.PopulationSize = 50;
 de.CrossoverProbability = 0.9;
-de.DifferentialWeight = 0.8;
+de.Mutation = 0.75;
 de.MaxIterations = 1000;
 de.Minimize();
 
@@ -241,39 +261,68 @@ Console.WriteLine($"Function value: {de.BestParameterSet.Fitness:F10}");
 **Parameters**:
 - `PopulationSize`: Number of candidate solutions (default = 10 × dimensions)
 - `CrossoverProbability`: Probability of crossover (default = 0.9)
-- `DifferentialWeight`: Scaling factor for mutation (default = 0.8)
+- `Mutation`: Scaling factor for mutation (default = 0.75)
 
 ### Particle Swarm Optimization
 
-PSO simulates social behavior of bird flocking or fish schooling [[5]](#5). Particles move through the search space influenced by their own best position and the swarm's best position.
+PSO simulates social behavior of bird flocking or fish schooling [[5]](#5). Each particle $i$ has a position $\mathbf{x}_i$ and velocity $\mathbf{v}_i$ that are updated at each iteration using:
+
+```math
+v_{i,j}^{(t+1)} = w \cdot v_{i,j}^{(t)} + c_1 \cdot r_1 \cdot (p_{i,j} - x_{i,j}^{(t)}) + c_2 \cdot r_2 \cdot (g_j - x_{i,j}^{(t)})
+```
+```math
+x_{i,j}^{(t+1)} = x_{i,j}^{(t)} + v_{i,j}^{(t+1)}
+```
+
+where:
+- $w$ is the **inertia weight**, which decreases linearly from $w_{\max} = 0.9$ to $w_{\min} = 0.4$ over the optimization, balancing exploration (high $w$) and exploitation (low $w$)
+- $c_1 = c_2 = 2.05$ are the cognitive and social acceleration coefficients
+- $r_1, r_2 \sim U(0,1)$ are independent random numbers (per component, per particle)
+- $\mathbf{p}_i$ is particle $i$'s personal best position (best position it has visited)
+- $\mathbf{g}$ is the global best position (best position any particle has visited)
+
+The three terms represent **momentum** (continue in the current direction), **cognitive pull** (return toward personal best), and **social pull** (move toward the swarm's best).
 
 ```cs
 var pso = new ParticleSwarm(Rastrigin, 2, lower, upper);
 pso.PopulationSize = 40;
-pso.InertiaWeight = 0.7;
-pso.CognitiveWeight = 1.5; // Personal best influence
-pso.SocialWeight = 1.5;    // Global best influence
 pso.Minimize();
 
 Console.WriteLine($"Solution: [{pso.BestParameterSet.Values[0]:F6}, {pso.BestParameterSet.Values[1]:F6}]");
 ```
 
-**Advantages**: Fast, simple to implement, works well for continuous problems.
+**Advantages**: Fast convergence, simple concept, works well for continuous problems.
 
 **Parameters**:
-- `PopulationSize`: Number of particles (default = 10 × dimensions)
-- `InertiaWeight`: Momentum (default = 0.7)
-- `CognitiveWeight`: Personal best attraction (default = 1.5)
-- `SocialWeight`: Global best attraction (default = 1.5)
+- `PopulationSize`: Number of particles (default = 30)
 
 ### Shuffled Complex Evolution (SCE-UA)
 
-SCE-UA was specifically developed for calibrating hydrological models [[6]](#6). It combines complex shuffling with competitive evolution.
+SCE-UA was specifically developed for calibrating hydrological models [[6]](#6). The algorithm partitions the population into $p$ **complexes**, evolves each complex independently using a **Competitive Complex Evolution** (CCE) strategy, then shuffles members between complexes to share information.
+
+The CCE step within each complex proceeds as follows:
+
+1. **Sub-complex selection**: Select $q = D+1$ points from the complex using a trapezoidal probability distribution that favors better-ranked points: $P(i) = \frac{2(N+1-i)}{N(N+1)}$
+
+2. **Reflection**: Compute the centroid $\mathbf{g}$ of all sub-complex points except the worst point $\mathbf{x}_w$, then reflect:
+
+```math
+\mathbf{r} = 2\mathbf{g} - \mathbf{x}_w
+```
+
+3. **Contraction**: If the reflected point is infeasible or worse than $\mathbf{x}_w$, try contraction:
+
+```math
+\mathbf{c} = \frac{\mathbf{g} + \mathbf{x}_w}{2}
+```
+
+4. **Mutation**: If contraction also fails, generate a random point within the smallest bounding box of the complex.
+
+The shuffling step redistributes points across complexes, preventing any single complex from stagnating. This combination of local competitive evolution within complexes and global information sharing between complexes makes SCE-UA particularly effective for the rugged, multimodal objective functions typical of hydrological model calibration.
 
 ```cs
 var sce = new ShuffledComplexEvolution(Rastrigin, 2, lower, upper);
-sce.NumberOfComplexes = 5;
-sce.ComplexSize = 10;
+sce.Complexes = 5;
 sce.MaxIterations = 1000;
 sce.Minimize();
 
@@ -290,7 +339,7 @@ SA mimics the physical process of annealing in metallurgy [[7]](#7). It accepts 
 
 ```cs
 var sa = new SimulatedAnnealing(Rastrigin, 2, lower, upper);
-sa.InitialTemperature = 100.0;
+sa.InitialTemperature = 10.0;
 sa.CoolingRate = 0.95;
 sa.MaxIterations = 10000;
 sa.Minimize();
@@ -301,7 +350,7 @@ Console.WriteLine($"Solution: [{sa.BestParameterSet.Values[0]:F6}, {sa.BestParam
 **Advantages**: Can escape local minima, works for discrete and continuous problems.
 
 **Parameters**:
-- `InitialTemperature`: Starting temperature (default = 100)
+- `InitialTemperature`: Starting temperature (default = 10)
 - `CoolingRate`: Temperature reduction factor (default = 0.95)
 
 ### Multi-Start Optimization
@@ -309,9 +358,9 @@ Console.WriteLine($"Solution: [{sa.BestParameterSet.Values[0]:F6}, {sa.BestParam
 Combines local search with multiple random starting points:
 
 ```cs
-var ms = new MultiStart(Rastrigin, 2, lower, upper);
-ms.LocalMethod = LocalMethod.BFGS; // Choose local optimizer
-ms.NumberOfStarts = 20;
+var initial = new double[] { 0.0, 0.0 };
+var ms = new MultiStart(Rastrigin, 2, initial, lower, upper, LocalMethod.BFGS);
+ms.MaxIterations = 20; // Number of random starts
 ms.Minimize();
 
 Console.WriteLine($"Best solution: [{ms.BestParameterSet.Values[0]:F6}, {ms.BestParameterSet.Values[1]:F6}]");
@@ -326,8 +375,8 @@ Console.WriteLine($"Best solution: [{ms.BestParameterSet.Values[0]:F6}, {ms.Best
 Clustering-based global optimization that avoids redundant local searches:
 
 ```cs
-var mlsl = new MLSL(Rastrigin, 2, lower, upper);
-mlsl.LocalMethod = LocalMethod.BFGS;
+var initial = new double[] { 0.0, 0.0 };
+var mlsl = new MLSL(Rastrigin, 2, initial, lower, upper, LocalMethod.BFGS);
 mlsl.Minimize();
 ```
 
@@ -350,7 +399,7 @@ double Objective(double[] x)
 
 // Constraint: x + y >= 1
 var constraint = new Constraint(
-    x => x[0] + x[1] - 1,  // g(x) >= 0 form
+    x => x[0] + x[1], 2, 1.0,  // g(x) >= value form
     ConstraintType.GreaterThanOrEqualTo
 );
 
@@ -358,9 +407,11 @@ var lower = new double[] { -5, -5 };
 var upper = new double[] { 5, 5 };
 var initial = new double[] { 0, 0 };
 
-var al = new AugmentedLagrange(Objective, 2, initial, lower, upper);
-al.AddConstraint(constraint);
-al.LocalMethod = LocalMethod.BFGS; // Local optimizer for subproblems
+// Create the inner optimizer
+var bfgs = new BFGS(Objective, 2, initial, lower, upper);
+
+// Create the Augmented Lagrange optimizer with constraints
+var al = new AugmentedLagrange(Objective, bfgs, new IConstraint[] { constraint });
 al.MaxIterations = 100;
 al.Minimize();
 
@@ -370,7 +421,7 @@ Console.WriteLine($"Constraint satisfied: {al.BestParameterSet.Values[0] + al.Be
 
 **Constraint Types**:
 - `ConstraintType.EqualTo`: Equality constraint $g(\mathbf{x}) = 0$
-- `ConstraintType.LessThanOrEqualTo`: Inequality constraint $g(\mathbf{x}) \leq 0$
+- `ConstraintType.LesserThanOrEqualTo`: Inequality constraint $g(\mathbf{x}) \leq 0$
 - `ConstraintType.GreaterThanOrEqualTo`: Inequality constraint $g(\mathbf{x}) \geq 0$
 
 **Example: Minimize subject to multiple constraints**:
@@ -386,15 +437,14 @@ double ObjectiveFunc(double[] x)
     return Math.Pow(x[0] - 3, 2) + Math.Pow(x[1] - 2, 2);
 }
 
-var c1 = new Constraint(x => 5 - x[0] - x[1], ConstraintType.GreaterThanOrEqualTo);
-var c2 = new Constraint(x => x[0] - 1, ConstraintType.GreaterThanOrEqualTo);
-var c3 = new Constraint(x => x[1] - 1, ConstraintType.GreaterThanOrEqualTo);
+var c1 = new Constraint(x => x[0] + x[1], 2, 5.0, ConstraintType.LesserThanOrEqualTo);
+var c2 = new Constraint(x => x[0], 2, 1.0, ConstraintType.GreaterThanOrEqualTo);
+var c3 = new Constraint(x => x[1], 2, 1.0, ConstraintType.GreaterThanOrEqualTo);
 
-var constrained = new AugmentedLagrange(ObjectiveFunc, 2, new[] { 2.0, 2.0 }, 
-                                        new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 });
-constrained.AddConstraint(c1);
-constrained.AddConstraint(c2);
-constrained.AddConstraint(c3);
+var innerOptimizer = new BFGS(ObjectiveFunc, 2, new[] { 2.0, 2.0 },
+                              new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 });
+var constrained = new AugmentedLagrange(ObjectiveFunc, innerOptimizer,
+                                        new IConstraint[] { c1, c2, c3 });
 constrained.Minimize();
 
 Console.WriteLine($"Constrained optimum: [{constrained.BestParameterSet.Values[0]:F4}, " +
@@ -429,7 +479,7 @@ double ObjectiveFunction(double[] parameters)
     }
     
     // Compute RMSE
-    double rmse = Statistics.RMSE(observed, simulated);
+    double rmse = GoodnessOfFit.RMSE(observed, simulated);
     return rmse;
 }
 
@@ -439,7 +489,7 @@ var upper = new double[] { 5.0, 3.0 };  // C <= 5.0, α <= 3.0
 
 // Use SCE-UA (recommended for hydrological calibration)
 var optimizer = new ShuffledComplexEvolution(ObjectiveFunction, 2, lower, upper);
-optimizer.NumberOfComplexes = 5;
+optimizer.Complexes = 5;
 optimizer.MaxIterations = 1000;
 optimizer.Minimize();
 
@@ -457,7 +507,7 @@ for (int i = 0; i < observed.Length; i++)
                          Math.Pow(precipitation[i], optimizer.BestParameterSet.Values[1]);
 }
 
-double nse = Statistics.NSE(observed, final_simulated);
+double nse = GoodnessOfFit.NashSutcliffeEfficiency(observed, final_simulated);
 Console.WriteLine($"  NSE = {nse:F4}");
 ```
 
@@ -525,7 +575,14 @@ The `BestParameterSet` contains:
 
 ### Hessian Matrix
 
-When `ComputeHessian = true`, the Hessian at the solution is computed numerically. This provides information about parameter sensitivity and uncertainty:
+When `ComputeHessian = true`, the Hessian at the solution is computed numerically. The Hessian $\mathbf{H}$ is the matrix of second partial derivatives of the objective function, and its eigenvalues reveal important information about the solution:
+
+- **All eigenvalues positive**: The solution is a local minimum (the Hessian is positive definite)
+- **Large eigenvalue**: The objective is highly curved in that direction — the corresponding parameter is well-determined
+- **Small eigenvalue**: The objective is nearly flat — the parameter is poorly determined or identifiable
+- **Near-zero eigenvalue**: Indicates a ridge or valley in the objective surface, suggesting parameter correlation or redundancy
+
+The inverse of the Hessian approximates the covariance matrix of the parameters, so parameter standard errors can be estimated as $SE(\hat{\theta}_i) \approx \sqrt{|H_{ii}^{-1}|}$:
 
 ```cs
 optimizer.ComputeHessian = true;
@@ -551,7 +608,7 @@ if (optimizer.Status == OptimizationStatus.Success)
 {
     Console.WriteLine("Optimization converged successfully");
 }
-else if (optimizer.Status == OptimizationStatus.MaxIterationsReached)
+else if (optimizer.Status == OptimizationStatus.MaximumIterationsReached)
 {
     Console.WriteLine("Maximum iterations reached - may not have converged");
 }
@@ -589,4 +646,4 @@ else if (optimizer.Status == OptimizationStatus.MaxIterationsReached)
 
 ---
 
-[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Linear Algebra →](linear-algebra.md)
+[← Previous: Numerical Differentiation](differentiation.md) | [Back to Index](../index.md) | [Next: Root Finding →](root-finding.md)

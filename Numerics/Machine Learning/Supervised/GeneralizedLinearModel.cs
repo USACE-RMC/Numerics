@@ -1,4 +1,4 @@
-﻿/*
+/*
 * NOTICE:
 * The U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC) makes no guarantees about
 * the results, or appropriateness of outputs, obtained from Numerics.
@@ -30,6 +30,7 @@
 
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Functions;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.Optimization;
 using Numerics.Mathematics.SpecialFunctions;
@@ -38,7 +39,7 @@ using Numerics.Mathematics.SpecialFunctions;
 namespace Numerics.MachineLearning
 {
     /// <summary>
-    /// A class for performing generalized linear regression. 
+    /// A class for performing generalized linear regression.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -51,13 +52,26 @@ namespace Numerics.MachineLearning
         #region Construction
 
         /// <summary>
-        /// Constructs a generalized linear model. 
+        /// Constructs a generalized linear model.
         /// </summary>
         /// <param name="x">The matrix of predictor values.</param>
         /// <param name="y">The response vector.</param>
         /// <param name="hasIntercept">Determines if an intercept should be estimate. Default = true.</param>
         /// <param name="linkType">The link function type. Default = identity.</param>
-        public GeneralizedLinearModel(Matrix x, Vector y, bool hasIntercept = true, LinkFunctionType linkType = LinkFunctionType.Identity) 
+        public GeneralizedLinearModel(Matrix x, Vector y, bool hasIntercept = true, LinkFunctionType linkType = LinkFunctionType.Identity)
+            : this(x, y, LinkFunctionFactory.Create(linkType), hasIntercept, linkType)
+        {
+        }
+
+        /// <summary>
+        /// Constructs a generalized linear model with a custom link function.
+        /// </summary>
+        /// <param name="x">The matrix of predictor values.</param>
+        /// <param name="y">The response vector.</param>
+        /// <param name="linkFunction">The link function instance.</param>
+        /// <param name="hasIntercept">Determines if an intercept should be estimated. Default = true.</param>
+        /// <param name="linkType">The link function type for optimizer initialization. Default = identity.</param>
+        public GeneralizedLinearModel(Matrix x, Vector y, ILinkFunction linkFunction, bool hasIntercept = true, LinkFunctionType linkType = LinkFunctionType.Identity)
         {
             if (y.Length != x.NumberOfRows) throw new ArgumentException("X and Y must have the same number of rows.");
             if (y.Length <= 2) throw new ArithmeticException("There must be at least three data points.");
@@ -91,7 +105,8 @@ namespace Numerics.MachineLearning
             }
 
             LinkType = linkType;
-            (_inverseLink, _inverseLinkDerivative, _logLikelihoodTerm, _logLikelihoodGradient) = GetLinkFunctions(linkType);
+            LinkFunction = linkFunction;
+            _logLikelihoodTerm = GetFamilyLogLikelihood(linkType);
             SetOptimizer();
 
         }
@@ -101,7 +116,7 @@ namespace Numerics.MachineLearning
         #region Members
 
         /// <summary>
-        /// Determines if the linear model has an intercept. 
+        /// Determines if the linear model has an intercept.
         /// </summary>
         public bool HasIntercept { get; private set; }
 
@@ -111,44 +126,44 @@ namespace Numerics.MachineLearning
         public Vector Y { get; private set; }
 
         /// <summary>
-        /// The matrix of predictor values. 
+        /// The matrix of predictor values.
         /// </summary>
         public Matrix X { get; private set; }
 
         /// <summary>
         /// The list of estimated parameter values.
         /// </summary>
-        public double[] Parameters { get; private set; } = Array.Empty<double>();
+        public double[] Parameters { get; private set; } = null!;
 
         /// <summary>
-        /// The list of the estimated parameter names. 
+        /// The list of the estimated parameter names.
         /// </summary>
-        public List<string> ParameterNames { get; private set; }
+        public List<string> ParameterNames { get; private set; } = null!;
 
         /// <summary>
-        /// The list of the estimated parameter standard errors. 
+        /// The list of the estimated parameter standard errors.
         /// </summary>
-        public double[] ParameterStandardErrors { get; private set; } = Array.Empty<double>();
+        public double[] ParameterStandardErrors { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter z-scores.
         /// </summary>
-        public double[] ParameterZScores { get; private set; } = Array.Empty<double>();
+        public double[] ParameterZScores { get; private set; } = null!;
 
         /// <summary>
         /// The list of the estimated parameter p-values.
         /// </summary>
-        public double[] ParameterPValues { get; private set; } = Array.Empty<double>();
+        public double[] ParameterPValues { get; private set; } = null!;
 
         /// <summary>
-        /// The estimate parameter covariance matrix. 
+        /// The estimate parameter covariance matrix.
         /// </summary>
-        public Matrix Covariance { get; private set; } = new Matrix(1, 1);
+        public Matrix Covariance { get; private set; } = null!;
 
         /// <summary>
-        /// The residuals of the fitted linear model. 
+        /// The residuals of the fitted linear model.
         /// </summary>
-        public double[] Residuals { get; private set; } = Array.Empty<double>();
+        public double[] Residuals { get; private set; } = null!;
 
         /// <summary>
         /// The model standard error.
@@ -156,7 +171,7 @@ namespace Numerics.MachineLearning
         public double StandardError { get; private set; }
 
         /// <summary>
-        /// The data sample size. 
+        /// The data sample size.
         /// </summary>
         public int SampleSize => Y.Length;
 
@@ -166,7 +181,7 @@ namespace Numerics.MachineLearning
         public int DegreesOfFreedom { get; private set; }
 
         /// <summary>
-        /// the Akaike Information Criterion (AIC). 
+        /// the Akaike Information Criterion (AIC).
         /// </summary>
         public double AIC { get; private set; }
 
@@ -176,7 +191,7 @@ namespace Numerics.MachineLearning
         public double AICc { get; private set; }
 
         /// <summary>
-        /// The Bayesian information criterion (BIC). 
+        /// The Bayesian information criterion (BIC).
         /// </summary>
         public double BIC { get; private set; }
 
@@ -191,30 +206,42 @@ namespace Numerics.MachineLearning
         public Optimizer Optimizer { get; private set; } = null!;
 
         /// <summary>
-        /// Gets the link function type. 
+        /// Gets the link function type.
         /// </summary>
         public LinkFunctionType LinkType { get; private set; }
 
         /// <summary>
-        /// Enumeration of link function types.
+        /// Gets the link function instance used by this model.
         /// </summary>
-        public enum LinkFunctionType
-        {
-            Identity,
-            Log,
-            Logit,
-            Probit,
-            ComplementaryLogLog
-        }
+        public ILinkFunction LinkFunction { get; private set; }
 
-        private Func<double, double> _inverseLink;
-        private Func<double, double> _inverseLinkDerivative;
+        /// <summary>
+        /// Per-observation log-likelihood contribution as a function of (mu, y).
+        /// This is distribution-family-specific (Normal, Poisson, Binomial).
+        /// </summary>
         private Func<(double mu, double y), double> _logLikelihoodTerm;
-        private Func<(double eta, double y), double> _logLikelihoodGradient;
 
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Prepares the design matrix for prediction by adding an intercept column if needed.
+        /// If the matrix already has the expected number of columns (e.g. internal X), it passes through.
+        /// If it has one fewer column and HasIntercept is true, the intercept column is added.
+        /// </summary>
+        /// <param name="x">The matrix of predictor values.</param>
+        private Matrix PrepareDesignMatrix(Matrix x)
+        {
+            int expected = Parameters.Length;
+            if (x.NumberOfColumns == expected)
+                return x;
+            if (HasIntercept && x.NumberOfColumns == expected - 1)
+                return AddInterceptColumn(x);
+            throw new ArgumentException(
+                $"Expected {expected} columns{(HasIntercept ? $" (or {expected - 1} without intercept)" : "")}, but got {x.NumberOfColumns}.",
+                nameof(x));
+        }
 
         /// <summary>
         /// Helper method to add an intercept column to the covariate matrix.
@@ -233,106 +260,56 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Returns the necessary link functions.
+        /// Returns the distribution-family-specific per-observation log-likelihood function.
         /// </summary>
-        /// <param name="type">The link function type.</param>
-        private static (Func<double, double> InverseLink,
-                   Func<double, double> InverseLinkDerivative,
-                   Func<(double mu, double y), double> LogLikelihoodTerm,
-                   Func<(double eta, double y), double> LogLikelihoodGradientTerm)
-            GetLinkFunctions(LinkFunctionType type)
+        /// <param name="type">The link function type, which determines the assumed distribution family.</param>
+        /// <returns>A function that computes the per-observation log-likelihood given (mu, y).</returns>
+        private static Func<(double mu, double y), double> GetFamilyLogLikelihood(LinkFunctionType type)
         {
             switch (type)
             {
-                // ------------------ Identity Link (Normal) ------------------
+                // Normal family (Identity link)
                 case LinkFunctionType.Identity:
-                    return (
-                        eta => eta,
-                        eta => 1.0,
-                        (pair) =>
-                        {
-                            double resid = pair.y - pair.mu;
-                            return -0.5 * resid * resid;
-                        },
-                        (pair) => (pair.y - pair.eta) * 1.0 // d/dη of SSE
-                    );
-                // ------------------ Log Link (Poisson) ------------------
+                    return (pair) =>
+                    {
+                        double resid = pair.y - pair.mu;
+                        return -0.5 * resid * resid;
+                    };
+
+                // Poisson family (Log link)
                 case LinkFunctionType.Log:
-                    return (
-                        eta => Math.Exp(eta),
-                        eta => Math.Exp(eta),
-                        (pair) =>
-                        {
-                            double mu = pair.mu;
-                            return pair.y * Math.Log(mu) - mu;
-                        },
-                        (pair) =>
-                        {
-                            double mu = Math.Exp(pair.eta);
-                            return (pair.y - mu) * mu; // mu * dμ/dη
-                        }
-                    );
-                // ------------------ Logit Link (Binomial) ------------------
+                    return (pair) =>
+                    {
+                        double mu = pair.mu;
+                        return pair.y * Math.Log(mu) - mu;
+                    };
+
+                // Binomial family (Logit, Probit, or Complementary Log-Log link)
                 case LinkFunctionType.Logit:
-                    return (
-                        eta => 1.0 / (1.0 + Math.Exp(-eta)),
-                        eta =>
-                        {
-                            double ex = Math.Exp(-eta);
-                            return ex / Math.Pow(1 + ex, 2);
-                        },
-                        (pair) =>
-                        {
-                            double mu = pair.mu;
-                            return pair.y * Math.Log(mu) + (1 - pair.y) * Math.Log(1 - mu);
-                        },
-                        (pair) =>
-                        {
-                            double mu = 1.0 / (1.0 + Math.Exp(-pair.eta));
-                            double dMu_dEta = mu * (1 - mu);
-                            return (pair.y - mu) * dMu_dEta;
-                        }
-                    );
-                // ------------------ Probit Link (Binomial) ------------------
                 case LinkFunctionType.Probit:
-                    return (
-                        eta => Normal.StandardCDF(eta),
-                        eta => Normal.StandardPDF(eta),
-                        (pair) =>
-                        {
-                            double mu = pair.mu;
-                            return pair.y * Math.Log(mu) + (1 - pair.y) * Math.Log(1 - mu);
-                        },
-                        (pair) =>
-                        {
-                            double mu = Normal.StandardCDF(pair.eta);
-                            double dMu = Normal.StandardPDF(pair.eta);
-                            return (pair.y - mu) * dMu;
-                        }
-                    );
-                // ------------------ Complementary Log-Log Link (Binomial) ------------------
                 case LinkFunctionType.ComplementaryLogLog:
-                    return (
-                        eta => 1.0 - Math.Exp(-Math.Exp(eta)),
-                        eta => Math.Exp(eta - Math.Exp(eta)),
-                        (pair) =>
-                        {
-                            double mu = pair.mu;
-                            return pair.y * Math.Log(mu) + (1 - pair.y) * Math.Log(1 - mu);
-                        },
-                        (pair) =>
-                        {
-                            double mu = 1.0 - Math.Exp(-Math.Exp(pair.eta));
-                            double dMu = Math.Exp(pair.eta - Math.Exp(pair.eta));
-                            return (pair.y - mu) * dMu;
-                        }
-                    );
+                    return (pair) =>
+                    {
+                        double mu = pair.mu;
+                        return pair.y * Math.Log(mu) + (1 - pair.y) * Math.Log(1 - mu);
+                    };
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
             }
         }
 
+        /// <summary>
+        /// Computes the inverse link derivative d&#956;/d&#951; at the given link-space value.
+        /// </summary>
+        /// <param name="eta">The link-space value.</param>
+        /// <returns>The derivative d&#956;/d&#951; = 1 / h&#8242;(&#956;).</returns>
+        private double InverseLinkDerivative(double eta)
+        {
+            double mu = LinkFunction.InverseLink(eta);
+            double dEta_dMu = LinkFunction.DLink(mu);
+            return 1.0 / dEta_dMu;
+        }
 
         /// <summary>
         /// Set up the local optimizer.
@@ -349,7 +326,8 @@ namespace Numerics.MachineLearning
                 double logLH = 0.0;
                 for (int i = 0; i < n; i++)
                 {
-                    logLH += _logLikelihoodTerm((_inverseLink(X.GetRow(i).DotProduct(beta)), Y[i]));
+                    double mu = LinkFunction.InverseLink(X.GetRow(i).DotProduct(beta));
+                    logLH += _logLikelihoodTerm((mu, Y[i]));
                 }
                 if (double.IsNaN(logLH) || double.IsInfinity(logLH)) return double.MaxValue;
                 return -logLH;
@@ -363,7 +341,10 @@ namespace Numerics.MachineLearning
                 {
                     Vector xi = new Vector(X.Row(i));
                     double eta = xi.Array.DotProduct(beta);
-                    g -= xi * _logLikelihoodGradient((eta, Y[i]));
+                    double mu = LinkFunction.InverseLink(eta);
+                    double dMu_dEta = InverseLinkDerivative(eta);
+                    double gradTerm = (Y[i] - mu) * dMu_dEta;
+                    g -= xi * gradTerm;
                 }
                 return g.Array;
             }
@@ -388,8 +369,8 @@ namespace Numerics.MachineLearning
                 if (HasIntercept)
                 {
                     initial[0] = (min + max) / 2.0;
-                    lower[0] = initial[0] / 100;
-                    upper[0] = initial[0] * 100;
+                    lower[0] = Math.Min(initial[0] / 100, initial[0] * 100);
+                    upper[0] = Math.Max(initial[0] / 100, initial[0] * 100);
                 }
             }
             else if (LinkType == LinkFunctionType.Log)
@@ -408,8 +389,8 @@ namespace Numerics.MachineLearning
                 if (HasIntercept)
                 {
                     initial[0] = (min + max) / 2.0;
-                    lower[0] = initial[0] / 100;
-                    upper[0] = initial[0] * 100;
+                    lower[0] = Math.Min(initial[0] / 100, initial[0] * 100);
+                    upper[0] = Math.Max(initial[0] / 100, initial[0] * 100);
                 }
             }
             else if (LinkType == LinkFunctionType.Logit)
@@ -544,7 +525,7 @@ namespace Numerics.MachineLearning
             {
                 var xi = X.GetRow(i);
                 double eta = xi.DotProduct(Parameters);
-                double dMu = _inverseLinkDerivative(eta);
+                double dMu = InverseLinkDerivative(eta);
                 for (int j = 0; j < p; j++)
                     J[i, j] = dMu * xi[j];
             }
@@ -575,7 +556,7 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Provides a standard summary output table in a list of strings. 
+        /// Provides a standard summary output table in a list of strings.
         /// </summary>
         public List<string> Summary()
         {
@@ -599,7 +580,7 @@ namespace Numerics.MachineLearning
             }
 
             text.Add("---");
-            text.Add("Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1");
+            text.Add("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1");
             text.Add("");
             text.Add($"Residual standard error: {StandardError:N4} on {DegreesOfFreedom} degrees of freedom");
             text.Add($"AIC: {AIC:N4}  AICc: {AICc:N4}  BIC: {BIC:N4}");
@@ -616,46 +597,33 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Returns the mean prediction. 
+        /// Returns the mean prediction.
         /// </summary>
         /// <param name="x">The matrix of predictors.</param>
         public double[] Predict(Matrix x)
         {
-            int n = x.NumberOfRows;
+            var xp = PrepareDesignMatrix(x);
+            int n = xp.NumberOfRows;
             var result = new double[n];
             for (int i = 0; i < n; i++)
-                result[i] = _inverseLink(x.GetRow(i).DotProduct(Parameters.ToArray()));
+                result[i] = LinkFunction.InverseLink(xp.GetRow(i).DotProduct(Parameters.ToArray()));
             return result;
         }
 
         /// <summary>
-        /// Returns the prediction with confidence intervals in a 2D array with columns: lower, mean, upper. 
+        /// Returns the prediction with confidence intervals in a 2D array with columns: lower, mean, upper.
         /// </summary>
         /// <param name="x">The matrix of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         public double[,] Predict(Matrix x, double alpha = 0.1)
         {
+            var xp = PrepareDesignMatrix(x);
             var z = Normal.StandardZ(1 - alpha / 2);
-            var result = new double[x.NumberOfRows, 3];
-            for (int i = 0; i < x.NumberOfRows; i++)
+            var result = new double[xp.NumberOfRows, 3];
+            for (int i = 0; i < xp.NumberOfRows; i++)
             {
-                double[] xi;
-                if (HasIntercept)
-                {
-                    int p = x.NumberOfColumns;
-                    xi = new double[x.NumberOfColumns + 1];
-                    xi[0] = 1;
-                    for (int j = 1; j < p; j++)
-                    {
-                        xi[i] = x[i, j];
-                    }
-                }
-                else
-                {
-                    xi = x.GetRow(i);
-                }
-
-                double mu = _inverseLink(xi.DotProduct(Parameters.ToArray()));
+                var xi = xp.GetRow(i);
+                double mu = LinkFunction.InverseLink(xi.DotProduct(Parameters.ToArray()));
                 double se = Math.Sqrt(xi.DotProduct(Covariance.Multiply(new Vector(xi)).Array));
                 result[i, 0] = mu - z * se;
                 result[i, 1] = mu;

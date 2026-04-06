@@ -69,12 +69,12 @@ namespace Distributions.Univariate
             double true_cdf = 0.49139966433823956d;
             double true_icdf = 6.27d;
             var CHI = new ChiSquared(7);
-            Assert.AreEqual(CHI.Mean, true_mean, 0.0001d);
-            Assert.AreEqual(CHI.Median, true_median, 0.0001d);
-            Assert.AreEqual(CHI.StandardDeviation, true_stdDev, 0.0001d);
-            Assert.AreEqual(CHI.PDF(6.27d), true_pdf, 0.0001d);
-            Assert.AreEqual(CHI.CDF(6.27d), true_cdf, 0.0001d);
-            Assert.AreEqual(CHI.InverseCDF(true_cdf), true_icdf, 0.0001d);
+            Assert.AreEqual(true_mean, CHI.Mean, 0.0001d);
+            Assert.AreEqual(true_median, CHI.Median, 0.0001d);
+            Assert.AreEqual(true_stdDev, CHI.StandardDeviation, 0.0001d);
+            Assert.AreEqual(true_pdf, CHI.PDF(6.27d), 0.0001d);
+            Assert.AreEqual(true_cdf, CHI.CDF(6.27d), 0.0001d);
+            Assert.AreEqual(true_icdf, CHI.InverseCDF(true_cdf), 0.0001d);
         }
 
         /// <summary>
@@ -125,10 +125,10 @@ namespace Distributions.Univariate
         {
             var dist = new ChiSquared(2);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>
@@ -152,7 +152,7 @@ namespace Distributions.Univariate
         {
             var x = new ChiSquared(2);
             var approx_median = x.DegreesOfFreedom * Math.Pow(1d - 2d / (9d * x.DegreesOfFreedom), 3d);
-            Assert.AreEqual(x.Median, approx_median, 1E-1);
+            Assert.AreEqual(approx_median, x.Median, 1E-1);
         }
 
         /// <summary>
@@ -284,6 +284,29 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.1, x2.InverseCDF(0.04877057),1e-04);
             Assert.AreEqual(1, x2.InverseCDF(0.3934693),1e-04);
             Assert.AreEqual(5.5, x2.InverseCDF(0.9360721), 1e-04);
+        }
+
+        /// <summary>
+        /// Verify ChiSquared PDF does not overflow for large degrees of freedom.
+        /// Reference: scipy.stats.chi2.pdf(x, v)
+        /// </summary>
+        [TestMethod()]
+        public void Test_PDF_LargeDoF()
+        {
+            // chi2(100).pdf(100) = 0.028162503163
+            var x100 = new ChiSquared(100);
+            Assert.AreEqual(0.028162503163, x100.PDF(100), 1E-6);
+
+            // chi2(500).pdf(500) = 0.012611458093
+            var x500 = new ChiSquared(500);
+            Assert.AreEqual(0.012611458093, x500.PDF(500), 1E-6);
+
+            // chi2(1000).pdf(1000) = 0.008919133935 (should NOT be NaN or Infinity)
+            var x1000 = new ChiSquared(1000);
+            double pdf1000 = x1000.PDF(1000);
+            Assert.AreEqual(0.008919133935, pdf1000, 1E-6);
+            Assert.IsFalse(double.IsNaN(pdf1000), "PDF should not be NaN for large DoF.");
+            Assert.IsFalse(double.IsInfinity(pdf1000), "PDF should not be Infinity for large DoF.");
         }
     }
 }

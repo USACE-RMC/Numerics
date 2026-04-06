@@ -105,5 +105,42 @@ namespace Sampling.MCMC
             Assert.AreEqual(5771.81, results.ParameterResults[1].SummaryStatistics.UpperCI, 0.05 * 5771.81);
         }
 
+        /// <summary>
+        /// Verifies that HMC does not crash when the gradient function encounters non-finite values.
+        /// This can happen when leapfrog integration drifts parameters into regions where the
+        /// log-likelihood returns -Infinity, causing NumericalDerivative.Gradient to throw.
+        /// </summary>
+        [TestMethod]
+        public void Test_HMC_NonFiniteGradient_DoesNotCrash()
+        {
+            // Use narrow priors that make it easy for leapfrog to drift into invalid regions
+            var muPrior = new Uniform(-100, 100);
+            var sigmaPrior = new Uniform(0.01, 50);
+            var priors = new List<IUnivariateDistribution> { muPrior, sigmaPrior };
+
+            // Simple data
+            double[] data = { 10.0, 12.0, 11.0, 13.0, 9.0, 14.0, 10.5, 11.5 };
+
+            // Log-likelihood that throws for invalid sigma (sigma <= 0)
+            double logLH(double[] x)
+            {
+                var dist = new Normal(x[0], x[1]);
+                return dist.LogLikelihood(data);
+            }
+
+            // Use a large step size and many steps to increase chance of drifting out of bounds
+            var sampler = new HMC(priors, logLH, stepSize: 1.0, steps: 20);
+            sampler.NumberOfChains = 2;
+            sampler.WarmupIterations = 100;
+            sampler.Iterations = 200;
+
+            // This should complete without throwing AggregateException/ArithmeticException
+            sampler.Sample();
+
+            // Verify we got some results
+            Assert.IsNotNull(sampler.MarkovChains);
+            Assert.IsNotEmpty(sampler.MarkovChains, "Expected at least one Markov chain");
+        }
+
     }
 }

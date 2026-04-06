@@ -80,7 +80,7 @@ namespace Numerics.Sampling.MCMC
             _g = new Uniform(1.2, 2.2);
         }
 
-        private double _noise = 1E-3;
+        private double _noise = 1E-12;
         private Normal _b;
         private Uniform _g;
 
@@ -202,7 +202,6 @@ namespace Numerics.Sampling.MCMC
             // Do snooker update
             // Get Jump -- uniform random number between 1.2 and 2.2         
             double G = _g.InverseCDF(_chainPRNGs[index].NextDouble());
-            //double G = 1.7;
 
             // Select another chain, which is in state z
             int c = index;

@@ -175,5 +175,21 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(81.08905, ((Normal)copula.MarginalDistributionY).Mu, 1E-2);
             Assert.AreEqual(26.93537, ((Normal)copula.MarginalDistributionY).Sigma, 1E-2);
         }
+
+        /// <summary>
+        /// Test the tail dependence coefficients.
+        /// Frank copula: λ_U = λ_L = 0 (no tail dependence).
+        /// </summary>
+        [TestMethod]
+        public void Test_TailDependence()
+        {
+            var copula = new FrankCopula(5.0);
+            Assert.AreEqual(0.0, copula.UpperTailDependence, 1E-10, "Frank copula should have no upper tail dependence.");
+            Assert.AreEqual(0.0, copula.LowerTailDependence, 1E-10, "Frank copula should have no lower tail dependence.");
+
+            var copulaNeg = new FrankCopula(-5.0);
+            Assert.AreEqual(0.0, copulaNeg.UpperTailDependence, 1E-10, "Frank copula should have no upper tail dependence for negative θ.");
+            Assert.AreEqual(0.0, copulaNeg.LowerTailDependence, 1E-10, "Frank copula should have no lower tail dependence for negative θ.");
+        }
     }
 }

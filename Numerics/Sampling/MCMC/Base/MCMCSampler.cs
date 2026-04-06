@@ -82,11 +82,29 @@ namespace Numerics.Sampling.MCMC
 
         #region Inputs
 
+        /// <summary>
+        /// The pseudo random number generator (PRNG) seed.
+        /// </summary>
         protected int _prngSeed = 12345;
+        /// <summary>
+        /// The number of initial iterations before adaptation begins.
+        /// </summary>
         protected int _initialIterations = 10;
+        /// <summary>
+        /// The number of warmup (burn-in) iterations to discard.
+        /// </summary>
         protected int _warmupIterations = 1750;
+        /// <summary>
+        /// The number of sampling iterations after warmup.
+        /// </summary>
         protected int _iterations = 3500;
+        /// <summary>
+        /// The number of parallel Markov chains to run.
+        /// </summary>
         protected int _numberOfChains = 4;
+        /// <summary>
+        /// The thinning interval for reducing autocorrelation.
+        /// </summary>
         protected int _thinningInterval = 20;
 
         /// <summary>
@@ -184,7 +202,7 @@ namespace Numerics.Sampling.MCMC
         protected Random[] _chainPRNGs = null!;
 
         /// <summary>
-        /// The current states of each chain. 
+        /// The current states of each chain.
         /// </summary>
         protected ParameterSet[] _chainStates = null!;
 
@@ -249,14 +267,19 @@ namespace Numerics.Sampling.MCMC
         protected bool _mapSuccessful = false;
 
         /// <summary>
+        /// Indicates whether MAP initialization was attempted but failed, resulting in a fallback to random initialization.
+        /// </summary>
+        public bool MAPInitializationFailed { get; protected set; } = false;
+
+        /// <summary>
         /// The Multivariate Normal proposal distribution set from the MAP estimate.
         /// </summary>
-        protected MultivariateNormal _MVN = null!;
+        protected MultivariateNormal? _MVN;
 
         /// <summary>
         /// Event is raised when the simulation progress changes.
         /// </summary>
-        public event ProgressChangedEventHandler ProgressChanged = null!;
+        public event ProgressChangedEventHandler? ProgressChanged;
 
         /// <summary>
         /// Event is raised when the simulation progress changes.
@@ -273,7 +296,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Cancellation token source.
         /// </summary>
-        public CancellationTokenSource CancellationTokenSource { get; set; } = null!;
+        public CancellationTokenSource? CancellationTokenSource { get; set; }
 
         #endregion
 
@@ -308,7 +331,7 @@ namespace Numerics.Sampling.MCMC
             {
                 var ar = new double[NumberOfChains];
                 for (int i = 0; i < NumberOfChains; i++)
-                    ar[i] = (double)AcceptCount[i] / (double)SampleCount[i];
+                    ar[i] = SampleCount[i] > 0 ? (double)AcceptCount[i] / (double)SampleCount[i] : 0d;
                 return ar;
             }
         }
@@ -324,13 +347,13 @@ namespace Numerics.Sampling.MCMC
         public int OutputLength { get; set; } = 10000;
 
         /// <summary>
-        /// Output posterior parameter sets. These are recorded after the iterations have been completed. 
+        /// Output posterior parameter sets. These are recorded after the iterations have been completed.
         /// </summary>
         public List<ParameterSet>[] Output { get; protected set; } = null!;
 
         /// <summary>
-        /// The output parameter set that produced the maximum likelihood. 
-        /// This is referred to as the maximum a posteriori (MAP). 
+        /// The output parameter set that produced the maximum likelihood.
+        /// This is referred to as the maximum a posteriori (MAP).
         /// </summary>
         public ParameterSet MAP { get; protected set; }
 
@@ -403,6 +426,7 @@ namespace Numerics.Sampling.MCMC
                         // Get MAP
                         MAP = DE.BestParameterSet.Clone();
                         // Get Fisher Information Matrix
+                        if (DE.Hessian == null) throw new InvalidOperationException("Hessian matrix is not available.");
                         var fisher = DE.Hessian * -1d;
                         // Invert it to get the covariance matrix, and scale to give wider coverage
                         var covar = fisher.Inverse() * 2;
@@ -425,10 +449,11 @@ namespace Numerics.Sampling.MCMC
                         return initials;
 
                     }
-                    catch (Exception) 
+                    catch (Exception)
                     {
                         // If this fails go to naive initialization below
                         Initialize = InitializationType.Randomize;
+                        MAPInitializationFailed = true;
                     }
                 }
             }
@@ -571,7 +596,7 @@ namespace Numerics.Sampling.MCMC
 
                 // Update progress
                 progress += 1;
-                if (progress % (int)(totalIterations * ProgressChangedRate) == 0)
+                if (progress % Math.Max(1, (int)(totalIterations * ProgressChangedRate)) == 0)
                 {
                     ReportProgress((double)progress / totalIterations);
                 }
@@ -607,6 +632,7 @@ namespace Numerics.Sampling.MCMC
         public void Reset()
         {
             _simulations = 0;
+            MAPInitializationFailed = false;
             // Clear old memory and re-instantiate the result storage
             _masterPRNG = new Random(PRNGSeed);
             _chainPRNGs = new Random[NumberOfChains];
@@ -622,7 +648,7 @@ namespace Numerics.Sampling.MCMC
             AcceptCount = new int[NumberOfChains];
             SampleCount = new int[NumberOfChains];
             MeanLogLikelihood = new List<double>();
-            MAP = new ParameterSet([], double.MinValue);        
+            MAP = new ParameterSet([], double.MinValue);
         }
 
         #endregion

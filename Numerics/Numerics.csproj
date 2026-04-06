@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net8.0;net481</TargetFrameworks>
+    <TargetFrameworks>net10.0;net9.0;net8.0;net481</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -27,8 +27,8 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- 1591 is missing xml comment for a public member. 1587 is an xml comment not placed on a valid member (in our case, mostly license text at top of files) -->
-    <NoWarn>CS1591;CS1587</NoWarn>
+    <!-- 1587 is an xml comment not placed on a valid member (in our case, mostly license text at top of files) -->
+    <NoWarn>CS1587</NoWarn>
     <Version>2.0.0</Version>
     <PackageReleaseNotes>This major update delivers broad improvements across the entire Numerics library, with substantial enhancements to data analysis, statistical modeling, numerical methods, distributions, optimization, machine learning utilities, and overall performance and reliability. The update reflects over a year of incremental development, code modernization, and refinement.</PackageReleaseNotes>
     <AssemblyVersion>2.0.0.0</AssemblyVersion>
@@ -36,6 +36,7 @@
 
 	<PropertyGroup>
 		<Nullable>enable</Nullable>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 	</PropertyGroup>
 
 

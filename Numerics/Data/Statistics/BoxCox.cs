@@ -133,6 +133,7 @@ namespace Numerics.Data.Statistics
         /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
         public static double Transform(double value, double lambda)
         {
+            if (value <= 0) return double.NaN;
             if (Math.Abs(lambda) > 5d) return double.NaN;
             if (Math.Abs(lambda) < 1e-8) return Math.Log(value);
             return (Math.Pow(value, lambda) - 1.0d) / lambda;

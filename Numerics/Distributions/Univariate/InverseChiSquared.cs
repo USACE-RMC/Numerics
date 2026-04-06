@@ -255,7 +255,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (parameters[0] < 1.0d)
             {
@@ -298,7 +298,7 @@ namespace Numerics.Distributions
                 return 0d;
             double v = DegreesOfFreedom;
             double t2 = Sigma;
-            return Gamma.UpperIncomplete(v / 2.0d, v * t2 / 2.0d * x);
+            return Gamma.UpperIncomplete(v / 2.0d, v * t2 / (2.0d * x));
         }
 
         /// <inheritdoc/>
@@ -316,7 +316,7 @@ namespace Numerics.Distributions
                 ValidateParameters([DegreesOfFreedom, Sigma], true);
             double v = DegreesOfFreedom;
             double t2 = Sigma;
-            return  Gamma.InverseUpperIncomplete(v / 2.0d, probability) / (t2 * v / 2.0d);
+            return v * t2 / (2.0d * Gamma.InverseUpperIncomplete(v / 2.0d, probability));
         }
 
         /// <inheritdoc/>

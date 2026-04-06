@@ -319,7 +319,7 @@ namespace Numerics.Distributions
         /// <param name="mode">The mode, or most likely, value of the distribution.</param>
         /// <param name="max">The maximum possible value of the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        private ArgumentOutOfRangeException ValidateParameters(double min, double mode, double max, bool throwException)
+        private ArgumentOutOfRangeException? ValidateParameters(double min, double mode, double max, bool throwException)
         {
             if (double.IsNaN(min) || double.IsInfinity(min) ||
                 double.IsNaN(max) || double.IsInfinity(max) || min > max)
@@ -338,7 +338,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], parameters[2], throwException);
         }
@@ -452,15 +452,10 @@ namespace Numerics.Distributions
             {
                 return Min + Math.Sqrt(probability * (Max - Min) * (MostLikely - Min));
             }
-            else if (probability >= (MostLikely - Min) / (Max - Min))
+            else
             {
                 return Max - Math.Sqrt((1.0d - probability) * (Max - Min) * (Max - MostLikely));
             }
-            else if (Max - Min == 0d)
-            {
-                return MostLikely;
-            }
-            return double.NaN;
         }
 
         /// <inheritdoc/>

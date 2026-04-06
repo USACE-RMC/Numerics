@@ -60,14 +60,14 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_StudentT_PDF()
         {
-            var t = new StudentT(4.2d);
+            var t = new StudentT(4d);
             double pdf = t.PDF(1.4d);
             double result = 0.138377537135553d;
-            Assert.AreEqual(pdf, result, 1E-10);
-            t = new StudentT(2.5d, 0.5d, 4.2d);
+            Assert.AreEqual(result, pdf, 1E-10);
+            t = new StudentT(2.5d, 0.5d, 4d);
             pdf = t.PDF(1.4d);
             result = 0.0516476521260042d;
-            Assert.AreEqual(pdf, result, 1E-10);
+            Assert.AreEqual(result, pdf, 1E-10);
         }
 
         /// <summary>
@@ -76,14 +76,14 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_StudentT_CDF()
         {
-            var t = new StudentT(4.2d);
+            var t = new StudentT(4d);
             double cdf = t.CDF(1.4d);
             double result = 0.882949686336585d;
-            Assert.AreEqual(cdf, result, 1E-10);
-            t = new StudentT(2.5d, 0.5d, 4.2d);
+            Assert.AreEqual(result, cdf, 1E-10);
+            t = new StudentT(2.5d, 0.5d, 4d);
             cdf = t.CDF(1.4d);
             result = 0.0463263350898173d;
-            Assert.AreEqual(cdf, result, 1E-10);
+            Assert.AreEqual(result, cdf, 1E-10);
         }
 
         /// <summary>
@@ -92,16 +92,16 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_StudentT_InverseCDF()
         {
-            var t = new StudentT(4.2d);
+            var t = new StudentT(4d);
             double cdf = t.CDF(1.4d);
             double invcdf = t.InverseCDF(cdf);
             double result = 1.4d;
-            Assert.AreEqual(invcdf, result, 1E-2);
-            t = new StudentT(2.5d, 0.5d, 4.2d);
+            Assert.AreEqual(result, invcdf, 1E-2);
+            t = new StudentT(2.5d, 0.5d, 4d);
             cdf = t.CDF(1.4d);
             invcdf = t.InverseCDF(cdf);
             result = 1.4d;
-            Assert.AreEqual(invcdf, result, 1E-2);
+            Assert.AreEqual(result, invcdf, 1E-2);
         }
 
         /// <summary>
@@ -111,14 +111,14 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var t = new StudentT();
-            Assert.AreEqual(0, t.Mu);
-            Assert.AreEqual(1, t.Sigma);
-            Assert.AreEqual(10, t.DegreesOfFreedom);
+            Assert.AreEqual(0d, t.Mu);
+            Assert.AreEqual(1d, t.Sigma);
+            Assert.AreEqual(10d, t.DegreesOfFreedom);
 
             var t2 = new StudentT(10, 10, 10);
-            Assert.AreEqual(10, t2.Mu);
-            Assert.AreEqual(10, t2.Sigma);
-            Assert.AreEqual(10, t2.DegreesOfFreedom);
+            Assert.AreEqual(10d, t2.Mu);
+            Assert.AreEqual(10d, t2.Sigma);
+            Assert.AreEqual(10d, t2.DegreesOfFreedom);
         }
 
         /// <summary>
@@ -148,7 +148,7 @@ namespace Distributions.Univariate
             Assert.AreEqual("Scale (σ)", t.ParametersToString[1, 0]);
             Assert.AreEqual("Degrees of Freedom (ν)", t.ParametersToString[2, 0]);
             Assert.AreEqual("0", t.ParametersToString[0, 1]);
-            Assert.AreEqual("1", t.ParametersToString[1, 1]);
+            Assert.AreEqual("1", t.ParametersToString[1,1]);
             Assert.AreEqual("10", t.ParametersToString[2, 1]);
         }
 
@@ -160,10 +160,10 @@ namespace Distributions.Univariate
         {
             var dist = new StudentT(10, 1, 100);
             var mom = dist.CentralMoments(1E-8);
-            Assert.AreEqual(mom[0], dist.Mean, 1E-2);
-            Assert.AreEqual(mom[1], dist.StandardDeviation, 1E-2);
-            Assert.AreEqual(mom[2], dist.Skewness, 1E-2);
-            Assert.AreEqual(mom[3], dist.Kurtosis, 1E-2);
+            Assert.AreEqual(dist.Mean, mom[0], 1E-2);
+            Assert.AreEqual(dist.StandardDeviation, mom[1], 1E-2);
+            Assert.AreEqual(dist.Skewness, mom[2], 1E-2);
+            Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
         /// <summary>
@@ -231,7 +231,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0, t.Skewness);
 
             var t2 = new StudentT(1, 1, 1);
-            Assert.AreEqual(double.NaN,t2.Skewness );
+            Assert.AreEqual(double.NaN, t2.Skewness);
         }
 
         /// <summary>
@@ -241,7 +241,7 @@ namespace Distributions.Univariate
         public void Test_Kurtosis()
         {
             var t = new StudentT();
-            Assert.AreEqual(4, t.Kurtosis );
+            Assert.AreEqual(4, t.Kurtosis);
 
             var t2 = new StudentT(1, 1, 4);
             Assert.AreEqual(double.PositiveInfinity, t2.Kurtosis);

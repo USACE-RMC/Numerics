@@ -58,7 +58,7 @@ namespace Numerics
         /// <typeparam name="T">The type of the attribute you want to retrieve</typeparam>
         /// <param name="enumValue">The enum value</param>
         /// <returns>The attribute of type T that exists on the enum value</returns>
-        public static T GetAttributeOfType<T>(this Enum enumValue) where T : Attribute
+        public static T? GetAttributeOfType<T>(this Enum enumValue) where T : Attribute
         {
             var type = enumValue.GetType();
             var memInfo = type.GetMember(enumValue.ToString());
@@ -177,7 +177,7 @@ namespace Numerics
             var prngs = new Random[dimension];
             for (int i = 0; i < dimension; i++)
             {
-                prngs[i] = random.GetType() == typeof(MersenneTwister) ? new MersenneTwister(random.Next()) : new Random(random.Next());
+                prngs[i] = random is MersenneTwister ? new MersenneTwister(random.Next()) : new Random(random.Next());
                 for (int j = 0; j < length; j++)
                 {
                     values[j, i] = prngs[i].NextDouble();

@@ -271,22 +271,22 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (_baseDist != null!) _baseDist.ValidateParameters(parameters.ToArray().Subset(0, parameters.Count - 2), throwException);
+            if (_baseDist is not null) _baseDist.ValidateParameters(parameters.ToArray().Subset(0, parameters.Count - 2), throwException);
             if (double.IsNaN(Min) || double.IsNaN(Max) || double.IsInfinity(Min) || double.IsInfinity(Max) || Min >= Max)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Min), "The min must be less than the max.");
                 return new ArgumentOutOfRangeException(nameof(Min), "The min must be less than the max.");
             }
-            if (_Fmin == _Fmax)
+            if (Math.Abs(_Fmin - _Fmax) < 1e-15)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
                 return new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
             }              
-            return null!;
+            return null;
         }
 
         /// <inheritdoc/>

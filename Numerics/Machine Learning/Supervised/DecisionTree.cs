@@ -428,15 +428,15 @@ namespace Numerics.MachineLearning
             if (node.IsLeafNode == true)
                 return node.Value;
             if (x[node.FeatureIndex] <= node.Threshold)
-                return TraverseTree(x, node.Left);
-            return TraverseTree(x, node.Right);
+                return node.Left != null ? TraverseTree(x, node.Left) : node.Value;
+            return node.Right != null ? TraverseTree(x, node.Right) : node.Value;
         }
 
         /// <summary>
         /// Returns the prediction from the Decision Tree.
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
-        public double[] Predict(double[] X)
+        public double[]? Predict(double[] X)
         {
             return Predict(new Matrix(X));
         }
@@ -445,7 +445,7 @@ namespace Numerics.MachineLearning
         /// Returns the prediction from the Decision Tree.
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
-        public double[] Predict(double[,] X)
+        public double[]? Predict(double[,] X)
         {
             return Predict(new Matrix(X));
         }
@@ -454,7 +454,7 @@ namespace Numerics.MachineLearning
         /// Returns the prediction from the Decision Tree.
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
-        public double[] Predict(Matrix X)
+        public double[]? Predict(Matrix X)
         {
             if (!IsTrained || X.NumberOfColumns != Dimensions) return null!;
             var result = new double[X.NumberOfRows];

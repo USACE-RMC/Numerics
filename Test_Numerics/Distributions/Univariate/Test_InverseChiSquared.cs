@@ -60,10 +60,12 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_InverseChiSquaredDist()
         {
+            // Reference: scipy.special.gammaincc(v/2, v*sigma/(2*x)) for CDF
+            // InverseCDF: v*sigma / (2 * gammainccinv(v/2, p))
             double true_mean = 0.2;
-            double true_median = 6.345811068141737d;
+            double true_median = 0.15758426609d;
             double true_pdf = 0.0000063457380298844403d;
-            double true_cdf = 0.50860033566176044d;
+            double true_cdf = 0.9999884277d;
             double true_icdf = 6.27d;
             var IX = new InverseChiSquared(7, (1d / 7d));
             double pdf = IX.PDF(6.27d);
@@ -73,7 +75,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(IX.Median, true_median, 0.0001d);
             Assert.AreEqual(IX.PDF(6.27d), true_pdf, 0.0001d);
             Assert.AreEqual(IX.CDF(6.27d), true_cdf, 0.0001d);
-            Assert.AreEqual(IX.InverseCDF(IX.CDF(6.27d)), true_icdf, 0.0001d);
+            Assert.AreEqual(IX.InverseCDF(IX.CDF(6.27d)), true_icdf, 0.001d);
         }
 
         /// <summary>
@@ -139,11 +141,12 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_Median()
         {
+            // Reference: v*sigma / (2 * gammainccinv(v/2, 0.5))
             var IX = new InverseChiSquared();
-            Assert.AreEqual(0.93418, IX.Median, 1e-04);
+            Assert.AreEqual(1.07046, IX.Median, 1e-04);
 
             var IX2 = new InverseChiSquared(7, 1);
-            Assert.AreEqual(0.906544, IX2.Median,  1e-04);
+            Assert.AreEqual(1.10309, IX2.Median, 1e-04);
         }
 
         /// <summary>
@@ -231,8 +234,9 @@ namespace Distributions.Univariate
         [TestMethod()]
         public void Test_CDF()
         {
+            // Reference: scipy.special.gammaincc(3.5, 3.5/5) = 0.985571264449
             var IX = new InverseChiSquared(7,1);
-            Assert.AreEqual(1.1184e-05, IX.CDF(5),  1e-09);
+            Assert.AreEqual(0.985571264449d, IX.CDF(5), 1e-06);
         }
 
         /// <summary>
@@ -244,7 +248,51 @@ namespace Distributions.Univariate
             var IX = new InverseChiSquared();
             Assert.AreEqual(0, IX.InverseCDF(0));
             Assert.AreEqual(double.PositiveInfinity,IX.InverseCDF(1));
-            Assert.AreEqual(1.17807, IX.InverseCDF(0.3), 1e-04);
+            // Reference: scipy.stats.chi2.isf => v*sigma / chi2.isf(p, v)
+            Assert.AreEqual(0.84884, IX.InverseCDF(0.3), 1e-04);
+        }
+
+        /// <summary>
+        /// Verify CDF and InverseCDF are correct and mutually inverse.
+        /// Reference: scipy.stats.chi2.sf(v*sigma/x, v) for CDF; v*sigma/chi2.isf(p, v) for InverseCDF.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_InverseCDF_Roundtrip()
+        {
+            // v=10, sigma=1: CDF values from scipy.stats.chi2.sf(v*sigma/x, v)
+            var dist = new InverseChiSquared(10, 1);
+            Assert.AreEqual(0.0292526881, dist.CDF(0.5), 1E-6);
+            Assert.AreEqual(0.4404932851, dist.CDF(1.0), 1E-6);
+            Assert.AreEqual(0.8911780189, dist.CDF(2.0), 1E-6);
+
+            // CDF must be non-decreasing
+            Assert.IsLessThan(dist.CDF(1.0), dist.CDF(0.5));
+            Assert.IsLessThan(dist.CDF(2.0), dist.CDF(1.0));
+
+            // InverseCDF values from v*sigma / scipy.stats.chi2.isf(p, v)
+            Assert.AreEqual(0.6255012152, dist.InverseCDF(0.1), 1E-4);
+            Assert.AreEqual(0.8488443635, dist.InverseCDF(0.3), 1E-4);
+            Assert.AreEqual(1.0704554778, dist.InverseCDF(0.5), 1E-4);
+            Assert.AreEqual(1.3760423551, dist.InverseCDF(0.7), 1E-4);
+            Assert.AreEqual(2.0554215430, dist.InverseCDF(0.9), 1E-4);
+
+            // Roundtrip: InverseCDF(CDF(x)) ≈ x
+            foreach (double x in new[] { 0.5, 1.0, 2.0 })
+            {
+                Assert.AreEqual(x, dist.InverseCDF(dist.CDF(x)), 1E-4, $"Roundtrip failed for x={x}");
+            }
+
+            // v=5, sigma=2: CDF values from scipy.stats.chi2.sf(v*sigma/x, v)
+            var dist2 = new InverseChiSquared(5, 2);
+            Assert.AreEqual(0.0012497306, dist2.CDF(0.5), 1E-6);
+            Assert.AreEqual(0.4158801870, dist2.CDF(2.0), 1E-6);
+            Assert.AreEqual(0.8491450361, dist2.CDF(5.0), 1E-6);
+
+            // Roundtrip for v=5, sigma=2
+            foreach (double x in new[] { 0.5, 2.0, 5.0 })
+            {
+                Assert.AreEqual(x, dist2.InverseCDF(dist2.CDF(x)), 1E-3, $"Roundtrip failed for x={x}");
+            }
         }
     }
 }

@@ -116,7 +116,7 @@ namespace Numerics.Mathematics.Integration
         private int _numberOfBins = 50;
         private double _standardError;
         private double _chiSquared;
-        private SobolSequence _sobol;
+        private SobolSequence _sobol = null!;
 
         // Constants
         private const int MaxDimensions = 20;

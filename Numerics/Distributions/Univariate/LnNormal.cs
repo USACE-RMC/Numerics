@@ -297,7 +297,7 @@ namespace Numerics.Distributions
         /// <param name="mean">Mean.</param>
         /// <param name="standardDeviation">Standard deviation.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
-        public ArgumentOutOfRangeException ValidateParameters(double mean, double standardDeviation, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double mean, double standardDeviation, bool throwException)
         {
             if (double.IsNaN(mean) || double.IsInfinity(mean))
             {
@@ -315,7 +315,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }

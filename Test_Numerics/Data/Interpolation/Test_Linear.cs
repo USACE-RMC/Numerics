@@ -65,12 +65,12 @@ namespace Data.Interpolation
                 values[i - 1] = i;
             var LI = new Linear(values, values);
             var lo = LI.SequentialSearch(872.5d);
-            Assert.AreEqual(871,lo);
+            Assert.AreEqual(871, lo);
 
             Array.Reverse(values);
             LI = new Linear(values, values, SortOrder.Descending);
             lo = LI.SequentialSearch(872.5);
-            Assert.AreEqual(127,lo);
+            Assert.AreEqual(127, lo);
         }
 
         /// <summary>
@@ -122,7 +122,7 @@ namespace Data.Interpolation
             var LI = new Linear(XArray, YArray);
             double X = 75d;
             double Y = LI.Interpolate(X);
-            Assert.AreEqual(150.0d, Y,  1E-6);
+            Assert.AreEqual(150.0d, Y, 1E-6);
         }
 
         /// <summary>
@@ -155,15 +155,15 @@ namespace Data.Interpolation
 
             var LinLog = new Linear(XArray, YArray) { YTransform = Transform.Logarithmic };
             double Y1 = LinLog.Interpolate(X);
-            Assert.AreEqual(141.42135623731d, Y1,  1E-6);
+            Assert.AreEqual(141.42135623731d, Y1, 1E-6);
 
             var LogLin = new Linear(XArray, YArray) { XTransform = Transform.Logarithmic };
             double Y2 = LogLin.Interpolate(X);
-            Assert.AreEqual(158.496250072116d, Y2,  1E-6);
+            Assert.AreEqual(158.496250072116d, Y2, 1E-6);
 ;
             var LogLog = new Linear(XArray, YArray) { XTransform = Transform.Logarithmic, YTransform = Transform.Logarithmic };
             double Y3 = LogLog.Interpolate(X);
-            Assert.AreEqual(150.0d, Y3,  1E-6);
+            Assert.AreEqual(150.0d, Y3, 1E-6);
         }
 
         /// <summary>
@@ -214,15 +214,15 @@ namespace Data.Interpolation
 
             var LinZ = new Linear(XArray, YArray) { YTransform = Transform.NormalZ };
             double Y1 = LinZ.Interpolate(X);
-            Assert.AreEqual(0.358762529d, Y1,  1E-6);
+            Assert.AreEqual(0.358762529d, Y1, 1E-6);
 
             var ZLin = new Linear(XArray, YArray) { XTransform = Transform.NormalZ };
             double Y2 = ZLin.Interpolate(X);
-            Assert.AreEqual(0.362146174d, Y2,  1E-6);
+            Assert.AreEqual(0.362146174d, Y2, 1E-6);
 
             var ZZ = new Linear(XArray, YArray) { XTransform = Transform.NormalZ, YTransform = Transform.NormalZ };
             double Y3 = ZZ.Interpolate(X);
-            Assert.AreEqual(0.36093855992815d, Y3,  1E-6);
+            Assert.AreEqual(0.36093855992815d, Y3, 1E-6);
         }
 
         /// <summary>
@@ -274,7 +274,7 @@ namespace Data.Interpolation
             var LI = new Linear(XArray, YArray, SortOrder.Descending);
             double X = 75d;
             double Y = LI.Interpolate(X);
-            Assert.AreEqual(150.0d, Y,  1E-6);
+            Assert.AreEqual(150.0d, Y, 1E-6);
         }
 
         /// <summary>
@@ -292,11 +292,11 @@ namespace Data.Interpolation
 
             var LinLog = new Linear(XArray, YArray, SortOrder.Descending) { YTransform = Transform.Logarithmic };
             double Y1 = LinLog.Interpolate(X);
-            Assert.AreEqual(141.42135623731d, Y1,  1E-6);
+            Assert.AreEqual(141.42135623731d, Y1, 1E-6);
 
             var LogLin = new Linear(XArray, YArray, SortOrder.Descending) { XTransform = Transform.Logarithmic };
             double Y2 = LogLin.Interpolate(X);
-            Assert.AreEqual(158.496250072116d, Y2,  1E-6);
+            Assert.AreEqual(158.496250072116d, Y2, 1E-6);
 
             var LogLog = new Linear(XArray, YArray, SortOrder.Descending) { XTransform = Transform.Logarithmic, YTransform = Transform.Logarithmic };
             double Y3 = LogLog.Interpolate(X);
@@ -347,7 +347,7 @@ namespace Data.Interpolation
             var yVals = LI.Interpolate(xVals);
             var trueVals = new double[] { 100, 128.888888888889, 177.777777777778, 226.666666666667, 275.555555555556, 324.444444444444, 373.333333333333, 422.222222222222, 471.111111111111, 500 };
             for (int i = 1; i < N; i++)
-                Assert.AreEqual(yVals[i], trueVals[i], 1E-6);
+                Assert.AreEqual(trueVals[i], yVals[i], 1E-6);
         }
 
         /// <summary>

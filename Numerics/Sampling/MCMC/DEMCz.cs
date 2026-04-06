@@ -78,7 +78,7 @@ namespace Numerics.Sampling.MCMC
             _b = new Normal(0, _noise);
         }
 
-        private double _noise = 1E-3;
+        private double _noise = 1E-12;
         private Normal _b;
 
         /// <summary>
@@ -131,7 +131,8 @@ namespace Numerics.Sampling.MCMC
             // Sample uniformly at random without replacement two numbers R1 and R2
             // from the numbers 1, 2, ..., M. 
             int r1, r2, M = PopulationMatrix.Count;
-            r1 = _chainPRNGs[index].Next(0, M); 
+            if (M < 2) throw new InvalidOperationException("PopulationMatrix must contain at least 2 elements.");
+            r1 = _chainPRNGs[index].Next(0, M);
             do r2 = _chainPRNGs[index].Next(0, M); while (r2 == r1);
 
             // Calculate the proposal vector

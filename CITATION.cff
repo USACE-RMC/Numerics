@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Numerics"
+version: "2.0.0"
+date-released: "2026-03-08"
+license: BSD-3-Clause
+repository-code: "https://github.com/USACE-RMC/Numerics"
+url: "https://github.com/USACE-RMC/Numerics"
+abstract: >-
+  Numerics is a free and open-source .NET library providing numerical methods,
+  probability distributions, statistical analysis, and Bayesian inference tools
+  for quantitative risk assessment in water resources engineering.
+keywords:
+  - statistics
+  - probability distributions
+  - MCMC
+  - hydrology
+  - flood frequency analysis
+  - copulas
+  - L-moments
+  - optimization
+  - .NET
+  - C#
+authors:
+  - family-names: "Smith"
+    given-names: "C. Haden"
+    email: "cole.h.smith@usace.army.mil"
+    affiliation: "U.S. Army Corps of Engineers, Risk Management Center"
+    orcid: "https://orcid.org/0000-0002-4651-9890"
+  - family-names: "Fields"
+    given-names: "Woodrow L."
+    affiliation: "U.S. Army Corps of Engineers, Risk Management Center"
+  - family-names: "Gonzalez"
+    given-names: "Julian"
+    affiliation: "U.S. Army Corps of Engineers, Risk Management Center"
+  - family-names: "Niblett"
+    given-names: "Sadie"
+    affiliation: "U.S. Army Corps of Engineers, Risk Management Center"
+  - family-names: "Beam"
+    given-names: "Brennan"
+    affiliation: "U.S. Army Corps of Engineers, Hydrologic Engineering Center"
+  - family-names: "Skahill"
+    given-names: "Brian"
+    affiliation: "Fariborz Maseeh Department of Mathematics and Statistics, Portland State University"

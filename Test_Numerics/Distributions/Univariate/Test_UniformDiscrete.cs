@@ -64,7 +64,8 @@ namespace Distributions.Univariate
         {
             double true_mean = 4.0d;
             double true_median = 4.0d;
-            double true_stdDev = Math.Sqrt(1.3333333333333333d);
+            // scipy.stats.randint(2, 7).std() = 1.4142135624; N=5, sqrt((N^2-1)/12)
+            double true_stdDev = Math.Sqrt((5.0d * 5.0d - 1.0d) / 12.0d);
             int true_skew = 0;
             double true_kurt = 1.7d;
             double true_pdf = 0.2d;
@@ -72,15 +73,15 @@ namespace Distributions.Univariate
             double true_icdf05 = 2.0d;
             double true_icdf95 = 6.0d;
             var U = new UniformDiscrete(2d, 6d);
-            Assert.AreEqual(U.Mean, true_mean, 0.0001d);
-            Assert.AreEqual(U.Median, true_median, 0.0001d);
-            Assert.AreEqual(U.StandardDeviation, true_stdDev, 0.0001d);
-            Assert.AreEqual(U.Skewness, true_skew, 0.0001d);
-            Assert.AreEqual(U.Kurtosis, true_kurt, 0.0001d);
-            Assert.AreEqual(U.PDF(4.0d), true_pdf, 0.0001d);
-            Assert.AreEqual(U.CDF(2.0d), true_cdf, 0.0001d);
-            Assert.AreEqual(U.InverseCDF(0.17d), true_icdf05, 0.0001d);
-            Assert.AreEqual(U.InverseCDF(0.87d), true_icdf95, 0.0001d);
+            Assert.AreEqual(true_mean, U.Mean, 0.0001d);
+            Assert.AreEqual(true_median, U.Median, 0.0001d);
+            Assert.AreEqual(true_stdDev, U.StandardDeviation, 0.0001d);
+            Assert.AreEqual(true_skew, U.Skewness, 0.0001d);
+            Assert.AreEqual(true_kurt, U.Kurtosis, 0.0001d);
+            Assert.AreEqual(true_pdf, U.PDF(4.0d), 0.0001d);
+            Assert.AreEqual(true_cdf, U.CDF(2.0d), 0.0001d);
+            Assert.AreEqual(true_icdf05, U.InverseCDF(0.17d), 0.0001d);
+            Assert.AreEqual(true_icdf95, U.InverseCDF(0.87d), 0.0001d);
         }
         
         /// <summary>
@@ -90,8 +91,8 @@ namespace Distributions.Univariate
         public void Test_Construction()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(0,U.Min);
-            Assert.AreEqual(1,U.Max);
+            Assert.AreEqual(0, U.Min);
+            Assert.AreEqual(1, U.Max);
 
             var U2 = new UniformDiscrete(2, 10);
             Assert.AreEqual(2, U2.Min);
@@ -127,7 +128,7 @@ namespace Distributions.Univariate
         public void Test_ParametersToString()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual("Min",U.ParametersToString[0, 0] );
+            Assert.AreEqual("Min", U.ParametersToString[0, 0]);
             Assert.AreEqual("Max", U.ParametersToString[1, 0]);
             Assert.AreEqual("0", U.ParametersToString[0, 1]);
             Assert.AreEqual("1", U.ParametersToString[1, 1]);
@@ -166,7 +167,7 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var U = new UniformDiscrete();
-            Assert.AreEqual(double.NaN,U.Mode);
+            Assert.AreEqual(double.NaN, U.Mode);
 
             var U2 = new UniformDiscrete(2, 10);
             Assert.AreEqual(double.NaN, U2.Mode);
@@ -178,11 +179,13 @@ namespace Distributions.Univariate
         [TestMethod]
         public void Test_StandardDeviation()
         {
+            // scipy.stats.randint(0, 2).std() = 0.5; N=2, sqrt((4-1)/12) = 0.5
             var U = new UniformDiscrete();
-            Assert.AreEqual(0.288675, U.StandardDeviation,  1e-05);
+            Assert.AreEqual(0.5, U.StandardDeviation, 1e-05);
 
+            // scipy.stats.randint(2, 11).std() = 2.5819888975; N=9, sqrt((81-1)/12)
             var U2 = new UniformDiscrete(2, 10);
-            Assert.AreEqual(2.3094, U2.StandardDeviation,  1e-04);
+            Assert.AreEqual(2.5819888975, U2.StandardDeviation, 1e-04);
         }
 
         /// <summary>
@@ -258,8 +261,36 @@ namespace Distributions.Univariate
         {
             var U = new UniformDiscrete();
             Assert.AreEqual(0, U.InverseCDF(0));
-            Assert.AreEqual(1,U.InverseCDF(1));
-            Assert.AreEqual(0,U.InverseCDF(0.3));
+            Assert.AreEqual(1, U.InverseCDF(1));
+            Assert.AreEqual(0, U.InverseCDF(0.3));
+        }
+
+        /// <summary>
+        /// Verify discrete uniform standard deviation uses the correct formula: sqrt((N^2-1)/12).
+        /// Reference: scipy.stats.randint(low, high+1).std()
+        /// </summary>
+        [TestMethod()]
+        public void Test_StandardDeviation_Discrete()
+        {
+            // randint(0, 2).std() = 0.5000000000  {0,1}
+            var u1 = new UniformDiscrete(0, 1);
+            Assert.AreEqual(0.5, u1.StandardDeviation, 1E-6);
+
+            // randint(0, 6).std() = 1.7078251277  {0,...,5}
+            var u2 = new UniformDiscrete(0, 5);
+            Assert.AreEqual(1.7078251277, u2.StandardDeviation, 1E-6);
+
+            // randint(0, 11).std() = 3.1622776602  {0,...,10}
+            var u3 = new UniformDiscrete(0, 10);
+            Assert.AreEqual(3.1622776602, u3.StandardDeviation, 1E-6);
+
+            // randint(1, 7).std() = 1.7078251277  {1,...,6}
+            var u4 = new UniformDiscrete(1, 6);
+            Assert.AreEqual(1.7078251277, u4.StandardDeviation, 1E-6);
+
+            // randint(3, 8).std() = 1.4142135624  {3,...,7}
+            var u5 = new UniformDiscrete(3, 7);
+            Assert.AreEqual(1.4142135624, u5.StandardDeviation, 1E-6);
         }
     }
 

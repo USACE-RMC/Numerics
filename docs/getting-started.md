@@ -1,5 +1,7 @@
 # Getting Started
 
+[Back to Index](index.md) | [Next: Numerical Integration →](mathematics/integration.md)
+
 This guide will help you get up and running with the ***Numerics*** library quickly.
 
 ## Installation
@@ -9,13 +11,13 @@ This guide will help you get up and running with the ***Numerics*** library quic
 The easiest way to install ***Numerics*** is via NuGet:
 
 ```bash
-dotnet add package Numerics
+dotnet add package RMC.Numerics
 ```
 
-Or add the following to your `.csproj` file:
+Or using the Package Manager Console:
 
-```xml
-<PackageReference Include="Numerics" Version="1.0.0" />
+```
+Install-Package RMC.Numerics
 ```
 
 ### Manual Installation
@@ -24,7 +26,7 @@ Download the compiled DLL from the releases page and add a reference to your pro
 
 ```xml
 <Reference Include="Numerics">
-  <HintPath>path\to\Numerics.dll</HintPath>
+  <HintPath>Numerics.dll</HintPath>
 </Reference>
 ```
 
@@ -41,7 +43,6 @@ using Numerics.Data.Statistics;
 
 // Numerical methods
 using Numerics.Mathematics.Integration;
-using Numerics.Mathematics.Differentiation;
 using Numerics.Mathematics.Optimization;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.RootFinding;
@@ -51,7 +52,7 @@ using Numerics.Sampling;
 using Numerics.Sampling.MCMC;
 
 // Interpolation
-using Numerics.Data.Interpolation;
+using Numerics.Data;
 ```
 
 ## Working with Distributions
@@ -105,7 +106,7 @@ Console.WriteLine($"Median:   {dist.Median}");
 Console.WriteLine($"Mode:     {dist.Mode}");
 Console.WriteLine($"Variance: {dist.Variance}");
 Console.WriteLine($"Std Dev:  {dist.StandardDeviation}");
-Console.WriteLine($"Skewness: {dist.Skew}");
+Console.WriteLine($"Skewness: {dist.Skewness}");
 Console.WriteLine($"Kurtosis: {dist.Kurtosis}");
 ```
 
@@ -120,66 +121,67 @@ var dist = new Normal(100, 15);
 double x = dist.InverseCDF(new Random().NextDouble());
 
 // Multiple random values (more efficient)
-double[] samples = new double[1000];
-dist.GenerateRandomValues(samples);
+double[] samples = dist.GenerateRandomValues(1000);
 
 // With specific seed for reproducibility
-dist.GenerateRandomValues(samples, seed: 12345);
+double[] seededSamples = dist.GenerateRandomValues(1000, seed: 12345);
 ```
 
 ## Fitting Distributions to Data
 
 ### Parameter Estimation Methods
 
-***Numerics*** supports three estimation methods:
+***Numerics*** supports multiple estimation methods. The simplest approach is `Estimate()`:
 
 ```cs
+using Numerics.Distributions;
+
 double[] data = { 10.2, 15.1, 12.3, 18.7, 14.2, 16.8, 13.1, 17.5 };
 
+// L-Moments (recommended for hydrological data)
+var gev = new GeneralizedExtremeValue();
+gev.Estimate(data, ParameterEstimationMethod.MethodOfLinearMoments);
+
+// Maximum Likelihood Estimation
 var normal = new Normal();
+normal.Estimate(data, ParameterEstimationMethod.MaximumLikelihood);
 
-// Method of Moments (MOM)
-if (normal is IMomentEstimation mom)
-{
-    normal.SetParameters(mom.ParametersFromMoments(data));
-}
-
-// L-Moments (LMOM) - preferred for heavy-tailed distributions
-if (normal is ILinearMomentEstimation lmom)
-{
-    normal.SetParameters(lmom.ParametersFromLinearMoments(data));
-}
-
-// Maximum Likelihood Estimation (MLE)
-if (normal is IMaximumLikelihoodEstimation mle)
-{
-    normal.SetParameters(mle.MLE(data));
-}
+// Method of Moments
+var lognormal = new LogNormal();
+lognormal.Estimate(data, ParameterEstimationMethod.MethodOfMoments);
 ```
 
 ### Hydrologic Frequency Analysis Example
+
+This example uses annual peak streamflow from the Tippecanoe River near Delphi, Indiana (Rao & Hamed, 2000, Table 5.1.1). See [`example-data/tippecanoe-river-streamflow.csv`](example-data/tippecanoe-river-streamflow.csv).
 
 ```cs
 using Numerics.Distributions;
 using Numerics.Data.Statistics;
 
-// Annual maximum streamflow data (cfs)
-double[] annualMax = { 12500, 15200, 11800, 18900, 14200, 
-                       16500, 13400, 17800, 10900, 19500 };
+// Tippecanoe River near Delphi, IN — 48 years of annual peak streamflow (cfs)
+// Source: Rao & Hamed (2000), Table 5.1.1
+double[] annualPeaks = {
+    6290, 2700, 13100, 16900, 14600, 9600, 7740, 8490, 8130, 12000,
+    17200, 15000, 12400, 6960, 6500, 5840, 10400, 18800, 21400, 22600,
+    14200, 11000, 12800, 15700, 4740, 6950, 11800, 12100, 20600, 14600,
+    14600, 8900, 10600, 14200, 14100, 14100, 12500, 7530, 13400, 17600,
+    13400, 19200, 16900, 15500, 14500, 21900, 10400, 7460
+};
 
-// Fit Log-Pearson Type III using L-Moments
+// Fit Log-Pearson Type III using L-Moments (USGS Bulletin 17C method)
 var lp3 = new LogPearsonTypeIII();
-lp3.SetParameters(lp3.ParametersFromLinearMoments(annualMax));
+lp3.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
 
-// Compute flood quantiles
+// Compute flood quantiles for key return periods
 Console.WriteLine("Return Period Analysis:");
 Console.WriteLine($"  10-year flood (10% AEP): {lp3.InverseCDF(0.90):N0} cfs");
 Console.WriteLine($"  50-year flood (2% AEP):  {lp3.InverseCDF(0.98):N0} cfs");
 Console.WriteLine($" 100-year flood (1% AEP):  {lp3.InverseCDF(0.99):N0} cfs");
-Console.WriteLine($" 500-year flood (0.2% AEP):{lp3.InverseCDF(0.998):N0} cfs");
+Console.WriteLine($" 500-year flood (0.2% AEP): {lp3.InverseCDF(0.998):N0} cfs");
 
 // Assess goodness-of-fit
-double aic = GoodnessOfFit.AIC(lp3.NumberOfParameters, lp3.LogLikelihood(annualMax));
+double aic = GoodnessOfFit.AIC(lp3.NumberOfParameters, lp3.LogLikelihood(annualPeaks));
 Console.WriteLine($"\nAIC: {aic:F2}");
 ```
 
@@ -215,16 +217,17 @@ double[] lower = { 0, 0, 0 };
 double[] upper = { 1, 1, 1 };
 
 // Monte Carlo integration
-var mc = new MonteCarlo(f3d, lower, upper);
-mc.Iterations = 100000;
+var mc = new MonteCarloIntegration(f3d, 3, lower, upper);
+mc.MaxIterations = 100000;
 mc.Integrate();
-Console.WriteLine($"Monte Carlo: {mc.Result:F6} ± {mc.Error:F6}");
+Console.WriteLine($"Monte Carlo: {mc.Result:F6} ± {mc.StandardError:F6}");
 
 // VEGAS adaptive importance sampling
-var vegas = new Vegas(f3d, lower, upper);
-vegas.Iterations = 10000;
+Func<double[], double, double> f3dVegas = (x, w) => x[0] * x[1] * x[2];
+var vegas = new Vegas(f3dVegas, 3, lower, upper);
+vegas.MaxIterations = 10000;
 vegas.Integrate();
-Console.WriteLine($"VEGAS: {vegas.Result:F6} ± {vegas.Error:F6}");
+Console.WriteLine($"VEGAS: {vegas.Result:F6} ± {vegas.StandardError:F6}");
 ```
 
 ## Optimization
@@ -243,10 +246,10 @@ Func<double[], double> rosenbrock = x =>
 };
 
 // BFGS (quasi-Newton method)
-var bfgs = new BFGS(rosenbrock, 2, new double[] { -1, -1 });
+var bfgs = new BFGS(rosenbrock, 2, new double[] { -1, -1 }, new double[] { -5, -5 }, new double[] { 5, 5 });
 bfgs.Minimize();
-Console.WriteLine($"BFGS minimum at: ({bfgs.BestParameterSet[0]:F6}, {bfgs.BestParameterSet[1]:F6})");
-Console.WriteLine($"Function value: {bfgs.BestFitness:E6}");
+Console.WriteLine($"BFGS minimum at: ({bfgs.BestParameterSet.Values[0]:F6}, {bfgs.BestParameterSet.Values[1]:F6})");
+Console.WriteLine($"Function value: {bfgs.BestParameterSet.Fitness:E6}");
 ```
 
 ### Global Optimization
@@ -269,7 +272,7 @@ double[] upper = { 5.12, 5.12 };
 // Differential Evolution
 var de = new DifferentialEvolution(rastrigin, 2, lower, upper);
 de.Minimize();
-Console.WriteLine($"DE minimum at: ({de.BestParameterSet[0]:F6}, {de.BestParameterSet[1]:F6})");
+Console.WriteLine($"DE minimum at: ({de.BestParameterSet.Values[0]:F6}, {de.BestParameterSet.Values[1]:F6})");
 ```
 
 ## MCMC Sampling
@@ -291,39 +294,45 @@ var priors = new List<IUnivariateDistribution>
 };
 
 // Log-likelihood function
-double LogLikelihood(double[] theta)
+double ComputeLogLikelihood(double[] theta)
 {
     double mu = theta[0];
     double sigma = theta[1];
     if (sigma <= 0) return double.NegativeInfinity;
-    
+
     var model = new Normal(mu, sigma);
     return model.LogLikelihood(observations);
 }
 
 // Run DE-MCz sampler
-var sampler = new DEMCz(priors, LogLikelihood);
+var sampler = new DEMCz(priors, ComputeLogLikelihood);
 sampler.Iterations = 20000;
 sampler.WarmupIterations = 5000;
 sampler.Sample();
 
-// Analyze results
-var output = sampler.Output;
-Console.WriteLine($"Mean estimate: {output.Mean(0):F3} [{output.Percentile(0, 0.025):F3}, {output.Percentile(0, 0.975):F3}]");
-Console.WriteLine($"Std estimate:  {output.Mean(1):F3} [{output.Percentile(1, 0.025):F3}, {output.Percentile(1, 0.975):F3}]");
+// Analyze results - flatten chains and extract parameter values
+var allSamples = sampler.Output.SelectMany(chain => chain).ToList();
+
+for (int i = 0; i < 2; i++)
+{
+    var values = allSamples.Select(ps => ps.Values[i]).ToArray();
+    double mean = Statistics.Mean(values);
+    double lower = Statistics.Percentile(values, 0.025);
+    double upper = Statistics.Percentile(values, 0.975);
+    Console.WriteLine($"Parameter {i}: {mean:F3} [{lower:F3}, {upper:F3}]");
+}
 ```
 
 ## Performance Tips
 
-1. **Use parallelization** for large-scale Monte Carlo simulations:
+1. **Use parallelization** for large-scale Monte Carlo simulations (enabled by default; verify it is enabled):
    ```cs
-   sampler.ParallelizeChains = true;
+   sampler.ParallelizeChains = true; // default is true
    ```
 
-2. **Pre-allocate arrays** when generating many random values:
+2. **Generate random values efficiently**:
    ```cs
-   double[] values = new double[100000];
-   dist.GenerateRandomValues(values);
+   double[] values = dist.GenerateRandomValues(100000);
    ```
 
 3. **Choose appropriate integration method** based on function smoothness:
@@ -345,3 +354,7 @@ Console.WriteLine($"Std estimate:  {output.Mean(1):F3} [{output.Percentile(1, 0.
 ## References
 
 [1] Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P. (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
+
+---
+
+[Back to Index](index.md) | [Next: Numerical Integration →](mathematics/integration.md)

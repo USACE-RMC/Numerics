@@ -31,6 +31,7 @@
 using System;
 using System.Collections.Generic;
 using Numerics.Mathematics.Optimization;
+using Numerics.Mathematics.RootFinding;
 using Numerics.Mathematics.SpecialFunctions;
 
 namespace Numerics.Distributions
@@ -73,13 +74,13 @@ namespace Numerics.Distributions
             SetParameters(degreesOfFreedom, noncentrality);
         }
 
-        private int _degreesOfFreedom;
+        private double _degreesOfFreedom;
         private double _noncentrality;
        
         /// <summary>
         /// Gets and sets the degrees of freedom ν (nu) of the distribution.
         /// </summary>
-        public int DegreesOfFreedom
+        public double DegreesOfFreedom
         {
             get { return _degreesOfFreedom; }
             set
@@ -259,7 +260,7 @@ namespace Numerics.Distributions
         /// <param name="mu">The noncentrality parameter μ (mu).</param>
         public void SetParameters(double v, double mu)
         {
-            DegreesOfFreedom = (int)v;
+            DegreesOfFreedom = v;
             Noncentrality = mu;
         }
 
@@ -275,7 +276,7 @@ namespace Numerics.Distributions
         /// <param name="v">The degrees of freedom ν (nu). Range: ν > 0.</param>
         /// <param name="mu">The noncentrality parameter μ (mu).</param>
         /// <param name="throwException"></param>
-        public ArgumentOutOfRangeException ValidateParameters(double v, double mu, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(double v, double mu, bool throwException)
         {
             if (v < 1.0d)
             {
@@ -293,7 +294,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }
@@ -359,27 +360,19 @@ namespace Numerics.Distributions
         /// <param name="delta">The noncentrality parameter.</param>
         private double NCT_CDF(double t, double df, double delta)
         {
-            double Z;
-            double ANS = 0d;
+            double ANS;
             try
             {
                 ANS = NCTDist(t, df, delta);
             }
-            catch (Exception ex)
+            catch (ArgumentException)
             {
-                // If the solver fails, then use approximation
-                if (ex.ToString() == "Maximum number of iterations reached.")
-                {
-                    Z = (t * (1.0d - 1.0d / (4.0d * df)) - delta) / Math.Sqrt(1.0d + Math.Pow(t, 2d) / (2.0d * df));
-                    ANS = Normal.StandardCDF(Z);
-                }
-
-                if (ANS < 0d)
-                    ANS = 0d;
-                if (ANS > 1d)
-                    ANS = 1d;
+                // If the series fails to converge, use normal approximation
+                double Z = (t * (1.0d - 1.0d / (4.0d * df)) - delta) / Math.Sqrt(1.0d + t * t / (2.0d * df));
+                ANS = Normal.StandardCDF(Z);
+                if (ANS < 0d) ANS = 0d;
+                if (ANS > 1d) ANS = 1d;
             }
-
             return ANS;
         }
 
@@ -436,8 +429,8 @@ namespace Numerics.Distributions
             // 
             // Note - ITRMAX and ERRMAX may be changed to suit one's needs.
             // 
-            const int ITRMAX = 1000;
-            const double Errmax = 0.0000001d;
+            const int ITRMAX = 10000;
+            const double Errmax = 0.000000001d;
 
             // DATA ITRMAX/100.1/, ERRMAX/1.E-06/
             // 
@@ -498,7 +491,7 @@ namespace Numerics.Distributions
                 TNC = TNC + P * XODD + q * XEVEN;
                 ERRBD = two * s * (XODD - GODD);
             }
-            while (ERRBD > Errmax & N <= ITRMAX);
+            while (ERRBD > Errmax && N <= ITRMAX);
             // 
             Twenty:
             ;
@@ -555,7 +548,7 @@ namespace Numerics.Distributions
             t1 = t0 + tInc;
             y1 = NCTDist(t1, df, delta) - p;
             iter = 0;
-            while (y0 < 0d != y1 > 0d & Math.Abs(t1 - t0) > xtol & iter < iterMax)
+            while ((y0 < 0d) != (y1 > 0d) && Math.Abs(t1 - t0) > xtol && iter < iterMax)
             {
                 // 
                 // Use secant method to extrapolate a zero, but overshoot by w >= 1.
@@ -574,182 +567,35 @@ namespace Numerics.Distributions
                 iter = iter + 1;
             }
             // Solve for T using Brent
-            double ANS = ZBrent(t0, t1, y0, y1, xtol, df, delta, p);
+            double ANS = Brent.Solve(x => NCTDist(x, df, delta) - p, Math.Min(t0, t1), Math.Max(t0, t1), xtol, reportFailure: false);
             return ANS;
         }
 
         private double NCTInv0(double P, double N, double D)
         {
-            // 
             // Approximates percentage points of the non-central t distribution.
             // P is the percentage, N is the degrees of freedom, D is the non-centrality parameter.
-            // 
-            // Non-central t is the ratio (U + D)/(Chi/Sqrt(n)) where U and Chi are independent
-            // random variables distributed as Normal(0, 1) and Chi(n), respectively.
-            // D is the non-centrality parameter.  When equal to 0, TInvNC is Student's t.
-            // 
             // Source: Johnson & Kotz, Continuous Univariate Distributions, Volume 2.
-            // 
-            // NB: The number of iterations appears to go quadratically in D.  Thus, for large
-            // D, we will be in trouble.
-            // 
-            // VB version (c) 2001 Quantitative Decisions.  All rights reserved.
-            // Contact William A. Huber.  www.quantdec.com
-            // 
-            double b;
-            double z;
-            double b2;
-            double u2;
-            double T;
-            // 
-            // Establish entry conditions.
-            // 
-            // If N < 1.0# Or P <= 0.000001 Or P >= 0.999999 Then
-            // Return Double.NaN
-            // End If
-
-            var StudentT = new StudentT(N);
-            z = Normal.StandardZ(P);
-            // 
+            double z = Normal.StandardZ(P);
+            //
             // Jennett & Welch approximation, formula (14.1).
             // Intended for large values of D^2, such as are used for most tolerance interval calculations.
-            // 
-            b = Math.Exp(Gamma.LogGamma((N + 1d) / 2d) - Gamma.LogGamma(N / 2d)) * Math.Sqrt(2d / N);
-            u2 = z * z;
-            b2 = b * b;
-            T = b2 + (1d - b2) * (Math.Pow(D, 2d) - u2);
-            if (T > 0d)
+            //
+            double b = Math.Exp(Gamma.LogGamma((N + 1d) / 2d) - Gamma.LogGamma(N / 2d)) * Math.Sqrt(2d / N);
+            double u2 = z * z;
+            double b2 = b * b;
+            double denom = b2 - u2 * (1d - b2);
+            double disc = b2 + (1d - b2) * (D * D - u2);
+            if (disc > 0d && Math.Abs(denom) > 1e-12)
             {
-                T = (D * b + z * Math.Sqrt(T)) / (b2 - u2 * (1d - b2));
+                return (D * b + z * Math.Sqrt(disc)) / denom;
             }
             else
             {
-                T = 0d;
+                // Fallback: offset central t quantile by the noncentrality parameter
+                var st = new StudentT(N);
+                return st.InverseCDF(P) + D;
             }
-
-            return T;
-        }
-
-        private double ZBrent(double X1, double X2, double y1, double y2, double Tol, double N, double Dnc, double Perc)
-        {
-            double ZBrentRet = default;
-            // 
-            // Finds the zero of NCTDist(x, n, d) - p given that [x1, x2] brackets the zero and
-            // Y1 = value at X1, Y2 = value at X2.
-            // 
-            // Translated from Numerical Recipes (1986).
-            // William A. Huber, 24 March 2001.
-            // 
-            double a;
-            double b;
-            var c = default(double);
-            double fc;
-            var D = default(double);
-            var e = default(double);
-            double tol1;
-            double xm;
-            double s;
-            double P;
-            double q;
-            double r;
-            double fa;
-            double fb;
-            int iter;
-            const int itmax = 100;
-            const double eps = 0.00000003d;
-            a = X1;
-            b = X2;
-            fa = y1;
-            fb = y2;
-            if (fb * fa > 0d)
-            {
-                throw new ArgumentException("Brent's method failed because the root is not bracketed.");
-            }
-
-            fc = fb;
-            for (iter = 1; iter <= itmax; iter++)
-            {
-                if (fb * fc > 0d)
-                {
-                    c = a;
-                    fc = fa;
-                    D = b - a;
-                    e = D;
-                }
-
-                if (Math.Abs(fc) < Math.Abs(fb))
-                {
-                    a = b;
-                    b = c;
-                    c = a;
-                    fa = fb;
-                    fb = fc;
-                    fc = fa;
-                }
-
-                tol1 = 2.0d * eps * Math.Abs(b) + 0.5d * Tol;
-                xm = 0.5d * (c - b);
-                if (Math.Abs(xm) <= tol1 | fb == 0d)
-                {
-                    return b;
-                }
-
-                if (Math.Abs(e) >= tol1 & Math.Abs(fa) > Math.Abs(fb))
-                {
-                    s = fb / fa;
-                    if (a == c)
-                    {
-                        P = 2.0d * xm * s;
-                        q = 1.0d - s;
-                    }
-                    else
-                    {
-                        q = fa / fc;
-                        r = fb / fc;
-                        P = s * (2.0d * xm * q * (q - r) - (b - a) * (r - 1.0d));
-                        q = (q - 1.0d) * (r - 1.0d) * (s - 1.0d);
-                    }
-
-                    if (P > 0d)
-                        q = -q;
-                    P = Math.Abs(P);
-                    if (2.0d * P < 3.0d * xm * q - Math.Abs(tol1 * q) & 2.0d * P < Math.Abs(e * q))
-                    {
-                        e = D;
-                        D = P / q;
-                    }
-                    else
-                    {
-                        D = xm;
-                        e = D;
-                    }
-                }
-                else
-                {
-                    D = xm;
-                    e = D;
-                }
-
-                a = b;
-                fa = fb;
-                if (Math.Abs(D) > tol1)
-                {
-                    b = b + D;
-                }
-                else if (xm > 0d)  // b = b + SIGN(tol1, xm)
-                {
-                    b = b + Math.Abs(tol1);
-                }
-                else
-                {
-                    b = b - Math.Abs(tol1);
-                }
-
-                fb = NCTDist(b, N, Dnc) - Perc;
-            }
-
-            ZBrentRet = b;
-            return ZBrentRet;
         }
 
         /// <inheritdoc/>

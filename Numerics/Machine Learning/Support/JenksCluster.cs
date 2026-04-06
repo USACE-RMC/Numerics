@@ -63,21 +63,24 @@ namespace Numerics.MachineLearning
             MinValue = data[startIndex];
             MaxValue = data[endIndex];
 
-            // Compute summary statistics
-            double X = 0;     // sum
-            double X2 = 0;    // sum of X^2
-            for (int i = startIndex; i <= endIndex; i++) 
+            // Compute summary statistics using Welford's algorithm for numerical stability
+            double sum = 0;
+            double mean = 0;
+            double m2 = 0;
+            for (int i = startIndex; i <= endIndex; i++)
             {
-                X += data[i];
-                X2 += Math.Pow(data[i], 2d);
+                sum += data[i];
+                int k = i - startIndex + 1;
+                double delta = data[i] - mean;
+                mean += delta / k;
+                double delta2 = data[i] - mean;
+                m2 += delta * delta2;
             }
 
-            double U1 = X / Count;
-            double U2 = X2 / Count;
-            Sum = X;
-            Average = Count == 1 ? X : U1;
-            Variance = Count == 1 ? 0 : (U2 - Math.Pow(U1, 2d)) * (Count / (double)(Count - 1));
-            SumOfSquaredDeviations = Variance * (double)(Count - 1);
+            Sum = sum;
+            Average = mean;
+            SumOfSquaredDeviations = m2;
+            Variance = Count <= 1 ? 0 : m2 / (Count - 1);
         }
 
         /// <summary>

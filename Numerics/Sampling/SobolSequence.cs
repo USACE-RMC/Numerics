@@ -136,62 +136,54 @@ namespace Numerics.Sampling
                 reader.ReadLine();
 
                 int index = 1;
-                string? line;
-                while ((line = reader.ReadLine()) is not null)
+                string? line = null;
+                while ((line = reader.ReadLine()) != null)
                 {
                     var st = line.Split(' ');
 
-                    try
-                    {
-                        int dim;
-                        int.TryParse(st[0], out dim);
-                        
-                       if (dim >= 2 && dim <= Dimension)
-                       {
-                            // we have found the right dimension
-                            int i, s = 0, a = 0;
-                            for (i = 1; i < st.Length; i++)
-                            {
-                                if (st[i] != "")
-                                {
-                                    int.TryParse(st[i], out s);
-                                    break;
-                                }
-                            }
-                            i++;
-                            for (; i < st.Length; i++)
-                            {
-                                if (st[i] != "")
-                                {
-                                    int.TryParse(st[i], out a);
-                                    break;
-                                }
-                            }
-                            i++;
-                            int[] m = new int[s + 1];
-                            for (; i < st.Length; i++)
-                            {
-                                if (st[i] != "")
-                                {
-                                    for (int j = 1; j <= s; j++)
-                                    {
-                                        int.TryParse(st[i + j - 1], out m[j]);
-                                    }
-                                    break;
-                                }                        
-                            }
-                            initDirectionVector(index++, a, m);
-                        }
+                    int dim;
+                    int.TryParse(st[0], out dim);
 
-                        if (dim > Dimension)
+                   if (dim >= 2 && dim <= Dimension)
+                   {
+                        // we have found the right dimension
+                        int i, s = 0, a = 0;
+                        for (i = 1; i < st.Length; i++)
                         {
-                           return;
+                            if (st[i] != "")
+                            {
+                                int.TryParse(st[i], out s);
+                                break;
+                            }
                         }
-
+                        i++;
+                        for (; i < st.Length; i++)
+                        {
+                            if (st[i] != "")
+                            {
+                                int.TryParse(st[i], out a);
+                                break;
+                            }
+                        }
+                        i++;
+                        int[] m = new int[s + 1];
+                        for (; i < st.Length; i++)
+                        {
+                            if (st[i] != "")
+                            {
+                                for (int j = 1; j <= s; j++)
+                                {
+                                    int.TryParse(st[i + j - 1], out m[j]);
+                                }
+                                break;
+                            }
+                        }
+                        initDirectionVector(index++, a, m);
                     }
-                    catch (Exception)
+
+                    if (dim > Dimension)
                     {
-                       throw;
+                       return;
                     }
                 }
 

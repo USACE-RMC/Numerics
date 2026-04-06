@@ -232,5 +232,52 @@ namespace Distributions.Univariate
 
         }
 
+        /// <summary>
+        /// Test the inverse CDF of a zero-inflated mixture.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_InverseCDF_ZeroInflated()
+        {
+            // Test with 2 components and zero-inflation
+            var mix = new Mixture(new[] { 0.3, 0.6 }, new[] { new Normal(3, 0.1), new Normal(5, 2) });
+            mix.IsZeroInflated = true;
+            mix.ZeroWeight = 0.1;
+
+            // For probability <= ZeroWeight, InverseCDF should return 0
+            Assert.AreEqual(0, mix.InverseCDF(0.05));
+            Assert.AreEqual(0, mix.InverseCDF(0.1));
+
+            // For probability > ZeroWeight, verify InverseCDF inverts CDF
+            var xVals = Tools.Sequence(0.1d, 15d, 0.5d);
+            for (int i = 0; i < xVals.Length; i++)
+            {
+                double p = mix.CDF(xVals[i]);
+                if (p > mix.ZeroWeight && p < 1.0)
+                {
+                    Assert.AreEqual(xVals[i], mix.InverseCDF(p), 1E-4);
+                }
+            }
+
+            // Test with 1 component and zero-inflation
+            var mix1 = new Mixture(new[] { 0.7 }, new[] { new Normal(10, 2) });
+            mix1.IsZeroInflated = true;
+            mix1.ZeroWeight = 0.3;
+
+            // For probability <= ZeroWeight, InverseCDF should return 0
+            Assert.AreEqual(0, mix1.InverseCDF(0.15));
+            Assert.AreEqual(0, mix1.InverseCDF(0.3));
+
+            // For probability > ZeroWeight, verify InverseCDF inverts CDF
+            var xVals1 = Tools.Sequence(1d, 20d, 0.5d);
+            for (int i = 0; i < xVals1.Length; i++)
+            {
+                double p = mix1.CDF(xVals1[i]);
+                if (p > mix1.ZeroWeight && p < 1.0)
+                {
+                    Assert.AreEqual(xVals1[i], mix1.InverseCDF(p), 1E-4);
+                }
+            }
+        }
+
     }
 }

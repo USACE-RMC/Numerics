@@ -183,7 +183,7 @@ namespace Utilities
             var true_result = new double[] { -0.8164, -0.8164, 0, 0, 1.63299 };
             for(int i = 0;i < values.Count; i++)
             {
-                Assert.AreEqual(result[i], true_result[i], 1E-04);
+                Assert.AreEqual(true_result[i], result[i], 1E-04);
             }
             
         }
@@ -199,7 +199,7 @@ namespace Utilities
             var true_result = new double[] { 3, 3, 4, 4, 6 };
             for (int i = 0; i < values.Count; i++)
             {
-                Assert.AreEqual(result[i], true_result[i], 1E-03);
+                Assert.AreEqual(true_result[i], result[i], 1E-03);
             }
         }
 
@@ -396,7 +396,7 @@ namespace Utilities
             var true_result = new int[] { 0, 1, 2, 3 };
             for (int i = 0;  i < true_result.Length; i++)
             {
-                Assert.AreEqual(result[i], true_result[i]);
+                Assert.AreEqual(true_result[i], result[i]);
             }
         }
 

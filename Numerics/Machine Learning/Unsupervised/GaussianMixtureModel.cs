@@ -157,7 +157,7 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The likelihood of each data point (row) and for each cluster (column).
         /// </summary>
-        public double[,] LikelihoodMatrix { get; private set; } = null!;
+        public double[,] LikelihoodMatrix { get; private set; } = new double[0, 0];
 
         /// <summary>
         /// The total log-likelihood of the fit.
@@ -186,22 +186,64 @@ namespace Numerics.MachineLearning
         /// <param name="kMeansPlusPlus">Determines whether to use random initialization or to use the k-Means++ method. Default is to use k-Means++.</param>
         public void Train(int seed = -1, bool kMeansPlusPlus = true)
         {
-            // 1. Initialize clusters from k-Means 
+            // 1. Initialize clusters from k-Means
             var kMeans = new KMeans(X, K);
             kMeans.Train(seed, kMeansPlusPlus);
             Means = kMeans.Means;
 
             // Give equal weight to each cluster
-            // And initialize the covariance matrix
+            // and initialize the covariance matrix from cluster data variance.
+            // Using actual data variance (instead of a tiny constant like 1e-10)
+            // prevents the first E-step from computing likelihoods from near-degenerate
+            // Gaussians, which can cause numerical overflow or underflow.
             Weights = new double[K];
             LikelihoodMatrix = new double[X.NumberOfRows, K];
             Sigmas = new Matrix[K];
             for (int k = 0; k < K; k++)
-            {              
+            {
                 Weights[k] = 1d / K;
                 Sigmas[k] = new Matrix(Dimension);
-                for (int i = 0; i < Dimension; i++)
-                    Sigmas[k][i, i] = 1E-10;
+
+                // Compute within-cluster covariance from k-means labels
+                int clusterCount = 0;
+                for (int i = 0; i < X.NumberOfRows; i++)
+                {
+                    if (kMeans.Labels[i] == k)
+                        clusterCount++;
+                }
+
+                if (clusterCount > 1)
+                {
+                    // Compute covariance from cluster members
+                    for (int d = 0; d < Dimension; d++)
+                    {
+                        for (int j = 0; j < Dimension; j++)
+                        {
+                            double sum = 0;
+                            for (int i = 0; i < X.NumberOfRows; i++)
+                            {
+                                if (kMeans.Labels[i] == k)
+                                    sum += (X[i, d] - Means[k, d]) * (X[i, j] - Means[k, j]);
+                            }
+                            Sigmas[k][d, j] = sum / clusterCount;
+                        }
+                    }
+                }
+
+                // Ensure positive-definite: floor diagonal at fraction of overall data variance
+                for (int d = 0; d < Dimension; d++)
+                {
+                    double colVar = 0;
+                    double colMean = 0;
+                    for (int i = 0; i < X.NumberOfRows; i++)
+                        colMean += X[i, d];
+                    colMean /= X.NumberOfRows;
+                    for (int i = 0; i < X.NumberOfRows; i++)
+                        colVar += (X[i, d] - colMean) * (X[i, d] - colMean);
+                    colVar /= X.NumberOfRows;
+
+                    Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar);
+                }
             }
 
             // 2. Optimize clusters
@@ -296,14 +338,14 @@ namespace Numerics.MachineLearning
             for (int k = 0; k < K; k++)
             {
                 double wgt = 0d;
-                for (int i = 0; i < X.NumberOfRows; i++) 
+                for (int i = 0; i < X.NumberOfRows; i++)
                     wgt += LikelihoodMatrix[i, k];
                 Weights[k] = wgt / X.NumberOfRows;
                 for (int d = 0; d < Dimension; d++)
                 {
                     // Compute centroids
                     double sum = 0;
-                    for (int i = 0; i < X.NumberOfRows; i++) 
+                    for (int i = 0; i < X.NumberOfRows; i++)
                         sum += LikelihoodMatrix[i, k] * X[i, d];
                     Means[k, d] = sum / wgt;
                     // Compute covariance
@@ -317,6 +359,27 @@ namespace Numerics.MachineLearning
                         Sigmas[k][d, j] = sum / wgt;
                     }
                 }
+
+                // Floor diagonal at a fraction of the overall data variance to prevent
+                // component collapse. When a component captures very few points, its
+                // covariance can become singular, causing Cholesky decomposition in the
+                // E-step to fail. This mirrors sklearn's reg_covar parameter.
+                for (int d = 0; d < Dimension; d++)
+                {
+                    double colVar = 0;
+                    double colMean = 0;
+                    for (int i = 0; i < X.NumberOfRows; i++)
+                        colMean += X[i, d];
+                    colMean /= X.NumberOfRows;
+                    for (int i = 0; i < X.NumberOfRows; i++)
+                        colVar += (X[i, d] - colMean) * (X[i, d] - colMean);
+                    colVar /= X.NumberOfRows;
+
+                    Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar);
+                }
+
+                // Ensure the full covariance matrix remains symmetric positive-definite
+                MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
             }
         }
 

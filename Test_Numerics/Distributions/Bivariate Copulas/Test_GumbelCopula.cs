@@ -189,5 +189,30 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(24.83673, ((Normal)copula.MarginalDistributionY).Sigma, 1E-1);
         }
 
+        /// <summary>
+        /// Test the tail dependence coefficients.
+        /// Gumbel copula: λ_U = 2 - 2^(1/θ), λ_L = 0.
+        /// </summary>
+        [TestMethod]
+        public void Test_TailDependence()
+        {
+            // θ = 2: λ_U = 2 - 2^(1/2) ≈ 0.58579
+            var copula = new GumbelCopula(2.0);
+            Assert.AreEqual(0.0, copula.LowerTailDependence, 1E-10, "Gumbel copula should have no lower tail dependence.");
+            Assert.AreEqual(2.0 - Math.Pow(2.0, 0.5), copula.UpperTailDependence, 1E-6, "λ_U should equal 2 - 2^(1/θ) for θ=2.");
+
+            // θ = 4: λ_U = 2 - 2^(1/4) ≈ 0.81079
+            var copula4 = new GumbelCopula(4.0);
+            Assert.AreEqual(2.0 - Math.Pow(2.0, 0.25), copula4.UpperTailDependence, 1E-6, "λ_U should equal 2 - 2^(1/θ) for θ=4.");
+
+            // θ = 1 (independence): λ_U = 2 - 2 = 0
+            var copulaIndep = new GumbelCopula(1.0);
+            Assert.AreEqual(0.0, copulaIndep.UpperTailDependence, 1E-10, "λ_U should be 0 for θ=1 (independence).");
+
+            // θ → ∞: λ_U → 1
+            var copulaLarge = new GumbelCopula(100.0);
+            Assert.IsGreaterThan(0.99, copulaLarge.UpperTailDependence, "λ_U should approach 1 for large θ.");
+        }
+
     }
 }

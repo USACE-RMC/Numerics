@@ -1,6 +1,6 @@
 # Goodness-of-Fit Metrics
 
-[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: MCMC Sampling →](../sampling/mcmc.md)
+[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: Hypothesis Tests →](hypothesis-tests.md)
 
 Goodness-of-fit (GOF) metrics evaluate how well a statistical model fits observed data. The ***Numerics*** library provides comprehensive metrics for model selection, distribution fitting validation, and hydrological model evaluation.
 
@@ -46,16 +46,67 @@ Console.WriteLine($"  BIC:  {bic:F2} (stronger penalty for parameters)");
 ```
 
 **Formulas:**
+
+```math
+\text{AIC} = 2k - 2\ln(\hat{L})
 ```
-AIC  = 2k - 2·ln(L)
-AICc = AIC + 2k(k+1)/(n-k-1)
-BIC  = k·ln(n) - 2·ln(L)
+```math
+\text{AICc} = \text{AIC} + \frac{2k(k+1)}{n-k-1}
+```
+```math
+\text{BIC} = k\ln(n) - 2\ln(\hat{L})
 ```
 
 Where:
 - `k` = number of parameters
 - `n` = sample size
 - `L` = likelihood
+
+#### AIC and Kullback-Leibler Divergence
+
+AIC is derived as an asymptotic approximation to the expected Kullback-Leibler (KL) divergence between the true data-generating model $f$ and the fitted candidate model $g$. The KL divergence measures the information lost when $g$ is used to approximate $f$:
+
+```math
+D_{KL}(f \| g) = \int f(x) \log \frac{f(x)}{g(x|\hat{\theta})} \, dx
+```
+
+Akaike (1974) showed that the expected KL divergence can be estimated, up to a constant that is the same for all candidate models, by:
+
+```math
+E[D_{KL}] \approx -2\log \hat{L} + 2k
+```
+
+Hence $\text{AIC} = 2k - 2\ln(\hat{L})$ estimates twice the expected information loss. The model with the lowest AIC is expected to be closest to the unknown true model in the KL sense.
+
+#### AICc Small-Sample Correction
+
+When the ratio $n/k < 40$, the standard AIC can exhibit substantial bias. The corrected AICc adds a finite-sample bias adjustment:
+
+```math
+\text{AICc} = \text{AIC} + \frac{2k(k+1)}{n-k-1}
+```
+
+This correction term becomes negligible as $n$ grows large, so AICc converges to AIC for large samples. It is generally recommended to use AICc by default, since the correction is harmless when the sample is large.
+
+#### BIC and Bayesian Model Selection
+
+BIC approximates the log marginal likelihood (or evidence) for a model under certain regularity conditions. It can be interpreted as an approximation to the Bayes factor between a candidate model $M_i$ and a saturated model:
+
+```math
+\text{BIC} \approx -2 \log P(\text{data} | M_i) + C
+```
+
+where $C$ is a constant common to all models. BIC penalizes model complexity more severely than AIC because the $\ln(n)$ term grows with sample size (compared to the constant penalty of 2 in AIC). As a result, BIC tends to prefer simpler models, especially for large $n$.
+
+#### Interpreting ΔAIC
+
+When comparing a set of candidate models, compute $\Delta_i = \text{AIC}_i - \text{AIC}_{\min}$ for each model. The following rules of thumb from Burnham and Anderson (2002) [[4]](#4) guide interpretation:
+
+| ΔAIC | Evidence for model |
+|------|-------------------|
+| 0--2 | Substantial support; model is competitive with the best |
+| 4--7 | Considerably less support |
+| > 10 | Essentially no support; model is implausible |
 
 ### Comparing Multiple Models
 
@@ -129,12 +180,13 @@ double rmse = GoodnessOfFit.RMSE(observed, gev);
 
 Console.WriteLine($"RMSE: {rmse:F2}");
 
-// With custom plotting positions
-var plottingPos = PlottingPositions.Weibull(observed.Length);
-double rmse2 = GoodnessOfFit.RMSE(observed, plottingPos, gev);
+// With custom plotting positions (observed data must be sorted in ascending order)
+var sortedObserved = observed.OrderBy(x => x).ToArray();
+var plottingPos = PlottingPositions.Weibull(sortedObserved.Length);
+double rmse2 = GoodnessOfFit.RMSE(sortedObserved, plottingPos, gev);
 
-// With parameter penalty
-double rmse3 = GoodnessOfFit.RMSE(observed, gev.InverseCDF(plottingPos).ToArray(), k: gev.NumberOfParameters);
+// With parameter penalty (both arrays must be in the same order)
+double rmse3 = GoodnessOfFit.RMSE(sortedObserved, gev.InverseCDF(plottingPos).ToArray(), k: gev.NumberOfParameters);
 
 Console.WriteLine($"RMSE (Weibull plotting): {rmse2:F2}");
 Console.WriteLine($"RMSE (with penalty): {rmse3:F2}");
@@ -205,15 +257,40 @@ else
 ```
 
 **Formula:**
-```
-NSE = 1 - Σ(O - M)² / Σ(O - Ō)²
+
+```math
+\text{NSE} = 1 - \frac{\sum_{i=1}^{n}(O_i - M_i)^2}{\sum_{i=1}^{n}(O_i - \bar{O})^2}
 ```
 
 Range: (-∞, 1], where 1 is perfect fit, 0 means model is as good as mean, <0 means worse than mean.
 
+#### NSE Decomposition
+
+NSE can be decomposed into three interpretable components (Murphy, 1988 [[7]](#7)):
+
+```math
+\text{NSE} = 2\alpha r - \alpha^2 - \beta^2
+```
+
+where:
+- $r$ = Pearson correlation coefficient between observed and modeled values
+- $\alpha = \sigma_M / \sigma_O$ (ratio of standard deviations, measuring variability bias)
+- $\beta = (\mu_M - \mu_O) / \sigma_O$ (normalized bias)
+
+This decomposition reveals whether poor NSE is caused by:
+- **Poor correlation** ($r$ far from 1) -- indicates timing or phasing errors in the model
+- **Wrong variability** ($\alpha$ far from 1) -- indicates the model over- or under-estimates the amplitude of fluctuations
+- **Systematic bias** ($\beta$ far from 0) -- indicates consistent over- or under-prediction of the mean
+
 ### Log Nash-Sutcliffe Efficiency
 
-For better performance on low flows:
+The Log-NSE variant applies a logarithmic transformation to both observed and modeled values before computing NSE. This gives more weight to low-flow performance, since the logarithm compresses large values and expands small values. The transformation is:
+
+```math
+\text{Log-NSE} = 1 - \frac{\sum_{i=1}^{n}(\ln(O_i + \varepsilon) - \ln(M_i + \varepsilon))^2}{\sum_{i=1}^{n}(\ln(O_i + \varepsilon) - \overline{\ln(O + \varepsilon)})^2}
+```
+
+where $\varepsilon$ is a small constant (default: $\bar{O}/100$) added to prevent taking the logarithm of zero. Log-NSE is particularly useful for water quality assessment and ecological flow requirements, where accurate simulation of low-flow conditions is critical.
 
 ```cs
 double logNSE = GoodnessOfFit.LogNashSutcliffeEfficiency(observed, modeled);
@@ -246,14 +323,44 @@ else
 ```
 
 **Formula:**
-```
-KGE = 1 - √[(r-1)² + (β-1)² + (γ-1)²]
+
+```math
+\text{KGE} = 1 - \sqrt{(r-1)^2 + (\beta-1)^2 + (\gamma-1)^2}
 ```
 
 Where:
 - `r` = correlation coefficient
 - `β` = bias ratio (μ_modeled / μ_observed)
 - `γ` = variability ratio (CV_modeled / CV_observed)
+
+#### KGE Component Interpretation
+
+The KGE decomposes model error into three orthogonal components, each diagnosing a distinct type of model deficiency:
+
+| Component | Meaning | Perfect Value | Diagnostic |
+|-----------|---------|---------------|------------|
+| $r$ | Pearson correlation | 1 | Timing and phasing of peaks and recessions |
+| $\beta$ | Bias ratio ($\mu_M / \mu_O$) | 1 | Systematic over-estimation ($\beta > 1$) or under-estimation ($\beta < 1$) |
+| Variability ratio | Spread of modeled vs. observed | 1 | Whether model reproduces the observed variability |
+
+**Original KGE (Gupta et al., 2009)** [[3]](#3): The `KlingGuptaEfficiency` method uses the standard deviation ratio $\alpha = \sigma_M / \sigma_O$ as the variability component:
+
+```math
+\text{KGE} = 1 - \sqrt{(r-1)^2 + (\alpha - 1)^2 + (\beta - 1)^2}
+```
+
+**Modified KGE (Kling et al., 2012)** [[8]](#8): The `KlingGuptaEfficiencyMod` method replaces $\alpha$ with the coefficient of variation ratio $\gamma = \text{CV}_M / \text{CV}_O$, which avoids cross-correlation between the bias and variability components:
+
+```math
+\text{KGE'} = 1 - \sqrt{(r-1)^2 + (\gamma - 1)^2 + (\beta - 1)^2}
+```
+
+where $\gamma = (\sigma_M / \mu_M) / (\sigma_O / \mu_O)$. The modified version is generally preferred because the bias ratio $\beta$ and the variability ratio $\gamma$ are mathematically independent, making the decomposition cleaner.
+
+**Diagnostic approach:** When KGE is low, examine which component dominates the Euclidean distance to guide model improvement:
+- **Low $r$** -- improve model structure or parameterization to better capture temporal dynamics
+- **$\beta \neq 1$** -- adjust bias correction or calibrate volume-related parameters
+- **Variability ratio $\neq 1$** -- the model under- or over-estimates the spread; adjust parameters controlling flow variability
 
 ### Percent Bias (PBIAS)
 
@@ -273,9 +380,9 @@ else
     Console.WriteLine("Unsatisfactory (bias ≥ ±25%)");
 
 if (pbias > 0)
-    Console.WriteLine("Model underestimates (positive bias)");
+    Console.WriteLine("Model overestimates (positive bias)");
 else if (pbias < 0)
-    Console.WriteLine("Model overestimates (negative bias)");
+    Console.WriteLine("Model underestimates (negative bias)");
 ```
 
 ### RMSE-Observations Standard Deviation Ratio (RSR)
@@ -356,6 +463,33 @@ Console.WriteLine($"sMAPE: {smape:F2}%");
 
 ### Kolmogorov-Smirnov Test
 
+The Kolmogorov-Smirnov (K-S) test statistic measures the maximum vertical distance between the empirical cumulative distribution function (ECDF) and the theoretical CDF:
+
+```math
+D_n = \sup_x |F_n(x) - F(x)|
+```
+
+where $F_n(x)$ is the empirical CDF defined as the proportion of observations less than or equal to $x$:
+
+```math
+F_n(x) = \frac{1}{n}\sum_{i=1}^{n} \mathbf{1}_{[x_i \leq x]}
+```
+
+and $F(x)$ is the CDF of the hypothesized distribution.
+
+In practice, since the ECDF is a step function, the supremum reduces to checking each order statistic. The implementation computes:
+
+```math
+D_n = \max_{1 \leq i \leq n} \left\{ F(x_{i:n}) - \frac{i-1}{n}, \;\; \frac{i}{n} - F(x_{i:n}) \right\}
+```
+
+**Limitations:**
+- Most sensitive near the center (median) of the distribution, less sensitive in the tails
+- Critical values depend on whether parameters are estimated from data; when parameters are estimated, the Lilliefors correction is needed for valid p-values
+- Conservative when used with estimated parameters (rejects too infrequently)
+- Power decreases for heavy-tailed distributions
+- The Anderson-Darling test is generally preferred when tail behavior is important
+
 Tests if data comes from a specified distribution:
 
 ```cs
@@ -375,6 +509,18 @@ Console.WriteLine("Smaller D indicates better fit");
 
 ### Anderson-Darling Test
 
+The Anderson-Darling (A-D) test statistic applies a weighting function that gives more emphasis to discrepancies in the tails of the distribution compared to the Kolmogorov-Smirnov test [[6]](#6). The test statistic is computed from the order statistics $x_{1:n} \leq x_{2:n} \leq \cdots \leq x_{n:n}$:
+
+```math
+A^2 = -n - \sum_{i=1}^{n} \frac{2i-1}{n}\left[\ln F(x_{i:n}) + \ln(1 - F(x_{n+1-i:n}))\right]
+```
+
+where $F$ is the CDF of the hypothesized distribution.
+
+The implicit weighting function underlying the A-D statistic is $1/[F(x)(1-F(x))]$, which increases without bound as $F(x) \to 0$ or $F(x) \to 1$. This makes the test particularly sensitive to departures from the hypothesized distribution in the tails. For hydrological applications where tail behavior determines flood risk or drought severity, this tail sensitivity is a critical advantage over the K-S test.
+
+**Key advantage over K-S:** The tail weighting makes the Anderson-Darling test more powerful for detecting misfit in the extreme quantiles that matter most for risk analysis.
+
 More sensitive to tail deviations:
 
 ```cs
@@ -385,6 +531,21 @@ Console.WriteLine("Smaller A² indicates better fit");
 ```
 
 ### Chi-Squared Test
+
+The Chi-Squared ($\chi^2$) goodness-of-fit test compares observed bin frequencies to the frequencies expected under the hypothesized distribution. The data are divided into $k$ bins, and the test statistic is:
+
+```math
+\chi^2 = \sum_{i=1}^{k} \frac{(O_i - E_i)^2}{E_i}
+```
+
+where $O_i$ is the observed frequency in bin $i$, and $E_i = n \cdot [F(b_i) - F(b_{i-1})]$ is the expected frequency computed from the hypothesized CDF $F$ evaluated at the bin boundaries $b_{i-1}$ and $b_i$.
+
+Under the null hypothesis, $\chi^2$ follows approximately a chi-squared distribution with $\text{df} = k - 1 - p$ degrees of freedom, where $p$ is the number of parameters estimated from the data.
+
+**Rules of thumb for bin selection:**
+- Minimum expected frequency per bin should be at least 5 for the chi-squared approximation to be valid
+- Too few bins reduces the power of the test; too many bins makes the test statistic unstable
+- The implementation uses a default histogram binning; for formal hypothesis testing, consider the sensitivity of results to bin choice
 
 For discrete or binned data:
 
@@ -423,14 +584,28 @@ Console.WriteLine($"  Balanced Accuracy: {balancedAcc:P1}");
 
 ### Example 1: Complete Distribution Comparison
 
+This example compares candidate distributions for the White River near Nora, Indiana. Results can be cross-checked with the worked examples in Rao & Hamed (2000), Chapter 7.
+
+**Data source:** Rao, A. R. & Hamed, K. H. (2000). *Flood Frequency Analysis*. CRC Press, Table 7.1.2.
+See also: [`example-data/white-river-nora-floods.csv`](../example-data/white-river-nora-floods.csv)
+
 ```cs
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 
-double[] annualPeaks = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };
+// White River near Nora, IN — 62 years of annual peak streamflow (cfs)
+double[] annualPeaks = {
+    23200, 2950, 10300, 23200, 4540, 9960, 10800, 26900, 23300, 20400,
+    8480, 3150, 9380, 32400, 20800, 11100, 7270, 9600, 14600, 14300,
+    22500, 14700, 12700, 9740, 3050, 8830, 12000, 30400, 27000, 15200,
+    8040, 11700, 20300, 22700, 30400, 9180, 4870, 14700, 12800, 13700,
+    7960, 9830, 12500, 10700, 13200, 14700, 14300, 4050, 14600, 14400,
+    19200, 7160, 12100, 8650, 10600, 24500, 14400, 6300, 9560, 15800,
+    14300, 28700
+};
 
 // Candidate distributions
-var candidates = new (string Name, IUnivariateDistribution Dist)[]
+var candidates = new (string Name, UnivariateDistributionBase Dist)[]
 {
     ("LP3", new LogPearsonTypeIII()),
     ("GEV", new GeneralizedExtremeValue()),
@@ -446,7 +621,7 @@ var results = new List<(string Name, double AIC, double BIC, double RMSE, double
 foreach (var (name, dist) in candidates)
 {
     // Fit distribution
-    dist.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
+    ((IEstimation)dist).Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
     
     // Compute metrics
     double logLik = annualPeaks.Sum(x => dist.LogPDF(x));
@@ -571,6 +746,35 @@ foreach (var (name, modeled) in models)
 }
 ```
 
+## When to Use Which Metric
+
+Selecting the right goodness-of-fit metric depends on the analysis goal. The following table summarizes recommended metrics for common tasks, all of which are available in the `GoodnessOfFit` class:
+
+| Goal | Recommended Metric | Notes |
+|------|-------------------|-------|
+| Model selection (different number of parameters) | AIC / AICc / BIC | Information criteria; lower is better |
+| Model selection (same number of parameters) | RMSE or NSE | Direct comparison of fit quality |
+| Distribution fit validation | K-S, A-D, $\chi^2$ | A-D preferred for tail sensitivity |
+| Hydrological model calibration | KGE | Decomposes error into correlation, bias, and variability |
+| Hydrological model validation | NSE + PBIAS + RSR | Multiple complementary metrics recommended (Moriasi et al., 2007) [[2]](#2) |
+| Forecast accuracy | MAPE / sMAPE | Scale-independent percentage errors |
+| Water balance assessment | VE + PBIAS | Volume-focused metrics |
+| Low-flow emphasis | Log-NSE | Log transform gives more weight to low values |
+| Classification problems | F1 Score, Balanced Accuracy | When output is binary (0/1) |
+
+### Moriasi et al. (2007) Performance Ratings
+
+The following performance ratings from Moriasi et al. (2007) [[2]](#2) are widely used in watershed modeling to evaluate simulation results:
+
+| Performance | NSE | RSR | PBIAS (streamflow) |
+|------------|-----|-----|-------------------|
+| Very Good | > 0.75 | 0.00--0.50 | < +/-10% |
+| Good | 0.65--0.75 | 0.50--0.60 | +/-10--15% |
+| Satisfactory | 0.50--0.65 | 0.60--0.70 | +/-15--25% |
+| Unsatisfactory | < 0.50 | > 0.70 | >= +/-25% |
+
+These thresholds apply to streamflow simulations at a monthly time step. For other constituents (e.g., sediment, nutrients) or sub-monthly time steps, the thresholds may be relaxed. No single metric fully characterizes model performance; using multiple complementary metrics provides a more complete assessment.
+
 ## Best Practices
 
 1. **Use multiple metrics** - No single metric captures all aspects of fit
@@ -591,6 +795,16 @@ foreach (var (name, modeled) in models)
 
 <a id="3">[3]</a> Gupta, H. V., Kling, H., Yilmaz, K. K., & Martinez, G. F. (2009). Decomposition of the mean squared error and NSE performance criteria: Implications for improving hydrological modelling. *Journal of Hydrology*, 377(1-2), 80-91.
 
+<a id="4">[4]</a> Burnham, K. P., & Anderson, D. R. (2002). *Model Selection and Multimodel Inference: A Practical Information-Theoretic Approach* (2nd ed.). Springer.
+
+<a id="5">[5]</a> Schwarz, G. (1978). Estimating the dimension of a model. *Annals of Statistics*, 6(2), 461-464.
+
+<a id="6">[6]</a> Anderson, T. W., & Darling, D. A. (1954). A test of goodness of fit. *Journal of the American Statistical Association*, 49(268), 765-769.
+
+<a id="7">[7]</a> Murphy, A. H. (1988). Skill scores based on the mean square error and their relationships to the correlation coefficient. *Monthly Weather Review*, 116(12), 2417-2424.
+
+<a id="8">[8]</a> Kling, H., Fuchs, M., & Paulin, M. (2012). Runoff conditions in the upper Danube basin under an ensemble of climate change scenarios. *Journal of Hydrology*, 424-425, 264-277.
+
 ---
 
-[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: MCMC Sampling →](../sampling/mcmc.md)
+[← Previous: Descriptive Statistics](descriptive.md) | [Back to Index](../index.md) | [Next: Hypothesis Tests →](hypothesis-tests.md)

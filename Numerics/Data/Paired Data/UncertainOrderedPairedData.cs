@@ -32,7 +32,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Data;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
@@ -167,7 +166,7 @@ namespace Numerics.Data
         /// <summary>
         /// Boolean of whether or not to invoke anything on CollectionChanged
         /// </summary>
-        public bool SupressCollectionChanged { get; set; } = false;
+        public bool SuppressCollectionChanged { get; set; } = false;
 
         /// <summary>
         /// Handles the event of CollectionChanged
@@ -245,11 +244,12 @@ namespace Numerics.Data
             _uncertainOrdinates = new List<UncertainOrdinate>(data.Count);
             for (int i = 0; i < data.Count; i++)
             {
-                var o = data[i];
-                UnivariateDistributionBase? yValue = o.Y?.Clone();
-                if (yValue is not null) { _uncertainOrdinates.Add(new UncertainOrdinate(o.X, yValue)); }
+                var y = data[i].Y;
+                if (y is not null)
+                    _uncertainOrdinates.Add(new UncertainOrdinate(data[i].X, y.Clone()));
+                else
+                    _uncertainOrdinates.Add(data[i]);
             }
-    
             Validate();
         }
 
@@ -273,11 +273,13 @@ namespace Numerics.Data
             _uncertainOrdinates = new List<UncertainOrdinate>(data.Count);
             for (int i = 0; i < data.Count; i++)
             {
-                var o = data[i];
-                UnivariateDistributionBase? yValue = o.Y?.Clone();
-                if (yValue is not null) { _uncertainOrdinates.Add(new UncertainOrdinate(o.X, yValue)); }
+                var y = data[i].Y;
+                if (y is not null)
+                    _uncertainOrdinates.Add(new UncertainOrdinate(data[i].X, y.Clone()));
+                else
+                    _uncertainOrdinates.Add(data[i]);
             }
-                
+
             _isValid = dataValid;
         }
 
@@ -287,20 +289,20 @@ namespace Numerics.Data
         /// <param name="el">The XElement the UncertainOrderPairedData object is being created from.</param>
         public UncertainOrderedPairedData(XElement el)
         {
-            var strictX = el.Attribute("X_Strict");
             // Get Order
-            if (strictX != null) { bool.TryParse(strictX.Value, out _strictX); }
-
-            var strictY = el.Attribute("Y_Strict");
-            if (strictY != null) { bool.TryParse(strictY.Value, out _strictY); }
-
+            var xStrictAttr = el.Attribute("X_Strict");
+            if (xStrictAttr != null)
+                bool.TryParse(xStrictAttr.Value, out _strictX);
+            var yStrictAttr = el.Attribute("Y_Strict");
+            if (yStrictAttr != null)
+                bool.TryParse(yStrictAttr.Value, out _strictY);
             // Get Strictness
-            var orderX = el.Attribute("X_Order");
-            if (orderX != null) { Enum.TryParse(orderX.Value, out _orderX); }
-
-            var orderY = el.Attribute("Y_Order");
-            if (orderY != null) { Enum.TryParse(orderY.Value, out _orderY); }
-
+            var xOrderAttr = el.Attribute("X_Order");
+            if (xOrderAttr != null)
+                Enum.TryParse(xOrderAttr.Value, out _orderX);
+            var yOrderAttr = el.Attribute("Y_Order");
+            if (yOrderAttr != null)
+                Enum.TryParse(yOrderAttr.Value, out _orderY);
             // Distribution type
             Distribution = UnivariateDistributionType.Deterministic;
             var distributionAttr = el.Attribute("Distribution");
@@ -311,20 +313,19 @@ namespace Numerics.Data
                 Distribution = argresult;
             }
             // new prop
-            var allowDiffAtr = el.Attribute(nameof(AllowDifferentDistributionTypes));
-            if (allowDiffAtr != null)
+
+            var allowDiffAttr = el.Attribute(nameof(AllowDifferentDistributionTypes));
+            if (allowDiffAttr != null)
             {
-                bool.TryParse(allowDiffAtr.Value, out _allowDifferentDistributionTypes);
+                bool.TryParse(allowDiffAttr.Value, out _allowDifferentDistributionTypes);
                 // Get Ordinates
                 var curveEl = el.Element("Ordinates");
                 _uncertainOrdinates = new List<UncertainOrdinate>();
-
                 if (curveEl != null)
                 {
                     foreach (XElement ord in curveEl.Elements(nameof(UncertainOrdinate)))
                         _uncertainOrdinates.Add(new UncertainOrdinate(ord));
                 }
-               
             }
             else
             {
@@ -336,18 +337,18 @@ namespace Numerics.Data
                     foreach (XElement o in curveEl.Elements("Ordinate"))
                     {
                         var xAttr = o.Attribute("X");
-                        if ( xAttr != null && double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var xout)) { xData.Add(xout); }
-                        else { xData.Add(0.0); }
-
+                        double xout = 0d;
+                        if (xAttr != null)
+                            double.TryParse(xAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out xout);
+                        xData.Add(xout);
                         var dist = UnivariateDistributionFactory.CreateDistribution(Distribution);
                         var props = dist.GetParameterPropertyNames;
                         var paramVals = new double[(props.Count())];
-
                         for (int i = 0; i < props.Count(); i++)
                         {
-                            var pAttr = o.Attribute(props[i]);
-                            if ( pAttr != null && double.TryParse(pAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)) { paramVals[i] = result; }
-                            else { paramVals[i] = 0.0; }
+                            var propAttr = o.Attribute(props[i]);
+                            if (propAttr != null)
+                                double.TryParse(propAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out paramVals[i]);
                         }
 
                         dist.SetParameters(paramVals);
@@ -418,7 +419,7 @@ namespace Numerics.Data
         /// </summary>
         public void Validate()
         {
-            if (SupressCollectionChanged == true) return;
+            if (SuppressCollectionChanged == true) return;
             _isValid = true; // innocent until proven guilty
             for (int i = 0; i < _uncertainOrdinates.Count; i++)
             {
@@ -510,16 +511,7 @@ namespace Numerics.Data
                 return false;
             for (int i = 0, loopTo = left.Count - 1; i <= loopTo; i++)
             {
-                if (left._uncertainOrdinates[i].X != right._uncertainOrdinates[i].X)
-                    return false;
-
-                var leftY = left._uncertainOrdinates[i].Y;
-                var rightY = right._uncertainOrdinates[i].Y;
-                if (leftY is null && rightY is null)
-                    continue;
-                if (leftY is null || rightY is null)
-                    return false;
-                if (!leftY.Equals(rightY))
+                if (left._uncertainOrdinates[i] != right._uncertainOrdinates[i])
                     return false;
             }
             return true;
@@ -592,9 +584,9 @@ namespace Numerics.Data
                     {
                         if (OrdinateValid(index) == true) { Validate(); }
                     }
-                    if (SupressCollectionChanged == false)
+                    if (SuppressCollectionChanged == false)
                     {
-                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue));
+                        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, value, oldvalue, index));
                     }
                 }
             }
@@ -622,7 +614,7 @@ namespace Numerics.Data
                 return false;
             _uncertainOrdinates.RemoveAt(itemIndex);
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, itemIndex));
             return true;
         }
@@ -636,7 +628,7 @@ namespace Numerics.Data
             var itemRemoved = _uncertainOrdinates[index];
             _uncertainOrdinates.RemoveAt(index);
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, itemRemoved, index));
         }
 
@@ -657,7 +649,7 @@ namespace Numerics.Data
 
             _uncertainOrdinates.RemoveRange(index, count);
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, itemsRemoved, index));
         }
 
@@ -682,7 +674,7 @@ namespace Numerics.Data
                 _uncertainOrdinates.RemoveAt(sortedIndices[i]);
             }
             Validate();
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
             {
                 if (isContinuous)
                 {
@@ -704,7 +696,7 @@ namespace Numerics.Data
             _uncertainOrdinates.Add(item);
             if (OrdinateValid(_uncertainOrdinates.Count - 1) == false)
                 _isValid = false;
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _uncertainOrdinates.Count - 1));
         }
 
@@ -723,7 +715,7 @@ namespace Numerics.Data
                 if (OrdinateValid(_uncertainOrdinates.Count - 1) == false)
                     _isValid = false;
             }
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, items.ToList(), startIndex));
         }
 
@@ -742,7 +734,7 @@ namespace Numerics.Data
                     _isValid = false;
             }
 
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
@@ -764,7 +756,7 @@ namespace Numerics.Data
                         _isValid = false;
                 }
             }
-            if (SupressCollectionChanged == false)
+            if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, items.ToList(), index));
         }
 
@@ -773,10 +765,17 @@ namespace Numerics.Data
         /// </summary>
         public void Clear()
         {
+            if (_uncertainOrdinates.Count == 0)
+                return;
+
+            bool wasSuppressed = SuppressCollectionChanged;
+            SuppressCollectionChanged = true;
             _uncertainOrdinates.Clear();
-            if (SupressCollectionChanged == false)
-                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            SuppressCollectionChanged = wasSuppressed;
+
             _isValid = true;
+            if (SuppressCollectionChanged == false)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 
         /// <summary>

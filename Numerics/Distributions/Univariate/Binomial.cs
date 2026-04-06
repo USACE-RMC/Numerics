@@ -241,7 +241,7 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             // Validate probability
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]) || parameters[0] < 0.0d || parameters[0] > 1.0d)
@@ -253,8 +253,8 @@ namespace Numerics.Distributions
             if (double.IsNaN(parameters[1]) || double.IsInfinity(parameters[1]) || parameters[1] <= 0.0d)
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "The number of trials (n) must be positive.");
-                return new ArgumentOutOfRangeException(nameof(ProbabilityOfSuccess), "The number of trials (n) must be positive.");
+                    throw new ArgumentOutOfRangeException(nameof(NumberOfTrials), "The number of trials (n) must be positive.");
+                return new ArgumentOutOfRangeException(nameof(NumberOfTrials), "The number of trials (n) must be positive.");
             }
             return null!;            
         }
@@ -282,7 +282,7 @@ namespace Numerics.Distributions
             k = Math.Floor(k);
             if (k < Minimum)
                 return 0.0d;
-            if (k > Maximum)
+            if (k >= Maximum)
                 return 1.0d;
             return Beta.Incomplete(NumberOfTrials - k, k + 1d, Complement);
         }
@@ -299,9 +299,9 @@ namespace Numerics.Distributions
                 return Maximum;
             // Validate parameters
             if (_parametersValid == false)
-                ValidateParameters([probability, NumberOfTrials], true);
+                ValidateParameters([ProbabilityOfSuccess, NumberOfTrials], true);
             double k = 0d;
-            for (int i = 0; i < NumberOfTrials; i++)
+            for (int i = 0; i <= NumberOfTrials; i++)
             {
                 if (CDF(i) >= probability)
                 {

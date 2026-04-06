@@ -69,7 +69,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="rho">The dependency parameter, θ.</param>
         ///<param name="marginalDistributionX">The X marginal distribution for the copula.</param>
         ///<param name="marginalDistributionY">The Y marginal distribution for the copula.</param>
-        public NormalCopula(double rho, IUnivariateDistribution marginalDistributionX, IUnivariateDistribution marginalDistributionY)
+        public NormalCopula(double rho, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             Theta = rho;
             MarginalDistributionX = marginalDistributionX;
@@ -125,7 +125,7 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override ArgumentOutOfRangeException ValidateParameter(double parameter, bool throwException)
+        public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
             if (parameter < ThetaMinimum)
             {
@@ -137,13 +137,25 @@ namespace Numerics.Distributions.Copulas
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
             }
-            return new ArgumentOutOfRangeException(nameof(Theta),"The parameter is valid.");
+            return null;
         }
 
         /// <inheritdoc/>
-        public override double[] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        public override int NumberOfCopulaParameters => 1;
+
+        /// <inheritdoc/>
+        public override double[] GetCopulaParameters => new double[] { Theta };
+
+        /// <inheritdoc/>
+        public override void SetCopulaParameters(double[] parameters)
         {
-            return [-1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon];
+            Theta = parameters[0];
+        }
+
+        /// <inheritdoc/>
+        public override double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
+        {
+            return new double[,] { { -1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon } };
         }
 
         /// <inheritdoc/>
@@ -162,7 +174,10 @@ namespace Numerics.Distributions.Copulas
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
-            return MultivariateNormal.BivariateCDF(Normal.StandardZ(1 - u), Normal.StandardZ(1 - v), _theta);
+            // BivariateCDF implements Genz's BVND which computes Phi2(-h,-k;r).
+            // To get the copula C(u,v) = Phi2(Phi^-1(u), Phi^-1(v); r),
+            // we pass -Phi^-1(u) = Phi^-1(1-u) as arguments.
+            return MultivariateNormal.BivariateCDF(-Normal.StandardZ(u), -Normal.StandardZ(v), _theta);
         }
 
         /// <inheritdoc/>
@@ -177,6 +192,18 @@ namespace Numerics.Distributions.Copulas
             v = Normal.StandardCDF(w2);
             return [u, v];
         }
+
+        /// <summary>
+        /// Gets the upper tail dependence coefficient λ_U = 0.
+        /// The Normal copula has no upper tail dependence.
+        /// </summary>
+        public override double UpperTailDependence => 0.0;
+
+        /// <summary>
+        /// Gets the lower tail dependence coefficient λ_L = 0.
+        /// The Normal copula has no lower tail dependence.
+        /// </summary>
+        public override double LowerTailDependence => 0.0;
 
         /// <inheritdoc/>
         public override BivariateCopula Clone()

@@ -68,7 +68,7 @@ namespace Numerics.Data
             X = xValue;
             Y = yValue;
             IsValid = true;
-            if (double.IsInfinity(X) | double.IsNaN(X) || double.IsInfinity(Y) | double.IsNaN(Y)) { IsValid = false; }
+            if (double.IsInfinity(X) || double.IsNaN(X) || double.IsInfinity(Y) || double.IsNaN(Y)) { IsValid = false; }
         }
 
 

@@ -156,17 +156,17 @@ namespace Numerics.Functions
         public double Minimum
         {
             get { return Xi; }
-            set { return; }
+            set { throw new NotSupportedException("Minimum is derived from Xi and cannot be set directly."); }
         }
 
         /// <inheritdoc/>
         public double Maximum { get; set; } = double.MaxValue;
 
         /// <inheritdoc/>
-        public double[] MinimumOfParameters => new double[] { 0, -10, 0 };
+        public double[] MinimumOfParameters => new double[] { 0, -10, 0, 0 };
 
         /// <inheritdoc/>
-        public double[] MaximumOfParameters => new double[] { double.MaxValue, 10, double.MaxValue };
+        public double[] MaximumOfParameters => new double[] { double.MaxValue, 10, double.MaxValue, double.MaxValue };
 
         /// <inheritdoc/>
         public bool IsDeterministic { get; set; }
@@ -189,10 +189,11 @@ namespace Numerics.Functions
             _beta = parameters[1];
             _xi = parameters[2];
             _sigma = parameters[3];
+            _normal.SetParameters(0, _sigma);
         }
 
         /// <inheritdoc/>
-        public ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (IsDeterministic == false && parameters[3] <= 0)
             {

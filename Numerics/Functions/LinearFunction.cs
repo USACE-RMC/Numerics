@@ -162,10 +162,11 @@ namespace Numerics.Functions
             _alpha = parameters[0];
             _beta = parameters[1];
             _sigma = parameters[2];
+            _normal.SetParameters(0, _sigma);
         }
 
         /// <inheritdoc/>
-        public ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+        public ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (IsDeterministic == false && parameters[2] <= 0)
             {
@@ -205,6 +206,8 @@ namespace Numerics.Functions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(new[] { Alpha, Beta, Sigma }, true);
+            if (Math.Abs(Beta) < double.Epsilon)
+                throw new InvalidOperationException("Cannot compute inverse function when Beta is zero.");
 
             double x = 0;
             if (IsDeterministic == true || ConfidenceLevel < 0 || ConfidenceLevel > 1)

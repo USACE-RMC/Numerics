@@ -59,6 +59,7 @@ namespace Numerics.Sampling.MCMC
             //https://www.rdocumentation.org/packages/LaplacesDemon/versions/16.1.4/topics/ESS
             int N = series.Count;
             var acf = Fourier.Autocorrelation(series, (int)Math.Ceiling((double)N / 2));
+            if (acf == null) return N;
             double rho = 0;
             for (int i = 1; i < acf.GetLength(0); i++)
             {
@@ -105,6 +106,7 @@ namespace Numerics.Sampling.MCMC
 
                     // Get ACF for this chain
                     var acf = Fourier.Autocorrelation(values, (int)Math.Ceiling((double)N / 2));
+                    if (acf == null) continue;
                     // Update the average ACF across all chains
                     for (int j = 0; j < acf.GetLength(0); j++)
                     {
@@ -182,13 +184,14 @@ namespace Numerics.Sampling.MCMC
                         chainMeans[i] += markovChains[i][j].Values[p];
                     }
                     // Get within-chain mean
-                    chainMeans[i] /= N;
+                    chainMeans[i] /= (N - startIndex);
                     overallMean += chainMeans[i];
                 }
                 // Get between-chain mean
                 overallMean /= M;
 
                 // Step 2. Compute between- and within-chain variance
+                int n = N - startIndex;
                 double B = 0, W = 0;
                 for (int i = 0; i < M; i++)
                 {
@@ -198,16 +201,16 @@ namespace Numerics.Sampling.MCMC
                         sum += Tools.Sqr(markovChains[i][j].Values[p] - chainMeans[i]);
                     }
                     // within-chain variance
-                    W += sum / (N - 1);
+                    W += sum / (n - 1);
                     // between-chain variance
                     B += Tools.Sqr(chainMeans[i] - overallMean);
                 }
                 // Set between- and within-chain variance
                 W /= M;
-                B *= N / (M - 1);
+                B *= n / (double)(M - 1);
 
                 // Step 3. Compute the pooled variance
-                double V = ((N - 1d) / N) * W + (1d / N) * B;
+                double V = ((n - 1d) / n) * W + (1d / n) * B;
 
                 // Step 4. Compute R-hat
                 Rhat[p] = Math.Sqrt(V / W);
