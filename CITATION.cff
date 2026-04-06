@@ -5,6 +5,7 @@ title: "Numerics"
 version: "2.0.0"
 date-released: "2026-03-08"
 license: BSD-3-Clause
+doi: "10.5281/zenodo.19444369"
 repository-code: "https://github.com/USACE-RMC/Numerics"
 url: "https://github.com/USACE-RMC/Numerics"
 abstract: >-
