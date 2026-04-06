@@ -580,6 +580,7 @@ namespace Numerics.Sampling.MCMC
         /// step size can re-adapt to the new mass matrix.
         /// </summary>
         /// <param name="chainIndex">The chain index.</param>
+        /// <param name="currentState">The current parameter state, used to find a new reasonable step size after the metric change.</param>
         private void UpdateMassMatrix(int chainIndex, ParameterSet currentState)
         {
             int n = _welfordCount[chainIndex];
