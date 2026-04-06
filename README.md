@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/USACE-RMC/Numerics/actions/workflows/Integration.yml/badge.svg)](https://github.com/USACE-RMC/Numerics/actions/workflows/Integration.yml)
 [![NuGet](https://img.shields.io/nuget/v/RMC.Numerics)](https://www.nuget.org/packages/RMC.Numerics/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19444369.svg)](https://doi.org/10.5281/zenodo.19444369)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
 
 ***Numerics*** is a free and open-source numerical computing library for .NET developed by the U.S. Army Corps of Engineers Risk Management Center (USACE-RMC). It provides methods and algorithms for probability distributions, statistical analysis, numerical methods, optimization, machine learning, and Bayesian MCMC sampling — with a focus on hydrological and risk assessment applications.
