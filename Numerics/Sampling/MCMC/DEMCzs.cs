@@ -80,7 +80,7 @@ namespace Numerics.Sampling.MCMC
             _g = new Uniform(1.2, 2.2);
         }
 
-        private double _noise = 1E-3;
+        private double _noise = 1E-12;
         private Normal _b;
         private Uniform _g;
 

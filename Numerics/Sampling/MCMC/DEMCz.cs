@@ -78,7 +78,7 @@ namespace Numerics.Sampling.MCMC
             _b = new Normal(0, _noise);
         }
 
-        private double _noise = 1E-3;
+        private double _noise = 1E-12;
         private Normal _b;
 
         /// <summary>
