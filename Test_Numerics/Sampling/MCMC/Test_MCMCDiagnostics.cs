@@ -31,6 +31,7 @@
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
+using Numerics.Sampling;
 using Numerics.Sampling.MCMC;
 
 namespace Sampling.MCMC
@@ -51,9 +52,9 @@ namespace Sampling.MCMC
         {
             // Create 3 chains of 200 samples each from similar distributions.
             // Use deterministic sequences for reproducibility.
-            var rng1 = new Random(42);
-            var rng2 = new Random(123);
-            var rng3 = new Random(456);
+            var rng1 = new MersenneTwister(42);
+            var rng2 = new MersenneTwister(123);
+            var rng3 = new MersenneTwister(456);
             int chainLength = 200;
 
             var chain1 = new List<ParameterSet>();

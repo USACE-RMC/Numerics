@@ -31,6 +31,7 @@
 using System;
 using System.Text.Json;
 using Numerics.Distributions;
+using Numerics.Sampling;
 using Numerics.Utilities;
 
 namespace Serialization
@@ -144,7 +145,7 @@ namespace Serialization
 
             // Large 2D array
             double[,] largeMatrix = new double[100, 50];
-            Random rand = new Random(42);
+            Random rand = new MersenneTwister(12345);
             for (int i = 0; i < 100; i++)
             {
                 for (int j = 0; j < 50; j++)

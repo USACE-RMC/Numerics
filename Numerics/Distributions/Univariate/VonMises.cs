@@ -34,6 +34,7 @@ using Numerics.Mathematics.Integration;
 using Numerics.Mathematics.Optimization;
 using Numerics.Mathematics.RootFinding;
 using Numerics.Mathematics.SpecialFunctions;
+using Numerics.Sampling;
 
 namespace Numerics.Distributions
 {
@@ -439,7 +440,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters([Mu, Kappa], true);
 
-            var rng = seed < 0 ? new Random() : new Random(seed);
+            var rng = seed < 0 ? new MersenneTwister() : new MersenneTwister(seed);
             var values = new double[sampleSize];
 
             if (_kappa < 1e-10)

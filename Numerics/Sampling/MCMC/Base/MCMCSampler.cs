@@ -402,7 +402,7 @@ namespace Numerics.Sampling.MCMC
                 return chainStates;
             }
 
-            var prng = new Random(PRNGSeed);
+            var prng = new MersenneTwister(PRNGSeed);
             var rnds = LatinHypercube.Random(InitialIterations, NumberOfParameters, prng.Next());
             var parameters = new double[NumberOfParameters];
             var tempPopulation = new List<ParameterSet>();       
@@ -634,14 +634,14 @@ namespace Numerics.Sampling.MCMC
             _simulations = 0;
             MAPInitializationFailed = false;
             // Clear old memory and re-instantiate the result storage
-            _masterPRNG = new Random(PRNGSeed);
-            _chainPRNGs = new Random[NumberOfChains];
+            _masterPRNG = new MersenneTwister(PRNGSeed);
+            _chainPRNGs = new MersenneTwister[NumberOfChains];
             PopulationMatrix = new List<ParameterSet>();
             MarkovChains = new List<ParameterSet>[NumberOfChains];
             Output = new List<ParameterSet>[NumberOfChains];
             for (int i = 0; i < NumberOfChains; i++)
             {
-                _chainPRNGs[i] = new Random(_masterPRNG.Next());
+                _chainPRNGs[i] = new MersenneTwister(_masterPRNG.Next());
                 MarkovChains[i] = new List<ParameterSet>();
                 Output[i] = new List<ParameterSet>();
             }

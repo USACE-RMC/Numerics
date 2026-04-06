@@ -50,6 +50,7 @@ namespace Data.TimeSeriesAnalysis
     /// </para>
     /// </remarks>
     [TestClass]
+    [DoNotParallelize]
     public class Test_TimeSeriesDownload
     {
         #region Station Lists

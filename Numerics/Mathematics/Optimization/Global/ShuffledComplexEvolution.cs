@@ -175,9 +175,9 @@ namespace Numerics.Mathematics.Optimization
 
             // Initialize shuffled complex evolution (SCE) algorithm
             // Create list of complex prngs
-            var complexPRNGs = new List<Random>();
+            var complexPRNGs = new List<MersenneTwister>();
             for (i = 0; i < Complexes; i++)
-                complexPRNGs.Add(new Random(prng.Next()));
+                complexPRNGs.Add(new MersenneTwister(prng.Next()));
 
             // Create trapezoidal cumulative probability for points in complex
             var cdf = Trapezoidal(CCEIterations);
@@ -211,7 +211,7 @@ namespace Numerics.Mathematics.Optimization
                 }
 
                 // Rank the points in terms of fitness (i.e., order of increasing function value).
-                Dpoints.Sort((x, y) => x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness));
+                Dpoints.Sort((x, y) => { int c = x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness); return c != 0 ? c : x.Index.CompareTo(y.Index); });
 
                 // Next reset the indexes, so that i = 0 represents the point With the smallest function value.
                 for (i = 0; i <= Dpoints.Count - 1; i++)
@@ -287,7 +287,7 @@ namespace Numerics.Mathematics.Optimization
                 {
 
                     // Rank the B points in terms of fitness (i.e., order of increasing function value.
-                    B.Sort((x, y) => x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness));
+                    B.Sort((x, y) => { int c = x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness); return c != 0 ? c : x.Index.CompareTo(y.Index); });
 
                     // Find centroid g excluding worst point and compute reflection of worst point about centroid r = 2g - u(worst)
                     Reflection(ref B, ref g, ref p);
@@ -350,7 +350,7 @@ namespace Numerics.Mathematics.Optimization
                     }
                 }
 
-                Acomplex.Sort((x, y) => x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness));
+                Acomplex.Sort((x, y) => { int c = x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness); return c != 0 ? c : x.Index.CompareTo(y.Index); });
             }
         }
 

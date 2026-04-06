@@ -33,6 +33,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
+using Numerics.Sampling;
 
 namespace Mathematics.Optimization
 {
@@ -72,7 +73,7 @@ namespace Mathematics.Optimization
             //Random Node weights
             float[] weights = new float[1000]; //= new float[] { .3f, .5f, 32f, 15f, 12f, .01f, -4f };
 
-            Random randy = new Random(42);
+            Random randy = new MersenneTwister(12345);
             for (int i = 0; i < weights.Length; i++)
             {
                 weights[i] = (float)randy.NextDouble();

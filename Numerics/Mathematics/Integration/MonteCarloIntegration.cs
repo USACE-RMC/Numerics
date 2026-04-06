@@ -28,6 +28,7 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -83,7 +84,7 @@ namespace Numerics.Mathematics.Integration
             Dimensions = dimensions;
             Min = min.ToArray();
             Max = max.ToArray();
-            Random = new Random();
+            Random = new MersenneTwister();
         }
 
         /// <summary>

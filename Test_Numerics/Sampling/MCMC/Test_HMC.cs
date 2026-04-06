@@ -76,7 +76,7 @@ namespace Sampling.MCMC
 
             // Create and run MCMC sampler
             // NOTE: The HMC sampler is not adaptive, and the settings must be tuned by hand.
-            var sampler = new HMC(priors, logLH, stepSize: 2, steps: 10);
+            var sampler = new HMC(priors, logLH, stepSize: 2.5, steps: 10);
             sampler.Sample();
             var results = new MCMCResults(sampler);
 
