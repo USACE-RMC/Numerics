@@ -16,8 +16,8 @@
     <Company>USACE-RMC</Company>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>interpolation; regression; statistics; machine learning; probability distributions; bootstrap analysis; distribution fitting; Bayesian MCMC sampling; optimization;</PackageTags>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+    <PackageLicenseExpression>0BSD</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
     <PackageId>RMC.Numerics</PackageId>
   </PropertyGroup>
 

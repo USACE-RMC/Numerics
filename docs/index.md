@@ -197,7 +197,7 @@ This library is developed and maintained by the U.S. Army Corps of Engineers Ris
 
 ## License
 
-This software is provided under a BSD-3-Clause license. See the LICENSE file for complete terms.
+This software is provided under the Zero-Clause BSD (0BSD) license. See the LICENSE file for complete terms.
 
 ---
 

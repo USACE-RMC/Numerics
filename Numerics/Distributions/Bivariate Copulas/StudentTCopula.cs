@@ -1,33 +1,3 @@
-/*
-* NOTICE:
-* The U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC) makes no guarantees about
-* the results, or appropriateness of outputs, obtained from Numerics.
-*
-* LIST OF CONDITIONS:
-* Redistribution and use in source and binary forms, with or without modification, are permitted
-* provided that the following conditions are met:
-* ● Redistributions of source code must retain the above notice, this list of conditions, and the
-* following disclaimer.
-* ● Redistributions in binary form must reproduce the above notice, this list of conditions, and
-* the following disclaimer in the documentation and/or other materials provided with the distribution.
-* ● The names of the U.S. Government, the U.S. Army Corps of Engineers, the Institute for Water
-* Resources, or the Risk Management Center may not be used to endorse or promote products derived
-* from this software without specific prior written permission. Nor may the names of its contributors
-* be used to endorse or promote products derived from this software without specific prior
-* written permission.
-*
-* DISCLAIMER:
-* THIS SOFTWARE IS PROVIDED BY THE U.S. ARMY CORPS OF ENGINEERS RISK MANAGEMENT CENTER
-* (USACE-RMC) "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-* THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-* DISCLAIMED. IN NO EVENT SHALL USACE-RMC BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-* SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-* PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-* THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
 using System;
 using System.Collections.Generic;
 using Numerics.Mathematics.SpecialFunctions;
@@ -96,7 +66,7 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         public StudentTCopula()
         {
-            _nu = 5;
+            _nu = 5.0;
             Theta = 0.0d;
         }
 
@@ -106,7 +76,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="rho">The correlation parameter ρ (rho). Must be in [-1, 1].</param>
         /// <param name="degreesOfFreedom">The degrees of freedom ν (nu). Must be greater than 2.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when ν ≤ 2.</exception>
-        public StudentTCopula(double rho, int degreesOfFreedom)
+        public StudentTCopula(double rho, double degreesOfFreedom)
         {
             if (degreesOfFreedom <= 2)
                 throw new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "The degrees of freedom must be greater than 2.");
@@ -122,7 +92,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="marginalDistributionX">The X marginal distribution.</param>
         /// <param name="marginalDistributionY">The Y marginal distribution.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when ν ≤ 2.</exception>
-        public StudentTCopula(double rho, int degreesOfFreedom, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
+        public StudentTCopula(double rho, double degreesOfFreedom, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
             if (degreesOfFreedom <= 2)
                 throw new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "The degrees of freedom must be greater than 2.");
@@ -132,13 +102,21 @@ namespace Numerics.Distributions.Copulas
             MarginalDistributionY = marginalDistributionY;
         }
 
-        private int _nu;
+        private double _nu;
 
         /// <summary>
-        /// Gets or sets the degrees of freedom ν (nu). Must be greater than 2.
+        /// Gets or sets the degrees of freedom ν (nu). Continuous; must be greater than 2.
         /// </summary>
+        /// <remarks>
+        /// ν is represented as a <see cref="double"/> so that gradient-free MCMC samplers can
+        /// explore the parameter space smoothly; previously the value was rounded to an integer
+        /// on every <see cref="SetCopulaParameters"/> call, which produced a step-function
+        /// likelihood surface and unnecessary plateaus in the posterior. Both
+        /// <see cref="StudentT"/> and <see cref="MultivariateStudentT"/> accept non-integer
+        /// degrees of freedom.
+        /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is ≤ 2.</exception>
-        public int DegreesOfFreedom
+        public double DegreesOfFreedom
         {
             get { return _nu; }
             set
@@ -176,7 +154,7 @@ namespace Numerics.Distributions.Copulas
                 parmString[0, 0] = "Correlation (ρ)";
                 parmString[0, 1] = Theta.ToString();
                 parmString[1, 0] = "Degrees of Freedom (ν)";
-                parmString[1, 1] = _nu.ToString();
+                parmString[1, 1] = _nu.ToString("G4");
                 return parmString;
             }
         }
@@ -219,22 +197,36 @@ namespace Numerics.Distributions.Copulas
         public override int NumberOfCopulaParameters => 2;
 
         /// <inheritdoc/>
-        public override double[] GetCopulaParameters => new double[] { Theta, (double)DegreesOfFreedom };
+        public override double[] GetCopulaParameters => new double[] { Theta, DegreesOfFreedom };
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// ν is clamped to the valid domain (ν &gt; 2) but otherwise kept continuous — no
+        /// integer rounding. MCMC samplers that propose continuous ν values see a smooth
+        /// likelihood, avoiding the step-function plateaus produced by previous rounding
+        /// behavior.
+        /// </remarks>
         public override void SetCopulaParameters(double[] parameters)
         {
             Theta = parameters[0];
-            DegreesOfFreedom = Math.Max(3, (int)Math.Round(parameters[1]));
+            DegreesOfFreedom = Math.Max(2.0 + Tools.DoubleMachineEpsilon, parameters[1]);
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The upper bound on ν is 30 rather than ∞ for a statistical reason: for ν ≳ 30 the
+        /// Student's t copula is empirically indistinguishable from the Gaussian copula at
+        /// typical hydrologic sample sizes (n ≤ a few hundred), so the likelihood is nearly
+        /// flat on [30, ∞). A Uniform prior across that flat region would drag the posterior
+        /// mean toward mid-range regardless of the data. Users who genuinely need very high ν
+        /// should prefer the Normal copula directly.
+        /// </remarks>
         public override double[,] ParameterConstraints(IList<double> sampleDataX, IList<double> sampleDataY)
         {
             return new double[,]
             {
                 { -1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon },
-                { 3, 60 }
+                { 3, 30 }
             };
         }
 
