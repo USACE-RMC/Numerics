@@ -942,7 +942,7 @@ namespace Numerics.Data
             else parameterType = "Rainfall";
 
             // Step 1: Get timeseries list to find the appropriate ts_id
-            string tsListUrl = "http://www.bom.gov.au/waterdata/services" +
+            string tsListUrl = "https://www.bom.gov.au/waterdata/services" +
                 $"?service=kisters&type=QueryServices&datasource=0&format=json" +
                 $"&request=getTimeseriesList" +
                 $"&station_no={Uri.EscapeDataString(stationNumber)}" +
@@ -971,7 +971,6 @@ namespace Numerics.Data
                 try
                 {
                     response = await client.GetAsync(tsListUrl);
-                    response.EnsureSuccessStatusCode();
                 }
                 catch (HttpRequestException ex)
                 {
@@ -983,6 +982,15 @@ namespace Numerics.Data
                 }
 
                 var listResponse = await response.Content.ReadAsStringAsync();
+
+                // Surface the response body in the exception so transient upstream failures
+                // (KiWIS 5xx with a JSON error payload) are self-documenting.
+                if (!response.IsSuccessStatusCode)
+                {
+                    string snippet = listResponse.Length > 500 ? listResponse.Substring(0, 500) + "…" : listResponse;
+                    throw new Exception(
+                        $"Failed to retrieve time series list from BOM API. Status={(int)response.StatusCode} ({response.StatusCode}). Body={snippet}");
+                }
 
                 // Check for error response from KiWIS
                 if (listResponse.Contains("\"type\":\"error\"") || listResponse.StartsWith("{\"type\":\"error\""))
@@ -1063,7 +1071,7 @@ namespace Numerics.Data
             }
 
             // Step 2: Get time series values using the ts_id
-            string valuesUrl = "http://www.bom.gov.au/waterdata/services" +
+            string valuesUrl = "https://www.bom.gov.au/waterdata/services" +
                 $"?service=kisters&type=QueryServices&datasource=0&format=json" +
                 $"&request=getTimeseriesValues" +
                 $"&ts_id={tsId}" +
@@ -1094,7 +1102,6 @@ namespace Numerics.Data
                 try
                 {
                     response = await client.GetAsync(valuesUrl);
-                    response.EnsureSuccessStatusCode();
                 }
                 catch (HttpRequestException ex)
                 {
@@ -1106,6 +1113,16 @@ namespace Numerics.Data
                 }
 
                 var valuesResponse = await response.Content.ReadAsStringAsync();
+
+                // Surface the response body in the exception so transient upstream failures
+                // (e.g. KiWIS returning 500 with `{"code":"DatasourceError","message":"Error connecting to WDP."}`)
+                // are self-documenting. Without this, EnsureSuccessStatusCode would discard the body.
+                if (!response.IsSuccessStatusCode)
+                {
+                    string snippet = valuesResponse.Length > 500 ? valuesResponse.Substring(0, 500) + "…" : valuesResponse;
+                    throw new Exception(
+                        $"Failed to retrieve time series values from BOM API. Status={(int)response.StatusCode} ({response.StatusCode}). Body={snippet}");
+                }
 
                 // Check for error response
                 if (valuesResponse.Contains("\"type\":\"error\"") || valuesResponse.StartsWith("{\"type\":\"error\""))

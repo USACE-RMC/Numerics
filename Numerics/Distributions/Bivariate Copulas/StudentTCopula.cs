@@ -75,11 +75,8 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         /// <param name="rho">The correlation parameter ρ (rho). Must be in [-1, 1].</param>
         /// <param name="degreesOfFreedom">The degrees of freedom ν (nu). Must be greater than 2.</param>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when ν ≤ 2.</exception>
         public StudentTCopula(double rho, double degreesOfFreedom)
         {
-            if (degreesOfFreedom <= 2)
-                throw new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "The degrees of freedom must be greater than 2.");
             _nu = degreesOfFreedom;
             Theta = rho;
         }
@@ -91,11 +88,8 @@ namespace Numerics.Distributions.Copulas
         /// <param name="degreesOfFreedom">The degrees of freedom ν (nu). Must be greater than 2.</param>
         /// <param name="marginalDistributionX">The X marginal distribution.</param>
         /// <param name="marginalDistributionY">The Y marginal distribution.</param>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when ν ≤ 2.</exception>
         public StudentTCopula(double rho, double degreesOfFreedom, IUnivariateDistribution? marginalDistributionX, IUnivariateDistribution? marginalDistributionY)
         {
-            if (degreesOfFreedom <= 2)
-                throw new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "The degrees of freedom must be greater than 2.");
             _nu = degreesOfFreedom;
             Theta = rho;
             MarginalDistributionX = marginalDistributionX;
@@ -115,14 +109,12 @@ namespace Numerics.Distributions.Copulas
         /// <see cref="StudentT"/> and <see cref="MultivariateStudentT"/> accept non-integer
         /// degrees of freedom.
         /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is ≤ 2.</exception>
         public double DegreesOfFreedom
         {
             get { return _nu; }
             set
             {
-                if (value <= 2)
-                    throw new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom must be greater than 2.");
+                _parametersValid = ValidateParameters(Theta, value, false) is null;
                 _nu = value;
             }
         }
@@ -178,17 +170,39 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The base <see cref="BivariateCopula.Theta"/> setter calls this method on the new
+        /// rho value; we delegate to <see cref="ValidateParameters(double, double, bool)"/>
+        /// so that <c>_parametersValid</c> reflects the validity of both ρ and the current ν.
+        /// </remarks>
         public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
-            if (parameter < ThetaMinimum)
+            return ValidateParameters(parameter, _nu, throwException);
+        }
+
+        /// <summary>
+        /// Validates the correlation ρ and degrees of freedom ν together. Returns null when
+        /// both parameters are in their valid domains.
+        /// </summary>
+        /// <param name="rho">The correlation parameter ρ. Must be in [<see cref="ThetaMinimum"/>, <see cref="ThetaMaximum"/>].</param>
+        /// <param name="degreesOfFreedom">The degrees of freedom ν. Must be finite and greater than 2.</param>
+        /// <param name="throwException">When true, throws on the first invalid parameter; when false, returns the exception instead.</param>
+        public ArgumentOutOfRangeException? ValidateParameters(double rho, double degreesOfFreedom, bool throwException)
+        {
+            if (rho < ThetaMinimum)
             {
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be greater than " + ThetaMinimum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be greater than " + ThetaMinimum.ToString() + ".");
             }
-            if (parameter > ThetaMaximum)
+            if (rho > ThetaMaximum)
             {
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be less than " + ThetaMaximum.ToString() + ".");
+            }
+            if (double.IsNaN(degreesOfFreedom) || double.IsInfinity(degreesOfFreedom) || degreesOfFreedom <= 2.0)
+            {
+                if (throwException) throw new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom must be greater than 2.");
+                return new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom must be greater than 2.");
             }
             return null;
         }
@@ -204,12 +218,13 @@ namespace Numerics.Distributions.Copulas
         /// ν is clamped to the valid domain (ν &gt; 2) but otherwise kept continuous — no
         /// integer rounding. MCMC samplers that propose continuous ν values see a smooth
         /// likelihood, avoiding the step-function plateaus produced by previous rounding
-        /// behavior.
+        /// behavior. The clamp uses 2 + 1e-10 because <c>2.0 + Tools.DoubleMachineEpsilon</c>
+        /// rounds back to 2.0 in IEEE 754 (the ULP at 2.0 is 2^-51, larger than ε = 2^-53).
         /// </remarks>
         public override void SetCopulaParameters(double[] parameters)
         {
             Theta = parameters[0];
-            DegreesOfFreedom = Math.Max(2.0 + Tools.DoubleMachineEpsilon, parameters[1]);
+            DegreesOfFreedom = Math.Max(2.0 + 1E-10, parameters[1]);
         }
 
         /// <inheritdoc/>
@@ -226,7 +241,7 @@ namespace Numerics.Distributions.Copulas
             return new double[,]
             {
                 { -1 + Tools.DoubleMachineEpsilon, 1 - Tools.DoubleMachineEpsilon },
-                { 3, 30 }
+                { 2.0 + 1E-10, 30 }
             };
         }
 

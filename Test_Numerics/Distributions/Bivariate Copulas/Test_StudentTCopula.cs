@@ -37,7 +37,7 @@ namespace Distributions.BivariateCopulas
         {
             var copula = new StudentTCopula();
             Assert.AreEqual(0.0, copula.Theta);
-            Assert.AreEqual(5, copula.DegreesOfFreedom);
+            Assert.AreEqual(5.0, copula.DegreesOfFreedom);
             Assert.AreEqual(CopulaType.StudentT, copula.Type);
             Assert.AreEqual("Student's t", copula.DisplayName);
             Assert.AreEqual("t", copula.ShortDisplayName);
@@ -52,7 +52,7 @@ namespace Distributions.BivariateCopulas
         {
             var copula = new StudentTCopula(0.5, 10);
             Assert.AreEqual(0.5, copula.Theta);
-            Assert.AreEqual(10, copula.DegreesOfFreedom);
+            Assert.AreEqual(10.0, copula.DegreesOfFreedom);
             Assert.IsTrue(copula.ParametersValid);
         }
 
@@ -62,9 +62,14 @@ namespace Distributions.BivariateCopulas
         [TestMethod]
         public void Test_InvalidDegreesOfFreedom()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new StudentTCopula(0.5, 2));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new StudentTCopula(0.5, 0));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new StudentTCopula(0.5, -1));
+            var copula = new StudentTCopula(0.5, 2);
+            Assert.IsFalse(copula.ParametersValid);
+
+            copula = new StudentTCopula(0.5, 0);
+            Assert.IsFalse(copula.ParametersValid);
+
+            copula = new StudentTCopula(0.5, -1);
+            Assert.IsFalse(copula.ParametersValid);
         }
 
         /// <summary>
@@ -422,8 +427,8 @@ namespace Distributions.BivariateCopulas
             Assert.IsLessThan(1.0, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be < 1.0");
 
             // ν should be estimated (may differ from initial value of 5)
-            Assert.IsGreaterThanOrEqualTo(3, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
+            Assert.IsGreaterThanOrEqualTo(2.0 + 1E-10, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be > 2");
+            Assert.IsLessThanOrEqualTo(30.0, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 30");
 
             // Tail dependence should be data-driven (not user-defined)
             double lambda = tCopula.UpperTailDependence;
@@ -447,8 +452,8 @@ namespace Distributions.BivariateCopulas
 
             var tCopula = (StudentTCopula)copula;
             Assert.IsGreaterThan(0.5, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be > 0.5");
-            Assert.IsGreaterThanOrEqualTo(3, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
+            Assert.IsGreaterThanOrEqualTo(2.0 + 1E-10, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be > 2");
+            Assert.IsLessThanOrEqualTo(30.0, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 30");
         }
 
         /// <summary>
@@ -470,9 +475,9 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(-0.3, copula.Theta, 1E-10);
             Assert.AreEqual(15.0, copula.DegreesOfFreedom);
 
-            // SetCopulaParameters should clamp nu to minimum of 3
+            // SetCopulaParameters should clamp nu to just above 2 (the mathematical lower bound)
             copula.SetCopulaParameters(new double[] { 0.5, 1.0 });
-            Assert.AreEqual(3.0, copula.DegreesOfFreedom);
+            Assert.AreEqual(2.0 + 1E-10, copula.DegreesOfFreedom);
         }
 
         /// <summary>
@@ -492,9 +497,9 @@ namespace Distributions.BivariateCopulas
             Assert.IsLessThan(-0.99, constraints[0, 0]);
             Assert.IsGreaterThan(0.99, constraints[0, 1]);
 
-            // Row 1: nu constraints [3, 60]
-            Assert.AreEqual(3.0, constraints[1, 0]);
-            Assert.AreEqual(60.0, constraints[1, 1]);
+            // Row 1: nu constraints [2 + 1e-10, 30]
+            Assert.AreEqual(2.0 + 1E-10, constraints[1, 0]);
+            Assert.AreEqual(30.0, constraints[1, 1]);
         }
 
     }
