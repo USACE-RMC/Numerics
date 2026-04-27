@@ -1,33 +1,3 @@
-/*
-* NOTICE:
-* The U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC) makes no guarantees about
-* the results, or appropriateness of outputs, obtained from Numerics.
-*
-* LIST OF CONDITIONS:
-* Redistribution and use in source and binary forms, with or without modification, are permitted
-* provided that the following conditions are met:
-* ● Redistributions of source code must retain the above notice, this list of conditions, and the
-* following disclaimer.
-* ● Redistributions in binary form must reproduce the above notice, this list of conditions, and
-* the following disclaimer in the documentation and/or other materials provided with the distribution.
-* ● The names of the U.S. Government, the U.S. Army Corps of Engineers, the Institute for Water
-* Resources, or the Risk Management Center may not be used to endorse or promote products derived
-* from this software without specific prior written permission. Nor may the names of its contributors
-* be used to endorse or promote products derived from this software without specific prior
-* written permission.
-*
-* DISCLAIMER:
-* THIS SOFTWARE IS PROVIDED BY THE U.S. ARMY CORPS OF ENGINEERS RISK MANAGEMENT CENTER
-* (USACE-RMC) "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-* THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-* DISCLAIMED. IN NO EVENT SHALL USACE-RMC BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-* SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-* PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-* THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
@@ -67,7 +37,7 @@ namespace Distributions.BivariateCopulas
         {
             var copula = new StudentTCopula();
             Assert.AreEqual(0.0, copula.Theta);
-            Assert.AreEqual(5, copula.DegreesOfFreedom);
+            Assert.AreEqual(5.0, copula.DegreesOfFreedom);
             Assert.AreEqual(CopulaType.StudentT, copula.Type);
             Assert.AreEqual("Student's t", copula.DisplayName);
             Assert.AreEqual("t", copula.ShortDisplayName);
@@ -82,7 +52,7 @@ namespace Distributions.BivariateCopulas
         {
             var copula = new StudentTCopula(0.5, 10);
             Assert.AreEqual(0.5, copula.Theta);
-            Assert.AreEqual(10, copula.DegreesOfFreedom);
+            Assert.AreEqual(10.0, copula.DegreesOfFreedom);
             Assert.IsTrue(copula.ParametersValid);
         }
 
@@ -92,9 +62,14 @@ namespace Distributions.BivariateCopulas
         [TestMethod]
         public void Test_InvalidDegreesOfFreedom()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new StudentTCopula(0.5, 2));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new StudentTCopula(0.5, 0));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new StudentTCopula(0.5, -1));
+            var copula = new StudentTCopula(0.5, 2);
+            Assert.IsFalse(copula.ParametersValid);
+
+            copula = new StudentTCopula(0.5, 0);
+            Assert.IsFalse(copula.ParametersValid);
+
+            copula = new StudentTCopula(0.5, -1);
+            Assert.IsFalse(copula.ParametersValid);
         }
 
         /// <summary>
@@ -452,8 +427,8 @@ namespace Distributions.BivariateCopulas
             Assert.IsLessThan(1.0, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be < 1.0");
 
             // ν should be estimated (may differ from initial value of 5)
-            Assert.IsGreaterThanOrEqualTo(3, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
+            Assert.IsGreaterThanOrEqualTo(2.0 + 1E-10, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be > 2");
+            Assert.IsLessThanOrEqualTo(30.0, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 30");
 
             // Tail dependence should be data-driven (not user-defined)
             double lambda = tCopula.UpperTailDependence;
@@ -477,8 +452,8 @@ namespace Distributions.BivariateCopulas
 
             var tCopula = (StudentTCopula)copula;
             Assert.IsGreaterThan(0.5, tCopula.Theta, $"Estimated ρ = {tCopula.Theta} should be > 0.5");
-            Assert.IsGreaterThanOrEqualTo(3, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be >= 3");
-            Assert.IsLessThanOrEqualTo(60, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 60");
+            Assert.IsGreaterThanOrEqualTo(2.0 + 1E-10, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be > 2");
+            Assert.IsLessThanOrEqualTo(30.0, tCopula.DegreesOfFreedom, $"Estimated ν = {tCopula.DegreesOfFreedom} should be <= 30");
         }
 
         /// <summary>
@@ -498,18 +473,11 @@ namespace Distributions.BivariateCopulas
             // SetCopulaParameters should update both
             copula.SetCopulaParameters(new double[] { -0.3, 15.0 });
             Assert.AreEqual(-0.3, copula.Theta, 1E-10);
-            Assert.AreEqual(15, copula.DegreesOfFreedom);
+            Assert.AreEqual(15.0, copula.DegreesOfFreedom);
 
-            // SetCopulaParameters should round nu to nearest integer
-            copula.SetCopulaParameters(new double[] { 0.5, 7.6 });
-            Assert.AreEqual(8, copula.DegreesOfFreedom);
-
-            copula.SetCopulaParameters(new double[] { 0.5, 7.4 });
-            Assert.AreEqual(7, copula.DegreesOfFreedom);
-
-            // SetCopulaParameters should clamp nu to minimum of 3
+            // SetCopulaParameters should clamp nu to just above 2 (the mathematical lower bound)
             copula.SetCopulaParameters(new double[] { 0.5, 1.0 });
-            Assert.AreEqual(3, copula.DegreesOfFreedom);
+            Assert.AreEqual(2.0 + 1E-10, copula.DegreesOfFreedom);
         }
 
         /// <summary>
@@ -529,9 +497,9 @@ namespace Distributions.BivariateCopulas
             Assert.IsLessThan(-0.99, constraints[0, 0]);
             Assert.IsGreaterThan(0.99, constraints[0, 1]);
 
-            // Row 1: nu constraints [3, 60]
-            Assert.AreEqual(3.0, constraints[1, 0]);
-            Assert.AreEqual(60.0, constraints[1, 1]);
+            // Row 1: nu constraints [2 + 1e-10, 30]
+            Assert.AreEqual(2.0 + 1E-10, constraints[1, 0]);
+            Assert.AreEqual(30.0, constraints[1, 1]);
         }
 
     }

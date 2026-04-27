@@ -60,4 +60,4 @@ If you discover a security vulnerability, please do **not** open a public issue.
 
 ## License
 
-See [LICENSE](LICENSE) for details. This software is provided by USACE-RMC under a BSD-style license with a no-endorsement clause.
+See [LICENSE](LICENSE) for details. This software is provided by USACE-RMC under the Zero-Clause BSD (0BSD) license.

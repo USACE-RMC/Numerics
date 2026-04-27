@@ -1,34 +1,5 @@
-﻿/*
-* NOTICE:
-* The U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC) makes no guarantees about
-* the results, or appropriateness of outputs, obtained from Numerics.
-*
-* LIST OF CONDITIONS:
-* Redistribution and use in source and binary forms, with or without modification, are permitted
-* provided that the following conditions are met:
-* ● Redistributions of source code must retain the above notice, this list of conditions, and the
-* following disclaimer.
-* ● Redistributions in binary form must reproduce the above notice, this list of conditions, and
-* the following disclaimer in the documentation and/or other materials provided with the distribution.
-* ● The names of the U.S. Government, the U.S. Army Corps of Engineers, the Institute for Water
-* Resources, or the Risk Management Center may not be used to endorse or promote products derived
-* from this software without specific prior written permission. Nor may the names of its contributors
-* be used to endorse or promote products derived from this software without specific prior
-* written permission.
-*
-* DISCLAIMER:
-* THIS SOFTWARE IS PROVIDED BY THE U.S. ARMY CORPS OF ENGINEERS RISK MANAGEMENT CENTER
-* (USACE-RMC) "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-* THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-* DISCLAIMED. IN NO EVENT SHALL USACE-RMC BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-* SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-* PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-* THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-using System;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -151,6 +122,57 @@ namespace Data.TimeSeriesAnalysis
         private static async Task<bool> Online() => await TimeSeriesDownload.IsConnectedToInternet();
 
         /// <summary>
+        /// Per-service availability cache. Each entry runs its probe at most once per test
+        /// run; subsequent calls reuse the cached <see cref="Lazy{T}"/> task. Used so that
+        /// integration tests skip cleanly when the upstream provider is unreachable
+        /// (e.g. BOM's WDP backend returning 500 / DatasourceError) instead of failing CI.
+        /// </summary>
+        private static readonly ConcurrentDictionary<string, Lazy<Task<bool>>> _serviceAvailability = new();
+
+        /// <summary>
+        /// Memoized "can we hit this service?" probe. Returns false when the host is offline
+        /// or when the supplied probe throws (any exception is treated as "service down").
+        /// </summary>
+        private static Task<bool> AvailableAsync(string serviceName, Func<Task> probe) =>
+            _serviceAvailability.GetOrAdd(serviceName, _ => new Lazy<Task<bool>>(async () =>
+            {
+                if (!await Online()) return false;
+                try { await probe(); return true; }
+                catch { return false; }
+            })).Value;
+
+        /// <summary>
+        /// Probes a small windowed CHMN download to confirm Water Survey of Canada services are responsive.
+        /// </summary>
+        private static Task<bool> ChmnAvailable() => AvailableAsync("CHMN", () =>
+            TimeSeriesDownload.FromCHMN(CHMN_1,
+                TimeSeriesDownload.TimeSeriesType.DailyDischarge,
+                startDate: WinStart, endDate: WinStart.AddDays(1)));
+
+        /// <summary>
+        /// Probes a small USGS peak-discharge download (annual maxes — a small payload) to confirm USGS is responsive.
+        /// </summary>
+        private static Task<bool> UsgsAvailable() => AvailableAsync("USGS", async () =>
+        {
+            await TimeSeriesDownload.FromUSGS(USGS_3, TimeSeriesDownload.TimeSeriesType.PeakDischarge);
+        });
+
+        /// <summary>
+        /// Probes a GHCN station file fetch to confirm NOAA NCEI services are responsive.
+        /// </summary>
+        private static Task<bool> GhcnAvailable() => AvailableAsync("GHCN", () =>
+            TimeSeriesDownload.FromGHCN(GHCN_1));
+
+        /// <summary>
+        /// Probes a small windowed BOM download to confirm the KiWIS values endpoint (and the
+        /// underlying WDP backend) is responsive. False when BOM returns 500 / DatasourceError.
+        /// </summary>
+        private static Task<bool> BomAvailable() => AvailableAsync("BOM", () =>
+            TimeSeriesDownload.FromABOM(BOM_1,
+                TimeSeriesDownload.TimeSeriesType.DailyDischarge,
+                startDate: WinStart, endDate: WinStart.AddDays(1)));
+
+        /// <summary>
         /// Verifies that a time series has monotonically increasing, non-duplicated date indices.
         /// </summary>
         /// <param name="ts">The time series to validate.</param>
@@ -201,7 +223,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_FullPor_ColdRiver_Flow()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_1);
             AssertDailySeriesMonotonic(ts);
         }
@@ -212,7 +234,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_FullPor_Lillooet_Flow()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_2);
             AssertDailySeriesMonotonic(ts);
         }
@@ -223,7 +245,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_FullPor_Capilano_Flow()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_3);
             AssertDailySeriesMonotonic(ts);
         }
@@ -234,7 +256,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_UnitConversion_Flow_CmsCfs()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
 
             var tsCms = await TimeSeriesDownload.FromCHMN(CHMN_1,
                 TimeSeriesDownload.TimeSeriesType.DailyDischarge,
@@ -260,7 +282,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_UnitConversion_Stage_MFt()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
 
             var tsM = await TimeSeriesDownload.FromCHMN(CHMN_1,
                 TimeSeriesDownload.TimeSeriesType.DailyStage,
@@ -307,7 +329,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_InstantaneousDischarge_Works()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
 
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_2,
                 TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
@@ -322,7 +344,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_InstantaneousStage_Works()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
 
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_2,
                 TimeSeriesDownload.TimeSeriesType.InstantaneousStage);
@@ -337,7 +359,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_PeakDischarge_Works()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
 
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_1,
                 TimeSeriesDownload.TimeSeriesType.PeakDischarge);
@@ -352,7 +374,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task CHMN_PeakStage_Works()
         {
-            if (!await Online()) return;
+            if (!await ChmnAvailable()) return;
 
             var ts = await TimeSeriesDownload.FromCHMN(CHMN_1,
                 TimeSeriesDownload.TimeSeriesType.PeakStage);
@@ -371,7 +393,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_FullPor_DailyDischarge()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_1);
             AssertDailySeriesMonotonic(ts);
@@ -383,7 +405,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_FullPor_DailyStage()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, _) = await TimeSeriesDownload.FromUSGS(USGS_4, TimeSeriesDownload.TimeSeriesType.DailyStage);
             AssertDailySeriesMonotonic(ts);
@@ -395,7 +417,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_PeakDischarge_Works()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_3,
                 TimeSeriesDownload.TimeSeriesType.PeakDischarge);
@@ -431,7 +453,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_MeasuredDischarge_Works()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_5,
                 TimeSeriesDownload.TimeSeriesType.MeasuredDischarge);
@@ -454,7 +476,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_MeasuredStage_Works()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_5,
                 TimeSeriesDownload.TimeSeriesType.MeasuredStage);
@@ -477,7 +499,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_PeakStage_Works()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_3,
                 TimeSeriesDownload.TimeSeriesType.PeakStage);
@@ -493,7 +515,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_InstantaneousDischarge_Works()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, _) = await TimeSeriesDownload.FromUSGS(USGS_6,
                 TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
@@ -508,7 +530,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task USGS_InstantaneousStage_Works()
         {
-            if (!await Online()) return;
+            if (!await UsgsAvailable()) return;
 
             var (ts, _) = await TimeSeriesDownload.FromUSGS(USGS_6,
                 TimeSeriesDownload.TimeSeriesType.InstantaneousStage);
@@ -527,7 +549,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task GHCN_FullPor_Precipitation()
         {
-            if (!await Online()) return;
+            if (!await GhcnAvailable()) return;
             var ts = await TimeSeriesDownload.FromGHCN(GHCN_1);
             AssertDailySeriesMonotonic(ts);
         }
@@ -538,7 +560,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task GHCN_FullPor_Snow()
         {
-            if (!await Online()) return;
+            if (!await GhcnAvailable()) return;
             var ts = await TimeSeriesDownload.FromGHCN(GHCN_3,
                 TimeSeriesDownload.TimeSeriesType.DailySnow);
             if (ts.Count > 0) AssertDailySeriesMonotonic(ts);
@@ -550,7 +572,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task GHCN_UnitConversion_Mm_In()
         {
-            if (!await Online()) return;
+            if (!await GhcnAvailable()) return;
 
             var tsMm = await TimeSeriesDownload.FromGHCN(GHCN_2,
                 TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
@@ -574,7 +596,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task GHCN_UnitConversion_Mm_Cm()
         {
-            if (!await Online()) return;
+            if (!await GhcnAvailable()) return;
 
             var tsMm = await TimeSeriesDownload.FromGHCN(GHCN_1,
                 TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
@@ -622,7 +644,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_FullPor_CotterRiver_Discharge()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
             var ts = await TimeSeriesDownload.FromABOM(BOM_1);
             AssertDailySeriesMonotonic(ts);
         }
@@ -633,7 +655,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_FullPor_Goodradigbee_Discharge()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
             var ts = await TimeSeriesDownload.FromABOM(BOM_2);
             AssertDailySeriesMonotonic(ts);
         }
@@ -644,7 +666,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_FullPor_MurrayRiver_Stage()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
             var ts = await TimeSeriesDownload.FromABOM(BOM_3, TimeSeriesDownload.TimeSeriesType.DailyStage);
             AssertDailySeriesMonotonic(ts);
         }
@@ -655,7 +677,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_UnitConversion_Discharge_CmsCfs()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
 
             var tsCms = await TimeSeriesDownload.FromABOM(BOM_1,
                 TimeSeriesDownload.TimeSeriesType.DailyDischarge,
@@ -681,7 +703,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_UnitConversion_Stage_MFt()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
 
             var tsM = await TimeSeriesDownload.FromABOM(BOM_3,
                 TimeSeriesDownload.TimeSeriesType.DailyStage,
@@ -728,7 +750,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_WindowedDownload_Works()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
 
             var ts = await TimeSeriesDownload.FromABOM(BOM_1,
                 TimeSeriesDownload.TimeSeriesType.DailyDischarge,
@@ -753,7 +775,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_InstantaneousDischarge_Works()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
             var ts = await TimeSeriesDownload.FromABOM(BOM_1,
                 TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge,
                 startDate: WinStart, endDate: WinEnd);
@@ -767,7 +789,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_InstantaneousStage_Works()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
             var ts = await TimeSeriesDownload.FromABOM(BOM_3,
                 TimeSeriesDownload.TimeSeriesType.InstantaneousStage,
                 startDate: WinStart, endDate: WinEnd);
@@ -781,7 +803,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_DailyPrecipitation_Works()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
             var ts = await TimeSeriesDownload.FromABOM(BOM_1,
                 TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
                 startDate: WinStart, endDate: WinEnd);
@@ -795,7 +817,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod, TestCategory("Integration")]
         public async Task BOM_UnitConversion_Precip_MmIn()
         {
-            if (!await Online()) return;
+            if (!await BomAvailable()) return;
 
             var tsMm = await TimeSeriesDownload.FromABOM(BOM_1,
                 TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,

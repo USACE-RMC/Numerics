@@ -1,34 +1,4 @@
-﻿/*
-* NOTICE:
-* The U.S. Army Corps of Engineers, Risk Management Center (USACE-RMC) makes no guarantees about
-* the results, or appropriateness of outputs, obtained from Numerics.
-*
-* LIST OF CONDITIONS:
-* Redistribution and use in source and binary forms, with or without modification, are permitted
-* provided that the following conditions are met:
-* ● Redistributions of source code must retain the above notice, this list of conditions, and the
-* following disclaimer.
-* ● Redistributions in binary form must reproduce the above notice, this list of conditions, and
-* the following disclaimer in the documentation and/or other materials provided with the distribution.
-* ● The names of the U.S. Government, the U.S. Army Corps of Engineers, the Institute for Water
-* Resources, or the Risk Management Center may not be used to endorse or promote products derived
-* from this software without specific prior written permission. Nor may the names of its contributors
-* be used to endorse or promote products derived from this software without specific prior
-* written permission.
-*
-* DISCLAIMER:
-* THIS SOFTWARE IS PROVIDED BY THE U.S. ARMY CORPS OF ENGINEERS RISK MANAGEMENT CENTER
-* (USACE-RMC) "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-* THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-* DISCLAIMED. IN NO EVENT SHALL USACE-RMC BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-* SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-* PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-* THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -972,7 +942,7 @@ namespace Numerics.Data
             else parameterType = "Rainfall";
 
             // Step 1: Get timeseries list to find the appropriate ts_id
-            string tsListUrl = "http://www.bom.gov.au/waterdata/services" +
+            string tsListUrl = "https://www.bom.gov.au/waterdata/services" +
                 $"?service=kisters&type=QueryServices&datasource=0&format=json" +
                 $"&request=getTimeseriesList" +
                 $"&station_no={Uri.EscapeDataString(stationNumber)}" +
@@ -1001,7 +971,6 @@ namespace Numerics.Data
                 try
                 {
                     response = await client.GetAsync(tsListUrl);
-                    response.EnsureSuccessStatusCode();
                 }
                 catch (HttpRequestException ex)
                 {
@@ -1013,6 +982,15 @@ namespace Numerics.Data
                 }
 
                 var listResponse = await response.Content.ReadAsStringAsync();
+
+                // Surface the response body in the exception so transient upstream failures
+                // (KiWIS 5xx with a JSON error payload) are self-documenting.
+                if (!response.IsSuccessStatusCode)
+                {
+                    string snippet = listResponse.Length > 500 ? listResponse.Substring(0, 500) + "…" : listResponse;
+                    throw new Exception(
+                        $"Failed to retrieve time series list from BOM API. Status={(int)response.StatusCode} ({response.StatusCode}). Body={snippet}");
+                }
 
                 // Check for error response from KiWIS
                 if (listResponse.Contains("\"type\":\"error\"") || listResponse.StartsWith("{\"type\":\"error\""))
@@ -1093,7 +1071,7 @@ namespace Numerics.Data
             }
 
             // Step 2: Get time series values using the ts_id
-            string valuesUrl = "http://www.bom.gov.au/waterdata/services" +
+            string valuesUrl = "https://www.bom.gov.au/waterdata/services" +
                 $"?service=kisters&type=QueryServices&datasource=0&format=json" +
                 $"&request=getTimeseriesValues" +
                 $"&ts_id={tsId}" +
@@ -1124,7 +1102,6 @@ namespace Numerics.Data
                 try
                 {
                     response = await client.GetAsync(valuesUrl);
-                    response.EnsureSuccessStatusCode();
                 }
                 catch (HttpRequestException ex)
                 {
@@ -1136,6 +1113,16 @@ namespace Numerics.Data
                 }
 
                 var valuesResponse = await response.Content.ReadAsStringAsync();
+
+                // Surface the response body in the exception so transient upstream failures
+                // (e.g. KiWIS returning 500 with `{"code":"DatasourceError","message":"Error connecting to WDP."}`)
+                // are self-documenting. Without this, EnsureSuccessStatusCode would discard the body.
+                if (!response.IsSuccessStatusCode)
+                {
+                    string snippet = valuesResponse.Length > 500 ? valuesResponse.Substring(0, 500) + "…" : valuesResponse;
+                    throw new Exception(
+                        $"Failed to retrieve time series values from BOM API. Status={(int)response.StatusCode} ({response.StatusCode}). Body={snippet}");
+                }
 
                 // Check for error response
                 if (valuesResponse.Contains("\"type\":\"error\"") || valuesResponse.StartsWith("{\"type\":\"error\""))
