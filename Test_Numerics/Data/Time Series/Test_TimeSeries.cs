@@ -448,6 +448,167 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// Test that MovingSum propagates NaN strictly by default (any NaN in window -> NaN out).
+        /// Matches pandas Series.rolling(w).sum() default min_periods=w behavior.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingSum_NaN_Strict()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingSum(2);
+            // window positions: [1,NaN], [NaN,3], [3,4], [4,5] -> [NaN, NaN, 7, 9]
+            var valid = new double[] { double.NaN, double.NaN, 7.0, 9.0 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Test that MovingSum with minValidCount=1 skips NaN values (pandas min_periods=1 semantics).
+        /// Sum is over observed values only; no scaling is applied.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingSum_NaN_SkipMode()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingSum(2, minValidCount: 1);
+            // window positions: [1,NaN]->1, [NaN,3]->3, [3,4]->7, [4,5]->9
+            var valid = new double[] { 1.0, 3.0, 7.0, 9.0 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Test that MovingAverage propagates NaN strictly by default.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingAverage_NaN_Strict()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingAverage(2);
+            var valid = new double[] { double.NaN, double.NaN, 3.5, 4.5 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Test that MovingAverage with minValidCount=1 averages over non-NaN values only.
+        /// Denominator is the count of observed values, not the window size — this fixes the prior low-bias.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingAverage_NaN_SkipMode()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingAverage(2, minValidCount: 1);
+            // [1,NaN]->1/1=1, [NaN,3]->3/1=3, [3,4]->7/2=3.5, [4,5]->9/2=4.5
+            var valid = new double[] { 1.0, 3.0, 3.5, 4.5 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Regression guard: Difference relies on IEEE-754 subtraction to propagate NaN automatically.
+        /// </summary>
+        [TestMethod]
+        public void Test_Difference_NaN()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 7.0 });
+
+            var newTS = ts.Difference();
+            // diffs: NaN-1=NaN, 3-NaN=NaN, 7-3=4
+            Assert.AreEqual(3, newTS.Count);
+            Assert.AreEqual(double.NaN, newTS[0].Value);
+            Assert.AreEqual(double.NaN, newTS[1].Value);
+            Assert.AreEqual(4.0, newTS[2].Value);
+        }
+
+        /// <summary>
+        /// Test that CalendarYearSeries with Sum/Average drops years containing any NaN
+        /// (rather than the previous behavior of silently treating NaN as zero).
+        /// </summary>
+        [TestMethod]
+        public void Test_CalendarYearSeries_NaN()
+        {
+            // Two years of monthly data; year 2 has one NaN month.
+            var values = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                        1, double.NaN, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+            var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), values);
+
+            // Sum: year 1 = 78, year 2 = NaN (dropped from output)
+            var sumTS = ts.CalendarYearSeries(BlockFunctionType.Sum);
+            Assert.AreEqual(1, sumTS.Count);
+            Assert.AreEqual(78.0, sumTS[0].Value);
+            Assert.AreEqual(2023, sumTS[0].Index.Year);
+
+            // Average: same — year 2 dropped because NaN propagates
+            var avgTS = ts.CalendarYearSeries(BlockFunctionType.Average);
+            Assert.AreEqual(1, avgTS.Count);
+            Assert.AreEqual(78.0 / 12.0, avgTS[0].Value, 1E-9);
+
+            // Maximum: NaN values are skipped via the < / > comparisons (false on NaN), so both years survive.
+            var maxTS = ts.CalendarYearSeries(BlockFunctionType.Maximum);
+            Assert.AreEqual(2, maxTS.Count);
+            Assert.AreEqual(12.0, maxTS[0].Value);
+            Assert.AreEqual(12.0, maxTS[1].Value);
+        }
+
+        /// <summary>
+        /// Regression guard: MonthlySeries already propagated NaN naively before this fix; verify it still does.
+        /// </summary>
+        [TestMethod]
+        public void Test_MonthlySeries_NaN()
+        {
+            // Two months of weekly data; month 2 has one NaN.
+            var values = new double[] { 10, 20, 30, 40, 50, 60, double.NaN, 80 };
+            var ts = new TimeSeries(TimeInterval.SevenDay, new DateTime(2023, 01, 01), values);
+
+            var sumTS = ts.MonthlySeries(BlockFunctionType.Sum);
+            // Jan 2023 has 5 weekly values: 10+20+30+40+50 = 150
+            // Feb 2023 has 3 weekly values, one NaN -> sum = NaN, dropped
+            // Mar-Dec 2023 are empty -> skipped (no spurious zeros)
+            Assert.AreEqual(1, sumTS.Count);
+            Assert.AreEqual(150.0, sumTS[0].Value, 1E-9);
+        }
+
+        /// <summary>
+        /// Test that PeaksOverThresholdSeries with a multi-day MovingSum smoothing on data with NaN
+        /// does not produce spurious exceedances from windows that touched a missing day.
+        /// This is the user-reported bug: 2-day moving sum on precipitation with gaps was returning
+        /// the value of the single non-missing day instead of NaN, causing zero-baseline exceedances.
+        /// </summary>
+        [TestMethod]
+        public void Test_PeaksOverThreshold_MovingSum_NaN()
+        {
+            // One legitimate 2-day exceedance (5 + 6 = 11). The trailing 8.0 sits at the very end
+            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0].
+            // Pre-fix: [NaN, 8.0] silently became 8.0 -> spurious extra event above threshold 7.
+            // Post-fix: that window is NaN -> excluded. Only [5, 6] = 11 remains.
+            var values = new double[] { 0.1, 0.2, 5.0, 6.0, 0.1, 0.0, 0.1, 0.2, 0.0, double.NaN, 8.0 };
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), values);
+
+            var pot = ts.PeaksOverThresholdSeries(threshold: 7.0, minStepsBetweenEvents: 1,
+                                                  smoothingFunction: SmoothingFunctionType.MovingSum, period: 2);
+
+            Assert.AreEqual(1, pot.Count);
+            Assert.AreEqual(11.0, pot[0].Value, 1E-9);
+        }
+
+        /// <summary>
         /// Test the method that shifts all dates to a new starting date
         /// </summary>
         [TestMethod]

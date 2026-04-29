@@ -945,28 +945,41 @@ namespace Numerics.Data
         /// Returns a moving average time-series based on the specified time period. The average is computed based on the previous n=period ordinates.
         /// </summary>
         /// <param name="period">The time period to average over. If time interval is 1-hour, and period is 12, the moving average will be computed over a moving 12 hour block.</param>
-        public TimeSeries MovingAverage(int period)
+        /// <param name="minValidCount">
+        /// Optional. The minimum number of non-missing (non-NaN) values that must be present in a window for the average to be computed; otherwise the output is NaN.
+        /// Defaults to <paramref name="period"/> (strict propagation: any NaN in the window produces NaN). Pass a smaller value to skip missing values and average over the observed entries only,
+        /// matching the semantics of pandas <c>min_periods</c> and bottleneck <c>min_count</c>.
+        /// </param>
+        public TimeSeries MovingAverage(int period, int? minValidCount = null)
         {
             if (period >= Count)
                 throw new ArgumentException(nameof(period), "The period must be less than the length of the time-series.");
+            int minCount = minValidCount ?? period;
+            if (minCount < 1 || minCount > period)
+                throw new ArgumentOutOfRangeException(nameof(minValidCount), "minValidCount must be between 1 and period.");
             SortByTime();
             var timeSeries = new TimeSeries(TimeInterval);
             double sum = 0d;
-            double avg = 0d;
+            int nanCount = 0;
             for (int i = 1; i <= Count; i++)
             {
-                sum += !double.IsNaN(this[i - 1].Value) ? this[i - 1].Value : 0;
+                double newVal = this[i - 1].Value;
+                if (double.IsNaN(newVal)) nanCount++;
+                else sum += newVal;
+
                 if (i > period)
                 {
-                    sum -= !double.IsNaN(this[i - period - 1].Value) ? this[i - period - 1].Value : 0;
-                    avg = sum / period;
+                    double oldVal = this[i - period - 1].Value;
+                    if (double.IsNaN(oldVal)) nanCount--;
+                    else sum -= oldVal;
                 }
-                else
-                {
-                    avg = sum / i;
-                }
+
                 if (i >= period)
+                {
+                    int validCount = period - nanCount;
+                    double avg = validCount >= minCount ? sum / validCount : double.NaN;
                     timeSeries.Add(new SeriesOrdinate<DateTime, double>(this[i - 1].Index, avg));
+                }
             }
             return timeSeries;
         }
@@ -975,20 +988,41 @@ namespace Numerics.Data
         /// Returns a moving sum time-series based on the specified time period. The sum is computed based on the previous n=period ordinates.
         /// </summary>
         /// <param name="period">The time period to sum over. If time interval is 1-hour, and period is 12, the moving sum will be computed over a moving 12 hour block.</param>
-        public TimeSeries MovingSum(int period)
+        /// <param name="minValidCount">
+        /// Optional. The minimum number of non-missing (non-NaN) values that must be present in a window for the sum to be computed; otherwise the output is NaN.
+        /// Defaults to <paramref name="period"/> (strict propagation: any NaN in the window produces NaN). Pass a smaller value to sum only the observed entries within each window,
+        /// matching the semantics of pandas <c>min_periods</c> and bottleneck <c>min_count</c>. Note that no scaling is applied — the sum is over observed values only.
+        /// </param>
+        public TimeSeries MovingSum(int period, int? minValidCount = null)
         {
             if (period >= Count)
                 throw new ArgumentException(nameof(period), "The period must be less than the length of the time-series.");
+            int minCount = minValidCount ?? period;
+            if (minCount < 1 || minCount > period)
+                throw new ArgumentOutOfRangeException(nameof(minValidCount), "minValidCount must be between 1 and period.");
             SortByTime();
             var timeSeries = new TimeSeries(TimeInterval);
             double sum = 0d;
+            int nanCount = 0;
             for (int i = 1; i <= Count; i++)
             {
-                sum += !double.IsNaN(this[i - 1].Value) ? this[i - 1].Value : 0;
+                double newVal = this[i - 1].Value;
+                if (double.IsNaN(newVal)) nanCount++;
+                else sum += newVal;
+
                 if (i > period)
-                    sum -= !double.IsNaN(this[i - period - 1].Value) ? this[i - period - 1].Value : 0;
+                {
+                    double oldVal = this[i - period - 1].Value;
+                    if (double.IsNaN(oldVal)) nanCount--;
+                    else sum -= oldVal;
+                }
+
                 if (i >= period)
-                    timeSeries.Add(new SeriesOrdinate<DateTime, double>(this[i - 1].Index, sum));
+                {
+                    int validCount = period - nanCount;
+                    double output = validCount >= minCount ? sum : double.NaN;
+                    timeSeries.Add(new SeriesOrdinate<DateTime, double>(this[i - 1].Index, output));
+                }
             }
             return timeSeries;
         }
@@ -1610,20 +1644,26 @@ namespace Numerics.Data
                     double sum = 0;
                     for (int j = 0; j < blockData.Count; j++)
                     {
-                        sum += !double.IsNaN(blockData[j].Value) ? blockData[j].Value : 0;
+                        sum += blockData[j].Value;
                     }
-                    ordinate.Index = blockData.Last().Index;
-                    ordinate.Value = sum;
+                    if (blockData.Count > 0)
+                    {
+                        ordinate.Index = blockData.Last().Index;
+                        ordinate.Value = sum;
+                    }
                 }
                 else if (blockFunction == BlockFunctionType.Average)
                 {
                     double sum = 0;
                     for (int j = 0; j < blockData.Count; j++)
                     {
-                        sum += !double.IsNaN(blockData[j].Value) ? blockData[j].Value : 0;
+                        sum += blockData[j].Value;
                     }
-                    ordinate.Index = blockData.Last().Index;
-                    ordinate.Value = sum / blockData.Count;
+                    if (blockData.Count > 0)
+                    {
+                        ordinate.Index = blockData.Last().Index;
+                        ordinate.Value = sum / blockData.Count;
+                    }
                 }
 
                 if (!double.IsNaN(ordinate.Value))
@@ -1633,7 +1673,7 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Returns an annual (irregular) block series based on a 12-month year with a customized starting month. 
+        /// Returns an annual (irregular) block series based on a 12-month year with a customized starting month.
         /// </summary>
         /// <param name="startMonth">Optional. The month when the custom year begins. Default = 10 (or October).</param>
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
@@ -1704,20 +1744,26 @@ namespace Numerics.Data
                     double sum = 0;
                     for (int j = 0; j < blockData.Count; j++)
                     {
-                        sum += !double.IsNaN(blockData[j].Value) ? blockData[j].Value : 0;
+                        sum += blockData[j].Value;
                     }
-                    ordinate.Index = blockData.Last().Index;
-                    ordinate.Value = sum;
+                    if (blockData.Count > 0)
+                    {
+                        ordinate.Index = blockData.Last().Index;
+                        ordinate.Value = sum;
+                    }
                 }
                 else if (blockFunction == BlockFunctionType.Average)
                 {
                     double sum = 0;
                     for (int j = 0; j < blockData.Count; j++)
                     {
-                        sum += !double.IsNaN(blockData[j].Value) ? blockData[j].Value : 0;
+                        sum += blockData[j].Value;
                     }
-                    ordinate.Index = blockData.Last().Index;
-                    ordinate.Value = sum / blockData.Count;
+                    if (blockData.Count > 0)
+                    {
+                        ordinate.Index = blockData.Last().Index;
+                        ordinate.Value = sum / blockData.Count;
+                    }
                 }
 
                 if (!double.IsNaN(ordinate.Value))
@@ -1826,20 +1872,26 @@ namespace Numerics.Data
                     double sum = 0;
                     for (int j = 0; j < blockData.Count; j++)
                     {
-                        sum += !double.IsNaN(blockData[j].Value) ? blockData[j].Value : 0;
+                        sum += blockData[j].Value;
                     }
-                    ordinate.Index = blockData.Last().Index;
-                    ordinate.Value = sum;
+                    if (blockData.Count > 0)
+                    {
+                        ordinate.Index = blockData.Last().Index;
+                        ordinate.Value = sum;
+                    }
                 }
                 else if (blockFunction == BlockFunctionType.Average)
                 {
                     double sum = 0;
                     for (int j = 0; j < blockData.Count; j++)
                     {
-                        sum += !double.IsNaN(blockData[j].Value) ? blockData[j].Value : 0;
+                        sum += blockData[j].Value;
                     }
-                    ordinate.Index = blockData.Last().Index;
-                    ordinate.Value = sum / blockData.Count;
+                    if (blockData.Count > 0)
+                    {
+                        ordinate.Index = blockData.Last().Index;
+                        ordinate.Value = sum / blockData.Count;
+                    }
                 }
 
                 if (!double.IsNaN(ordinate.Value))
@@ -1849,7 +1901,7 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Returns an monthly (irregular) block series.  
+        /// Returns an monthly (irregular) block series.
         /// </summary>
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
@@ -1914,8 +1966,11 @@ namespace Numerics.Data
                         {
                             sum += blockData[j].Value;
                         }
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum;
+                        if (blockData.Count > 0)
+                        {
+                            ordinate.Index = blockData.Last().Index;
+                            ordinate.Value = sum;
+                        }
                     }
                     else if (blockFunction == BlockFunctionType.Average)
                     {
@@ -1924,8 +1979,11 @@ namespace Numerics.Data
                         {
                             sum += blockData[j].Value;
                         }
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum / blockData.Count;
+                        if (blockData.Count > 0)
+                        {
+                            ordinate.Index = blockData.Last().Index;
+                            ordinate.Value = sum / blockData.Count;
+                        }
                     }
 
                     if (!double.IsNaN(ordinate.Value))
@@ -1938,7 +1996,7 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Returns an quarterly (irregular) block series.  
+        /// Returns an quarterly (irregular) block series.
         /// </summary>
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
@@ -2011,8 +2069,11 @@ namespace Numerics.Data
                         {
                             sum += blockData[j].Value;
                         }
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum;
+                        if (blockData.Count > 0)
+                        {
+                            ordinate.Index = blockData.Last().Index;
+                            ordinate.Value = sum;
+                        }
                     }
                     else if (blockFunction == BlockFunctionType.Average)
                     {
@@ -2021,8 +2082,11 @@ namespace Numerics.Data
                         {
                             sum += blockData[j].Value;
                         }
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum / blockData.Count;
+                        if (blockData.Count > 0)
+                        {
+                            ordinate.Index = blockData.Last().Index;
+                            ordinate.Value = sum / blockData.Count;
+                        }
                     }
 
                     if (!double.IsNaN(ordinate.Value))
