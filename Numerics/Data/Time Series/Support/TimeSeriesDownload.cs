@@ -221,8 +221,8 @@ namespace Numerics.Data
                     {
 
                         // Extract year, month, and parse days
-                        int.TryParse(line.Substring(11, 4), out var year);
-                        int.TryParse(line.Substring(15, 2), out var month);
+                        int.TryParse(line.Substring(11, 4), NumberStyles.Integer, CultureInfo.InvariantCulture, out var year);
+                        int.TryParse(line.Substring(15, 2), NumberStyles.Integer, CultureInfo.InvariantCulture, out var month);
                         int daysInMonth = DateTime.DaysInMonth(year, month);
 
                         for (int i = 0; i < daysInMonth; i++)
@@ -238,7 +238,7 @@ namespace Numerics.Data
                             }
 
                             // Parse the precipitation or snow value
-                            if (int.TryParse(strgValue, out int rawValue) && rawValue != -9999)  // Valid precipitation value
+                            if (int.TryParse(strgValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int rawValue) && rawValue != -9999)  // Valid precipitation value
                             {
                                 double convertedValue = ConvertToDesiredUnit(rawValue, unit);
                                 timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, convertedValue));
@@ -423,7 +423,7 @@ namespace Numerics.Data
                                     continue;
 
                                 // Parse date (assume fields[2] contains the date)
-                                if (!DateTime.TryParse(fields[2], out DateTime index))
+                                if (!DateTime.TryParse(fields[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime index))
                                 {
                                     continue;
                                 }
@@ -440,7 +440,8 @@ namespace Numerics.Data
 
                                 // Get and parse value
                                 string valueStr = fields[valueIndex];
-                                double value = string.IsNullOrWhiteSpace(valueStr) ? double.NaN : double.TryParse(valueStr, out double tempVal) ? tempVal : double.NaN;
+                                double value = string.IsNullOrWhiteSpace(valueStr) ? double.NaN
+                                    : double.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double tempVal) ? tempVal : double.NaN;
                                 timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
                             }
                         }
@@ -465,26 +466,26 @@ namespace Numerics.Data
                                 int month = 1;
                                 int day = 1;
                                 var dateString = segments[2].Split('-');
-                                DateTime.TryParse(segments[2], out index);
+                                DateTime.TryParse(segments[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out index);
 
                                 if (index == DateTime.MinValue)
                                 {
                                     // The date parsing failed, so try to manually parse it
                                     if (dateString[1] == "00" && dateString[2] != "00")
                                     {
-                                        int.TryParse(dateString[0], out year);
-                                        int.TryParse(dateString[2], out day);
+                                        int.TryParse(dateString[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out year);
+                                        int.TryParse(dateString[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out day);
                                         index = new DateTime(year, month, day, 0, 0, 0);
                                     }
                                     else if (dateString[1] != "00" && dateString[2] == "00")
                                     {
-                                        int.TryParse(dateString[0], out year);
-                                        int.TryParse(dateString[1], out month);
+                                        int.TryParse(dateString[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out year);
+                                        int.TryParse(dateString[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out month);
                                         index = new DateTime(year, month, day, 0, 0, 0);
                                     }
                                     else if (dateString[1] == "00" && dateString[2] == "00")
                                     {
-                                        int.TryParse(dateString[0], out year);
+                                        int.TryParse(dateString[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out year);
                                         index = new DateTime(year, month, day, 0, 0, 0);
                                     }
                                 }
@@ -493,7 +494,7 @@ namespace Numerics.Data
                                 int idx = timeSeriesType == TimeSeriesType.PeakDischarge ? 4 : 6;
                                 if (segments[idx] != "" && segments[idx] != " " && segments[idx] != "  " && !string.IsNullOrEmpty(segments[idx]))
                                 {
-                                    double.TryParse(segments[idx], out value);
+                                    double.TryParse(segments[idx], NumberStyles.Float, CultureInfo.InvariantCulture, out value);
                                     timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
                                 }
                             }
@@ -1148,7 +1149,7 @@ namespace Numerics.Data
 
                     // Parse timestamp
                     string? timestampStr = point[0].GetString();
-                    if (!DateTime.TryParse(timestampStr, out DateTime date))
+                    if (!DateTime.TryParse(timestampStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date))
                         continue;
 
                     // Parse value

@@ -134,7 +134,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Process a parameter results using the output list.
         /// </summary>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param> 
+        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         private void ProcessParameterResults(double alpha = 0.1)
         {
             int p = Output.First().Values.Length;
@@ -146,8 +146,55 @@ namespace Numerics.Sampling.MCMC
                 ParameterResults[i] = new ParameterResults(x, alpha);
                 postMean[i] = ParameterResults[i].SummaryStatistics.Mean;
             }
-            // Set the posterior mean parameter set. 
+            // Set the posterior mean parameter set.
             PosteriorMean = new ParameterSet(postMean, double.NaN);
+        }
+
+        /// <summary>
+        /// Recompute parameter summary statistics at a new credible-interval level
+        /// (alpha) without rerunning the chain. Preserves Rhat, ESS, autocorrelation,
+        /// MarkovChains, AcceptanceRates, MeanLogLikelihood, MAP, and Output.
+        /// </summary>
+        /// <param name="alpha">
+        /// The new significance level (e.g., 0.05 for 95% credible intervals,
+        /// 0.10 for 90% credible intervals).
+        /// </param>
+        /// <remarks>
+        /// Used when the user changes the credible-interval width on a Bayesian
+        /// analysis whose MCMC chain has already converged. The chain output is
+        /// independent of alpha; only the posterior summary percentiles
+        /// (LowerCI/UpperCI) need to be recomputed. Snapshots the per-parameter
+        /// Rhat, ESS, and autocorrelation diagnostics (which depend on the chain,
+        /// not on alpha) before delegating to the existing private reprocess, then
+        /// restores them on the freshly-built ParameterResults instances.
+        /// </remarks>
+        public void RecomputeParameterResults(double alpha)
+        {
+            if (ParameterResults == null || Output == null || Output.Count == 0) return;
+
+            // Snapshot diagnostics that are independent of alpha. Length matches
+            // the parameter count of the existing ParameterResults array.
+            int n = ParameterResults.Length;
+            var rhats = new double[n];
+            var esss = new double[n];
+            var acfs = new double[n][,];
+            for (int i = 0; i < n; i++)
+            {
+                rhats[i] = ParameterResults[i].SummaryStatistics.Rhat;
+                esss[i] = ParameterResults[i].SummaryStatistics.ESS;
+                acfs[i] = ParameterResults[i].Autocorrelation;
+            }
+
+            // Recompute (replaces ParameterResults[] and PosteriorMean — Output untouched)
+            ProcessParameterResults(alpha);
+
+            // Restore preserved diagnostics
+            for (int i = 0; i < ParameterResults.Length; i++)
+            {
+                ParameterResults[i].SummaryStatistics.Rhat = rhats[i];
+                ParameterResults[i].SummaryStatistics.ESS = esss[i];
+                ParameterResults[i].Autocorrelation = acfs[i];
+            }
         }
 
         #region Serialization

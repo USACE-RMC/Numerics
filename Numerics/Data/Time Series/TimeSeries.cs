@@ -127,7 +127,7 @@ namespace Numerics.Data
                 var valueAttr = ordinate.Attribute("Value");
                 if (indexAttr != null && !DateTime.TryParseExact(indexAttr.Value, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out index))
                 {
-                    DateTime.TryParse(indexAttr.Value, out index);
+                    DateTime.TryParse(indexAttr.Value, CultureInfo.InvariantCulture, DateTimeStyles.None, out index);
                 }
                 if (valueAttr != null)
                     double.TryParse(valueAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value);

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.IO;
 
 namespace Numerics.Sampling
@@ -112,7 +113,7 @@ namespace Numerics.Sampling
                     var st = line.Split(' ');
 
                     int dim;
-                    int.TryParse(st[0], out dim);
+                    int.TryParse(st[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out dim);
 
                    if (dim >= 2 && dim <= Dimension)
                    {
@@ -122,7 +123,7 @@ namespace Numerics.Sampling
                         {
                             if (st[i] != "")
                             {
-                                int.TryParse(st[i], out s);
+                                int.TryParse(st[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out s);
                                 break;
                             }
                         }
@@ -131,7 +132,7 @@ namespace Numerics.Sampling
                         {
                             if (st[i] != "")
                             {
-                                int.TryParse(st[i], out a);
+                                int.TryParse(st[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out a);
                                 break;
                             }
                         }
@@ -143,7 +144,7 @@ namespace Numerics.Sampling
                             {
                                 for (int j = 1; j <= s; j++)
                                 {
-                                    int.TryParse(st[i + j - 1], out m[j]);
+                                    int.TryParse(st[i + j - 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out m[j]);
                                 }
                                 break;
                             }

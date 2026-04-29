@@ -202,7 +202,7 @@ namespace Numerics.Sampling.MCMC
             double r = tolerance;
             double s = probability;
             double N = (q * (1d - q) * Math.Pow(Normal.StandardZ(0.5d * (s + 1d)), 2d)) / Math.Pow(r, 2d);
-            int Nmin = (int)Math.Round(decimal.Parse(N.ToString()) / 100M, 0) * 100;
+            int Nmin = (int)Math.Round(N / 100d) * 100;
             return Nmin;
         }
 
