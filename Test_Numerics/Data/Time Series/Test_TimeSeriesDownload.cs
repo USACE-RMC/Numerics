@@ -122,24 +122,48 @@ namespace Data.TimeSeriesAnalysis
         private static async Task<bool> Online() => await TimeSeriesDownload.IsConnectedToInternet();
 
         /// <summary>
-        /// Per-service availability cache. Each entry runs its probe at most once per test
-        /// run; subsequent calls reuse the cached <see cref="Lazy{T}"/> task. Used so that
-        /// integration tests skip cleanly when the upstream provider is unreachable
-        /// (e.g. BOM's WDP backend returning 500 / DatasourceError) instead of failing CI.
+        /// Per-service availability cache. Successful probes are cached for the rest of
+        /// the run. Failed probes are cached only for <see cref="ProbeFailureTtl"/>,
+        /// so a single transient flake (e.g. BOM's WDP backend returning 500 /
+        /// DatasourceError once) does not silently disable every test for that
+        /// provider for the entire run.
         /// </summary>
-        private static readonly ConcurrentDictionary<string, Lazy<Task<bool>>> _serviceAvailability = new();
+        private static readonly ConcurrentDictionary<string, (bool ok, DateTime at)> _serviceState = new();
 
         /// <summary>
-        /// Memoized "can we hit this service?" probe. Returns false when the host is offline
-        /// or when the supplied probe throws (any exception is treated as "service down").
+        /// How long a "service unreachable" verdict sticks before we re-probe.
         /// </summary>
-        private static Task<bool> AvailableAsync(string serviceName, Func<Task> probe) =>
-            _serviceAvailability.GetOrAdd(serviceName, _ => new Lazy<Task<bool>>(async () =>
+        private static readonly TimeSpan ProbeFailureTtl = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// "Can we hit this service?" probe with TTL on negative results. Returns false
+        /// when the host is offline or when the supplied probe throws (any exception is
+        /// treated as "service down" for the next 30 seconds).
+        /// </summary>
+        private static async Task<bool> AvailableAsync(string serviceName, Func<Task> probe)
+        {
+            if (_serviceState.TryGetValue(serviceName, out var prior))
             {
-                if (!await Online()) return false;
-                try { await probe(); return true; }
-                catch { return false; }
-            })).Value;
+                if (prior.ok) return true;
+                if (DateTime.UtcNow - prior.at < ProbeFailureTtl) return false;
+            }
+            if (!await Online())
+            {
+                _serviceState[serviceName] = (false, DateTime.UtcNow);
+                return false;
+            }
+            try
+            {
+                await probe();
+                _serviceState[serviceName] = (true, DateTime.UtcNow);
+                return true;
+            }
+            catch
+            {
+                _serviceState[serviceName] = (false, DateTime.UtcNow);
+                return false;
+            }
+        }
 
         /// <summary>
         /// Probes a small windowed CHMN download to confirm Water Survey of Canada services are responsive.

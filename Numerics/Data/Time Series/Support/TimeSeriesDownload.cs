@@ -35,7 +35,40 @@ namespace Numerics.Data
         private const string UserAgent = "USACE-Numerics/2.0";
 
         /// <summary>
-        /// Checks if there is an Internet connection.
+        /// GET with up to three attempts and exponential backoff (0.5s, 1s, 2s
+        /// + jitter) on transient failures. Retries 5xx, 408, 429, network
+        /// exceptions, and KiWIS DatasourceError bodies. Does NOT retry 4xx —
+        /// those mean the request itself is wrong.
+        /// </summary>
+        private static async Task<(HttpStatusCode status, string body)> GetWithRetryAsync(
+            HttpClient client, string url, int maxAttempts = 3)
+        {
+            Exception? lastNet = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    using var resp = await client.GetAsync(url);
+                    string body = await resp.Content.ReadAsStringAsync();
+                    bool transient =
+                        (int)resp.StatusCode >= 500 ||
+                        resp.StatusCode == HttpStatusCode.RequestTimeout ||
+                        (int)resp.StatusCode == 429 ||
+                        body.Contains("DatasourceError") ||
+                        body.Contains("Error connecting to WDP");
+                    if (!transient || attempt == maxAttempts) return (resp.StatusCode, body);
+                }
+                catch (HttpRequestException ex) { lastNet = ex; if (attempt == maxAttempts) throw; }
+                catch (TaskCanceledException ex) { lastNet = ex; if (attempt == maxAttempts) throw; }
+
+                await Task.Delay(500 * (int)Math.Pow(2, attempt - 1));
+            }
+            throw lastNet ?? new Exception("GetWithRetryAsync exhausted retries");
+        }
+
+        /// <summary>
+        /// Checks if there is an Internet connection by probing Google's
+        /// connectivity-check endpoint (HTTP 204 No Content).
         /// </summary>
         public static async Task<bool> IsConnectedToInternet()
         {
@@ -43,8 +76,9 @@ namespace Numerics.Data
             {
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                 {
-                    await _defaultClient.GetAsync("https://waterservices.usgs.gov/nwis/", cts.Token);
-                    return true;
+                    var resp = await _defaultClient.GetAsync(
+                        "https://www.google.com/generate_204", cts.Token);
+                    return resp.IsSuccessStatusCode;
                 }
             }
             catch
@@ -192,10 +226,28 @@ namespace Numerics.Data
                 string stationFileUrl = $"{ghcnBaseUrl}{Uri.EscapeDataString(siteNumber)}.dly";
                 {
                     var client = _defaultClient;
-                    // Request the file and ensure that response headers are read first.
-                    using (HttpResponseMessage response = await client.GetAsync(stationFileUrl, HttpCompletionOption.ResponseHeadersRead))
+                    // GHCN is large enough to want streaming, so we can't use GetWithRetryAsync
+                    // directly (it buffers the whole body). Inline the same retry shape on the
+                    // headers-only GetAsync, then stream from the successful response.
+                    HttpResponseMessage? response = null;
+                    for (int attempt = 1; attempt <= 3; attempt++)
                     {
-                        response.EnsureSuccessStatusCode();
+                        try
+                        {
+                            response = await client.GetAsync(stationFileUrl, HttpCompletionOption.ResponseHeadersRead);
+                            if ((int)response.StatusCode < 500
+                                && response.StatusCode != HttpStatusCode.RequestTimeout
+                                && (int)response.StatusCode != 429) break;
+                            if (attempt == 3) break;
+                            response.Dispose();
+                        }
+                        catch (HttpRequestException) when (attempt < 3) { /* retry */ }
+                        catch (TaskCanceledException) when (attempt < 3) { /* retry */ }
+                        await Task.Delay(500 * (int)Math.Pow(2, attempt - 1));
+                    }
+                    using (response)
+                    {
+                        response!.EnsureSuccessStatusCode();
                         using (Stream stream = await response.Content.ReadAsStreamAsync())
                         using (FileStream fs = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
                         {
@@ -389,61 +441,66 @@ namespace Numerics.Data
                     {
                         var client = _decompressClient;
 
-                        HttpResponseMessage response = await client.GetAsync(url);
-                        response.EnsureSuccessStatusCode();
-
-                        using (Stream contentStream = await response.Content.ReadAsStreamAsync())
-                        using (StreamReader reader = new StreamReader(contentStream))
+                        var (status, body) = await GetWithRetryAsync(client, url);
+                        if ((int)status >= 400)
                         {
-                            string? line;
-                            bool isHeader = true;
+                            string snippet = body.Length > 500 ? body.Substring(0, 500) + "…" : body;
+                            throw new Exception(
+                                $"Failed to retrieve USGS data. Status={(int)status} ({status}). Body={snippet}");
+                        }
 
-                            while ((line = await reader.ReadLineAsync()) != null)
+                        using var reader = new StringReader(body);
+                        string? line;
+                        bool isHeader = true;
+
+                        while ((line = await reader.ReadLineAsync()) != null)
+                        {
+                            // Skip header row
+                            if (isHeader)
                             {
-                                // Skip header row
-                                if (isHeader)
-                                {
-                                    isHeader = false;
-                                    continue;
-                                }
-
-                                // Skip comment lines
-                                if (line.StartsWith("#"))
-                                {
-                                    if (line.Trim() == "#  No sites found matching all criteria")
-                                    {
-                                        throw new Exception("No data found matching all criteria.");
-                                    }
-                                    continue;
-                                }
-
-                                string[] fields = line.Split('\t');
-                                // Validate expected number of fields and record type
-                                if (fields.Length <= valueIndex || fields[0] != "USGS")
-                                    continue;
-
-                                // Parse date (assume fields[2] contains the date)
-                                if (!DateTime.TryParse(fields[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime index))
-                                {
-                                    continue;
-                                }
-
-                                // Fill in missing days only for daily series (not instantaneous)
-                                if (!isInstantaneous && timeSeries.Count > 0 && index != TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay))
-                                {
-                                    while (timeSeries.Last().Index < TimeSeries.SubtractTimeInterval(index, TimeInterval.OneDay))
-                                    {
-                                        timeSeries.Add(new SeriesOrdinate<DateTime, double>(
-                                            TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay), double.NaN));
-                                    }
-                                }
-
-                                // Get and parse value
-                                string valueStr = fields[valueIndex];
-                                double value = string.IsNullOrWhiteSpace(valueStr) ? double.NaN
-                                    : double.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double tempVal) ? tempVal : double.NaN;
-                                timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
+                                isHeader = false;
+                                continue;
                             }
+
+                            // Skip comment lines
+                            if (line.StartsWith("#"))
+                            {
+                                if (line.Trim() == "#  No sites found matching all criteria")
+                                {
+                                    throw new Exception("No data found matching all criteria.");
+                                }
+                                continue;
+                            }
+
+                            string[] fields = line.Split('\t');
+                            // Validate expected number of fields and record type
+                            if (fields.Length <= valueIndex || fields[0] != "USGS")
+                                continue;
+
+                            // USGS instantaneous timestamps are local-time strings without an offset;
+                            // the tz_cd column at fields[3] reports the offset separately. We currently
+                            // parse these as naive DateTime (Kind=Unspecified). Future work: synthesize
+                            // a DateTimeOffset from fields[2] + fields[3] for full timezone fidelity.
+                            if (!DateTime.TryParse(fields[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime index))
+                            {
+                                continue;
+                            }
+
+                            // Fill in missing days only for daily series (not instantaneous)
+                            if (!isInstantaneous && timeSeries.Count > 0 && index != TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay))
+                            {
+                                while (timeSeries.Last().Index < TimeSeries.SubtractTimeInterval(index, TimeInterval.OneDay))
+                                {
+                                    timeSeries.Add(new SeriesOrdinate<DateTime, double>(
+                                        TimeSeries.AddTimeInterval(timeSeries.Last().Index, TimeInterval.OneDay), double.NaN));
+                                }
+                            }
+
+                            // Get and parse value
+                            string valueStr = fields[valueIndex];
+                            double value = string.IsNullOrWhiteSpace(valueStr) ? double.NaN
+                                : double.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double tempVal) ? tempVal : double.NaN;
+                            timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
                         }
                     }
                 }
@@ -451,14 +508,25 @@ namespace Numerics.Data
                 else if (timeSeriesType == TimeSeriesType.PeakDischarge || timeSeriesType == TimeSeriesType.PeakStage)
                 {
                     {
-                        // Download data as string (assumes USGS peak data is not compressed)
-                        textDownload = await _defaultClient.GetStringAsync(url);
+                        var (peakStatus, peakBody) = await GetWithRetryAsync(_defaultClient, url);
+                        if ((int)peakStatus >= 400)
+                        {
+                            string snippet = peakBody.Length > 500 ? peakBody.Substring(0, 500) + "…" : peakBody;
+                            throw new Exception(
+                                $"Failed to retrieve USGS peak data. Status={(int)peakStatus} ({peakStatus}). Body={snippet}");
+                        }
+                        textDownload = peakBody;
 
+                        int idx = timeSeriesType == TimeSeriesType.PeakDischarge ? 4 : 6;
                         var lines = textDownload.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
                         foreach (string line in lines)
                         {
                             var segments = line.Split('\t');
-                            if (segments.First() == "USGS" && segments.Count() >= 5)
+                            // Bounds-check against the actual column we'll read (peak_va at 4 for
+                            // discharge, gage_ht at 6 for stage), not a fixed minimum. Old guard
+                            // was Length >= 5 which would IndexOutOfRange on a 5-column historical
+                            // row when reading stage at index 6.
+                            if (segments.Length > idx && segments[0] == "USGS")
                             {
                                 // Get date
                                 DateTime index = DateTime.Now;
@@ -491,8 +559,7 @@ namespace Numerics.Data
                                 }
                                 // Get value
                                 double value = 0;
-                                int idx = timeSeriesType == TimeSeriesType.PeakDischarge ? 4 : 6;
-                                if (segments[idx] != "" && segments[idx] != " " && segments[idx] != "  " && !string.IsNullOrEmpty(segments[idx]))
+                                if (!string.IsNullOrWhiteSpace(segments[idx]))
                                 {
                                     double.TryParse(segments[idx], NumberStyles.Float, CultureInfo.InvariantCulture, out value);
                                     timeSeries.Add(new SeriesOrdinate<DateTime, double>(index, value));
@@ -531,17 +598,13 @@ namespace Numerics.Data
 
             while (nextUrl != null)
             {
-                // Retry with exponential backoff for rate limiting (429)
-                HttpResponseMessage response = await client.GetAsync(nextUrl);
-                for (int attempt = 1; attempt < 6; attempt++)
+                var (status, json) = await GetWithRetryAsync(client, nextUrl);
+                if ((int)status >= 400)
                 {
-                    if ((int)response.StatusCode != 429) break;
-                    int delayMs = Math.Min((int)Math.Pow(2, attempt) * 2000, 60000);
-                    await System.Threading.Tasks.Task.Delay(delayMs);
-                    response = await client.GetAsync(nextUrl);
+                    string snippet = json.Length > 500 ? json.Substring(0, 500) + "…" : json;
+                    throw new Exception(
+                        $"USGS OGC API error. Status={(int)status} ({status}). Body={snippet}");
                 }
-                response.EnsureSuccessStatusCode();
-                var json = await response.Content.ReadAsStringAsync();
 
                 if (rawText != null)
                 {
@@ -669,11 +732,14 @@ namespace Numerics.Data
                 string paramCode = isDischarge ? "47" : "46";
                 DateTime sd = startDate ?? DateTime.UtcNow.AddMonths(-18);
                 DateTime ed = endDate ?? DateTime.UtcNow;
+                // Use '+' as the URL-safe space separator instead of a literal space
+                // in the query string. ECCC accepts the literal space, but some
+                // intermediate proxies and CDNs reject it.
                 url = "https://wateroffice.ec.gc.ca/services/real_time_data/csv/inline" +
                     $"?stations[]={Uri.EscapeDataString(stationNumber)}" +
                     $"&parameters[]={paramCode}" +
-                    $"&start_date={sd:yyyy-MM-dd HH:mm:ss}" +
-                    $"&end_date={ed:yyyy-MM-dd HH:mm:ss}";
+                    $"&start_date={sd:yyyy-MM-dd}+{sd:HH:mm:ss}" +
+                    $"&end_date={ed:yyyy-MM-dd}+{ed:HH:mm:ss}";
                 interval = TimeInterval.FiveMinute;
             }
             else // PeakDischarge or PeakStage
@@ -695,13 +761,13 @@ namespace Numerics.Data
             {
                 var client = _decompressClient;
 
-                // The endpoint returns CSV (automatically decompressed by HttpClientHandler)
-                using HttpResponseMessage resp = await client.GetAsync(url);
-                resp.EnsureSuccessStatusCode();
-
-                string csv;
+                // The endpoint returns CSV (automatically decompressed by HttpClientHandler).
+                var (status, csv) = await GetWithRetryAsync(client, url);
+                if ((int)status >= 400)
                 {
-                    csv = await resp.Content.ReadAsStringAsync();
+                    string snippet = csv.Length > 500 ? csv.Substring(0, 500) + "…" : csv;
+                    throw new Exception(
+                        $"Failed to retrieve CHMN data. Status={(int)status} ({status}). Body={snippet}");
                 }
 
                 // Parse the CSV response based on endpoint type
@@ -774,9 +840,15 @@ namespace Numerics.Data
                         if (!isDischarge && !isLevelParam) continue;
                     }
 
-                    // Parse date
-                    if (!DateTime.TryParse(parts[dateCol].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date))
+                    // Real-time CHMN timestamps include explicit Pacific/Eastern offsets,
+                    // e.g. "2024-11-01T08:00:00-08:00". DateTime.TryParse with
+                    // DateTimeStyles.None converts these to local time, shifting them on
+                    // any non-Canadian-Pacific machine. Use DateTimeOffset to preserve
+                    // the offset, then take the wall-clock value the gauge reported.
+                    if (!DateTimeOffset.TryParse(parts[dateCol].Trim(), CultureInfo.InvariantCulture,
+                            DateTimeStyles.None, out DateTimeOffset dto))
                         continue;
+                    DateTime date = isDailyType ? dto.Date : dto.DateTime;
 
                     // Parse value
                     double val = double.NaN;
@@ -968,10 +1040,11 @@ namespace Numerics.Data
                 client.DefaultRequestHeaders.Add("Connection", "keep-alive");
                 client.Timeout = TimeSpan.FromSeconds(30);
 
-                HttpResponseMessage response;
+                HttpStatusCode listStatus;
+                string listResponse;
                 try
                 {
-                    response = await client.GetAsync(tsListUrl);
+                    (listStatus, listResponse) = await GetWithRetryAsync(client, tsListUrl);
                 }
                 catch (HttpRequestException ex)
                 {
@@ -982,15 +1055,13 @@ namespace Numerics.Data
                     throw new Exception("Request to BOM API timed out.", ex);
                 }
 
-                var listResponse = await response.Content.ReadAsStringAsync();
-
                 // Surface the response body in the exception so transient upstream failures
                 // (KiWIS 5xx with a JSON error payload) are self-documenting.
-                if (!response.IsSuccessStatusCode)
+                if ((int)listStatus >= 400)
                 {
                     string snippet = listResponse.Length > 500 ? listResponse.Substring(0, 500) + "…" : listResponse;
                     throw new Exception(
-                        $"Failed to retrieve time series list from BOM API. Status={(int)response.StatusCode} ({response.StatusCode}). Body={snippet}");
+                        $"Failed to retrieve time series list from BOM API. Status={(int)listStatus} ({listStatus}). Body={snippet}");
                 }
 
                 // Check for error response from KiWIS
@@ -1061,14 +1132,18 @@ namespace Numerics.Data
                     }
                 }
 
-                // If no match found, take the first available series
-                if (tsId == null && root.GetArrayLength() > 1)
-                {
-                    tsId = root[1][tsIdIndex].GetString();
-                }
-
+                // No silent fallback: if the requested cadence isn't present we'd rather
+                // throw than quietly hand back hourly data when the caller asked for daily.
                 if (tsId == null)
-                    throw new Exception($"No suitable time series found for station {stationNumber}");
+                {
+                    var available = new List<string>();
+                    for (int i = 1; i < root.GetArrayLength() && available.Count < 10; i++)
+                        if (tsNameIndex >= 0)
+                            available.Add(root[i][tsNameIndex].GetString() ?? "");
+                    throw new Exception(
+                        $"No suitable time series found for station {stationNumber} matching '{tsNamePattern}'. " +
+                        $"Available ts_name values: [{string.Join(", ", available)}]");
+                }
             }
 
             // Step 2: Get time series values using the ts_id
@@ -1099,10 +1174,11 @@ namespace Numerics.Data
                 client.DefaultRequestHeaders.Add("Connection", "keep-alive");
                 client.Timeout = TimeSpan.FromSeconds(60);
 
-                HttpResponseMessage response;
+                HttpStatusCode valuesStatus;
+                string valuesResponse;
                 try
                 {
-                    response = await client.GetAsync(valuesUrl);
+                    (valuesStatus, valuesResponse) = await GetWithRetryAsync(client, valuesUrl);
                 }
                 catch (HttpRequestException ex)
                 {
@@ -1113,16 +1189,14 @@ namespace Numerics.Data
                     throw new Exception("Request to BOM API timed out while retrieving values.", ex);
                 }
 
-                var valuesResponse = await response.Content.ReadAsStringAsync();
-
                 // Surface the response body in the exception so transient upstream failures
                 // (e.g. KiWIS returning 500 with `{"code":"DatasourceError","message":"Error connecting to WDP."}`)
-                // are self-documenting. Without this, EnsureSuccessStatusCode would discard the body.
-                if (!response.IsSuccessStatusCode)
+                // are self-documenting after the retry helper has exhausted its attempts.
+                if ((int)valuesStatus >= 400)
                 {
                     string snippet = valuesResponse.Length > 500 ? valuesResponse.Substring(0, 500) + "…" : valuesResponse;
                     throw new Exception(
-                        $"Failed to retrieve time series values from BOM API. Status={(int)response.StatusCode} ({response.StatusCode}). Body={snippet}");
+                        $"Failed to retrieve time series values from BOM API. Status={(int)valuesStatus} ({valuesStatus}). Body={snippet}");
                 }
 
                 // Check for error response
@@ -1147,10 +1221,15 @@ namespace Numerics.Data
                 {
                     if (point.GetArrayLength() < 2) continue;
 
-                    // Parse timestamp
+                    // BOM returns ISO-8601 with explicit offset, e.g. "2021-11-01T00:00:00.000+10:00".
+                    // DateTime.TryParse converts these to LOCAL time, which on a non-AEST machine
+                    // shifts daily series labels by a calendar day. DateTimeOffset preserves the
+                    // offset; .Date gives the wall-clock date BOM intended.
                     string? timestampStr = point[0].GetString();
-                    if (!DateTime.TryParse(timestampStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date))
+                    if (!DateTimeOffset.TryParse(timestampStr, CultureInfo.InvariantCulture,
+                            DateTimeStyles.None, out DateTimeOffset dto))
                         continue;
+                    DateTime date = isInstantaneous ? dto.DateTime : dto.Date;
 
                     // Parse value
                     double val = double.NaN;
