@@ -2195,15 +2195,28 @@ namespace Numerics.Data
         #endregion
 
         /// <summary>
-        /// Resample the time series using k-Nearest neighbors.
+        /// Resample the time series using the conditional k-Nearest Neighbors bootstrap of
+        /// Lall and Sharma (1996). At each step, finds the K historical observations whose
+        /// (standardized) value is closest to the current state, randomly picks one of them
+        /// at index j, and advances by taking x[j+1] — the observation that historically
+        /// came AFTER the chosen neighbor. This preserves the conditional p(x_{t+1} | x_t).
         /// </summary>
         /// <param name="timeSteps">The number of time steps to resample.</param>
-        /// <param name="k">The number of nearest neighbors.</param>
-        /// <param name="seed">The prng seed. Default = 12345.</param>
-        /// <returns></returns>
+        /// <param name="k">The number of nearest neighbors. Lall-Sharma suggests floor(sqrt(n)).</param>
+        /// <param name="seed">The PRNG seed. Default = 12345.</param>
+        /// <returns>A new <see cref="TimeSeries"/> of length <paramref name="timeSteps"/>.</returns>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the series has fewer than 11 observations (the underlying KNN search
+        /// requires at least 10 candidate points after the last observation is excluded so
+        /// that x[j+1] is always in range).
+        /// </exception>
+        /// <remarks>
+        /// Lall, U., Sharma, A. (1996). A nearest neighbor bootstrap for resampling
+        /// hydrologic time series. Water Resources Research, 32(3), 679-693.
+        /// </remarks>
         public TimeSeries ResampleWithKNN(int timeSteps, int k, int seed = 12345)
         {
-            if (Count < 2) throw new ArgumentException("Need at least 2 points for resampling.");
+            if (Count < 11) throw new ArgumentException("Need at least 11 points for KNN resampling.");
             if (timeSteps < 1) throw new ArgumentException("The number of time steps must be at least 1.");
 
             // Initialize
@@ -2221,15 +2234,25 @@ namespace Numerics.Data
             stdData.Standardize();
             var stdValues = stdData.ValuesToArray();
 
+            // Exclude the last observation from the KNN candidate set so that any returned
+            // neighbor index j satisfies j + 1 < Count and x[j+1] is always in range.
+            var candidateValues = new double[Count - 1];
+            Array.Copy(stdValues, 0, candidateValues, 0, Count - 1);
+
             // Perform k-NN
-            var kNN = new KNearestNeighbors(stdValues, stdValues, k);
+            var kNN = new KNearestNeighbors(candidateValues, candidateValues, k);
             for (int i = 1; i < timeSteps; i++)
             {
                 double val = (currentValue - mean) / stdDev;
                 var kNearest = kNN.GetNeighbors([val]);
                 if (kNearest == null) continue;
                 int selectedIdx = kNearest[prng.Next(kNearest.Length)];
-                currentValue = this[selectedIdx].Value;
+                // Advance to the observation that came AFTER the chosen neighbor — this is
+                // what makes it a CONDITIONAL bootstrap of p(x_{t+1} | x_t). Returning
+                // this[selectedIdx] would collapse to a near-stationary process around the
+                // initial value because every returned neighbor is, by construction, close
+                // in value to currentValue.
+                currentValue = this[selectedIdx + 1].Value;
                 currentDate = TimeSeries.AddTimeInterval(currentDate, TimeInterval);
                 timeSeries.Add(new SeriesOrdinate<DateTime, double>(currentDate, currentValue));
             }
@@ -2238,12 +2261,21 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Resample the time series using the block bootstrap.
+        /// Resample the time series using a non-overlapping fixed-block bootstrap.
+        /// Collects every contiguous block of length <paramref name="blockSize"/> from the
+        /// observed series, draws blocks uniformly at random with replacement, and
+        /// concatenates them until <paramref name="timeSteps"/> values have been produced.
+        /// Preserves marginal mean / variance and within-block autocorrelation; introduces
+        /// discontinuities at block boundaries.
         /// </summary>
         /// <param name="timeSteps">The number of time steps to resample.</param>
         /// <param name="blockSize">The resampling block size.</param>
-        /// <param name="seed">The prng seed. Default = 12345.</param>
-        /// <returns></returns>
+        /// <param name="seed">The PRNG seed. Default = 12345.</param>
+        /// <returns>A new <see cref="TimeSeries"/> of length <paramref name="timeSteps"/>.</returns>
+        /// <remarks>
+        /// Künsch, H.R. (1989). The jackknife and the bootstrap for general stationary
+        /// observations. Annals of Statistics, 17(3), 1217-1241.
+        /// </remarks>
         public TimeSeries ResampleWithBlockBootstrap(int timeSteps, int blockSize, int seed = 12345)
         {
             if (Count < 2) throw new ArgumentException("Need at least 2 points for resampling.");

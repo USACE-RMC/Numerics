@@ -393,7 +393,7 @@ This prevents unreliable interpolation across long gaps while filling short data
 
 ### Block Bootstrap
 
-The **block bootstrap** preserves temporal dependence by resampling contiguous blocks rather than individual observations. Given a block size $b$, the method randomly selects blocks of $b$ consecutive values (with replacement) and concatenates them:
+The **block bootstrap** (Künsch 1989) preserves temporal dependence by resampling contiguous blocks rather than individual observations. Given a block size $b$, every contiguous run of $b$ consecutive values in the input is enumerated, blocks are drawn uniformly at random with replacement, and concatenated until the requested number of time steps is reached:
 
 ```cs
 // Generate a 1000-step synthetic series preserving 30-day temporal structure
@@ -401,17 +401,24 @@ var resampled = ts.ResampleWithBlockBootstrap(
     timeSteps: 1000, blockSize: 30, seed: 42);
 ```
 
-Unlike the standard bootstrap (which destroys autocorrelation), the block bootstrap retains the short-range dependence structure within each block.
+The block bootstrap preserves the marginal mean and variance and the within-block autocorrelation structure of the input series. Discontinuities can appear at block boundaries.
 
 ### k-Nearest Neighbors
 
-The **k-nearest neighbors** (k-NN) resampling method generates synthetic time series that preserve the multivariate dependence structure. At each step, it finds the $k$ nearest neighbors of the current state in the historical record (using Euclidean distance on standardized values) and randomly selects one as the next value:
+The **k-nearest neighbors** (k-NN) bootstrap of Lall & Sharma (1996) is a *conditional* resampler: at each step it draws the next synthetic value from the empirical conditional distribution $p(x_{t+1} \mid x_t)$. The current state $x_t$ is standardized, the $k$ historical observations whose standardized values are closest in Euclidean distance are identified, one of those neighbor indices $j$ is selected uniformly at random, and the trajectory advances by taking the value that *historically came after* the chosen neighbor — i.e., $x_{j+1}$:
 
 ```cs
 // Generate synthetic series using 5-nearest neighbors
 var synthetic = ts.ResampleWithKNN(
     timeSteps: 500, k: 5, seed: 42);
 ```
+
+The implementation is **univariate** (embedding dimension $d = 1$); higher-dimensional embedding and joint multivariate resampling are not currently exposed. Lall & Sharma suggest $k = \lfloor \sqrt{n} \rfloor$ as a reasonable default. The series must contain at least 11 observations.
+
+**References**
+
+- Künsch, H.R. (1989). The jackknife and the bootstrap for general stationary observations. *Annals of Statistics* **17**(3), 1217–1241.
+- Lall, U., Sharma, A. (1996). A nearest neighbor bootstrap for resampling hydrologic time series. *Water Resources Research* **32**(3), 679–693.
 
 ## Sorting and Filtering
 
