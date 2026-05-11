@@ -34,6 +34,10 @@ Or search for [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) in th
 | [Sampling](docs/sampling/mcmc.md) | MCMC (RWMH, ARWMH, DE-MCz, HMC, NUTS, Gibbs), random generation, convergence diagnostics |
 | [References](docs/references.md) | Consolidated bibliography |
 
+## Prerequisites
+- .NET 8+ runtime (or .NET Framework 4.8.1 on Windows). Install the [.NET SDK](https://dotnet.microsoft.com/download) if you don't already have it.
+  - Microsoft .NET SDK 10.1.326.7603 is available on the App Portal for Corps users 
+
 ## Support
 
 USACE-RMC is committed to maintaining and supporting the library with regular updates, bug fixes, and enhancements.
