@@ -672,7 +672,7 @@ namespace Numerics.Distributions
                 for (int i = 0; i < N; i++)
                 {
                     // Get max likelihood
-                    double max = double.MinValue;
+                    double max = double.NegativeInfinity;
                     for (int k = 0; k < K; k++)
                     {
                         if (likelihood[i, k] > max)
@@ -680,6 +680,13 @@ namespace Numerics.Distributions
                             max = likelihood[i, k];
                         }
                     }
+                    if (double.IsNegativeInfinity(max))
+                    {
+                        for (int k = 0; k < K; k++)
+                            likelihood[i, k] = 0.0;
+                        return double.NegativeInfinity;
+                    }
+
                     // log-sum-exp trick begins here
                     double sum = 0;
                     for (int k = 0; k < K; k++)
@@ -721,7 +728,7 @@ namespace Numerics.Distributions
                 var dist = (Mixture)Clone();
                 dist.SetParameters(mleWeights, x);
                 double lh = dist.LogLikelihood(sample);
-                if (double.IsNaN(lh) || double.IsInfinity(lh)) return double.MinValue;
+                if (double.IsNaN(lh) || double.IsInfinity(lh)) return double.NegativeInfinity;
                 return lh;
             }
 

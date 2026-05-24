@@ -321,16 +321,9 @@ namespace Numerics.Sampling.MCMC
             // Compute initial Hamiltonian
             double H0 = -logLH0 + 0.5 * DiagonalQuadraticForm(r0, _inverseMassMatrix[chainIndex]);
 
-            // Take one leapfrog step
             var thetaPrime = (double[])theta0.Clone();
             var rPrime = (double[])r0.Clone();
-            LeapfrogInPlace(thetaPrime, rPrime, epsilon, chainIndex);
-
-            double logLH1 = SafeLogLikelihood(thetaPrime);
-            double H1 = -logLH1 + 0.5 * DiagonalQuadraticForm(rPrime, _inverseMassMatrix[chainIndex]);
-            double logAlpha = H0 - H1;
-            if (double.IsNaN(logAlpha) || double.IsNegativeInfinity(logAlpha))
-                logAlpha = -1000.0;
+            double logAlpha = TrySingleStepLogAcceptance(theta0, r0, thetaPrime, rPrime, epsilon, H0, chainIndex);
 
             // Determine direction: double epsilon if acceptance too high, halve if too low
             double a = logAlpha > Math.Log(0.5) ? 1.0 : -1.0;
@@ -347,19 +340,45 @@ namespace Numerics.Sampling.MCMC
                 if (epsilon < 1e-8 || epsilon > 1e6)
                     break;
 
-                // Recompute with new epsilon
                 Array.Copy(theta0, thetaPrime, D);
                 Array.Copy(r0, rPrime, D);
-                LeapfrogInPlace(thetaPrime, rPrime, epsilon, chainIndex);
-
-                logLH1 = SafeLogLikelihood(thetaPrime);
-                H1 = -logLH1 + 0.5 * DiagonalQuadraticForm(rPrime, _inverseMassMatrix[chainIndex]);
-                logAlpha = H0 - H1;
-                if (double.IsNaN(logAlpha) || double.IsNegativeInfinity(logAlpha))
-                    logAlpha = -1000.0;
+                logAlpha = TrySingleStepLogAcceptance(theta0, r0, thetaPrime, rPrime, epsilon, H0, chainIndex);
             }
 
             return Math.Max(1e-8, Math.Min(epsilon, 1e6));
+        }
+
+        /// <summary>
+        /// Attempts one leapfrog step and converts invalid Hamiltonian states to a low log-acceptance value.
+        /// </summary>
+        /// <param name="theta0">The starting position.</param>
+        /// <param name="r0">The starting momentum.</param>
+        /// <param name="thetaPrime">Working buffer for the proposed position.</param>
+        /// <param name="rPrime">Working buffer for the proposed momentum.</param>
+        /// <param name="epsilon">The leapfrog step size.</param>
+        /// <param name="initialHamiltonian">The initial Hamiltonian.</param>
+        /// <param name="chainIndex">The chain index for mass matrix access.</param>
+        /// <returns>The log acceptance statistic for the trial step, or a low value when the trial is invalid.</returns>
+        private double TrySingleStepLogAcceptance(double[] theta0, double[] r0, double[] thetaPrime, double[] rPrime, double epsilon, double initialHamiltonian, int chainIndex)
+        {
+            try
+            {
+                LeapfrogInPlace(thetaPrime, rPrime, epsilon, chainIndex);
+
+                double logLH = SafeLogLikelihood(thetaPrime);
+                double hamiltonian = -logLH + 0.5 * DiagonalQuadraticForm(rPrime, _inverseMassMatrix[chainIndex]);
+                double logAlpha = initialHamiltonian - hamiltonian;
+                if (!Tools.IsFinite(logAlpha))
+                    return -1000.0;
+
+                return logAlpha;
+            }
+            catch (ArithmeticException)
+            {
+                Array.Copy(theta0, thetaPrime, theta0.Length);
+                Array.Copy(r0, rPrime, r0.Length);
+                return -1000.0;
+            }
         }
 
         /// <summary>
@@ -626,10 +645,23 @@ namespace Numerics.Sampling.MCMC
             if (depth == 0)
             {
                 // Base case: take one leapfrog step
-                var (thetaPrime, momentumPrime) = Leapfrog(theta, momentum, epsilon, chainIndex);
+                Vector thetaPrime;
+                Vector momentumPrime;
+                try
+                {
+                    (thetaPrime, momentumPrime) = Leapfrog(theta, momentum, epsilon, chainIndex);
+                }
+                catch (ArithmeticException)
+                {
+                    return InvalidTreeState(theta, momentum);
+                }
+
                 double logLH = SafeLogLikelihood(thetaPrime.Array);
                 double H = -logLH + 0.5 * DiagonalQuadraticFormVec(momentumPrime, _inverseMassMatrix[chainIndex]);
                 double logWeight = -H;
+                if (!Tools.IsFinite(logLH) || !Tools.IsFinite(H) || !Tools.IsFinite(logWeight))
+                    return InvalidTreeState(thetaPrime, momentumPrime);
+
                 bool divergent = (H - H0) > MAX_DELTA_H;
                 double alpha = Math.Min(1.0, Math.Exp(H0 - H));
                 if (double.IsNaN(alpha)) alpha = 0;
@@ -692,6 +724,30 @@ namespace Numerics.Sampling.MCMC
             }
 
             return tree;
+        }
+
+        /// <summary>
+        /// Creates an invalid tree state for a trajectory that entered a non-finite log-density region.
+        /// </summary>
+        /// <param name="theta">The position to preserve as the tree endpoint.</param>
+        /// <param name="momentum">The momentum to preserve as the tree endpoint.</param>
+        /// <returns>An invalid tree state with zero acceptance contribution.</returns>
+        private static TreeState InvalidTreeState(Vector theta, Vector momentum)
+        {
+            return new TreeState
+            {
+                ThetaMinus = theta.Clone(),
+                MomentumMinus = momentum.Clone(),
+                ThetaPlus = theta.Clone(),
+                MomentumPlus = momentum.Clone(),
+                ThetaPrime = theta.Clone(),
+                LogSumWeight = double.NegativeInfinity,
+                LogLikelihoodPrime = double.NegativeInfinity,
+                LeafCount = 1,
+                Valid = false,
+                SumAlpha = 0d,
+                NumAlpha = 1
+            };
         }
 
         /// <summary>

@@ -400,7 +400,7 @@ namespace Numerics.Distributions
         {
             double Q = Mahalanobis(x);
             double f = _lnconstant - ((_degreesOfFreedom + _dimension) / 2.0) * Math.Log(1.0 + Q / _degreesOfFreedom);
-            if (double.IsNaN(f) || double.IsInfinity(f)) return double.MinValue;
+            if (double.IsNaN(f) || double.IsInfinity(f)) return double.NegativeInfinity;
             return f;
         }
 

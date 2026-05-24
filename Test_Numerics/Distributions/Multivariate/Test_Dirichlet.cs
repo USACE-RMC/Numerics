@@ -216,6 +216,19 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
+        /// Test that invalid simplex inputs return the canonical log(0) sentinel.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_InvalidInput_ReturnsNegativeInfinity()
+        {
+            var D = new Dirichlet(new double[] { 1.0, 2.0, 3.0 });
+
+            Assert.AreEqual(double.NegativeInfinity, D.LogPDF(new double[] { 0.5, 0.5 }));
+            Assert.AreEqual(double.NegativeInfinity, D.LogPDF(new double[] { -0.1, 0.6, 0.5 }));
+            Assert.AreEqual(double.NegativeInfinity, D.LogPDF(new double[] { 0.3, 0.3, 0.3 }));
+        }
+
+        /// <summary>
         /// Test random sampling: all samples on the simplex and moments converge.
         /// </summary>
         [TestMethod]

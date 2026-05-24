@@ -154,6 +154,19 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
+        /// Test that invalid count vectors return the canonical log(0) sentinel.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPMF_InvalidInput_ReturnsNegativeInfinity()
+        {
+            var M = new Multinomial(10, new double[] { 0.5, 0.5 });
+
+            Assert.AreEqual(double.NegativeInfinity, M.LogPMF(new double[] { 3, 3 }));
+            Assert.AreEqual(double.NegativeInfinity, M.LogPMF(new double[] { -1, 11 }));
+            Assert.AreEqual(double.NegativeInfinity, M.LogPMF(new double[] { 5, 3, 2 }));
+        }
+
+        /// <summary>
         /// Test random sampling: each sample sums to N and moments converge.
         /// </summary>
         [TestMethod]

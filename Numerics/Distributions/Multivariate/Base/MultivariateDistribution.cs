@@ -55,8 +55,8 @@ namespace Numerics.Distributions
         public virtual double LogPDF(double[] x)
         {
             double f = PDF(x);
-            // If the PDF returns an invalid probability, then return the worst log-probability.
-            if (double.IsNaN(f) || double.IsInfinity(f) || f <= 0d) return double.MinValue;
+            // If the PDF returns an invalid probability, then return log(0).
+            if (double.IsNaN(f) || double.IsInfinity(f) || f <= 0d) return double.NegativeInfinity;
             return Math.Log(f);
         }
 
@@ -73,8 +73,8 @@ namespace Numerics.Distributions
         public virtual double LogCDF(double[] x)
         {
             double F = CDF(x);
-            // If the CDF returns an invalid probability, then return the worst log-probability.
-            if (double.IsNaN(F) || double.IsInfinity(F) || F <= 0d) return double.MinValue;
+            // If the CDF returns an invalid probability, then return log(0).
+            if (double.IsNaN(F) || double.IsInfinity(F) || F <= 0d) return double.NegativeInfinity;
             return Math.Log(F);
         }
 
@@ -94,9 +94,9 @@ namespace Numerics.Distributions
         public virtual double LogCCDF(double[] x)
         {
             double cF = CCDF(x);
-            // If the CCDF returns an invalid probability, then return the worst log-probability.
-            if (double.IsNaN(cF) || cF <= 0d)
-                return int.MinValue;
+            // If the CCDF returns an invalid probability, then return log(0).
+            if (double.IsNaN(cF) || double.IsInfinity(cF) || cF <= 0d)
+                return double.NegativeInfinity;
             return Math.Log(cF);
         }
 

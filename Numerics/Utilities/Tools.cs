@@ -519,7 +519,7 @@ namespace Numerics
         public static void MinMax(IList<double> values, out double min, out double max)
         {
             min = double.MaxValue;
-            max = double.MinValue;
+            max = double.NegativeInfinity;
             if (values.Count == 0) { min = double.NaN; max = double.NaN; return; };
             for (int i = 0; i < values.Count; i++)
             {
@@ -556,11 +556,11 @@ namespace Numerics
         /// <param name="values">The list of values.</param>
         public static int ArgMax(IList<double> values)
         {
-            double max = double.MinValue;
+            double max = double.NegativeInfinity;
             int index = -1;
             for (int i = 0; i < values.Count; i++)
             {
-                if (values[i] > max)
+                if (!double.IsNaN(values[i]) && (index == -1 || values[i] > max))
                 {
                     max = values[i];
                     index = i;
@@ -622,7 +622,7 @@ namespace Numerics
         public static double Max(IList<double> values)
         {
             if (values.Count == 0) return double.NaN;
-            double max = double.MinValue;
+            double max = double.NegativeInfinity;
             for (int i = 0; i < values.Count; i++)
             {
                 double v = values[i];
@@ -643,7 +643,7 @@ namespace Numerics
         {
             if (values.Count == 0) return double.NaN;
             if (indicators.Count != values.Count) return double.NaN;
-            double max = double.MinValue;
+            double max = double.NegativeInfinity;
             bool any = false;
             int flag = useComplement ? 0 : 1;
             for (int i = 0; i < values.Count; i++)
@@ -685,6 +685,7 @@ namespace Numerics
         public static double LogSumExp(double u, double v)
         {
             double max = Math.Max(u, v);
+            if (double.IsNegativeInfinity(max)) return double.NegativeInfinity;
             return max + Math.Log(Math.Exp(u - max) + Math.Exp(v - max));
         }
 
@@ -696,6 +697,7 @@ namespace Numerics
         {
             if (values.Count == 0) return double.NaN;
             double max = Max(values);
+            if (double.IsNegativeInfinity(max)) return double.NegativeInfinity;
             double sum = 0;
             for (int i = 0; i < values.Count; i++)
             {

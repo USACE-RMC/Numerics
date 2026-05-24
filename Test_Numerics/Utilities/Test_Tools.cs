@@ -355,6 +355,36 @@ namespace Utilities
         }
 
         /// <summary>
+        /// Testing max helpers when every candidate is negative infinity.
+        /// </summary>
+        [TestMethod]
+        public void Test_MaxHelpers_AllNegativeInfinity()
+        {
+            List<double> values = new List<double> { double.NegativeInfinity, double.NegativeInfinity };
+            List<int> indicators = new List<int> { 1, 1 };
+
+            Tools.MinMax(values, out double min, out double max);
+
+            Assert.AreEqual(double.NegativeInfinity, min);
+            Assert.AreEqual(double.NegativeInfinity, max);
+            Assert.AreEqual(0, Tools.ArgMax(values));
+            Assert.AreEqual(double.NegativeInfinity, Tools.Max(values));
+            Assert.AreEqual(double.NegativeInfinity, Tools.Max(values, indicators));
+        }
+
+        /// <summary>
+        /// Testing log-sum-exponential when every log input is negative infinity.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogSumExp_AllNegativeInfinity()
+        {
+            List<double> values = new List<double> { double.NegativeInfinity, double.NegativeInfinity };
+
+            Assert.AreEqual(double.NegativeInfinity, Tools.LogSumExp(double.NegativeInfinity, double.NegativeInfinity));
+            Assert.AreEqual(double.NegativeInfinity, Tools.LogSumExp(values));
+        }
+
+        /// <summary>
         /// Testing integer sequence.
         /// </summary>
         [TestMethod]
