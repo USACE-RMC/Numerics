@@ -39,6 +39,16 @@ namespace Numerics.Functions
         /// <summary>
         /// Complementary log-log link: &#951; = log(&#8722;log(1 &#8722; x)). Used for asymmetric binary response models.
         /// </summary>
-        ComplementaryLogLog
+        ComplementaryLogLog,
+
+        /// <summary>
+        /// Yeo-Johnson power-transformation link function for real-valued skew or shape parameters.
+        /// </summary>
+        YeoJohnson,
+
+        /// <summary>
+        /// Fisher z link: &#951; = atanh(x), commonly used for correlation parameters.
+        /// </summary>
+        FisherZ
     }
 }
