@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
 using Numerics.Functions;
 using System;
 using System.Xml.Linq;
@@ -38,6 +39,18 @@ namespace Functions
         }
 
         /// <summary>
+        /// Verifies the lambda constructor rejects non-finite and unsupported lambda values.
+        /// </summary>
+        [TestMethod]
+        public void Constructor_Lambda_InvalidValues_Throws()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new YeoJohnsonLink(double.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new YeoJohnsonLink(double.PositiveInfinity));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new YeoJohnsonLink(-5.1d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new YeoJohnsonLink(5.1d));
+        }
+
+        /// <summary>
         /// Verifies the values constructor rejects null.
         /// </summary>
         [TestMethod]
@@ -56,6 +69,16 @@ namespace Functions
         }
 
         /// <summary>
+        /// Verifies the values constructor rejects non-finite samples.
+        /// </summary>
+        [TestMethod]
+        public void Constructor_Values_NonFiniteValue_Throws()
+        {
+            Assert.Throws<ArgumentException>(() => new YeoJohnsonLink(new[] { 1d, double.NaN }));
+            Assert.Throws<ArgumentException>(() => new YeoJohnsonLink(new[] { 1d, double.NegativeInfinity }));
+        }
+
+        /// <summary>
         /// Verifies lambda fitting produces a finite value for a non-degenerate sample.
         /// </summary>
         [TestMethod]
@@ -63,7 +86,7 @@ namespace Functions
         {
             var link = new YeoJohnsonLink(new[] { -2d, -1d, -0.25d, 0d, 0.5d, 1d, 3d });
 
-            Assert.IsTrue(IsFinite(link.Lambda));
+            Assert.IsTrue(Tools.IsFinite(link.Lambda));
         }
 
         /// <summary>
@@ -73,6 +96,17 @@ namespace Functions
         public void Constructor_XElement_Null_Throws()
         {
             Assert.Throws<ArgumentNullException>(() => new YeoJohnsonLink((XElement)null!));
+        }
+
+        /// <summary>
+        /// Verifies XML construction rejects missing or invalid lambda values.
+        /// </summary>
+        [TestMethod]
+        public void Constructor_XElement_InvalidLambda_Throws()
+        {
+            Assert.Throws<ArgumentException>(() => new YeoJohnsonLink(new XElement(nameof(YeoJohnsonLink))));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new YeoJohnsonLink(new XElement(nameof(YeoJohnsonLink), new XAttribute("Lambda", "NaN"))));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new YeoJohnsonLink(new XElement(nameof(YeoJohnsonLink), new XAttribute("Lambda", "6"))));
         }
 
         /// <summary>
@@ -87,6 +121,32 @@ namespace Functions
                 Assert.AreEqual(x, link.Link(x), 1e-10);
                 Assert.AreEqual(1d, link.DLink(x), 1e-10);
             }
+        }
+
+        /// <summary>
+        /// Verifies lambda zero uses the logarithmic positive-value branch.
+        /// </summary>
+        [TestMethod]
+        public void Link_LambdaZero_UsesPositiveLogBranch()
+        {
+            var link = new YeoJohnsonLink(0d);
+
+            Assert.AreEqual(Math.Log(3d), link.Link(2d), 1e-12);
+            Assert.AreEqual(2d, link.InverseLink(Math.Log(3d)), 1e-12);
+            Assert.AreEqual(1d / 3d, link.DLink(2d), 1e-12);
+        }
+
+        /// <summary>
+        /// Verifies lambda two uses the logarithmic negative-value branch.
+        /// </summary>
+        [TestMethod]
+        public void Link_LambdaTwo_UsesNegativeLogBranch()
+        {
+            var link = new YeoJohnsonLink(2d);
+
+            Assert.AreEqual(-Math.Log(3d), link.Link(-2d), 1e-12);
+            Assert.AreEqual(-2d, link.InverseLink(-Math.Log(3d)), 1e-12);
+            Assert.AreEqual(1d / 3d, link.DLink(-2d), 1e-12);
         }
 
         /// <summary>
@@ -140,11 +200,6 @@ namespace Functions
             var restored = LinkFunctionFactory.CreateFromXElement(new YeoJohnsonLink(0.25d).ToXElement());
             Assert.IsInstanceOfType(restored, typeof(YeoJohnsonLink));
             Assert.AreEqual(0.25d, ((YeoJohnsonLink)restored).Lambda, 1e-12);
-        }
-
-        private static bool IsFinite(double value)
-        {
-            return !double.IsNaN(value) && !double.IsInfinity(value);
         }
     }
 }

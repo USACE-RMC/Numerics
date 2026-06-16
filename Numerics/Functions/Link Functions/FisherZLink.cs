@@ -14,6 +14,10 @@ namespace Numerics.Functions
     /// <para>
     ///     This link is commonly used for correlation parameters and other signed bounded parameters.
     /// </para>
+    /// <para>
+    ///     <b> Authors: </b>
+    ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
+    /// </para>
     /// </remarks>
     [Serializable]
     public sealed class FisherZLink : ILinkFunction
@@ -22,7 +26,7 @@ namespace Numerics.Functions
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="x"/> is not in (-1, 1).</exception>
         public double Link(double x)
         {
-            if (x <= -1d || x >= 1d)
+            if (!Tools.IsFinite(x) || x <= -1d || x >= 1d)
                 throw new ArgumentOutOfRangeException(nameof(x), "FisherZLink requires -1 < x < 1.");
 
             return 0.5d * Math.Log((1d + x) / (1d - x));
@@ -45,7 +49,7 @@ namespace Numerics.Functions
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="x"/> is not in (-1, 1).</exception>
         public double DLink(double x)
         {
-            if (x <= -1d || x >= 1d)
+            if (!Tools.IsFinite(x) || x <= -1d || x >= 1d)
                 throw new ArgumentOutOfRangeException(nameof(x), "FisherZLink derivative requires -1 < x < 1.");
 
             return 1d / (1d - x * x);

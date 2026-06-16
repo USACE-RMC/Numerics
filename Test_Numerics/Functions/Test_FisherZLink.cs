@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
 using Numerics.Functions;
 using System;
 
@@ -41,6 +42,25 @@ namespace Functions
         }
 
         /// <summary>
+        /// Verifies inverse-link values remain finite and approach the correlation bounds for large eta.
+        /// </summary>
+        [TestMethod]
+        public void InverseLink_LargeEta_ApproachesBounds()
+        {
+            var link = new FisherZLink();
+
+            double upper = link.InverseLink(10d);
+            double lower = link.InverseLink(-10d);
+
+            Assert.IsTrue(Tools.IsFinite(upper));
+            Assert.IsTrue(Tools.IsFinite(lower));
+            Assert.IsLessThan(1d, upper);
+            Assert.IsGreaterThan(0.99999999d, upper);
+            Assert.IsGreaterThan(-1d, lower);
+            Assert.IsLessThan(-0.99999999d, lower);
+        }
+
+        /// <summary>
         /// Verifies round-trip behavior over the correlation domain.
         /// </summary>
         [TestMethod]
@@ -79,8 +99,10 @@ namespace Functions
 
             Assert.Throws<ArgumentOutOfRangeException>(() => link.Link(-1d));
             Assert.Throws<ArgumentOutOfRangeException>(() => link.Link(1d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => link.Link(double.NaN));
             Assert.Throws<ArgumentOutOfRangeException>(() => link.DLink(-1d));
             Assert.Throws<ArgumentOutOfRangeException>(() => link.DLink(1d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => link.DLink(double.PositiveInfinity));
         }
 
         /// <summary>

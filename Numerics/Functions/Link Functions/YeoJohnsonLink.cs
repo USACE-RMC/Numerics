@@ -14,10 +14,21 @@ namespace Numerics.Functions
     ///     for skew or shape parameters that do not have a closed-form
     ///     variance-stabilizing link.
     /// </para>
+    /// <para>
+    ///     The transformation parameter lambda is restricted to the range used by
+    ///     <see cref="YeoJohnson.FitLambda(System.Collections.Generic.IList{double})"/>, -5 &lt;= lambda &lt;= 5.
+    /// </para>
+    /// <para>
+    ///     <b> Authors: </b>
+    ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
+    /// </para>
     /// </remarks>
     [Serializable]
     public sealed class YeoJohnsonLink : ILinkFunction
     {
+        private const double MinimumLambda = -5d;
+        private const double MaximumLambda = 5d;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="YeoJohnsonLink"/> class with lambda equal to 1.
         /// </summary>
@@ -30,13 +41,10 @@ namespace Numerics.Functions
         /// Initializes a new instance of the <see cref="YeoJohnsonLink"/> class.
         /// </summary>
         /// <param name="lambda">The Yeo-Johnson transformation parameter.</param>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="lambda"/> is not finite.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="lambda"/> is not finite or is outside [-5, 5].</exception>
         public YeoJohnsonLink(double lambda)
         {
-            if (double.IsNaN(lambda) || double.IsInfinity(lambda))
-                throw new ArgumentOutOfRangeException(nameof(lambda), "Lambda must be finite.");
-
-            Lambda = lambda;
+            Lambda = ValidateLambda(lambda, nameof(lambda));
         }
 
         /// <summary>
@@ -44,14 +52,18 @@ namespace Numerics.Functions
         /// </summary>
         /// <param name="values">Representative values used to estimate lambda.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when fewer than two finite values are supplied or lambda fitting fails.</exception>
         public YeoJohnsonLink(double[] values)
         {
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
             if (values.Length < 2)
                 throw new ArgumentException("At least 2 values are required to fit lambda.", nameof(values));
+            for (int i = 0; i < values.Length; i++)
+                if (!Tools.IsFinite(values[i]))
+                    throw new ArgumentException("Every representative value must be finite.", nameof(values));
 
-            Lambda = YeoJohnson.FitLambda(values);
+            Lambda = ValidateLambda(YeoJohnson.FitLambda(values), nameof(values));
         }
 
         /// <summary>
@@ -69,7 +81,7 @@ namespace Numerics.Functions
             if (lambdaAttribute == null)
                 throw new ArgumentException("The YeoJohnsonLink element must contain a Lambda attribute.", nameof(xElement));
 
-            Lambda = double.Parse(lambdaAttribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture);
+            Lambda = ValidateLambda(double.Parse(lambdaAttribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture), "Lambda");
         }
 
         /// <summary>
@@ -97,5 +109,20 @@ namespace Numerics.Functions
 
         /// <inheritdoc/>
         public XElement ToXElement() => new XElement(nameof(YeoJohnsonLink), new XAttribute("Lambda", Lambda.ToString("G17", CultureInfo.InvariantCulture)));
+
+        /// <summary>
+        /// Validates a Yeo-Johnson lambda value.
+        /// </summary>
+        /// <param name="lambda">The lambda value to validate.</param>
+        /// <param name="paramName">The parameter name to use in the exception.</param>
+        /// <returns>The validated lambda value.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="lambda"/> is not finite or is outside [-5, 5].</exception>
+        private static double ValidateLambda(double lambda, string paramName)
+        {
+            if (!Tools.IsFinite(lambda) || lambda < MinimumLambda || lambda > MaximumLambda)
+                throw new ArgumentOutOfRangeException(paramName, "Lambda must be finite and in the range [-5, 5].");
+
+            return lambda;
+        }
     }
 }
