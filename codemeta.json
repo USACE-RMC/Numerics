@@ -1,11 +1,12 @@
 {
   "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
   "@type": "SoftwareSourceCode",
-  "name": "Numerics",
+  "name": "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, and Risk Assessment",
+  "alternateName": "Numerics",
   "description": "A free and open-source .NET library providing numerical methods, probability distributions, statistical analysis, and Bayesian inference tools for quantitative risk assessment in water resources engineering.",
-  "version": "2.0.0",
+  "version": "2.1.1",
   "dateCreated": "2023-09-28",
-  "dateModified": "2026-03-08",
+  "dateModified": "2026-06-17",
   "license": "https://spdx.org/licenses/0BSD",
   "codeRepository": "https://github.com/USACE-RMC/Numerics",
   "issueTracker": "https://github.com/USACE-RMC/Numerics/issues",
@@ -40,43 +41,47 @@
       "@id": "https://orcid.org/0000-0002-4651-9890",
       "affiliation": {
         "@type": "Organization",
-        "name": "U.S. Army Corps of Engineers, Risk Management Center"
+        "name": "U.S. Army Corps of Engineers, Risk Management Center, Lakewood, Colorado, USA"
       }
     },
     {
       "@type": "Person",
       "givenName": "Woodrow L.",
       "familyName": "Fields",
+      "@id": "https://orcid.org/0009-0008-7454-5552",
       "affiliation": {
         "@type": "Organization",
-        "name": "U.S. Army Corps of Engineers, Risk Management Center"
+        "name": "U.S. Army Corps of Engineers, Risk Management Center, Lakewood, Colorado, USA"
       }
     },
     {
       "@type": "Person",
       "givenName": "Julian",
       "familyName": "Gonzalez",
+      "@id": "https://orcid.org/0009-0009-9058-7653",
       "affiliation": {
         "@type": "Organization",
-        "name": "U.S. Army Corps of Engineers, Risk Management Center"
+        "name": "U.S. Army Corps of Engineers, Risk Management Center, Lakewood, Colorado, USA"
       }
     },
     {
       "@type": "Person",
       "givenName": "Sadie",
       "familyName": "Niblett",
+      "@id": "https://orcid.org/0009-0008-8588-4816",
       "affiliation": {
         "@type": "Organization",
-        "name": "U.S. Army Corps of Engineers, Risk Management Center"
+        "name": "U.S. Army Corps of Engineers, Risk Management Center, Lakewood, Colorado, USA"
       }
     },
     {
       "@type": "Person",
       "givenName": "Brennan",
       "familyName": "Beam",
+      "@id": "https://orcid.org/0009-0003-0515-3727",
       "affiliation": {
         "@type": "Organization",
-        "name": "U.S. Army Corps of Engineers, Hydrologic Engineering Center"
+        "name": "U.S. Army Corps of Engineers, Hydrologic Engineering Center, Davis, California, USA"
       }
     },
     {
@@ -86,7 +91,7 @@
       "@id": "https://orcid.org/0000-0002-2164-0301",
       "affiliation": {
         "@type": "Organization",
-        "name": "Fariborz Maseeh Department of Mathematics and Statistics, Portland State University"
+        "name": "Fariborz Maseeh Department of Mathematics and Statistics, Portland State University, Portland, Oregon, USA"
       }
     }
   ],

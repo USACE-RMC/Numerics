@@ -7,7 +7,8 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <DebugType>embedded</DebugType>
 	
-    <Description>Numerics is a free and open-source library for .NET developed by USACE-RMC, providing a comprehensive set of methods and algorithms for numerical computations and statistical analysis.</Description>
+    <Description>Numerics is a free and open-source .NET library developed by USACE-RMC, providing numerical methods, probability distributions, statistical analysis, optimization, machine learning, and Bayesian inference tools for quantitative risk assessment in water resources engineering.</Description>
+    <Authors>C. Haden Smith; Woodrow L. Fields; Julian Gonzalez; Sadie Niblett; Brennan Beam; Brian Skahill</Authors>
     <PackageProjectUrl>https://github.com/USACE-RMC/Numerics</PackageProjectUrl>
     <RepositoryUrl>https://github.com/USACE-RMC/Numerics</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -15,7 +16,7 @@
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <Company>USACE-RMC</Company>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>interpolation; regression; statistics; machine learning; probability distributions; bootstrap analysis; distribution fitting; Bayesian MCMC sampling; optimization;</PackageTags>
+    <PackageTags>numerical methods;statistics;probability distributions;hydrology;flood frequency analysis;copulas;L-moments;optimization;machine learning;Bayesian inference;MCMC;risk assessment</PackageTags>
     <PackageLicenseExpression>0BSD</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
     <PackageId>RMC.Numerics</PackageId>
@@ -29,9 +30,9 @@
   <PropertyGroup>
     <!-- 1587 is an xml comment not placed on a valid member (in our case, mostly license text at top of files) -->
     <NoWarn>CS1587</NoWarn>
-    <Version>2.0.0</Version>
-    <PackageReleaseNotes>This major update delivers broad improvements across the entire Numerics library, with substantial enhancements to data analysis, statistical modeling, numerical methods, distributions, optimization, machine learning utilities, and overall performance and reliability. The update reflects over a year of incremental development, code modernization, and refinement.</PackageReleaseNotes>
-    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <Version>2.1.1</Version>
+    <PackageReleaseNotes>Version 2.1.1 is a metadata and release-process update for the JOSS publication. It refreshes citation, CodeMeta, README, and NuGet package metadata; increases the VSTest connection timeout in the release workflow; and does not change the public API.</PackageReleaseNotes>
+    <AssemblyVersion>2.1.1.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>
