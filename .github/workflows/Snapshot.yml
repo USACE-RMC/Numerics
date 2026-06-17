@@ -11,7 +11,8 @@ jobs:
       dotnet-version: '10.0.x'
       project-names: 'Numerics'
       version: '2.0.0'
-      run-tests: true
+      # PR integration already runs the full multi-target test suite.
+      run-tests: false
       nuget-source: 'https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/'
     secrets:
       NUGET_API_KEY: ${{ secrets.NEXUS_NUGET_APIKEY }}

@@ -204,20 +204,20 @@ namespace Numerics.Distributions
         /// Computes the log of the probability mass function.
         /// </summary>
         /// <param name="x">The count vector. Each xᵢ must be a non-negative integer and Σxᵢ = N.</param>
-        /// <returns>The log probability. Returns <see cref="double.MinValue"/> if x is not valid.</returns>
+        /// <returns>The log probability. Returns <see cref="double.NegativeInfinity"/> if x is not valid.</returns>
         public double LogPMF(double[] x)
         {
-            if (x == null || x.Length != _dimension) return double.MinValue;
+            if (x == null || x.Length != _dimension) return double.NegativeInfinity;
 
             // Validate: all non-negative integers that sum to N
             int sum = 0;
             for (int i = 0; i < _dimension; i++)
             {
                 int xi = (int)Math.Round(x[i]);
-                if (xi < 0 || Math.Abs(x[i] - xi) > 1e-10) return double.MinValue;
+                if (xi < 0 || Math.Abs(x[i] - xi) > 1e-10) return double.NegativeInfinity;
                 sum += xi;
             }
-            if (sum != _n) return double.MinValue;
+            if (sum != _n) return double.NegativeInfinity;
 
             // Compute in log-space: log(N!) - sum(log(xi!)) + sum(xi * log(pi))
             double logPmf = Factorial.LogFactorial(_n);
@@ -227,7 +227,7 @@ namespace Numerics.Distributions
                 logPmf -= Factorial.LogFactorial(xi);
                 if (xi > 0)
                 {
-                    if (_p[i] <= 0) return double.MinValue;
+                    if (_p[i] <= 0) return double.NegativeInfinity;
                     logPmf += xi * Math.Log(_p[i]);
                 }
             }

@@ -448,6 +448,167 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// Test that MovingSum propagates NaN strictly by default (any NaN in window -> NaN out).
+        /// Matches pandas Series.rolling(w).sum() default min_periods=w behavior.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingSum_NaN_Strict()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingSum(2);
+            // window positions: [1,NaN], [NaN,3], [3,4], [4,5] -> [NaN, NaN, 7, 9]
+            var valid = new double[] { double.NaN, double.NaN, 7.0, 9.0 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Test that MovingSum with minValidCount=1 skips NaN values (pandas min_periods=1 semantics).
+        /// Sum is over observed values only; no scaling is applied.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingSum_NaN_SkipMode()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingSum(2, minValidCount: 1);
+            // window positions: [1,NaN]->1, [NaN,3]->3, [3,4]->7, [4,5]->9
+            var valid = new double[] { 1.0, 3.0, 7.0, 9.0 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Test that MovingAverage propagates NaN strictly by default.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingAverage_NaN_Strict()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingAverage(2);
+            var valid = new double[] { double.NaN, double.NaN, 3.5, 4.5 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Test that MovingAverage with minValidCount=1 averages over non-NaN values only.
+        /// Denominator is the count of observed values, not the window size — this fixes the prior low-bias.
+        /// </summary>
+        [TestMethod]
+        public void Test_MovingAverage_NaN_SkipMode()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 4.0, 5.0 });
+
+            var newTS = ts.MovingAverage(2, minValidCount: 1);
+            // [1,NaN]->1/1=1, [NaN,3]->3/1=3, [3,4]->7/2=3.5, [4,5]->9/2=4.5
+            var valid = new double[] { 1.0, 3.0, 3.5, 4.5 };
+            Assert.AreEqual(valid.Length, newTS.Count);
+            for (int i = 0; i < newTS.Count; i++)
+            {
+                Assert.AreEqual(valid[i], newTS[i].Value);
+            }
+        }
+
+        /// <summary>
+        /// Regression guard: Difference relies on IEEE-754 subtraction to propagate NaN automatically.
+        /// </summary>
+        [TestMethod]
+        public void Test_Difference_NaN()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1.0, double.NaN, 3.0, 7.0 });
+
+            var newTS = ts.Difference();
+            // diffs: NaN-1=NaN, 3-NaN=NaN, 7-3=4
+            Assert.AreEqual(3, newTS.Count);
+            Assert.AreEqual(double.NaN, newTS[0].Value);
+            Assert.AreEqual(double.NaN, newTS[1].Value);
+            Assert.AreEqual(4.0, newTS[2].Value);
+        }
+
+        /// <summary>
+        /// Test that CalendarYearSeries with Sum/Average drops years containing any NaN
+        /// (rather than the previous behavior of silently treating NaN as zero).
+        /// </summary>
+        [TestMethod]
+        public void Test_CalendarYearSeries_NaN()
+        {
+            // Two years of monthly data; year 2 has one NaN month.
+            var values = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                        1, double.NaN, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+            var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), values);
+
+            // Sum: year 1 = 78, year 2 = NaN (dropped from output)
+            var sumTS = ts.CalendarYearSeries(BlockFunctionType.Sum);
+            Assert.AreEqual(1, sumTS.Count);
+            Assert.AreEqual(78.0, sumTS[0].Value);
+            Assert.AreEqual(2023, sumTS[0].Index.Year);
+
+            // Average: same — year 2 dropped because NaN propagates
+            var avgTS = ts.CalendarYearSeries(BlockFunctionType.Average);
+            Assert.AreEqual(1, avgTS.Count);
+            Assert.AreEqual(78.0 / 12.0, avgTS[0].Value, 1E-9);
+
+            // Maximum: NaN values are skipped via the < / > comparisons (false on NaN), so both years survive.
+            var maxTS = ts.CalendarYearSeries(BlockFunctionType.Maximum);
+            Assert.AreEqual(2, maxTS.Count);
+            Assert.AreEqual(12.0, maxTS[0].Value);
+            Assert.AreEqual(12.0, maxTS[1].Value);
+        }
+
+        /// <summary>
+        /// Regression guard: MonthlySeries already propagated NaN naively before this fix; verify it still does.
+        /// </summary>
+        [TestMethod]
+        public void Test_MonthlySeries_NaN()
+        {
+            // Two months of weekly data; month 2 has one NaN.
+            var values = new double[] { 10, 20, 30, 40, 50, 60, double.NaN, 80 };
+            var ts = new TimeSeries(TimeInterval.SevenDay, new DateTime(2023, 01, 01), values);
+
+            var sumTS = ts.MonthlySeries(BlockFunctionType.Sum);
+            // Jan 2023 has 5 weekly values: 10+20+30+40+50 = 150
+            // Feb 2023 has 3 weekly values, one NaN -> sum = NaN, dropped
+            // Mar-Dec 2023 are empty -> skipped (no spurious zeros)
+            Assert.AreEqual(1, sumTS.Count);
+            Assert.AreEqual(150.0, sumTS[0].Value, 1E-9);
+        }
+
+        /// <summary>
+        /// Test that PeaksOverThresholdSeries with a multi-day MovingSum smoothing on data with NaN
+        /// does not produce spurious exceedances from windows that touched a missing day.
+        /// This is the user-reported bug: 2-day moving sum on precipitation with gaps was returning
+        /// the value of the single non-missing day instead of NaN, causing zero-baseline exceedances.
+        /// </summary>
+        [TestMethod]
+        public void Test_PeaksOverThreshold_MovingSum_NaN()
+        {
+            // One legitimate 2-day exceedance (5 + 6 = 11). The trailing 8.0 sits at the very end
+            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0].
+            // Pre-fix: [NaN, 8.0] silently became 8.0 -> spurious extra event above threshold 7.
+            // Post-fix: that window is NaN -> excluded. Only [5, 6] = 11 remains.
+            var values = new double[] { 0.1, 0.2, 5.0, 6.0, 0.1, 0.0, 0.1, 0.2, 0.0, double.NaN, 8.0 };
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), values);
+
+            var pot = ts.PeaksOverThresholdSeries(threshold: 7.0, minStepsBetweenEvents: 1,
+                                                  smoothingFunction: SmoothingFunctionType.MovingSum, period: 2);
+
+            Assert.AreEqual(1, pot.Count);
+            Assert.AreEqual(11.0, pot[0].Value, 1E-9);
+        }
+
+        /// <summary>
         /// Test the method that shifts all dates to a new starting date
         /// </summary>
         [TestMethod]
@@ -1034,6 +1195,284 @@ namespace Data.TimeSeriesAnalysis
             // Too few data points for 2 complete periods
             Assert.Throws<ArgumentException>(() => ts.SeasonalDecompose(12));
         }
+
+        #region ResampleWithKNN tests
+
+        /// <summary>
+        /// Build a stationary AR(1) series x[t] = phi*x[t-1] + N(0, sigma^2) using a fixed seed.
+        /// Used by the ResampleWithKNN/ResampleWithBlockBootstrap statistical tests.
+        /// </summary>
+        private static TimeSeries MakeAR1(int n, double phi, double sigma, int seed)
+        {
+            var rng = new Random(seed);
+            var values = new double[n];
+            values[0] = 0.0;
+            for (int i = 1; i < n; i++)
+            {
+                // Box-Muller for a standard normal draw.
+                double u1 = 1.0 - rng.NextDouble();
+                double u2 = 1.0 - rng.NextDouble();
+                double z = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+                values[i] = phi * values[i - 1] + sigma * z;
+            }
+            return new TimeSeries(TimeInterval.OneDay, new DateTime(2000, 1, 1), values);
+        }
+
+        /// <summary>
+        /// Same seed must produce identical KNN resamples.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_DeterministicWithSeed()
+        {
+            var ts = MakeAR1(n: 100, phi: 0.5, sigma: 1.0, seed: 1);
+            var a = ts.ResampleWithKNN(timeSteps: 50, k: 10, seed: 42);
+            var b = ts.ResampleWithKNN(timeSteps: 50, k: 10, seed: 42);
+            Assert.AreEqual(a.Count, b.Count);
+            for (int i = 0; i < a.Count; i++)
+                Assert.AreEqual(a[i].Value, b[i].Value, 1e-12,
+                    $"KNN must be deterministic with a fixed seed; index {i} differs.");
+        }
+
+        /// <summary>
+        /// Output length must equal the requested timeSteps exactly.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_OutputLength()
+        {
+            var ts = MakeAR1(n: 100, phi: 0.5, sigma: 1.0, seed: 1);
+            foreach (int len in new[] { 1, 7, 50, 250 })
+            {
+                var r = ts.ResampleWithKNN(timeSteps: len, k: 10, seed: 42);
+                Assert.AreEqual(len, r.Count,
+                    $"KNN output length must match the requested timeSteps; expected {len}, got {r.Count}.");
+            }
+        }
+
+        /// <summary>
+        /// Regression test for the off-by-one bug.
+        /// On a strongly trended series x[t] = t, the conditional KNN bootstrap (Lall-Sharma)
+        /// should advance through the trend, accumulating mean drift of ≈ +1 per step. The
+        /// pre-fix implementation took the neighbor's own value rather than x[j+1], which
+        /// kept the trajectory hovering near the starting value (zero net drift).
+        /// We average drift over multiple seeds to crush the random-walk noise.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_AdvancesThroughTime()
+        {
+            // x[t] = t, t in [0, 199]
+            var values = Enumerable.Range(0, 200).Select(i => (double)i).ToArray();
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2000, 1, 1), values);
+
+            const int steps = 50;
+            const int trials = 20;
+            double avgDrift = 0;
+            for (int seed = 1; seed <= trials; seed++)
+            {
+                var r = ts.ResampleWithKNN(timeSteps: steps, k: 10, seed: seed);
+                avgDrift += (r[steps - 1].Value - r[0].Value);
+            }
+            avgDrift /= trials;
+
+            // Pre-fix: avgDrift ~ N(0, ~5) — fails this assertion clearly.
+            // Post-fix: avgDrift ~ +50 (drift = +1 per step over 50 steps).
+            Assert.IsGreaterThan(25.0, avgDrift,
+                $"Expected KNN trajectory to advance through the trend (avgDrift > 25 over {steps} steps); " +
+                $"observed avgDrift = {avgDrift:F2}. The pre-fix off-by-one keeps the trajectory near the starting value.");
+        }
+
+        /// <summary>
+        /// The marginal mean of resampled tails should match the input mean within sampling error.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_PreservesMarginalMean()
+        {
+            var ts = MakeAR1(n: 200, phi: 0.5, sigma: 1.0, seed: 7);
+            double inputMean = ts.MeanValue();
+            double inputStd = ts.StandardDeviation();
+
+            const int trials = 200;
+            const int steps = 100;
+            double sumOfTailMeans = 0;
+            for (int seed = 1; seed <= trials; seed++)
+            {
+                var r = ts.ResampleWithKNN(timeSteps: steps, k: 10, seed: seed);
+                sumOfTailMeans += r.MeanValue();
+            }
+            double grandMean = sumOfTailMeans / trials;
+            double standardError = inputStd / Math.Sqrt(steps * trials);
+
+            // Allow 4x SE — generous to absorb short-series boundary effects in KNN.
+            Assert.IsLessThan(4.0 * standardError + 0.05, Math.Abs(grandMean - inputMean),
+                $"KNN tails should preserve the marginal mean; input={inputMean:F4}, grand-mean={grandMean:F4}, " +
+                $"4*SE={4.0 * standardError:F4}.");
+        }
+
+        /// <summary>
+        /// The marginal variance of resampled tails should be in the same regime as the input variance.
+        /// KNN can shrink variance because the conditional sampling pulls toward the local mean — we
+        /// only require the resample variance to remain within 50% of the input variance.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_PreservesMarginalVariance()
+        {
+            var ts = MakeAR1(n: 200, phi: 0.5, sigma: 1.0, seed: 7);
+            double inputVar = ts.StandardDeviation() * ts.StandardDeviation();
+
+            const int trials = 200;
+            const int steps = 100;
+            double sumOfTailVars = 0;
+            for (int seed = 1; seed <= trials; seed++)
+            {
+                var r = ts.ResampleWithKNN(timeSteps: steps, k: 10, seed: seed);
+                double rStd = r.StandardDeviation();
+                sumOfTailVars += rStd * rStd;
+            }
+            double avgTailVar = sumOfTailVars / trials;
+            double ratio = avgTailVar / inputVar;
+
+            Assert.IsTrue(ratio > 0.5 && ratio < 2.0,
+                $"KNN tail variance should be within 0.5x..2x of input variance; input={inputVar:F4}, " +
+                $"avg-tail={avgTailVar:F4}, ratio={ratio:F2}.");
+        }
+
+        /// <summary>
+        /// On a synthetic AR(1) with phi=0.7, the resampled tails should recover lag-1 autocorrelation
+        /// in the same regime. The conditional bootstrap is what gives KNN this property.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_RecoversAR1Autocorrelation()
+        {
+            const double phiTrue = 0.7;
+            var ts = MakeAR1(n: 300, phi: phiTrue, sigma: 1.0, seed: 7);
+
+            const int trials = 200;
+            const int steps = 100;
+            double sumLag1 = 0;
+            for (int seed = 1; seed <= trials; seed++)
+            {
+                var r = ts.ResampleWithKNN(timeSteps: steps, k: 10, seed: seed);
+                sumLag1 += Lag1Autocorrelation(r);
+            }
+            double avgLag1 = sumLag1 / trials;
+
+            // Post-fix: avgLag1 should be > 0.4 (close to phiTrue=0.7, allow shrinkage).
+            // Pre-fix: avgLag1 is dominated by KNN-neighbor random walk near a fixed point, NOT phi.
+            Assert.IsTrue(avgLag1 > 0.4 && avgLag1 < 0.95,
+                $"KNN should recover lag-1 autocorrelation in the AR(1) regime; expected ~{phiTrue}, got {avgLag1:F3}.");
+        }
+
+        private static double Lag1Autocorrelation(TimeSeries ts)
+        {
+            int n = ts.Count;
+            if (n < 3) return double.NaN;
+            double mean = ts.MeanValue();
+            double num = 0, den = 0;
+            for (int i = 1; i < n; i++) num += (ts[i].Value - mean) * (ts[i - 1].Value - mean);
+            for (int i = 0; i < n; i++) den += (ts[i].Value - mean) * (ts[i].Value - mean);
+            return den > 0 ? num / den : double.NaN;
+        }
+
+        /// <summary>
+        /// KNN must reject series that are too short for a sensible conditional bootstrap.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithKNN_ThrowsForShortSeries()
+        {
+            // Count = 10 — one less than required since we exclude the last index from candidates
+            // and the underlying KNearestNeighbors needs ≥10 training points.
+            var ts = MakeAR1(n: 10, phi: 0.5, sigma: 1.0, seed: 1);
+            Assert.Throws<ArgumentException>(() => ts.ResampleWithKNN(timeSteps: 5, k: 5, seed: 42));
+        }
+
+        #endregion
+
+        #region ResampleWithBlockBootstrap tests
+
+        /// <summary>
+        /// Same seed must produce identical block-bootstrap resamples.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithBlockBootstrap_DeterministicWithSeed()
+        {
+            var ts = MakeAR1(n: 100, phi: 0.5, sigma: 1.0, seed: 1);
+            var a = ts.ResampleWithBlockBootstrap(timeSteps: 50, blockSize: 5, seed: 42);
+            var b = ts.ResampleWithBlockBootstrap(timeSteps: 50, blockSize: 5, seed: 42);
+            Assert.AreEqual(a.Count, b.Count);
+            for (int i = 0; i < a.Count; i++)
+                Assert.AreEqual(a[i].Value, b[i].Value, 1e-12,
+                    $"BlockBootstrap must be deterministic with a fixed seed; index {i} differs.");
+        }
+
+        /// <summary>
+        /// Output length must equal the requested timeSteps exactly even when not divisible by blockSize.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithBlockBootstrap_OutputLength()
+        {
+            var ts = MakeAR1(n: 100, phi: 0.5, sigma: 1.0, seed: 1);
+            // Try lengths that are NOT multiples of blockSize=7 to verify the truncation logic.
+            foreach (int len in new[] { 1, 7, 13, 50, 251 })
+            {
+                var r = ts.ResampleWithBlockBootstrap(timeSteps: len, blockSize: 7, seed: 42);
+                Assert.AreEqual(len, r.Count,
+                    $"BlockBootstrap output length must match requested timeSteps; expected {len}, got {r.Count}.");
+            }
+        }
+
+        /// <summary>
+        /// The marginal mean of block-bootstrap tails should match the input mean within sampling error.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithBlockBootstrap_PreservesMarginalMean()
+        {
+            var ts = MakeAR1(n: 200, phi: 0.5, sigma: 1.0, seed: 7);
+            double inputMean = ts.MeanValue();
+            double inputStd = ts.StandardDeviation();
+
+            const int trials = 200;
+            const int steps = 100;
+            double sumOfTailMeans = 0;
+            for (int seed = 1; seed <= trials; seed++)
+            {
+                var r = ts.ResampleWithBlockBootstrap(timeSteps: steps, blockSize: 5, seed: seed);
+                sumOfTailMeans += r.MeanValue();
+            }
+            double grandMean = sumOfTailMeans / trials;
+            double standardError = inputStd / Math.Sqrt(steps * trials);
+
+            Assert.IsLessThan(4.0 * standardError + 0.05, Math.Abs(grandMean - inputMean),
+                $"BlockBootstrap tails should preserve the marginal mean; input={inputMean:F4}, " +
+                $"grand-mean={grandMean:F4}, 4*SE={4.0 * standardError:F4}.");
+        }
+
+        /// <summary>
+        /// The marginal variance of block-bootstrap tails should be close to the input variance.
+        /// Block bootstrap preserves marginal variance well; we require within ±20%.
+        /// </summary>
+        [TestMethod]
+        public void Test_ResampleWithBlockBootstrap_PreservesMarginalVariance()
+        {
+            var ts = MakeAR1(n: 200, phi: 0.5, sigma: 1.0, seed: 7);
+            double inputVar = ts.StandardDeviation() * ts.StandardDeviation();
+
+            const int trials = 200;
+            const int steps = 100;
+            double sumOfTailVars = 0;
+            for (int seed = 1; seed <= trials; seed++)
+            {
+                var r = ts.ResampleWithBlockBootstrap(timeSteps: steps, blockSize: 5, seed: seed);
+                double rStd = r.StandardDeviation();
+                sumOfTailVars += rStd * rStd;
+            }
+            double avgTailVar = sumOfTailVars / trials;
+            double ratio = avgTailVar / inputVar;
+
+            Assert.IsTrue(ratio > 0.8 && ratio < 1.2,
+                $"BlockBootstrap should preserve marginal variance within ±20%; input={inputVar:F4}, " +
+                $"avg-tail={avgTailVar:F4}, ratio={ratio:F2}.");
+        }
+
+        #endregion
 
     }
 }

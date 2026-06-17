@@ -62,6 +62,17 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
+        /// Test that non-finite log-density evaluations return the canonical log(0) sentinel.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_NonFiniteInput_ReturnsNegativeInfinity()
+        {
+            var mvn = new MultivariateNormal(new[] { 0d, 0d }, new[,] { { 1d, 0d }, { 0d, 1d } });
+
+            Assert.AreEqual(double.NegativeInfinity, mvn.LogPDF(new[] { double.PositiveInfinity, 0d }));
+        }
+
+        /// <summary>
         /// Verification against Fortran routine
         /// http://www.math.wsu.edu/faculty/genz/software/fort77/mvndstpack.f
         /// </summary>

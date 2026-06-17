@@ -338,7 +338,7 @@ namespace Numerics.Distributions
         public override double LogPDF(double[] x)
         {
             double f = -0.5d * Mahalanobis(x) + _lnconstant;
-            if (double.IsNaN(f) || double.IsInfinity(f)) return double.MinValue;
+            if (double.IsNaN(f) || double.IsInfinity(f)) return double.NegativeInfinity;
             return f;
         }
 

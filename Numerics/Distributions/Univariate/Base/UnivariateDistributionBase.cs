@@ -150,7 +150,7 @@ namespace Numerics.Distributions
             {        
                 logLH += LogPDF(sample[i]);
             }
-            if (double.IsNaN(logLH) || double.IsInfinity(logLH)) return double.MinValue;
+            if (double.IsNaN(logLH) || double.IsInfinity(logLH)) return double.NegativeInfinity;
             return logLH;
         }
 
@@ -204,6 +204,8 @@ namespace Numerics.Distributions
         public virtual double LogPDF(double x)
         {
             double f = PDF(x);
+            if (double.IsNaN(f) || double.IsInfinity(f) || f <= 0.0)
+                return double.NegativeInfinity;
             return Math.Log(f);
         }
 
@@ -220,6 +222,8 @@ namespace Numerics.Distributions
         public virtual double LogCDF(double x)
         {
             double F = CDF(x);
+            if (double.IsNaN(F) || double.IsInfinity(F) || F <= 0.0)
+                return double.NegativeInfinity;
             return Math.Log(F);
         }
 
@@ -233,6 +237,8 @@ namespace Numerics.Distributions
         public virtual double LogCCDF(double x)
         {
             double cF = CCDF(x);
+            if (double.IsNaN(cF) || double.IsInfinity(cF) || cF <= 0.0)
+                return double.NegativeInfinity;
             return Math.Log(cF);
         }
 

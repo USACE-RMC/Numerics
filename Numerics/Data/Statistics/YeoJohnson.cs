@@ -38,6 +38,20 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Fit the transform parameter using maximum likelihood estimation.
+        /// </summary>
+        /// <param name="values">The list of values to transform.</param>
+        /// <returns>The fitted transformation exponent.</returns>
+        public static double FitLambda(IList<double> values)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (values.Count < 2) throw new ArgumentException("At least 2 values are required to fit lambda.", nameof(values));
+
+            FitLambda(values, out double lambda);
+            return lambda;
+        }
+
+        /// <summary>
         /// The log-likelihood function. The transformed observations are assumed to come from a
         /// normal distribution. The change of variable formula is used to write the log-likelihood function.
         /// </summary>
@@ -158,6 +172,19 @@ namespace Numerics.Data.Statistics
             {
                 return double.NaN;
             }
+        }
+
+        /// <summary>
+        /// Returns the derivative of the Yeo-Johnson transformation with respect to the original value.
+        /// </summary>
+        /// <param name="value">The value at which to evaluate the derivative.</param>
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        public static double Derivative(double value, double lambda)
+        {
+            if (Math.Abs(lambda) > 5d) return double.NaN;
+            return value >= 0d
+                ? Math.Pow(value + 1d, lambda - 1d)
+                : Math.Pow(-value + 1d, 1d - lambda);
         }
 
         /// <summary>

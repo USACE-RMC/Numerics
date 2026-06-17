@@ -75,5 +75,59 @@ namespace Sampling.MCMC
             Assert.AreEqual(5771.81, results.ParameterResults[1].SummaryStatistics.UpperCI, 0.05 * 5771.81);
         }
 
+        /// <summary>
+        /// This test verifies that SNIS fails fast when every importance weight is invalid.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_AllInvalidWeights_ThrowsInvalidOperationException()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(0d, 1d) };
+            double logLH(double[] x) => double.NegativeInfinity;
+
+            var sampler = new SNIS(priors, logLH)
+            {
+                Iterations = 100,
+                OutputLength = 100,
+                PRNGSeed = 12345
+            };
+
+            Assert.Throws<System.InvalidOperationException>(() => sampler.Sample());
+        }
+
+        /// <summary>
+        /// This test verifies that finite SNIS weights normalize cleanly when invalid samples are present.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_MixedFiniteAndInvalidWeights_NormalizesFiniteWeights()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(0d, 1d) };
+            double logLH(double[] x) => x[0] < 0.5d ? 0d : double.NegativeInfinity;
+
+            var sampler = new SNIS(priors, logLH)
+            {
+                Iterations = 100,
+                OutputLength = 100,
+                PRNGSeed = 12345
+            };
+
+            sampler.Sample();
+
+            double sum = 0d;
+            bool foundZeroWeight = false;
+            bool foundPositiveWeight = false;
+            foreach (var parameterSet in sampler.MarkovChains[0])
+            {
+                Assert.IsFalse(double.IsNaN(parameterSet.Weight));
+                Assert.IsFalse(double.IsInfinity(parameterSet.Weight));
+                sum += parameterSet.Weight;
+                foundZeroWeight |= parameterSet.Weight == 0d;
+                foundPositiveWeight |= parameterSet.Weight > 0d;
+            }
+
+            Assert.IsTrue(foundZeroWeight);
+            Assert.IsTrue(foundPositiveWeight);
+            Assert.AreEqual(1d, sum, 1e-12);
+        }
+
     }
 }

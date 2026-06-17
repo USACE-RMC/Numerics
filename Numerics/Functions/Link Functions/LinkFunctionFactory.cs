@@ -35,6 +35,10 @@ namespace Numerics.Functions
                     return new ProbitLink();
                 case LinkFunctionType.ComplementaryLogLog:
                     return new ComplementaryLogLogLink();
+                case LinkFunctionType.YeoJohnson:
+                    return new YeoJohnsonLink();
+                case LinkFunctionType.FisherZ:
+                    return new FisherZLink();
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type), $"Unknown link function type: {type}.");
             }
@@ -63,6 +67,10 @@ namespace Numerics.Functions
                     return new ProbitLink();
                 case nameof(ComplementaryLogLogLink):
                     return new ComplementaryLogLogLink();
+                case nameof(YeoJohnsonLink):
+                    return new YeoJohnsonLink(xElement);
+                case nameof(FisherZLink):
+                    return new FisherZLink();
                 default:
                     throw new NotSupportedException($"Unknown link function type: '{xElement.Name.LocalName}'.");
             }

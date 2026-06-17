@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
 using Numerics.Mathematics.LinearAlgebra;
@@ -73,7 +74,7 @@ namespace Numerics.Functions
             {
                 var indexAttr = slot.Attribute("Index");
                 if (indexAttr == null) continue;
-                if (!int.TryParse(indexAttr.Value, out int index)) continue;
+                if (!int.TryParse(indexAttr.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) continue;
                 if (index < 0 || index >= Links.Length) continue;
                 var child = slot.Elements().FirstOrDefault();
                 if (child != null)

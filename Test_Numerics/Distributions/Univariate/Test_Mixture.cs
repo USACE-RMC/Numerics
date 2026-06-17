@@ -249,5 +249,16 @@ namespace Distributions.Univariate
             }
         }
 
+        /// <summary>
+        /// Test that a mixture with no component support at x returns log(0).
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_LogPDF_InvalidSupport_ReturnsNegativeInfinity()
+        {
+            var mix = new Mixture(new[] { 1.0 }, new[] { new Exponential(1.0) });
+
+            Assert.AreEqual(double.NegativeInfinity, mix.LogPDF(-1.0));
+        }
+
     }
 }

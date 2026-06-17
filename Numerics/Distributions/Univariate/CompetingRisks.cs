@@ -58,8 +58,8 @@ namespace Numerics.Distributions
         private bool _mvnCreated = false;
         private MultivariateNormal _mvn = null!;
 
-        // Minimum log value to prevent -Infinity in log-likelihood
-        private const double _logZero = -745.0; // ≈ log(double.MinValue that's positive)
+        // Soft finite floor used in tail arithmetic before returning the final log-density.
+        private const double _logZero = -745.0;
         private const double _minDensity = 1E-300;
 
         /// <summary>
@@ -579,7 +579,7 @@ namespace Numerics.Distributions
                 // For dependent cases, fall back to numerical differentiation
                 // but use a more stable approach
                 double pdf = NumericalDerivative.Derivative(CDF, x);
-                return pdf > _minDensity ? Math.Log(pdf) : double.MinValue;
+                return pdf > _minDensity ? Math.Log(pdf) : double.NegativeInfinity;
             }
 
         }
@@ -648,7 +648,7 @@ namespace Numerics.Distributions
             // Final result: log(f) = log(sum h_i) + sum log(S_i)
             double logPdf = logSumHazard + sumLogSurvival;
 
-            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.MinValue : logPdf;
+            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.NegativeInfinity : logPdf;
         }
 
         /// <summary>
@@ -714,7 +714,7 @@ namespace Numerics.Distributions
             // Final result: log(f) = log(sum f_i/F_i) + sum log(F_i)
             double logPdf = logSumRatio + sumLogCdf;
 
-            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.MinValue : logPdf;
+            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.NegativeInfinity : logPdf;
         }
 
 

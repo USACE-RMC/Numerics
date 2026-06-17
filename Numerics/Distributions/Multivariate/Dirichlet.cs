@@ -282,7 +282,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="x">A point on the simplex. Components must be positive and sum to 1.</param>
         /// <returns>
-        /// The log-density at x. Returns <see cref="double.MinValue"/> if x is not on the simplex.
+        /// The log-density at x. Returns <see cref="double.NegativeInfinity"/> if x is not on the simplex.
         /// </returns>
         /// <remarks>
         /// <para>
@@ -295,16 +295,16 @@ namespace Numerics.Distributions
         /// </remarks>
         public override double LogPDF(double[] x)
         {
-            if (x == null || x.Length != _dimension) return double.MinValue;
+            if (x == null || x.Length != _dimension) return double.NegativeInfinity;
 
             // Check that x is on the simplex
             double sum = 0;
             for (int i = 0; i < _dimension; i++)
             {
-                if (x[i] <= 0 || x[i] > 1) return double.MinValue;
+                if (x[i] <= 0 || x[i] > 1) return double.NegativeInfinity;
                 sum += x[i];
             }
-            if (Math.Abs(sum - 1.0) > 1e-10) return double.MinValue;
+            if (Math.Abs(sum - 1.0) > 1e-10) return double.NegativeInfinity;
 
             double logPdf = -_logNormalization;
             for (int i = 0; i < _dimension; i++)

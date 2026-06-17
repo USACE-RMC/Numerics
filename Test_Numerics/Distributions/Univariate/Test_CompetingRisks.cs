@@ -429,6 +429,25 @@ namespace Distributions.Univariate
                 "LogPDF should equal log(PDF) at median for max rule");
         }
 
+        /// <summary>
+        /// Verifies that dependent numerical-differentiation log-density returns log(0)
+        /// when the density is outside the component support.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_DependentInvalidSupport_ReturnsNegativeInfinity()
+        {
+            var cr = new CompetingRisks(new UnivariateDistributionBase[]
+            {
+                new Exponential(1.0),
+                new Exponential(2.0)
+            })
+            {
+                Dependency = Numerics.Data.Statistics.Probability.DependencyType.PerfectlyPositive
+            };
+
+            Assert.AreEqual(double.NegativeInfinity, cr.LogPDF(-1.0));
+        }
+
 
         #region Minimum Rule - 2 Distributions
 

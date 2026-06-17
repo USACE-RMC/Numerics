@@ -110,6 +110,8 @@ namespace Numerics.Distributions.Copulas
         public double LogPDF(double u, double v)
         {
             double f = PDF(u, v);
+            if (double.IsNaN(f) || double.IsInfinity(f) || f <= 0d)
+                return double.NegativeInfinity;
             return Math.Log(f);
         }
 
@@ -194,7 +196,7 @@ namespace Numerics.Distributions.Copulas
             double LogLH = 0;
             for (int i = 0; i < sampleDataX.Count; i++)
                 LogLH += LogPDF(sampleDataX[i], sampleDataY[i]);
-            if (double.IsNaN(LogLH) || double.IsInfinity(LogLH)) return double.MinValue;
+            if (double.IsNaN(LogLH) || double.IsInfinity(LogLH)) return double.NegativeInfinity;
             return LogLH;
         }
 
@@ -212,7 +214,7 @@ namespace Numerics.Distributions.Copulas
             double LogLH = 0;
             for (int i = 0; i < sampleDataX.Count; i++)
                 LogLH += LogPDF(MarginalDistributionX.CDF(sampleDataX[i]), MarginalDistributionY.CDF(sampleDataY[i]));
-            if (double.IsNaN(LogLH) || double.IsInfinity(LogLH)) return double.MinValue;
+            if (double.IsNaN(LogLH) || double.IsInfinity(LogLH)) return double.NegativeInfinity;
             return LogLH;
         }
 
@@ -230,7 +232,7 @@ namespace Numerics.Distributions.Copulas
             double LogLH = 0;
             for (int i = 0; i < sampleDataX.Count; i++)
                 LogLH += LogPDF(MarginalDistributionX.CDF(sampleDataX[i]), MarginalDistributionY.CDF(sampleDataY[i])) + MarginalDistributionX.LogPDF(sampleDataX[i]) + MarginalDistributionY.LogPDF(sampleDataY[i]);
-            if (double.IsNaN(LogLH) || double.IsInfinity(LogLH)) return double.MinValue;
+            if (double.IsNaN(LogLH) || double.IsInfinity(LogLH)) return double.NegativeInfinity;
             return LogLH;
         }
 

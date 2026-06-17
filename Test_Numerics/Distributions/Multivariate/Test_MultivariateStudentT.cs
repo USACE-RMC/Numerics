@@ -172,6 +172,17 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
+        /// Verify that non-finite log-density evaluations return the canonical log(0) sentinel.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_NonFiniteInput_ReturnsNegativeInfinity()
+        {
+            var mvt = CreateStandard2D();
+
+            Assert.AreEqual(double.NegativeInfinity, mvt.LogPDF(new[] { double.PositiveInfinity, 0.0 }));
+        }
+
+        /// <summary>
         /// Verify that 1D MVT PDF matches univariate Student's t PDF.
         /// MVT(ν=5, μ=[3], Σ=[[4]]) should equal StudentT(μ=3, σ=2, ν=5).
         /// </summary>

@@ -53,6 +53,30 @@ namespace Distributions.BivariateCopulas
         }
 
         /// <summary>
+        /// Test that invalid boundary log-density evaluations return log(0).
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_InvalidBoundary_ReturnsNegativeInfinity()
+        {
+            var copula = new NormalCopula(0.8);
+
+            Assert.AreEqual(double.NegativeInfinity, copula.LogPDF(0.0, 0.5));
+        }
+
+        /// <summary>
+        /// Test that aggregate pseudo log-likelihood returns log(0) when any term is invalid.
+        /// </summary>
+        [TestMethod]
+        public void Test_PseudoLogLikelihood_InvalidBoundary_ReturnsNegativeInfinity()
+        {
+            var copula = new NormalCopula(0.8);
+
+            Assert.AreEqual(
+                double.NegativeInfinity,
+                copula.PseudoLogLikelihood(new[] { 0.0, 0.2 }, new[] { 0.5, 0.8 }));
+        }
+
+        /// <summary>
         /// Test CDF
         /// </summary>
         [TestMethod]

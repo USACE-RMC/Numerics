@@ -618,7 +618,7 @@ namespace Numerics.Sampling.MCMC
             AcceptCount = new int[NumberOfChains];
             SampleCount = new int[NumberOfChains];
             MeanLogLikelihood = new List<double>();
-            MAP = new ParameterSet([], double.MinValue);
+            MAP = new ParameterSet([], double.NegativeInfinity);
         }
 
         #endregion
