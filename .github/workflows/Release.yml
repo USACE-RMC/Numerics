@@ -7,11 +7,43 @@ on:
 
 jobs:
   build:
-    uses: HydrologicEngineeringCenter/dotnet-workflows/.github/workflows/release.yml@main
-    with:
-      dotnet-version: '10.0.x'
-      project-names: 'Numerics'
-      run-tests: true
-      nuget-source: 'https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/'
-    secrets:
-      NUGET_API_KEY: ${{ secrets.NEXUS_NUGET_APIKEY }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Create version number
+        shell: pwsh
+        run: |
+          $TAG = $env:GITHUB_REF -replace 'refs/tags/', ''
+          $VERSION = $TAG -replace '^v', ''
+          echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build Numerics/Numerics.csproj -c Release /p:Version=$env:VERSION
+
+      - name: Test
+        env:
+          VSTEST_CONNECTION_TIMEOUT: '600'
+        run: dotnet test -c Release
+
+      - name: Pack
+        shell: pwsh
+        run: dotnet pack Numerics/Numerics.csproj --configuration Release /p:Version=$env:VERSION --no-build -o ./packages
+
+      - name: Publish
+        shell: pwsh
+        run: dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NEXUS_NUGET_APIKEY }} --source "https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/" --skip-duplicate
