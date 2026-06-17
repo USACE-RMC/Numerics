@@ -1275,7 +1275,7 @@ namespace Data.TimeSeriesAnalysis
 
             // Pre-fix: avgDrift ~ N(0, ~5) — fails this assertion clearly.
             // Post-fix: avgDrift ~ +50 (drift = +1 per step over 50 steps).
-            Assert.IsTrue(avgDrift > 25.0,
+            Assert.IsGreaterThan(25.0, avgDrift,
                 $"Expected KNN trajectory to advance through the trend (avgDrift > 25 over {steps} steps); " +
                 $"observed avgDrift = {avgDrift:F2}. The pre-fix off-by-one keeps the trajectory near the starting value.");
         }
@@ -1302,7 +1302,7 @@ namespace Data.TimeSeriesAnalysis
             double standardError = inputStd / Math.Sqrt(steps * trials);
 
             // Allow 4x SE — generous to absorb short-series boundary effects in KNN.
-            Assert.IsTrue(Math.Abs(grandMean - inputMean) < 4.0 * standardError + 0.05,
+            Assert.IsLessThan(4.0 * standardError + 0.05, Math.Abs(grandMean - inputMean),
                 $"KNN tails should preserve the marginal mean; input={inputMean:F4}, grand-mean={grandMean:F4}, " +
                 $"4*SE={4.0 * standardError:F4}.");
         }
@@ -1440,7 +1440,7 @@ namespace Data.TimeSeriesAnalysis
             double grandMean = sumOfTailMeans / trials;
             double standardError = inputStd / Math.Sqrt(steps * trials);
 
-            Assert.IsTrue(Math.Abs(grandMean - inputMean) < 4.0 * standardError + 0.05,
+            Assert.IsLessThan(4.0 * standardError + 0.05, Math.Abs(grandMean - inputMean),
                 $"BlockBootstrap tails should preserve the marginal mean; input={inputMean:F4}, " +
                 $"grand-mean={grandMean:F4}, 4*SE={4.0 * standardError:F4}.");
         }

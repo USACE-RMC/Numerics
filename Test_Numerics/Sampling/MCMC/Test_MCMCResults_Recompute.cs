@@ -90,7 +90,7 @@ namespace Sampling.MCMC
 
             // The Output list must be the same reference — the chain itself is not touched.
             Assert.AreSame(outputRef, results.Output, "Output reference must not change.");
-            Assert.AreEqual(1000, results.Output.Count, "Output count must be preserved.");
+            Assert.HasCount(1000, results.Output, "Output count must be preserved.");
         }
 
         [TestMethod]
@@ -102,7 +102,7 @@ namespace Sampling.MCMC
 
             results.RecomputeParameterResults(alpha: 0.05);
 
-            Assert.AreEqual(valuesBefore.Length, results.MAP.Values.Length, "MAP value count must not change.");
+            Assert.HasCount(valuesBefore.Length, results.MAP.Values, "MAP value count must not change.");
             for (int i = 0; i < valuesBefore.Length; i++)
                 Assert.AreEqual(valuesBefore[i], results.MAP.Values[i], 1e-12, $"MAP value [{i}] must not change.");
             Assert.AreEqual(fitnessBefore, results.MAP.Fitness, 1e-12, "MAP fitness must not change.");
@@ -176,9 +176,9 @@ namespace Sampling.MCMC
             {
                 double lower80 = results.ParameterResults[i].SummaryStatistics.LowerCI;
                 double upper80 = results.ParameterResults[i].SummaryStatistics.UpperCI;
-                Assert.IsTrue(lower80 > lower90[i],
+                Assert.IsGreaterThan(lower90[i], lower80,
                     $"Parameter {i}: 80% LowerCI ({lower80}) must be > 90% LowerCI ({lower90[i]}) — band narrows when alpha increases.");
-                Assert.IsTrue(upper80 < upper90[i],
+                Assert.IsLessThan(upper90[i], upper80,
                     $"Parameter {i}: 80% UpperCI ({upper80}) must be < 90% UpperCI ({upper90[i]}) — band narrows when alpha increases.");
             }
         }
@@ -197,9 +197,9 @@ namespace Sampling.MCMC
             {
                 double lower95 = results.ParameterResults[i].SummaryStatistics.LowerCI;
                 double upper95 = results.ParameterResults[i].SummaryStatistics.UpperCI;
-                Assert.IsTrue(lower95 < lower90[i],
+                Assert.IsLessThan(lower90[i], lower95,
                     $"Parameter {i}: 95% LowerCI ({lower95}) must be < 90% LowerCI ({lower90[i]}) — band widens when alpha decreases.");
-                Assert.IsTrue(upper95 > upper90[i],
+                Assert.IsGreaterThan(upper90[i], upper95,
                     $"Parameter {i}: 95% UpperCI ({upper95}) must be > 90% UpperCI ({upper90[i]}) — band widens when alpha decreases.");
             }
         }
