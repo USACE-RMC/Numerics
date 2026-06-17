@@ -5,7 +5,6 @@
   "alternateName": "Numerics",
   "description": "A free and open-source .NET library providing numerical methods, probability distributions, statistical analysis, and Bayesian inference tools for quantitative risk assessment in water resources engineering.",
   "version": "2.1.1",
-  "identifier": "https://doi.org/10.5281/zenodo.19444368",
   "dateCreated": "2023-09-28",
   "dateModified": "2026-06-17",
   "license": "https://spdx.org/licenses/0BSD",

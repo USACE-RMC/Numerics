@@ -5,7 +5,6 @@ title: "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, 
 version: "2.1.1"
 date-released: "2026-06-17"
 license: 0BSD
-doi: "10.5281/zenodo.19444368"
 repository-code: "https://github.com/USACE-RMC/Numerics"
 url: "https://github.com/USACE-RMC/Numerics"
 abstract: >-
