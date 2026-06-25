@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite our article in the Journal of Open Source Software."
 type: software
 title: "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, and Risk Assessment"
 version: "2.1.1"
@@ -48,3 +48,40 @@ authors:
     given-names: "Brian"
     affiliation: "Fariborz Maseeh Department of Mathematics and Statistics, Portland State University, Portland, Oregon, USA"
     orcid: "https://orcid.org/0000-0002-2164-0301"
+contact:
+  - family-names: "Smith"
+    given-names: "C. Haden"
+    email: "cole.h.smith@usace.army.mil"
+    orcid: "https://orcid.org/0000-0002-4651-9890"
+preferred-citation:
+  type: article
+  title: "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, and Risk Assessment"
+  authors:
+    - family-names: "Smith"
+      given-names: "C. Haden"
+      orcid: "https://orcid.org/0000-0002-4651-9890"
+    - family-names: "Fields"
+      given-names: "Woodrow L."
+      orcid: "https://orcid.org/0009-0008-7454-5552"
+    - family-names: "Gonzalez"
+      given-names: "Julian"
+      orcid: "https://orcid.org/0009-0009-9058-7653"
+    - family-names: "Niblett"
+      given-names: "Sadie"
+      orcid: "https://orcid.org/0009-0008-8588-4816"
+    - family-names: "Beam"
+      given-names: "Brennan"
+      orcid: "https://orcid.org/0009-0003-0515-3727"
+    - family-names: "Skahill"
+      given-names: "Brian"
+      orcid: "https://orcid.org/0000-0002-2164-0301"
+  journal: "Journal of Open Source Software"
+  publisher:
+    name: "Open Journals"
+  date-published: 2026-06-24
+  doi: 10.21105/joss.10540
+  issn: 2475-9066
+  issue: 122
+  volume: 11
+  start: 10540
+  url: "https://joss.theoj.org/papers/10.21105/joss.10540"
