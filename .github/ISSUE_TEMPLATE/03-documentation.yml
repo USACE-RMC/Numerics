@@ -1,0 +1,54 @@
+name: Documentation
+description: Report missing, unclear, or incorrect documentation.
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: textarea
+    id: location
+    attributes:
+      label: Where is the documentation issue?
+      description: Link to the page, section, API member, or file if possible.
+      placeholder: "Example: docs/distributions/univariate.md, XML docs for Normal.CDF, or the README installation section"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: What type of documentation issue is this?
+      options:
+        - Missing information
+        - Unclear explanation
+        - Incorrect information
+        - Typo or formatting problem
+        - Example needed
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: What is confusing, missing, or incorrect?
+      placeholder: "Example: The documentation describes the parameter as scale, but the API uses rate."
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-change
+    attributes:
+      label: Suggested change
+      description: Optional. Suggest wording, examples, equations, or references that would help.
+      placeholder: "Example: Add a C# example showing how to fit a distribution and evaluate its CDF."
+    validations:
+      required: false
+
+  - type: upload
+    id: files
+    attributes:
+      label: Screenshots, references, or files
+      description: Upload screenshots, source references, example data, or other supporting files if helpful.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.svg,.log,.txt,.csv,.json,.zip,.pdf,.docx,.xlsx,.pptx"

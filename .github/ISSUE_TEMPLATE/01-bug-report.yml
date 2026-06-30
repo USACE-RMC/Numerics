@@ -1,0 +1,84 @@
+name: Bug report
+description: Report something that is not working correctly.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please do not report security vulnerabilities here; contact the RMC team directly through official USACE-RMC channels.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Briefly describe the problem.
+      placeholder: "Example: Normal.InverseCDF returns NaN for a valid probability input."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: What did you expect to happen?
+      description: Tell us what result or behavior you expected instead.
+      placeholder: "Example: I expected the method to return the same quantile value as R or SciPy."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the steps, code, inputs, or data that caused the problem, if you know them.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: input
+    id: affected-area
+    attributes:
+      label: Affected namespace, class, or method
+      description: Name the Numerics area if you know it.
+      placeholder: "Example: Numerics.Distributions.Normal, Statistics.ProductMoments, Integration.GaussLegendre"
+    validations:
+      required: false
+
+  - type: input
+    id: numerics-version
+    attributes:
+      label: Numerics version, package version, branch, or commit
+      description: Enter the RMC.Numerics package version, branch, or commit if you know it.
+      placeholder: "Example: RMC.Numerics 2.1.1 or commit abc1234"
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and .NET details
+      description: Add any OS, target framework, SDK, runtime, or IDE version details you know.
+      placeholder: "Example: Windows 11, net8.0, .NET 10 SDK, Visual Studio 2026"
+    validations:
+      required: false
+
+  - type: input
+    id: input-data
+    attributes:
+      label: Input data or parameters
+      description: Include the key numeric values, distributions, sample sizes, seeds, or file formats involved.
+      placeholder: "Example: p = 0.999, mean = 0, standard deviation = 1"
+    validations:
+      required: false
+
+  - type: upload
+    id: files
+    attributes:
+      label: Screenshots, logs, data, or sample files
+      description: Upload anything that helps reproduce or explain the problem.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.svg,.log,.txt,.csv,.json,.zip,.pdf,.docx,.xlsx,.pptx"

@@ -1,0 +1,63 @@
+name: Question
+description: Ask a specific question about using the project.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use this form for specific usage questions about RMC.Numerics.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What is your question?
+      description: Ask the question as clearly as possible.
+      placeholder: "Example: Which distribution class should I use for a flood frequency analysis with historical information?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Briefly describe your workflow or goal.
+      placeholder: "Example: I am trying to estimate uncertainty bounds for a stage-frequency curve in a .NET application."
+    validations:
+      required: false
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you already tried?
+      description: Optional. Tell us what documentation, methods, examples, or tests you checked.
+      placeholder: "Example: I read the user guide and looked at the MCMC sampling tests."
+    validations:
+      required: false
+
+  - type: input
+    id: affected-area
+    attributes:
+      label: Affected namespace, class, or method
+      description: Name the Numerics area if you know it.
+      placeholder: "Example: Distributions, statistics, optimization, random sampling"
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and .NET details
+      description: Add any OS, target framework, SDK, runtime, or IDE version details that may matter.
+      placeholder: "Example: Windows 11, net8.0, .NET 10 SDK, Rider or Visual Studio"
+    validations:
+      required: false
+
+  - type: upload
+    id: files
+    attributes:
+      label: Screenshots, logs, data, or files
+      description: Upload files or screenshots if they help explain the question.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.svg,.log,.txt,.csv,.json,.zip,.pdf,.docx,.xlsx,.pptx"
