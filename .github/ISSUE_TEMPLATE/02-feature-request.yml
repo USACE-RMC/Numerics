@@ -1,0 +1,75 @@
+name: Feature request
+description: Suggest a new feature or improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please focus on the user need, workflow, or numerical method you want to support.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user need, workflow problem, or numerical/statistical gap.
+      placeholder: "Example: I need to fit a distribution using censored hydrologic data without implementing the estimator myself."
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-behavior
+    attributes:
+      label: What would you like to happen?
+      description: Describe the feature, API, method, or improvement.
+      placeholder: "Example: Add parameter estimation support for left-censored samples in the LogPearsonIII distribution."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How important is this to your work?
+      options:
+        - Nice to have
+        - Helpful
+        - Important
+        - Blocking my work
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References or validation sources
+      description: Add published methods, software references, tables, or example implementations if relevant.
+      placeholder: "Example: Bulletin 17C, an R package, SciPy documentation, or a peer-reviewed paper."
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: How are you handling this now, if at all?
+      placeholder: "Example: I call an R package separately and import the results into my .NET workflow."
+    validations:
+      required: false
+
+  - type: input
+    id: affected-area
+    attributes:
+      label: Affected namespace, class, or method
+      description: Name the Numerics area if you know it.
+      placeholder: "Example: Probability distributions, optimization, MCMC sampling, interpolation"
+    validations:
+      required: false
+
+  - type: upload
+    id: examples
+    attributes:
+      label: Examples, screenshots, data, or files
+      description: Upload anything that helps explain the request.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.svg,.log,.txt,.csv,.json,.zip,.pdf,.docx,.xlsx,.pptx"
