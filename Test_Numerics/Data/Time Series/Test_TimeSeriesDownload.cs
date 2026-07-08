@@ -255,6 +255,72 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// HTTP handler that serves a deterministic USGS measured-stage response with duplicate timestamps.
+        /// </summary>
+        /// <remarks>
+        /// The fixture is based on USGS 01570500, where the live field-measurements API returns two
+        /// approved gage-height records for 1936-03-15 05:00:00 with values 14.51 and 14.52.
+        /// </remarks>
+        private sealed class DuplicateUsgsMeasuredStageHandler : HttpMessageHandler
+        {
+            /// <summary>
+            /// Gets the absolute URLs requested through this handler.
+            /// </summary>
+            internal List<string> Requests { get; } = new List<string>();
+
+            /// <inheritdoc/>
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                string url = request.RequestUri?.AbsoluteUri ?? "";
+                Requests.Add(url);
+
+                if (GuardedUsgsPeakHandler.IsBlockedPreflight(url))
+                {
+                    return Task.FromException<HttpResponseMessage>(
+                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
+                }
+
+                if (!IsExpectedUsgsMeasuredStageUrl(url))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        Content = new StringContent($"Unexpected URL: {url}")
+                    });
+                }
+
+                string body = string.Join("", new[]
+                {
+                    "{",
+                    "\"type\":\"FeatureCollection\",",
+                    "\"features\":[",
+                    "{\"type\":\"Feature\",\"id\":\"75f11a56-5796-4dc9-b22a-054da446a164\",\"properties\":{\"time\":\"1936-03-15T05:00:00+00:00\",\"value\":\"14.51\"}},",
+                    "{\"type\":\"Feature\",\"id\":\"8dccaa2d-8480-4b5d-b19b-18122749b6c6\",\"properties\":{\"time\":\"1936-03-15T05:00:00+00:00\",\"value\":\"14.52\"}}",
+                    "],",
+                    "\"links\":[]",
+                    "}"
+                });
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body)
+                });
+            }
+
+            /// <summary>
+            /// Determines whether a URL matches the expected USGS measured-stage request.
+            /// </summary>
+            private static bool IsExpectedUsgsMeasuredStageUrl(string url)
+            {
+                return url.StartsWith("https://api.waterdata.usgs.gov/ogcapi/v0/collections/field-measurements/items?",
+                           StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("monitoring_location_id=USGS-01570500", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("parameter_code=00065", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("limit=10000", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("f=json", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
         /// HTTP handler that waits until the supplied cancellation token is canceled.
         /// </summary>
         /// <remarks>
@@ -594,6 +660,42 @@ namespace Data.TimeSeriesAnalysis
 
                 Assert.HasCount(1, defaultHandler.Requests, "Expected one started USGS peak request.");
                 Assert.IsEmpty(decompressHandler.Requests, "Peak download should not use the decompression client.");
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies duplicate USGS measured-stage timestamps keep the last source value.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_MeasuredStage_DuplicateDateTimes_LastValueWins()
+        {
+            var defaultHandler = new DuplicateUsgsMeasuredStageHandler();
+            var decompressHandler = new DuplicateUsgsMeasuredStageHandler();
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_5,
+                    TimeSeriesDownload.TimeSeriesType.MeasuredStage);
+
+                var duplicateTime = new DateTime(1936, 3, 15, 5, 0, 0, DateTimeKind.Utc);
+
+                Assert.IsNotNull(ts, "Time series is null.");
+                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
+                Assert.AreEqual(ts.Count, ts.Select(o => o.Index).Distinct().Count(), "Duplicate date indices detected.");
+                Assert.AreEqual(1, ts.Count(o => o.Index == duplicateTime), "Expected one retained record for the duplicate timestamp.");
+                Assert.AreEqual(14.52d, ts.Single(o => o.Index == duplicateTime).Value);
+                Assert.IsEmpty(defaultHandler.Requests, "Measured stage should not use the default client.");
+                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS OGC data request.");
+                Assert.IsTrue(decompressHandler.Requests[0].Contains("monitoring_location_id=USGS-01570500", StringComparison.OrdinalIgnoreCase));
+                Assert.IsTrue(decompressHandler.Requests[0].Contains("parameter_code=00065", StringComparison.OrdinalIgnoreCase));
             }
             finally
             {

@@ -254,6 +254,39 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Removes duplicate date/time indices from a downloaded time series.
+        /// </summary>
+        /// <param name="timeSeries">The downloaded time series to normalize.</param>
+        /// <remarks>
+        /// Provider data can contain distinct source records with the same timestamp. Downloader
+        /// output keeps one ordinate per exact DateTime and uses the last parsed source value.
+        /// </remarks>
+        private static void RemoveDuplicateDateTimes(TimeSeries timeSeries)
+        {
+            if (timeSeries.Count < 2) return;
+
+            var orderedIndexes = new List<DateTime>();
+            var lastByIndex = new Dictionary<DateTime, SeriesOrdinate<DateTime, double>>();
+
+            foreach (var ordinate in timeSeries)
+            {
+                if (!lastByIndex.ContainsKey(ordinate.Index))
+                    orderedIndexes.Add(ordinate.Index);
+
+                lastByIndex[ordinate.Index] = ordinate;
+            }
+
+            if (orderedIndexes.Count == timeSeries.Count) return;
+
+            timeSeries.Clear();
+            foreach (var index in orderedIndexes)
+            {
+                var ordinate = lastByIndex[index];
+                timeSeries.Add(new SeriesOrdinate<DateTime, double>(ordinate.Index, ordinate.Value));
+            }
+        }
+
+        /// <summary>
         /// Enumeration of time series options.
         /// </summary>
         public enum TimeSeriesType
@@ -486,6 +519,7 @@ namespace Numerics.Data
                 }
             }
 
+            RemoveDuplicateDateTimes(timeSeries);
             return timeSeries;
         }
 
@@ -742,10 +776,12 @@ namespace Numerics.Data
                         textDownload = rawText.ToString();
                     }
 
+                    RemoveDuplicateDateTimes(timeSeries);
                     timeSeries.SortByTime();
                 }
             }
 
+            RemoveDuplicateDateTimes(timeSeries);
             return (timeSeries, textDownload);
         }
 
@@ -949,6 +985,7 @@ namespace Numerics.Data
                 }
             }
 
+            RemoveDuplicateDateTimes(ts);
             return ts;
         }
 
@@ -1438,6 +1475,7 @@ namespace Numerics.Data
                 }
             }
 
+            RemoveDuplicateDateTimes(ts);
             return ts;
         }
 
