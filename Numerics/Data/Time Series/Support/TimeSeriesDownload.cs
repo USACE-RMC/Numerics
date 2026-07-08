@@ -25,30 +25,136 @@ namespace Numerics.Data
     /// </remarks>
     public class TimeSeriesDownload
     {
-        private static readonly HttpClient _defaultClient = new HttpClient() { Timeout = TimeSpan.FromSeconds(60) };
-        private static readonly HttpClient _decompressClient = new HttpClient(new HttpClientHandler
-        {
-            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-        })
-        { Timeout = TimeSpan.FromSeconds(60) };
+        private static HttpClient _defaultClient = CreateDefaultClient();
+        private static HttpClient _decompressClient = CreateDecompressClient();
 
         private const string UserAgent = "USACE-Numerics/2.0";
 
         /// <summary>
-        /// GET with up to three attempts and exponential backoff (0.5s, 1s, 2s
-        /// + jitter) on transient failures. Retries 5xx, 408, 429, network
+        /// Maximum time allowed for one provider request attempt before retry/failure handling runs.
+        /// </summary>
+        /// <remarks>
+        /// A short per-attempt timeout prevents blocked government-network routes from making UI
+        /// callers wait for the default minute-long HTTP timeout on each retry.
+        /// </remarks>
+        private static readonly TimeSpan ProviderRequestTimeout = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        /// Maximum time allowed for one explicit connectivity probe.
+        /// </summary>
+        /// <remarks>
+        /// Connectivity probes are advisory only and must remain faster than real provider downloads.
+        /// </remarks>
+        private static readonly TimeSpan ConnectivityProbeTimeout = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// Default number of attempts for provider requests made through the retry helper.
+        /// </summary>
+        /// <remarks>
+        /// Two attempts are enough to smooth over one transient outage without turning blocked
+        /// network paths into multi-minute waits.
+        /// </remarks>
+        private const int DefaultMaxDownloadAttempts = 2;
+
+        /// <summary>
+        /// Provider root endpoints used for the public Internet connectivity check.
+        /// </summary>
+        /// <remarks>
+        /// The downloader no longer uses these URLs as a precondition for data requests. They are
+        /// retained only for callers that explicitly ask whether at least one supported provider
+        /// endpoint is reachable.
+        /// </remarks>
+        private static readonly string[] InternetProbeUrls =
+        {
+            "https://waterservices.usgs.gov/nwis/",
+            "https://www.ncei.noaa.gov/",
+            "https://wateroffice.ec.gc.ca/",
+            "https://www.bom.gov.au/waterdata/"
+        };
+
+        /// <summary>
+        /// Creates the default HTTP client used for uncompressed provider requests.
+        /// </summary>
+        /// <returns>A configured HTTP client with the standard downloader timeout.</returns>
+        /// <remarks>
+        /// The client is held as a static instance in production to avoid socket churn.
+        /// </remarks>
+        private static HttpClient CreateDefaultClient()
+        {
+            return new HttpClient() { Timeout = TimeSpan.FromSeconds(60) };
+        }
+
+        /// <summary>
+        /// Creates the HTTP client used for provider requests that may return compressed payloads.
+        /// </summary>
+        /// <returns>A configured HTTP client with automatic GZip and Deflate decompression.</returns>
+        /// <remarks>
+        /// The client is held as a static instance in production to avoid socket churn.
+        /// </remarks>
+        private static HttpClient CreateDecompressClient()
+        {
+            return new HttpClient(new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            })
+            { Timeout = TimeSpan.FromSeconds(60) };
+        }
+
+        /// <summary>
+        /// Replaces the static HTTP clients used by the downloader for deterministic tests.
+        /// </summary>
+        /// <param name="defaultClient">The client to use for ordinary provider requests.</param>
+        /// <param name="decompressClient">The client to use for compressed provider requests.</param>
+        /// <exception cref="ArgumentNullException">Thrown when either client is null.</exception>
+        /// <remarks>
+        /// This method is internal so tests can verify request routing without adding public API.
+        /// </remarks>
+        internal static void SetHttpClientsForTesting(HttpClient defaultClient, HttpClient decompressClient)
+        {
+            _defaultClient = defaultClient ?? throw new ArgumentNullException(nameof(defaultClient));
+            _decompressClient = decompressClient ?? throw new ArgumentNullException(nameof(decompressClient));
+        }
+
+        /// <summary>
+        /// Restores the production HTTP clients after a deterministic test.
+        /// </summary>
+        /// <remarks>
+        /// Tests call this method in a finally block so later tests do not inherit fake handlers.
+        /// </remarks>
+        internal static void ResetHttpClientsForTesting()
+        {
+            _defaultClient = CreateDefaultClient();
+            _decompressClient = CreateDecompressClient();
+        }
+
+        /// <summary>
+        /// GET with bounded retry and exponential backoff on transient failures. Retries 5xx, 408, 429, network
         /// exceptions, and KiWIS DatasourceError bodies. Does NOT retry 4xx —
         /// those mean the request itself is wrong.
         /// </summary>
+        /// <param name="client">The HTTP client used to issue the request.</param>
+        /// <param name="url">The request URL.</param>
+        /// <param name="maxAttempts">The maximum number of request attempts.</param>
+        /// <param name="cancellationToken">Token used to cancel the request and retry delay.</param>
+        /// <returns>The final HTTP status code and response body.</returns>
+        /// <exception cref="HttpRequestException">Thrown when all attempts fail with a network error.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="TimeoutException">Thrown when all attempts exceed the per-attempt timeout.</exception>
+        /// <remarks>
+        /// The helper bounds each attempt separately so blocked network paths fail quickly while
+        /// still allowing one retry for transient service errors.
+        /// </remarks>
         private static async Task<(HttpStatusCode status, string body)> GetWithRetryAsync(
-            HttpClient client, string url, int maxAttempts = 3)
+            HttpClient client, string url, int maxAttempts = DefaultMaxDownloadAttempts, CancellationToken cancellationToken = default)
         {
             Exception? lastNet = null;
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 try
                 {
-                    using var resp = await client.GetAsync(url);
+                    using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    attemptCts.CancelAfter(ProviderRequestTimeout);
+                    using var resp = await client.GetAsync(url, attemptCts.Token);
                     string body = await resp.Content.ReadAsStringAsync();
                     bool transient =
                         (int)resp.StatusCode >= 500 ||
@@ -59,27 +165,87 @@ namespace Numerics.Data
                     if (!transient || attempt == maxAttempts) return (resp.StatusCode, body);
                 }
                 catch (HttpRequestException ex) { lastNet = ex; if (attempt == maxAttempts) throw; }
-                catch (TaskCanceledException ex) { lastNet = ex; if (attempt == maxAttempts) throw; }
+                catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (TaskCanceledException ex)
+                {
+                    lastNet = CreateDownloadTimeoutException(url, ex);
+                    if (attempt == maxAttempts) throw lastNet;
+                }
 
-                await Task.Delay(500 * (int)Math.Pow(2, attempt - 1));
+                await Task.Delay(500 * (int)Math.Pow(2, attempt - 1), cancellationToken);
             }
             throw lastNet ?? new Exception("GetWithRetryAsync exhausted retries");
         }
 
         /// <summary>
-        /// Checks if there is an Internet connection by probing Google's
-        /// connectivity-check endpoint (HTTP 204 No Content).
+        /// Creates a timeout exception for a provider request that did not complete quickly enough.
         /// </summary>
+        /// <param name="url">The URL that timed out.</param>
+        /// <param name="innerException">The cancellation exception raised by the HTTP stack.</param>
+        /// <returns>An exception with a user-facing timeout message.</returns>
+        /// <remarks>
+        /// The message names the endpoint so application callers can distinguish a blocked provider
+        /// request from the old generic Internet connectivity failure.
+        /// </remarks>
+        private static TimeoutException CreateDownloadTimeoutException(string url, Exception innerException)
+        {
+            return new TimeoutException(
+                $"The request to '{url}' did not complete within {ProviderRequestTimeout.TotalSeconds:0} seconds.",
+                innerException);
+        }
+
+        /// <summary>
+        /// Checks if there is an Internet connection by probing provider endpoints used by the downloader.
+        /// </summary>
+        /// <returns>True when at least one supported provider endpoint completes an HTTP request; otherwise false.</returns>
+        /// <remarks>
+        /// This method is not used as a preflight gate for provider downloads because restricted
+        /// networks may allow one data provider while blocking unrelated endpoints.
+        /// </remarks>
         public static async Task<bool> IsConnectedToInternet()
+        {
+            using var cts = new CancellationTokenSource();
+            var probes = InternetProbeUrls.Select(url => CanReachEndpoint(url, cts.Token)).ToList();
+
+            while (probes.Count > 0)
+            {
+                Task<bool> completed = await Task.WhenAny(probes);
+                probes.Remove(completed);
+                if (await completed)
+                {
+                    cts.Cancel();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether an endpoint can complete an HTTP request.
+        /// </summary>
+        /// <param name="url">The endpoint URL to probe.</param>
+        /// <param name="cancellationToken">Token used to cancel the probe.</param>
+        /// <returns>True when the request completes with any HTTP response; otherwise false.</returns>
+        /// <remarks>
+        /// Any HTTP response means the network path exists. HTTP status codes are intentionally not
+        /// interpreted because security appliances and provider roots may return redirects or errors
+        /// while still proving transport reachability.
+        /// </remarks>
+        private static async Task<bool> CanReachEndpoint(string url, CancellationToken cancellationToken = default)
         {
             try
             {
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(ConnectivityProbeTimeout);
+                using (await _defaultClient.GetAsync(
+                    url,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cts.Token))
                 {
-                    var resp = await _defaultClient.GetAsync(
-                        "https://www.google.com/generate_204", cts.Token);
-                    return resp.IsSuccessStatusCode;
                 }
+
+                return true;
             }
             catch
             {
@@ -191,8 +357,9 @@ namespace Numerics.Data
         /// <param name="siteNumber">The station identification code.</param>
         /// <param name="timeSeriesType">The time series type. Default = Daily precipitation.</param>
         /// <param name="unit">The depth unit. Default = inches.</param>
+        /// <param name="cancellationToken">Token used to cancel the download.</param>
         /// <returns>A downloaded time series.</returns>
-        public static async Task<TimeSeries> FromGHCN(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyPrecipitation, DepthUnit unit = DepthUnit.Inches)
+        public static async Task<TimeSeries> FromGHCN(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyPrecipitation, DepthUnit unit = DepthUnit.Inches, CancellationToken cancellationToken = default)
         {
             
 
@@ -212,12 +379,6 @@ namespace Numerics.Data
             DateTime? previousDate = null;
             string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.dly");
 
-            // Check internet connection
-            if (!await IsConnectedToInternet())
-            {
-                throw new InvalidOperationException("No internet connection.");
-            }
-
             try
             {
  
@@ -230,20 +391,29 @@ namespace Numerics.Data
                     // directly (it buffers the whole body). Inline the same retry shape on the
                     // headers-only GetAsync, then stream from the successful response.
                     HttpResponseMessage? response = null;
-                    for (int attempt = 1; attempt <= 3; attempt++)
+                    for (int attempt = 1; attempt <= DefaultMaxDownloadAttempts; attempt++)
                     {
                         try
                         {
-                            response = await client.GetAsync(stationFileUrl, HttpCompletionOption.ResponseHeadersRead);
+                            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            attemptCts.CancelAfter(ProviderRequestTimeout);
+                            response = await client.GetAsync(stationFileUrl, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token);
                             if ((int)response.StatusCode < 500
                                 && response.StatusCode != HttpStatusCode.RequestTimeout
                                 && (int)response.StatusCode != 429) break;
-                            if (attempt == 3) break;
+                            if (attempt == DefaultMaxDownloadAttempts) break;
                             response.Dispose();
                         }
-                        catch (HttpRequestException) when (attempt < 3) { /* retry */ }
-                        catch (TaskCanceledException) when (attempt < 3) { /* retry */ }
-                        await Task.Delay(500 * (int)Math.Pow(2, attempt - 1));
+                        catch (HttpRequestException) when (attempt < DefaultMaxDownloadAttempts) { /* retry */ }
+                        catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                        catch (TaskCanceledException ex)
+                        {
+                            if (attempt == DefaultMaxDownloadAttempts)
+                            {
+                                throw CreateDownloadTimeoutException(stationFileUrl, ex);
+                            }
+                        }
+                        await Task.Delay(500 * (int)Math.Pow(2, attempt - 1), cancellationToken);
                     }
                     using (response)
                     {
@@ -251,7 +421,7 @@ namespace Numerics.Data
                         using (Stream stream = await response.Content.ReadAsStreamAsync())
                         using (FileStream fs = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
                         {
-                            await stream.CopyToAsync(fs);
+                            await stream.CopyToAsync(fs, 81920, cancellationToken);
                         }
                     }
                 }
@@ -395,7 +565,8 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="siteNumber">USGS site number.</param>
         /// <param name="timeSeriesType">The time series type.</param>
-        public static async Task<(TimeSeries TimeSeries, string RawText)> FromUSGS(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge)
+        /// <param name="cancellationToken">Token used to cancel the download.</param>
+        public static async Task<(TimeSeries TimeSeries, string RawText)> FromUSGS(string siteNumber, TimeSeriesType timeSeriesType = TimeSeriesType.DailyDischarge, CancellationToken cancellationToken = default)
         {
             
 
@@ -409,12 +580,6 @@ namespace Numerics.Data
             if (timeSeriesType == TimeSeriesType.DailyPrecipitation || timeSeriesType == TimeSeriesType.DailySnow)
             {
                 throw new ArgumentException("The time series type cannot be daily precipitation or daily snow.", nameof(timeSeriesType));
-            }
-
-            // Check internet connection
-            if (!await IsConnectedToInternet())
-            {
-                throw new InvalidOperationException("No internet connection.");
             }
 
             var timeSeries = (timeSeriesType == TimeSeriesType.MeasuredDischarge || timeSeriesType == TimeSeriesType.MeasuredStage ||
@@ -441,7 +606,7 @@ namespace Numerics.Data
                     {
                         var client = _decompressClient;
 
-                        var (status, body) = await GetWithRetryAsync(client, url);
+                        var (status, body) = await GetWithRetryAsync(client, url, cancellationToken: cancellationToken);
                         if ((int)status >= 400)
                         {
                             string snippet = body.Length > 500 ? body.Substring(0, 500) + "…" : body;
@@ -508,7 +673,7 @@ namespace Numerics.Data
                 else if (timeSeriesType == TimeSeriesType.PeakDischarge || timeSeriesType == TimeSeriesType.PeakStage)
                 {
                     {
-                        var (peakStatus, peakBody) = await GetWithRetryAsync(_defaultClient, url);
+                        var (peakStatus, peakBody) = await GetWithRetryAsync(_defaultClient, url, cancellationToken: cancellationToken);
                         if ((int)peakStatus >= 400)
                         {
                             string snippet = peakBody.Length > 500 ? peakBody.Substring(0, 500) + "…" : peakBody;
@@ -573,7 +738,7 @@ namespace Numerics.Data
                 {
                     {
                         var rawText = new System.Text.StringBuilder();
-                        await ParseUSGSOgcApiPages(_decompressClient, url, timeSeries, rawText);
+                        await ParseUSGSOgcApiPages(_decompressClient, url, timeSeries, rawText, cancellationToken);
                         textDownload = rawText.ToString();
                     }
 
@@ -592,13 +757,14 @@ namespace Numerics.Data
         /// <param name="initialUrl">The initial API URL.</param>
         /// <param name="timeSeries">TimeSeries to populate with parsed data.</param>
         /// <param name="rawText">Optional StringBuilder to accumulate raw JSON responses.</param>
-        private static async Task ParseUSGSOgcApiPages(HttpClient client, string initialUrl, TimeSeries timeSeries, System.Text.StringBuilder? rawText = null)
+        /// <param name="cancellationToken">Token used to cancel pagination requests.</param>
+        private static async Task ParseUSGSOgcApiPages(HttpClient client, string initialUrl, TimeSeries timeSeries, System.Text.StringBuilder? rawText = null, CancellationToken cancellationToken = default)
         {
             string? nextUrl = initialUrl;
 
             while (nextUrl != null)
             {
-                var (status, json) = await GetWithRetryAsync(client, nextUrl);
+                var (status, json) = await GetWithRetryAsync(client, nextUrl, cancellationToken: cancellationToken);
                 if ((int)status >= 400)
                 {
                     string snippet = json.Length > 500 ? json.Substring(0, 500) + "…" : json;
@@ -651,7 +817,7 @@ namespace Numerics.Data
                                 nextUrl = candidateUrl;
                             }
                             // Small delay between pages to avoid rate limiting
-                            await System.Threading.Tasks.Task.Delay(200);
+                            await System.Threading.Tasks.Task.Delay(200, cancellationToken);
                             break;
                         }
                     }
@@ -682,6 +848,7 @@ namespace Numerics.Data
         /// <param name="endDate">
         ///     Optional inclusive end date. If null, defaults to DateTime.Today (or Now for instantaneous).
         /// </param>
+        /// <param name="cancellationToken">Token used to cancel the download.</param>
         /// <returns>TimeSeries of values.</returns>
         public static async Task<TimeSeries> FromCHMN(
             string stationNumber,
@@ -689,12 +856,9 @@ namespace Numerics.Data
             DischargeUnit dischargeUnit = DischargeUnit.CubicMetersPerSecond,
             HeightUnit heightUnit = HeightUnit.Meters,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            CancellationToken cancellationToken = default)
         {
-            // Connectivity
-            if (!await IsConnectedToInternet())
-                throw new InvalidOperationException("No internet connection.");
-
             // Basic validation (WSC station numbers are 7 chars including letters)
             if (string.IsNullOrWhiteSpace(stationNumber) || stationNumber.Length != 7)
                 throw new ArgumentException("The WSC station number must be 7 characters, e.g., 08LG010.", nameof(stationNumber));
@@ -762,7 +926,7 @@ namespace Numerics.Data
                 var client = _decompressClient;
 
                 // The endpoint returns CSV (automatically decompressed by HttpClientHandler).
-                var (status, csv) = await GetWithRetryAsync(client, url);
+                var (status, csv) = await GetWithRetryAsync(client, url, cancellationToken: cancellationToken);
                 if ((int)status >= 400)
                 {
                     string snippet = csv.Length > 500 ? csv.Substring(0, 500) + "…" : csv;
@@ -968,6 +1132,7 @@ namespace Numerics.Data
         /// <param name="depthUnit">Desired depth unit for precipitation types.</param>
         /// <param name="startDate">Optional start date. If null, attempts to retrieve full period of record.</param>
         /// <param name="endDate">Optional end date. If null, defaults to today.</param>
+        /// <param name="cancellationToken">Token used to cancel the download.</param>
         /// <returns>TimeSeries of values.</returns>
         public static async Task<TimeSeries> FromABOM(
             string stationNumber,
@@ -976,7 +1141,8 @@ namespace Numerics.Data
             HeightUnit heightUnit = HeightUnit.Meters,
             DepthUnit depthUnit = DepthUnit.Millimeters,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            CancellationToken cancellationToken = default)
         {
             
 
@@ -994,10 +1160,6 @@ namespace Numerics.Data
                 throw new ArgumentException(
                     "BOM API supports DailyDischarge, DailyStage, InstantaneousDischarge, InstantaneousStage, and DailyPrecipitation.",
                     nameof(timeSeriesType));
-
-            // Check connectivity
-            if (!await IsConnectedToInternet())
-                throw new InvalidOperationException("No internet connection.");
 
             // Set default dates
             DateTime sd = startDate ?? new DateTime(1800, 1, 1);
@@ -1044,7 +1206,7 @@ namespace Numerics.Data
                 string listResponse;
                 try
                 {
-                    (listStatus, listResponse) = await GetWithRetryAsync(client, tsListUrl);
+                    (listStatus, listResponse) = await GetWithRetryAsync(client, tsListUrl, cancellationToken: cancellationToken);
                 }
                 catch (HttpRequestException ex)
                 {
@@ -1178,7 +1340,7 @@ namespace Numerics.Data
                 string valuesResponse;
                 try
                 {
-                    (valuesStatus, valuesResponse) = await GetWithRetryAsync(client, valuesUrl);
+                    (valuesStatus, valuesResponse) = await GetWithRetryAsync(client, valuesUrl, cancellationToken: cancellationToken);
                 }
                 catch (HttpRequestException ex)
                 {

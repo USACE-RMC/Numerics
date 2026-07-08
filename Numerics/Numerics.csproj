@@ -30,9 +30,9 @@
   <PropertyGroup>
     <!-- 1587 is an xml comment not placed on a valid member (in our case, mostly license text at top of files) -->
     <NoWarn>CS1587</NoWarn>
-    <Version>2.1.1</Version>
-    <PackageReleaseNotes>Version 2.1.1 is a metadata and release-process update for the JOSS publication. It refreshes citation, CodeMeta, README, and NuGet package metadata; increases the VSTest connection timeout in the release workflow; and does not change the public API.</PackageReleaseNotes>
-    <AssemblyVersion>2.1.1.0</AssemblyVersion>
+    <Version>2.1.2</Version>
+    <PackageReleaseNotes>Version 2.1.2 removes the generic Google connectivity preflight from time series downloads so provider requests can run on restricted networks where the target data service is allowed but unrelated connectivity probes are blocked.</PackageReleaseNotes>
+    <AssemblyVersion>2.1.2.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>

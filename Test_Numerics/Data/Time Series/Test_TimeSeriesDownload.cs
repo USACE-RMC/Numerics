@@ -1,6 +1,10 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
@@ -162,6 +166,123 @@ namespace Data.TimeSeriesAnalysis
             {
                 _serviceState[serviceName] = (false, DateTime.UtcNow);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// HTTP handler that serves one deterministic USGS peak-flow response and rejects connectivity preflight requests.
+        /// </summary>
+        /// <remarks>
+        /// The handler makes the regression test independent of live internet access while still
+        /// verifying the downloader requests the expected USGS endpoint directly.
+        /// </remarks>
+        private sealed class GuardedUsgsPeakHandler : HttpMessageHandler
+        {
+            /// <summary>
+            /// Gets the absolute URLs requested through this handler.
+            /// </summary>
+            /// <remarks>
+            /// The test uses this collection to verify no hidden preflight request was issued.
+            /// </remarks>
+            internal List<string> Requests { get; } = new List<string>();
+
+            /// <inheritdoc/>
+            /// <remarks>
+            /// Returns a small USGS peak-flow RDB body only for the expected data URL and fails
+            /// connectivity preflight requests explicitly.
+            /// </remarks>
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                string url = request.RequestUri?.AbsoluteUri ?? "";
+                Requests.Add(url);
+
+                if (IsBlockedPreflight(url))
+                {
+                    return Task.FromException<HttpResponseMessage>(
+                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
+                }
+
+                if (!IsExpectedUsgsPeakUrl(url))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        Content = new StringContent($"Unexpected URL: {url}")
+                    });
+                }
+
+                string body = string.Join(Environment.NewLine, new[]
+                {
+                    "USGS\t01614000\t2020-04-21\t1\t12345"
+                });
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body)
+                });
+            }
+
+            /// <summary>
+            /// Determines whether a URL is one of the connectivity probes this regression test forbids.
+            /// </summary>
+            /// <param name="url">The absolute URL requested through the handler.</param>
+            /// <returns>True when the URL is a forbidden connectivity preflight; otherwise false.</returns>
+            /// <remarks>
+            /// The blocked list covers the old Google probe and the older generic USGS root probe.
+            /// </remarks>
+            internal static bool IsBlockedPreflight(string url)
+            {
+                return url.Contains("google", StringComparison.OrdinalIgnoreCase) ||
+                       url.Contains("generate_204", StringComparison.OrdinalIgnoreCase) ||
+                       url.StartsWith("https://waterservices.usgs.gov/nwis", StringComparison.OrdinalIgnoreCase);
+            }
+
+            /// <summary>
+            /// Determines whether a URL matches the expected USGS peak-flow request for this test fixture.
+            /// </summary>
+            /// <param name="url">The absolute URL requested through the handler.</param>
+            /// <returns>True when the URL targets the expected USGS peak-flow endpoint; otherwise false.</returns>
+            /// <remarks>
+            /// The check keeps the test tied to the production URL builder, including site number,
+            /// agency code, and RDB output format.
+            /// </remarks>
+            private static bool IsExpectedUsgsPeakUrl(string url)
+            {
+                return url.StartsWith("https://nwis.waterdata.usgs.gov/nwis/peak?", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("site_no=01614000", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("agency_cd=USGS", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("format=rdb", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// HTTP handler that waits until the supplied cancellation token is canceled.
+        /// </summary>
+        /// <remarks>
+        /// This handler verifies that downloader cancellation reaches the HTTP request rather than
+        /// only canceling caller-side waiting.
+        /// </remarks>
+        private sealed class CancellableUsgsPeakHandler : HttpMessageHandler
+        {
+            /// <summary>
+            /// Gets the absolute URLs requested through this handler.
+            /// </summary>
+            /// <remarks>
+            /// The test uses this collection to confirm the request was started before cancellation.
+            /// </remarks>
+            internal List<string> Requests { get; } = new List<string>();
+
+            /// <inheritdoc/>
+            /// <remarks>
+            /// The handler deliberately waits for cancellation and never returns a successful response.
+            /// </remarks>
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                Requests.Add(request.RequestUri?.AbsoluteUri ?? "");
+                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("")
+                };
             }
         }
 
@@ -410,6 +531,75 @@ namespace Data.TimeSeriesAnalysis
         #endregion
 
         #region USGS Tests
+
+        /// <summary>
+        /// Verifies USGS downloads do not run a generic connectivity preflight before requesting the data.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// The test uses a deterministic in-memory HTTP handler so it can prove request routing
+        /// without relying on the live USGS service or the host machine's internet connection.
+        /// </remarks>
+        [TestMethod]
+        public async Task USGS_PeakDischarge_DoesNotRunConnectivityPreflight()
+        {
+            var defaultHandler = new GuardedUsgsPeakHandler();
+            var decompressHandler = new GuardedUsgsPeakHandler();
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_3, TimeSeriesDownload.TimeSeriesType.PeakDischarge);
+
+                Assert.IsNotNull(ts, "Time series is null.");
+                Assert.AreEqual(1, ts.Count);
+                Assert.AreEqual(12345d, ts[0].Value);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
+                Assert.HasCount(1, defaultHandler.Requests, "Expected exactly one USGS data request.");
+                Assert.IsFalse(defaultHandler.Requests.Any(GuardedUsgsPeakHandler.IsBlockedPreflight));
+                Assert.IsEmpty(decompressHandler.Requests, "Peak download should not use the decompression client.");
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies USGS downloads honor caller cancellation while waiting on HTTP.
+        /// </summary>
+        /// <returns>A task that completes when the cancellation regression check finishes.</returns>
+        /// <remarks>
+        /// BestFit relies on this behavior to stop waiting when an external provider is blocked or
+        /// unavailable from the user's network.
+        /// </remarks>
+        [TestMethod]
+        public async Task USGS_PeakDischarge_HonorsCancellationToken()
+        {
+            var defaultHandler = new CancellableUsgsPeakHandler();
+            var decompressHandler = new CancellableUsgsPeakHandler();
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(60) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(60) };
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                    await TimeSeriesDownload.FromUSGS(USGS_3, TimeSeriesDownload.TimeSeriesType.PeakDischarge, cts.Token));
+
+                Assert.HasCount(1, defaultHandler.Requests, "Expected one started USGS peak request.");
+                Assert.IsEmpty(decompressHandler.Requests, "Peak download should not use the decompression client.");
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
 
         /// <summary>
         /// Tests full-period-of-record USGS daily discharge download.
