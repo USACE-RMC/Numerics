@@ -285,5 +285,87 @@ namespace Data.Statistics
             var kurtosis = complete.Kurtosis;
             Assert.AreEqual(1.3434868130194, kurtosis, 1E-10);
         }
+
+        /// <summary>
+        /// Test the clone method of the running statistics class. The clone should match the original statistics
+        /// and remain independent of the original after either instance is updated.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone()
+        {
+            var values = new double[] { 1, 2, 3, 4, 5 };
+            var runningstat = new RunningStatistics(values);
+            var clone = runningstat.Clone();
+
+            // The clone should be a new instance that matches the original statistics.
+            Assert.AreNotSame(runningstat, clone);
+            Assert.AreEqual(5, clone.Count);
+            Assert.AreEqual(1, clone.Minimum);
+            Assert.AreEqual(5, clone.Maximum);
+            Assert.AreEqual(3, clone.Mean, 1E-10);
+            Assert.AreEqual(2.5, clone.Variance, 1E-10);
+
+            // Pushing to the original should not change the clone.
+            runningstat.Push(new double[] { -10, 30 });
+            Assert.AreEqual(5, clone.Count);
+            Assert.AreEqual(1, clone.Minimum);
+            Assert.AreEqual(5, clone.Maximum);
+            Assert.AreEqual(3, clone.Mean, 1E-10);
+            Assert.AreEqual(2.5, clone.Variance, 1E-10);
+
+            // Pushing to the clone should not change the original.
+            var originalCount = runningstat.Count;
+            var originalMean = runningstat.Mean;
+            clone.Push(100);
+            Assert.AreEqual(originalCount, runningstat.Count);
+            Assert.AreEqual(originalMean, runningstat.Mean, 1E-10);
+        }
+
+        /// <summary>
+        /// Test that combining with an empty running statistics returns a new instance
+        /// rather than aliasing the non-empty operand.
+        /// </summary>
+        [TestMethod]
+        public void Test_Combine_WithEmpty()
+        {
+            var values = new double[] { 1, 2, 3, 4, 5 };
+            var stats = new RunningStatistics(values);
+
+            // Empty first operand. The result should match the non-empty operand.
+            var combined = RunningStatistics.Combine(new RunningStatistics(), stats);
+            Assert.AreNotSame(stats, combined);
+            Assert.AreEqual(5, combined.Count);
+            Assert.AreEqual(1, combined.Minimum);
+            Assert.AreEqual(5, combined.Maximum);
+            Assert.AreEqual(3, combined.Mean, 1E-10);
+            Assert.AreEqual(2.5, combined.Variance, 1E-10);
+
+            // Mutating the result should not mutate the operand.
+            combined.Push(1000);
+            Assert.AreEqual(5, stats.Count);
+            Assert.AreEqual(3, stats.Mean, 1E-10);
+
+            // Empty second operand.
+            var combined2 = RunningStatistics.Combine(stats, new RunningStatistics());
+            Assert.AreNotSame(stats, combined2);
+            combined2.Push(1000);
+            Assert.AreEqual(5, stats.Count);
+            Assert.AreEqual(3, stats.Mean, 1E-10);
+
+            // The + operator should behave the same way.
+            var combined3 = new RunningStatistics() + stats;
+            Assert.AreNotSame(stats, combined3);
+            combined3.Push(1000);
+            Assert.AreEqual(5, stats.Count);
+            Assert.AreEqual(3, stats.Mean, 1E-10);
+
+            // Combining two empty instances should return a new empty instance.
+            var empty1 = new RunningStatistics();
+            var empty2 = new RunningStatistics();
+            var combinedEmpty = RunningStatistics.Combine(empty1, empty2);
+            Assert.AreNotSame(empty1, combinedEmpty);
+            Assert.AreNotSame(empty2, combinedEmpty);
+            Assert.AreEqual(0, combinedEmpty.Count);
+        }
     }
 }
