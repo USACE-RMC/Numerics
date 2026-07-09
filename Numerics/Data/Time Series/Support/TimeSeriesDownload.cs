@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Xml.Linq;
 using System;
 using System.Text.RegularExpressions;
@@ -28,6 +29,7 @@ namespace Numerics.Data
     {
         private static HttpClient _defaultClient = CreateDefaultClient();
         private static HttpClient _decompressClient = CreateDecompressClient();
+        private static readonly HttpClient _bomClient = CreateBomClient();
 
         private const string UserAgent = "USACE-Numerics/2.0";
 
@@ -53,10 +55,12 @@ namespace Numerics.Data
         /// Maximum time allowed for one GHCN station-file request attempt.
         /// </summary>
         /// <remarks>
-        /// NOAA NCEI can take more than two minutes to send response headers for some full station
-        /// files even though the resulting payload is valid and small enough to parse quickly.
+        /// NCEI serves full station files in seconds over IPv4. The historical multi-minute
+        /// header waits were sequential TCP timeouts against NCEI's six IPv6 addresses on
+        /// networks that drop IPv6 traffic, which the downloader now avoids by preferring IPv4.
+        /// This margin only covers genuinely slow links and large station files.
         /// </remarks>
-        private static readonly TimeSpan GhcnProviderRequestTimeout = TimeSpan.FromSeconds(240);
+        private static readonly TimeSpan GhcnProviderRequestTimeout = TimeSpan.FromSeconds(60);
 
         /// <summary>
         /// Maximum time allowed for one explicit connectivity probe.
@@ -91,6 +95,142 @@ namespace Numerics.Data
             "https://www.bom.gov.au/waterdata/"
         };
 
+#if !NETFRAMEWORK
+        /// <summary>
+        /// Maximum time allowed for one TCP connect attempt to a single resolved address.
+        /// </summary>
+        /// <remarks>
+        /// Bounding each address separately keeps one unreachable address family from consuming
+        /// the whole request timeout while still letting later addresses in the list be tried.
+        /// </remarks>
+        private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(5);
+#endif
+
+        /// <summary>
+        /// Creates the HTTP handler used by the downloader's shared clients.
+        /// </summary>
+        /// <param name="automaticDecompression">True to enable automatic GZip and Deflate response decompression.</param>
+        /// <returns>A configured HTTP handler.</returns>
+        /// <remarks>
+        /// Some providers publish IPv6 (AAAA) DNS records while many restricted networks silently
+        /// drop IPv6 traffic. A default handler tries every unreachable IPv6 address before
+        /// falling back to IPv4 (~21 s of TCP timeout per address; measured at ~126 s to first
+        /// byte for NOAA NCEI's six AAAA records). On modern targets the handler connects with
+        /// <c>ConnectPreferringIPv4Async</c> so IPv4 is tried first and IPv6 remains a
+        /// fallback. On .NET Framework the equivalent ordering is applied per request through
+        /// <see cref="PreferIPv4ForNetFramework"/>.
+        /// </remarks>
+        private static HttpMessageHandler CreateHandler(bool automaticDecompression)
+        {
+#if NETFRAMEWORK
+            var handler = new HttpClientHandler();
+#else
+            var handler = new SocketsHttpHandler { ConnectCallback = ConnectPreferringIPv4Async };
+#endif
+            if (automaticDecompression)
+            {
+                handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            }
+            return handler;
+        }
+
+#if !NETFRAMEWORK
+        /// <summary>
+        /// Opens a TCP connection for an HTTP request, preferring IPv4 addresses over IPv6.
+        /// </summary>
+        /// <param name="context">The connection context supplied by the HTTP handler.</param>
+        /// <param name="cancellationToken">Token used to cancel the connection attempt.</param>
+        /// <returns>A connected network stream.</returns>
+        /// <exception cref="HttpRequestException">Thrown when no resolved address accepts a connection.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <remarks>
+        /// The default connect logic tries DNS results in returned order, which lists IPv6 first.
+        /// On networks that silently drop IPv6 traffic every dead address costs a full TCP
+        /// timeout before IPv4 is reached. Trying IPv4 first keeps downloads fast there while the
+        /// IPv6 fallback keeps IPv6-only networks working.
+        /// </remarks>
+        private static async ValueTask<Stream> ConnectPreferringIPv4Async(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+        {
+            IPAddress[] addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken).ConfigureAwait(false);
+            IPAddress[] ordered = OrderAddressesForConnect(addresses);
+            Exception? lastFailure = null;
+            foreach (IPAddress address in ordered)
+            {
+                var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    attemptCts.CancelAfter(ConnectAttemptTimeout);
+                    await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), attemptCts.Token).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch (Exception ex)
+                {
+                    socket.Dispose();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    lastFailure = ex;
+                }
+            }
+
+            throw new HttpRequestException(
+                $"Could not connect to '{context.DnsEndPoint.Host}:{context.DnsEndPoint.Port}' on any resolved address.",
+                lastFailure);
+        }
+#endif
+
+        /// <summary>
+        /// Orders resolved addresses so IPv4 is attempted before IPv6.
+        /// </summary>
+        /// <param name="addresses">The addresses returned by DNS resolution.</param>
+        /// <returns>The addresses with IPv4 first; relative order within each family is preserved.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="addresses"/> is null.</exception>
+        internal static IPAddress[] OrderAddressesForConnect(IPAddress[] addresses)
+        {
+            if (addresses == null) throw new ArgumentNullException(nameof(addresses));
+            return addresses.OrderBy(address => address.AddressFamily == AddressFamily.InterNetworkV6 ? 1 : 0).ToArray();
+        }
+
+        /// <summary>
+        /// Local-endpoint binder that rejects IPv6 remote endpoints so connects fall through to IPv4.
+        /// </summary>
+        /// <param name="remoteEndPoint">The remote endpoint the connection is being bound for.</param>
+        /// <returns>Null for IPv4 remote endpoints, letting the OS choose the local endpoint.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="remoteEndPoint"/> is null.</exception>
+        /// <exception cref="SocketException">Thrown for IPv6 remote endpoints to make the connection attempt skip to the next resolved address.</exception>
+        /// <remarks>
+        /// On .NET Framework a <see cref="ServicePoint"/> tries resolved addresses in DNS order
+        /// (IPv6 first) with no per-address bound, so blocked IPv6 routes cost a full TCP timeout
+        /// per address. Throwing from the bind delegate fails an IPv6 attempt immediately and the
+        /// service point moves on to the next (IPv4) address.
+        /// </remarks>
+        internal static IPEndPoint? RejectIPv6BindEndPoint(IPEndPoint remoteEndPoint)
+        {
+            if (remoteEndPoint == null) throw new ArgumentNullException(nameof(remoteEndPoint));
+            if (remoteEndPoint.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                throw new SocketException((int)SocketError.AddressFamilyNotSupported);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Configures the .NET Framework service point for a request URI to prefer IPv4 connections.
+        /// </summary>
+        /// <param name="requestUri">The absolute request URI about to be downloaded.</param>
+        /// <remarks>
+        /// No-op on modern targets, where <see cref="CreateHandler"/> installs an IPv4-preferring
+        /// connect callback instead. Skipped when the OS has no IPv4 stack so IPv6-only machines
+        /// keep working.
+        /// </remarks>
+        private static void PreferIPv4ForNetFramework(Uri requestUri)
+        {
+#if NETFRAMEWORK
+            if (!Socket.OSSupportsIPv4) return;
+            ServicePoint servicePoint = ServicePointManager.FindServicePoint(requestUri);
+            servicePoint.BindIPEndPointDelegate = (servicePointArg, remoteEndPoint, retryCount) => RejectIPv6BindEndPoint(remoteEndPoint);
+#endif
+        }
+
         /// <summary>
         /// Creates the default HTTP client used for uncompressed provider requests.
         /// </summary>
@@ -102,7 +242,7 @@ namespace Numerics.Data
         /// </remarks>
         private static HttpClient CreateDefaultClient()
         {
-            var client = new HttpClient() { Timeout = Timeout.InfiniteTimeSpan };
+            var client = new HttpClient(CreateHandler(automaticDecompression: false)) { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
             return client;
         }
@@ -117,12 +257,30 @@ namespace Numerics.Data
         /// </remarks>
         private static HttpClient CreateDecompressClient()
         {
-            var client = new HttpClient(new HttpClientHandler
-            {
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-            })
-            { Timeout = Timeout.InfiniteTimeSpan };
+            var client = new HttpClient(CreateHandler(automaticDecompression: true)) { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+            return client;
+        }
+
+        /// <summary>
+        /// Creates the HTTP client used for BOM KiWIS requests.
+        /// </summary>
+        /// <returns>A configured HTTP client with browser-like default headers.</returns>
+        /// <remarks>
+        /// BOM sits behind a security appliance that rejects bare programmatic requests, so the
+        /// client sends browser-like headers. The client is held as a static instance so the
+        /// station lookup and value download in one call, and repeated calls, reuse pooled
+        /// connections instead of paying a fresh TCP and TLS handshake each time. The
+        /// Accept-Encoding header is supplied by the handler's automatic decompression.
+        /// </remarks>
+        private static HttpClient CreateBomClient()
+        {
+            var client = new HttpClient(CreateHandler(automaticDecompression: true)) { Timeout = Timeout.InfiniteTimeSpan };
+            client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
+            client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+            client.DefaultRequestHeaders.Add("DNT", "1");
+            client.DefaultRequestHeaders.Add("Connection", "keep-alive");
             return client;
         }
 
@@ -179,6 +337,7 @@ namespace Numerics.Data
             CancellationToken cancellationToken = default)
         {
             TimeSpan timeout = requestTimeout ?? ProviderRequestTimeout;
+            PreferIPv4ForNetFramework(new Uri(url));
             Exception? lastNet = null;
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
@@ -322,6 +481,7 @@ namespace Numerics.Data
         {
             try
             {
+                PreferIPv4ForNetFramework(new Uri(url));
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(ConnectivityProbeTimeout);
                 using (await _defaultClient.GetAsync(
@@ -506,6 +666,7 @@ namespace Numerics.Data
                 string stationFileUrl = $"{ghcnBaseUrl}{Uri.EscapeDataString(siteNumber)}.dly";
                 {
                     var client = _defaultClient;
+                    PreferIPv4ForNetFramework(new Uri(stationFileUrl));
                     // GHCN is large enough to want streaming, so we can't use GetWithRetryAsync
                     // directly (it buffers the whole body). Inline the same retry shape on the
                     // headers-only GetAsync, then stream from the successful response.
@@ -1389,22 +1550,10 @@ namespace Numerics.Data
 
             string? tsId = null;
 
-            // Create HttpClientHandler with automatic decompression
-            var handler = new HttpClientHandler
+            // The shared BOM client carries the browser-like headers the BOM security
+            // appliance expects and reuses pooled connections across both KiWIS requests.
             {
-                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
-            };
-
-            using (var client = new HttpClient(handler))
-            {
-                // Add browser-like headers to avoid security proxy issues
-                client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-                client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-                client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-                client.DefaultRequestHeaders.Add("DNT", "1");
-                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-                client.Timeout = TimeSpan.FromSeconds(30);
+                var client = _bomClient;
 
                 HttpStatusCode listStatus;
                 string listResponse;
@@ -1524,22 +1673,10 @@ namespace Numerics.Data
             DateTime? prevDate = null;
             var indexesByDateTime = new Dictionary<DateTime, int>();
 
-            // Create HttpClientHandler with automatic decompression
-            var handler2 = new HttpClientHandler
+            // Reuse the shared BOM client so the values request rides the connection the
+            // station lookup already established.
             {
-                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
-            };
-
-            using (var client = new HttpClient(handler2))
-            {
-                // Add browser-like headers to avoid security proxy issues
-                client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-                client.DefaultRequestHeaders.Add("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-                client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-                client.DefaultRequestHeaders.Add("DNT", "1");
-                client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-                client.Timeout = Timeout.InfiniteTimeSpan;
+                var client = _bomClient;
 
                 HttpStatusCode valuesStatus;
                 string valuesResponse;

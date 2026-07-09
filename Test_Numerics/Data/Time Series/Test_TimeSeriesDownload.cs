@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -801,6 +802,86 @@ namespace Data.TimeSeriesAnalysis
 
         #endregion
 
+        #region Connection Handling Tests
+
+        /// <summary>
+        /// Verifies connect-address ordering puts IPv4 before IPv6 while preserving relative order.
+        /// </summary>
+        /// <remarks>
+        /// Providers such as NOAA NCEI publish several AAAA records. On networks that silently
+        /// drop IPv6, connecting in DNS order costs a full TCP timeout per dead address, so the
+        /// downloader must try IPv4 first.
+        /// </remarks>
+        [TestMethod]
+        public void OrderAddressesForConnect_PutsIPv4First_PreservingRelativeOrder()
+        {
+            var v6First = IPAddress.Parse("2610:20:8040:2::178");
+            var v4First = IPAddress.Parse("205.167.25.177");
+            var v6Second = IPAddress.Parse("2610:20:8040:2::177");
+            var v4Second = IPAddress.Parse("205.167.25.178");
+
+            var ordered = TimeSeriesDownload.OrderAddressesForConnect(
+                new[] { v6First, v4First, v6Second, v4Second });
+
+            CollectionAssert.AreEqual(new[] { v4First, v4Second, v6First, v6Second }, ordered);
+        }
+
+        /// <summary>
+        /// Verifies connect-address ordering passes an all-IPv6 result through unchanged.
+        /// </summary>
+        /// <remarks>
+        /// IPv6-only hosts must remain reachable; preferring IPv4 must never drop IPv6 addresses.
+        /// </remarks>
+        [TestMethod]
+        public void OrderAddressesForConnect_AllIPv6_PassesThroughUnchanged()
+        {
+            var addresses = new[]
+            {
+                IPAddress.Parse("2610:20:8040:2::178"),
+                IPAddress.Parse("2610:20:8040:2::177")
+            };
+
+            var ordered = TimeSeriesDownload.OrderAddressesForConnect(addresses);
+
+            CollectionAssert.AreEqual(addresses, ordered);
+        }
+
+        /// <summary>
+        /// Verifies connect-address ordering tolerates an empty DNS result.
+        /// </summary>
+        [TestMethod]
+        public void OrderAddressesForConnect_Empty_ReturnsEmpty()
+        {
+            Assert.IsEmpty(TimeSeriesDownload.OrderAddressesForConnect(Array.Empty<IPAddress>()));
+        }
+
+        /// <summary>
+        /// Verifies the .NET Framework bind delegate rejects IPv6 remote endpoints.
+        /// </summary>
+        /// <remarks>
+        /// On .NET Framework the service point tries resolved addresses in DNS order with no
+        /// per-address bound. Throwing a socket exception from the bind delegate makes a blocked
+        /// IPv6 attempt fail immediately so the service point moves on to an IPv4 address.
+        /// </remarks>
+        [TestMethod]
+        public void RejectIPv6BindEndPoint_ThrowsSocketExceptionForIPv6()
+        {
+            var remote = new IPEndPoint(IPAddress.Parse("2610:20:8040:2::178"), 443);
+            Assert.Throws<SocketException>(() => TimeSeriesDownload.RejectIPv6BindEndPoint(remote));
+        }
+
+        /// <summary>
+        /// Verifies the .NET Framework bind delegate lets IPv4 remote endpoints bind normally.
+        /// </summary>
+        [TestMethod]
+        public void RejectIPv6BindEndPoint_ReturnsNullForIPv4()
+        {
+            var remote = new IPEndPoint(IPAddress.Parse("205.167.25.177"), 443);
+            Assert.IsNull(TimeSeriesDownload.RejectIPv6BindEndPoint(remote));
+        }
+
+        #endregion
+
         #region CHMN (Canada) Tests
 
         /// <summary>
@@ -1528,13 +1609,13 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
-        /// Verifies GHCN timeout messages use the longer GHCN provider limit.
+        /// Verifies GHCN timeout messages use the dedicated GHCN provider limit.
         /// </summary>
         /// <returns>A task that completes when the regression check finishes.</returns>
         /// <remarks>
-        /// NOAA NCEI can take longer than the generic provider timeout to return station-file
-        /// headers. The handler throws a timeout immediately after URL validation so this test does
-        /// not wait for the full provider timeout.
+        /// Full station files can be larger than other provider payloads, so GHCN uses a limit
+        /// above the generic provider timeout. The handler throws a timeout immediately after URL
+        /// validation so this test does not wait for the full provider timeout.
         /// </remarks>
         [TestMethod]
         public async Task GHCN_DailyPrecipitation_TimeoutMessage_UsesGhcnLimit()
@@ -1553,7 +1634,7 @@ namespace Data.TimeSeriesAnalysis
                         GHCN_1,
                         TimeSeriesDownload.TimeSeriesType.DailyPrecipitation));
 
-                Assert.Contains("240 seconds", exception.Message);
+                Assert.Contains("60 seconds", exception.Message);
                 Assert.HasCount(2, defaultHandler.Requests, "Expected the retry helper to make two GHCN attempts.");
                 Assert.IsEmpty(decompressHandler.Requests, "GHCN should not use the compressed client.");
                 Assert.IsFalse(defaultHandler.Requests.Any(GuardedGhcnDailyHandler.IsBlockedPreflight));
@@ -1567,7 +1648,12 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests full-period-of-record GHCN daily precipitation download.
         /// </summary>
+        /// <remarks>
+        /// The ceiling guards against connection-establishment regressions: walking dead IPv6
+        /// addresses before IPv4 once made this download take minutes instead of seconds.
+        /// </remarks>
         [TestMethod, TestCategory("Integration")]
+        [Timeout(60000, CooperativeCancellation = true)]
         public async Task GHCN_FullPor_Precipitation()
         {
             if (!await GhcnAvailable()) return;
@@ -1578,7 +1664,12 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests full-period-of-record GHCN daily snow download.
         /// </summary>
+        /// <remarks>
+        /// The ceiling guards against connection-establishment regressions: walking dead IPv6
+        /// addresses before IPv4 once made this download take minutes instead of seconds.
+        /// </remarks>
         [TestMethod, TestCategory("Integration")]
+        [Timeout(60000, CooperativeCancellation = true)]
         public async Task GHCN_FullPor_Snow()
         {
             if (!await GhcnAvailable()) return;

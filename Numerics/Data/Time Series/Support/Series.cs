@@ -125,12 +125,10 @@ namespace Numerics.Data
         public virtual bool Remove(SeriesOrdinate<TIndex, TValue> item)
         {
             var index = IndexOf(item);
-            if (_seriesOrdinates.Remove(item) == true)
-            {
-                RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
-                return true;
-            }
-            return false;
+            if (index < 0) return false;
+            _seriesOrdinates.RemoveAt(index);
+            RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
+            return true;
         }
 
         /// <inheritdoc/>
@@ -144,23 +142,30 @@ namespace Numerics.Data
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Removes the ordinate at the requested position directly, so when equal-valued
+        /// ordinates exist elsewhere in the series the element at <paramref name="index"/> is
+        /// the one removed and reported.
+        /// </remarks>
         public virtual void RemoveAt(int index)
         {
-            Remove(_seriesOrdinates[index]);
+            var item = _seriesOrdinates[index];
+            _seriesOrdinates.RemoveAt(index);
+            RaiseCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
         }
 
         /// <summary>
         /// Remove all elements from the collection.
         /// </summary>
+        /// <remarks>
+        /// Clears the backing list in one operation and raises a single reset event. The former
+        /// element-by-element removal cost two full equality scans per element, which made
+        /// clearing a large series O(n²).
+        /// </remarks>
         public void Clear()
         {
-            bool suppress = SuppressCollectionChanged;
-            SuppressCollectionChanged = true;
-            for (int i = _seriesOrdinates.Count - 1; i >= 0; i--)
-                Remove(_seriesOrdinates[i]);
-            SuppressCollectionChanged = false;
+            _seriesOrdinates.Clear();
             RaiseCollectionChangedReset();
-            SuppressCollectionChanged = suppress;
         }
 
         /// <inheritdoc/>

@@ -1474,5 +1474,82 @@ namespace Data.TimeSeriesAnalysis
 
         #endregion
 
+        #region Collection Behavior
+
+        /// <summary>
+        /// Clear should empty the series and raise a single reset event.
+        /// </summary>
+        /// <remarks>
+        /// Clear used to remove elements one at a time, costing two full equality scans per
+        /// element (O(n²) on large downloads). This locks in the single-reset contract of the
+        /// rewritten implementation.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Clear_EmptiesSeriesAndRaisesSingleReset()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 1, 1), new double[] { 1, 2, 3, 4, 5 });
+            var actions = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+            ts.CollectionChanged += (s, e) => actions.Add(e.Action);
+
+            ts.Clear();
+
+            Assert.AreEqual(0, ts.Count);
+            Assert.HasCount(1, actions);
+            Assert.AreEqual(System.Collections.Specialized.NotifyCollectionChangedAction.Reset, actions[0]);
+        }
+
+        /// <summary>
+        /// Clearing a large series should complete quickly.
+        /// </summary>
+        /// <remarks>
+        /// Guards against reintroducing the element-by-element removal that made clearing a
+        /// century of daily data take seconds to minutes.
+        /// </remarks>
+        [TestMethod]
+        [Timeout(5000, CooperativeCancellation = true)]
+        public void Test_Clear_LargeSeries_CompletesQuickly()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(1900, 1, 1), new double[200000]);
+
+            ts.Clear();
+
+            Assert.AreEqual(0, ts.Count);
+        }
+
+        /// <summary>
+        /// RemoveAt should remove the ordinate at the requested index even when an equal-valued
+        /// ordinate appears earlier in the series.
+        /// </summary>
+        /// <remarks>
+        /// RemoveAt used to delegate to Remove(item), which removed the first equal element, so
+        /// removing a duplicate by index silently deleted the wrong ordinate.
+        /// </remarks>
+        [TestMethod]
+        public void Test_RemoveAt_WithDuplicateOrdinates_RemovesRequestedIndex()
+        {
+            var first = new SeriesOrdinate<DateTime, double>(new DateTime(2024, 1, 1), 1.0);
+            var middle = new SeriesOrdinate<DateTime, double>(new DateTime(2024, 1, 2), 2.0);
+            var duplicateOfFirst = new SeriesOrdinate<DateTime, double>(new DateTime(2024, 1, 1), 1.0);
+            var ts = new TimeSeries(TimeInterval.Irregular) { first, middle, duplicateOfFirst };
+
+            var removals = new List<(object item, int index)>();
+            ts.CollectionChanged += (s, e) =>
+            {
+                if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove)
+                    removals.Add((e.OldItems?[0], e.OldStartingIndex));
+            };
+
+            ts.RemoveAt(2);
+
+            Assert.AreEqual(2, ts.Count);
+            Assert.IsTrue(ReferenceEquals(first, ts[0]), "The first ordinate should remain at index 0.");
+            Assert.IsTrue(ReferenceEquals(middle, ts[1]), "The middle ordinate should remain at index 1.");
+            Assert.HasCount(1, removals);
+            Assert.IsTrue(ReferenceEquals(duplicateOfFirst, removals[0].item), "The event should carry the removed ordinate.");
+            Assert.AreEqual(2, removals[0].index, "The event should report the requested index.");
+        }
+
+        #endregion
+
     }
 }
