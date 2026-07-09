@@ -68,7 +68,7 @@ In other language ecosystems, Python's SciPy [@virtanen2020] provides broad nume
 
 Numerics consolidates these capabilities into a single, self-contained .NET library purpose-built for quantitative risk assessment in water resources engineering. Computationally intensive operations, including bootstrap resampling and MCMC chain evaluation, are parallelized using `Parallel.For` for high-throughput execution on modern multi-core hardware. Backed by long-term USACE-RMC maintenance, Numerics provides the ecosystem, performance, and institutional support needed for quantitative risk analysis in dam and levee safety.
 
-# Research Impact
+# Research Impact Statement
 
 Numerics serves as the computational engine for six USACE-RMC production applications used for infrastructure safety decisions:
 
@@ -106,7 +106,7 @@ var lp3 = new LogPearsonTypeIII(
 double[] sample = lp3.GenerateRandomValues(n, 12345);
 
 // Estimate parameters using L-moments
-lp3.Estimate(sample,ParameterEstimationMethod.MethodOfLinearMoments);
+lp3.Estimate(sample, ParameterEstimationMethod.MethodOfLinearMoments);
 
 // Configure the bootstrap analysis
 var boot = new BootstrapAnalysis(
@@ -126,7 +126,7 @@ var CIs = boot.BCaQuantileCI(sample, probabilities, alpha: 0.1);
 
 # AI Usage Disclosure
 
-Generative AI was used to assist with XML documentation comments, markdown documentation content, and code review during library development. All core library code, class architecture, numerical methods, and algorithms were designed and implemented by the authors. All AI-generated content was reviewed, edited, and validated by the authors, who made all design decisions and accept full responsibility for the work.
+Anthropic Claude Opus (versions 4.5, 4.6, and 4.7) was used to assist with the following: drafting markdown documentation content, reviewing and editing XML documentation within the source code, and reviewing code for bugs. All core library code, class architecture, numerical methods, and algorithms were designed and implemented by the authors. The authors reviewed, edited, and validated all AI-assisted output, made all core design decisions, and accept full responsibility for the work.
 
 # Acknowledgements
 

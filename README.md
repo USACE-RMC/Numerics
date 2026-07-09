@@ -1,8 +1,9 @@
 # Numerics
 
 [![CI](https://github.com/USACE-RMC/Numerics/actions/workflows/Integration.yml/badge.svg)](https://github.com/USACE-RMC/Numerics/actions/workflows/Integration.yml)
-[![NuGet](https://img.shields.io/nuget/v/RMC.Numerics)](https://www.nuget.org/packages/RMC.Numerics/)
+[![JOSS](https://joss.theoj.org/papers/10.21105/joss.10540/status.svg)](https://doi.org/10.21105/joss.10540)
 [![DOI](https://zenodo.org/badge/697446868.svg)](https://zenodo.org/badge/latestdoi/697446868)
+[![NuGet](https://img.shields.io/nuget/v/RMC.Numerics)](https://www.nuget.org/packages/RMC.Numerics/)
 [![License: 0BSD](https://img.shields.io/badge/License-0BSD-blue.svg)](LICENSE)
 
 ***Numerics*** is a free and open-source numerical computing library for .NET developed by the U.S. Army Corps of Engineers Risk Management Center (USACE-RMC). It provides methods and algorithms for probability distributions, statistical analysis, numerical methods, optimization, machine learning, and Bayesian MCMC sampling - with a focus on hydrological and risk assessment applications.
@@ -33,6 +34,10 @@ Or search for [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) in th
 | [Machine Learning](docs/machine-learning/machine-learning.md) | GLM, decision trees, random forests, KNN, naive Bayes, k-means, GMM |
 | [Sampling](docs/sampling/mcmc.md) | MCMC (RWMH, ARWMH, DE-MCz, HMC, NUTS, Gibbs), random generation, convergence diagnostics |
 | [References](docs/references.md) | Consolidated bibliography |
+
+## Prerequisites
+- .NET 8+ runtime (or .NET Framework 4.8.1 on Windows). Install the [.NET SDK](https://dotnet.microsoft.com/download) if you don't already have it.
+  - Microsoft .NET SDK 10.1.326.7603 is available on the App Portal for Corps users 
 
 ## Support
 
