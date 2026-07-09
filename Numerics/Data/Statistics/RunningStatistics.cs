@@ -274,17 +274,38 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Creates a copy of the running statistics.
+        /// </summary>
+        /// <returns>A new running statistics instance with the same accumulated state, independent of the original.</returns>
+        public RunningStatistics Clone()
+        {
+            return new RunningStatistics()
+            {
+                _n = _n,
+                _m1 = _m1,
+                _m2 = _m2,
+                _m3 = _m3,
+                _m4 = _m4,
+                _min = _min,
+                _max = _max
+            };
+        }
+
+        /// <summary>
         /// Create a new running statistics over the combined samples of two existing running statistics.
         /// </summary>
+        /// <param name="a">The first running statistics.</param>
+        /// <param name="b">The second running statistics.</param>
+        /// <returns>A new running statistics instance, independent of both inputs.</returns>
         public static RunningStatistics Combine(RunningStatistics a, RunningStatistics b)
         {
             if (a._n == 0L)
             {
-                return b;
+                return b.Clone();
             }
             else if (b._n == 0L)
             {
-                return a;
+                return a.Clone();
             }
 
             long n = a._n + b._n;
