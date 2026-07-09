@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -255,6 +256,204 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// HTTP handler that serves deterministic USGS instantaneous RDB responses.
+        /// </summary>
+        /// <remarks>
+        /// The handler allows only the expected <c>/nwis/iv</c> request for USGS 01646500 and
+        /// rejects generic connectivity probes. This keeps the test deterministic and independent
+        /// from the live USGS service.
+        /// </remarks>
+        private sealed class GuardedUsgsInstantaneousHandler : HttpMessageHandler
+        {
+            /// <summary>
+            /// USGS parameter code expected by this handler.
+            /// </summary>
+            private readonly string _parameterCode;
+
+            /// <summary>
+            /// Whether the handler should simulate an HTTP timeout after URL validation.
+            /// </summary>
+            private readonly bool _simulateTimeout;
+
+            /// <summary>
+            /// Whether successful responses should complete asynchronously.
+            /// </summary>
+            private readonly bool _completeAsynchronously;
+
+            /// <summary>
+            /// Number of duplicate timestamp pairs to append to the deterministic response.
+            /// </summary>
+            private readonly int _duplicateTimestampPairs;
+
+            /// <summary>
+            /// Gets the absolute URLs requested through this handler.
+            /// </summary>
+            internal List<string> Requests { get; } = new List<string>();
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="GuardedUsgsInstantaneousHandler"/> class.
+            /// </summary>
+            /// <param name="parameterCode">The expected USGS parameter code.</param>
+            /// <param name="simulateTimeout">Whether to throw a timeout after validating the request URL.</param>
+            /// <param name="completeAsynchronously">Whether to complete successful responses on the thread pool.</param>
+            /// <param name="duplicateTimestampPairs">The number of duplicate timestamp pairs to include in the response.</param>
+            /// <exception cref="ArgumentException">Thrown when <paramref name="parameterCode"/> is empty.</exception>
+            /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="duplicateTimestampPairs"/> is negative.</exception>
+            /// <remarks>
+            /// Parameter <c>00060</c> represents discharge and <c>00065</c> represents gage height.
+            /// Asynchronous completion is used by synchronization-context regression tests, while
+            /// duplicate timestamp pairs exercise the downloader's normalization cleanup.
+            /// </remarks>
+            internal GuardedUsgsInstantaneousHandler(
+                string parameterCode,
+                bool simulateTimeout = false,
+                bool completeAsynchronously = false,
+                int duplicateTimestampPairs = 0)
+            {
+                if (string.IsNullOrWhiteSpace(parameterCode))
+                    throw new ArgumentException("A parameter code is required.", nameof(parameterCode));
+                if (duplicateTimestampPairs < 0)
+                    throw new ArgumentOutOfRangeException(nameof(duplicateTimestampPairs), "Duplicate timestamp pair count cannot be negative.");
+
+                _parameterCode = parameterCode;
+                _simulateTimeout = simulateTimeout;
+                _completeAsynchronously = completeAsynchronously;
+                _duplicateTimestampPairs = duplicateTimestampPairs;
+            }
+
+            /// <inheritdoc/>
+            /// <remarks>
+            /// Returns a small nonuniform instantaneous RDB body only for the expected USGS data URL.
+            /// </remarks>
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                string url = request.RequestUri?.AbsoluteUri ?? "";
+                Requests.Add(url);
+
+                if (IsBlockedPreflight(url))
+                {
+                    return Task.FromException<HttpResponseMessage>(
+                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
+                }
+
+                if (!IsExpectedUsgsInstantaneousUrl(url))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        Content = new StringContent($"Unexpected URL: {url}")
+                    });
+                }
+
+                if (_simulateTimeout)
+                {
+                    return Task.FromException<HttpResponseMessage>(
+                        new TaskCanceledException($"Simulated instantaneous timeout: {url}"));
+                }
+
+                string valueOne = _parameterCode == "00060" ? "101.5" : "6.12";
+                string valueTwo = _parameterCode == "00060" ? "102.0" : "6.13";
+                string valueThree = _parameterCode == "00060" ? "104.5" : "6.17";
+                var lines = new List<string>
+                {
+                    $"agency_cd\tsite_no\tdatetime\ttz_cd\t{_parameterCode}_00000\t{_parameterCode}_00000_cd",
+                    "5s\t15s\t20d\t6s\t14n\t10s",
+                    $"USGS\t01646500\t2024-01-01 00:00\tEST\t{valueOne}\tA",
+                    $"USGS\t01646500\t2024-01-01 00:15\tEST\t{valueTwo}\tA",
+                    $"USGS\t01646500\t2024-01-01 00:45\tEST\t{valueThree}\tA"
+                };
+
+                for (int i = 0; i < _duplicateTimestampPairs; i++)
+                {
+                    string timestamp = new DateTime(2024, 1, 2).AddMinutes(i).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+                    lines.Add($"USGS\t01646500\t{timestamp}\tEST\t{1000d + i:0.0}\tP");
+                    lines.Add($"USGS\t01646500\t{timestamp}\tEST\t{2000d + i:0.0}\tA");
+                }
+
+                string body = string.Join(Environment.NewLine, lines);
+
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body)
+                };
+
+                return _completeAsynchronously
+                    ? Task.Run(() => response)
+                    : Task.FromResult(response);
+            }
+
+            /// <summary>
+            /// Determines whether a URL is one of the connectivity probes this regression forbids.
+            /// </summary>
+            /// <param name="url">The absolute URL requested through the handler.</param>
+            /// <returns><c>true</c> when the URL is a forbidden preflight; otherwise, <c>false</c>.</returns>
+            /// <remarks>
+            /// The instantaneous data endpoint is under <c>/nwis/iv</c>; only generic roots and the
+            /// old Google probe are treated as preflight requests.
+            /// </remarks>
+            internal static bool IsBlockedPreflight(string url)
+            {
+                string normalized = url.TrimEnd('/');
+                return url.Contains("google", StringComparison.OrdinalIgnoreCase) ||
+                       url.Contains("generate_204", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(normalized, "https://waterservices.usgs.gov/nwis", StringComparison.OrdinalIgnoreCase);
+            }
+
+            /// <summary>
+            /// Determines whether a URL matches the expected USGS instantaneous request.
+            /// </summary>
+            /// <param name="url">The absolute URL requested through the handler.</param>
+            /// <returns><c>true</c> when the URL targets the expected fixture endpoint; otherwise, <c>false</c>.</returns>
+            /// <remarks>
+            /// The check pins the request to the instantaneous-value API, the 01646500 gage, the
+            /// requested parameter code, and RDB formatting.
+            /// </remarks>
+            private bool IsExpectedUsgsInstantaneousUrl(string url)
+            {
+                return url.StartsWith("https://waterservices.usgs.gov/nwis/iv/?", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("sites=01646500", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains($"parameterCd={_parameterCode}", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("startDT=1900-01-01", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("siteStatus=all", StringComparison.OrdinalIgnoreCase) &&
+                       url.Contains("format=rdb", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// Synchronization context that records posted continuations and executes them on the thread pool.
+        /// </summary>
+        /// <remarks>
+        /// Tests use this context to prove downloader internals do not marshal long-running parsing
+        /// continuations back to a WPF-like caller context.
+        /// </remarks>
+        private sealed class CountingSynchronizationContext : SynchronizationContext
+        {
+            /// <summary>
+            /// Count of posted callbacks.
+            /// </summary>
+            private int _postCount;
+
+            /// <summary>
+            /// Gets the number of callbacks posted to this context.
+            /// </summary>
+            internal int PostCount => _postCount;
+
+            /// <summary>
+            /// Records and dispatches an asynchronous callback.
+            /// </summary>
+            /// <param name="d">The callback to execute.</param>
+            /// <param name="state">The callback state.</param>
+            /// <remarks>
+            /// The callback is still executed so tests do not deadlock if a regression posts to the
+            /// context; the post count then fails the assertion.
+            /// </remarks>
+            public override void Post(SendOrPostCallback d, object state)
+            {
+                Interlocked.Increment(ref _postCount);
+                ThreadPool.QueueUserWorkItem(_ => d(state));
+            }
+        }
+
+        /// <summary>
         /// HTTP handler that serves a deterministic USGS measured-stage response with duplicate timestamps.
         /// </summary>
         /// <remarks>
@@ -349,6 +548,182 @@ namespace Data.TimeSeriesAnalysis
                 {
                     Content = new StringContent("")
                 };
+            }
+        }
+
+        /// <summary>
+        /// HTTP handler that serves deterministic GHCN daily station-file responses.
+        /// </summary>
+        /// <remarks>
+        /// The handler allows only the expected NOAA NCEI <c>USC00040741.dly</c> station-file URL
+        /// and rejects generic connectivity probes. This keeps GHCN regression tests deterministic.
+        /// </remarks>
+        private sealed class GuardedGhcnDailyHandler : HttpMessageHandler
+        {
+            /// <summary>
+            /// Whether the handler should simulate an HTTP timeout after URL validation.
+            /// </summary>
+            private readonly bool _simulateTimeout;
+
+            /// <summary>
+            /// Whether the handler should include a duplicate precipitation row for the same station month.
+            /// </summary>
+            private readonly bool _includeDuplicatePrecipitationRow;
+
+            /// <summary>
+            /// Gets the absolute URLs requested through this handler.
+            /// </summary>
+            internal List<string> Requests { get; } = new List<string>();
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="GuardedGhcnDailyHandler"/> class.
+            /// </summary>
+            /// <param name="simulateTimeout">Whether to throw a timeout after validating the request URL.</param>
+            /// <param name="includeDuplicatePrecipitationRow">Whether to include duplicate daily precipitation records for the same dates.</param>
+            /// <remarks>
+            /// Timeout simulation is used to verify that the downloader reports the GHCN-specific
+            /// timeout window without waiting for the full timeout duration. Duplicate-row simulation
+            /// verifies inline last-value-wins normalization without a post-download pass.
+            /// </remarks>
+            internal GuardedGhcnDailyHandler(
+                bool simulateTimeout = false,
+                bool includeDuplicatePrecipitationRow = false)
+            {
+                _simulateTimeout = simulateTimeout;
+                _includeDuplicatePrecipitationRow = includeDuplicatePrecipitationRow;
+            }
+
+            /// <inheritdoc/>
+            /// <remarks>
+            /// Returns a one-month GHCN daily file containing precipitation and snow rows only for
+            /// the expected station-file URL.
+            /// </remarks>
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                string url = request.RequestUri?.AbsoluteUri ?? "";
+                Requests.Add(url);
+
+                if (IsBlockedPreflight(url))
+                {
+                    return Task.FromException<HttpResponseMessage>(
+                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
+                }
+
+                if (!IsExpectedGhcnStationUrl(url))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        Content = new StringContent($"Unexpected URL: {url}")
+                    });
+                }
+
+                if (_simulateTimeout)
+                {
+                    return Task.FromException<HttpResponseMessage>(
+                        new TaskCanceledException($"Simulated GHCN timeout: {url}"));
+                }
+
+                var rows = new List<string>
+                {
+                    BuildGhcnDailyLine("USC00040741", 2024, 1, "PRCP", new Dictionary<int, int>
+                    {
+                        [1] = 254,
+                        [2] = -9999,
+                        [3] = 508
+                    }),
+                    BuildGhcnDailyLine("USC00040741", 2024, 1, "SNOW", new Dictionary<int, int>
+                    {
+                        [1] = 0
+                    })
+                };
+
+                if (_includeDuplicatePrecipitationRow)
+                {
+                    rows.Add(BuildGhcnDailyLine("USC00040741", 2024, 1, "PRCP", new Dictionary<int, int>
+                    {
+                        [1] = 762,
+                        [2] = 1016,
+                        [3] = 1270
+                    }));
+                }
+
+                string body = string.Join(Environment.NewLine, rows);
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body)
+                });
+            }
+
+            /// <summary>
+            /// Determines whether a URL is one of the connectivity probes this regression forbids.
+            /// </summary>
+            /// <param name="url">The absolute URL requested through the handler.</param>
+            /// <returns><c>true</c> when the URL is a forbidden preflight; otherwise, <c>false</c>.</returns>
+            /// <remarks>
+            /// GHCN daily data should request the station file directly; generic root checks are not
+            /// required before attempting the provider request.
+            /// </remarks>
+            internal static bool IsBlockedPreflight(string url)
+            {
+                string normalized = url.TrimEnd('/');
+                return url.Contains("google", StringComparison.OrdinalIgnoreCase) ||
+                       url.Contains("generate_204", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(normalized, "https://www.ncei.noaa.gov", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(normalized, "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all", StringComparison.OrdinalIgnoreCase);
+            }
+
+            /// <summary>
+            /// Determines whether a URL matches the expected GHCN station-file request.
+            /// </summary>
+            /// <param name="url">The absolute URL requested through the handler.</param>
+            /// <returns><c>true</c> when the URL targets the expected fixture endpoint; otherwise, <c>false</c>.</returns>
+            /// <remarks>
+            /// The check pins the request to the NOAA NCEI daily station-file path and the exact
+            /// station that failed in BestFit.
+            /// </remarks>
+            private static bool IsExpectedGhcnStationUrl(string url)
+            {
+                return string.Equals(
+                    url,
+                    "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/USC00040741.dly",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            /// <summary>
+            /// Builds one fixed-width GHCN daily station-file line.
+            /// </summary>
+            /// <param name="stationId">The 11-character GHCN station identifier.</param>
+            /// <param name="year">The four-digit year.</param>
+            /// <param name="month">The one-based month number.</param>
+            /// <param name="element">The four-character GHCN element code.</param>
+            /// <param name="valuesByDay">Raw GHCN values keyed by one-based day of month.</param>
+            /// <returns>A fixed-width daily line in GHCN <c>.dly</c> format.</returns>
+            /// <remarks>
+            /// Each daily value is represented by a five-character integer followed by three flag
+            /// characters. Missing days are filled with <c>-9999</c>, matching the provider format.
+            /// </remarks>
+            private static string BuildGhcnDailyLine(
+                string stationId,
+                int year,
+                int month,
+                string element,
+                IReadOnlyDictionary<int, int> valuesByDay)
+            {
+                var builder = new System.Text.StringBuilder();
+                builder.Append(stationId);
+                builder.Append(year.ToString("0000", CultureInfo.InvariantCulture));
+                builder.Append(month.ToString("00", CultureInfo.InvariantCulture));
+                builder.Append(element);
+
+                for (int day = 1; day <= 31; day++)
+                {
+                    int value = valuesByDay.TryGetValue(day, out int parsedValue) ? parsedValue : -9999;
+                    builder.Append(value.ToString(CultureInfo.InvariantCulture).PadLeft(5));
+                    builder.Append("   ");
+                }
+
+                return builder.ToString();
             }
         }
 
@@ -704,6 +1079,215 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// Verifies deterministic USGS instantaneous discharge downloads remain irregular.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// USGS instantaneous discharge uses parameter <c>00060</c> on the <c>/nwis/iv</c> endpoint.
+        /// </remarks>
+        [TestMethod]
+        public async Task USGS_InstantaneousDischarge_DeterministicDownload_IsIrregular()
+        {
+            await VerifyUsgsInstantaneousDownloadIsIrregular(
+                TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge,
+                "00060");
+        }
+
+        /// <summary>
+        /// Verifies deterministic USGS instantaneous stage downloads remain irregular.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// USGS instantaneous stage uses parameter <c>00065</c> on the <c>/nwis/iv</c> endpoint.
+        /// </remarks>
+        [TestMethod]
+        public async Task USGS_InstantaneousStage_DeterministicDownload_IsIrregular()
+        {
+            await VerifyUsgsInstantaneousDownloadIsIrregular(
+                TimeSeriesDownload.TimeSeriesType.InstantaneousStage,
+                "00065");
+        }
+
+        /// <summary>
+        /// Verifies instantaneous USGS timeout messages use the longer instantaneous limit.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// The handler throws a timeout immediately after URL validation so the test does not wait
+        /// for the full timeout duration.
+        /// </remarks>
+        [TestMethod]
+        public async Task USGS_InstantaneousDischarge_TimeoutMessage_UsesInstantaneousLimit()
+        {
+            var defaultHandler = new GuardedUsgsInstantaneousHandler("00060", simulateTimeout: true);
+            var decompressHandler = new GuardedUsgsInstantaneousHandler("00060", simulateTimeout: true);
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
+                    await TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge));
+
+                Assert.Contains("120 seconds", exception.Message);
+                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
+                Assert.HasCount(2, decompressHandler.Requests, "Expected the retry helper to make two instantaneous attempts.");
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies USGS instantaneous parsing does not resume on the caller synchronization context.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// BestFit starts downloads from the WPF UI thread. This test forces the fake HTTP response
+        /// to complete asynchronously while a synchronization context is installed, then verifies
+        /// the downloader did not post its large-response continuation back to that context.
+        /// </remarks>
+        [TestMethod]
+        public async Task USGS_InstantaneousDischarge_DoesNotPostBackToSynchronizationContext()
+        {
+            var defaultHandler = new GuardedUsgsInstantaneousHandler("00060", completeAsynchronously: true);
+            var decompressHandler = new GuardedUsgsInstantaneousHandler("00060", completeAsynchronously: true);
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var context = new CountingSynchronizationContext();
+                SynchronizationContext previousContext = SynchronizationContext.Current;
+                Task<(TimeSeries TimeSeries, string RawText)> downloadTask;
+
+                try
+                {
+                    SynchronizationContext.SetSynchronizationContext(context);
+                    downloadTask = TimeSeriesDownload.FromUSGS(
+                        USGS_6,
+                        TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
+                }
+                finally
+                {
+                    SynchronizationContext.SetSynchronizationContext(previousContext);
+                }
+
+                var (ts, raw) = await downloadTask;
+
+                Assert.AreEqual(0, context.PostCount, "USGS instantaneous download should not post continuations to the caller synchronization context.");
+                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
+                Assert.AreEqual(3, ts.Count);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
+                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
+                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS instantaneous data request.");
+                Assert.IsFalse(decompressHandler.Requests.Any(GuardedUsgsInstantaneousHandler.IsBlockedPreflight));
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies duplicate-heavy USGS instantaneous responses are normalized without a long rebuild.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// The fixture mimics provisional/approved duplicate timestamps in instantaneous RDB data.
+        /// A previous cleanup path cleared the million-row series through per-item removal, which
+        /// made full-period BestFit downloads appear to spin indefinitely after the response arrived.
+        /// </remarks>
+        [TestMethod]
+        [Timeout(15000, CooperativeCancellation = true)]
+        public async Task USGS_InstantaneousDischarge_DuplicateHeavyResponse_NormalizesQuickly()
+        {
+            const int duplicateTimestampPairs = 50000;
+            var defaultHandler = new GuardedUsgsInstantaneousHandler("00060", duplicateTimestampPairs: duplicateTimestampPairs);
+            var decompressHandler = new GuardedUsgsInstantaneousHandler("00060", duplicateTimestampPairs: duplicateTimestampPairs);
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var (ts, raw) = await TimeSeriesDownload.FromUSGS(
+                    USGS_6,
+                    TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
+                var finalDuplicateTimestamp = new DateTime(2024, 1, 2).AddMinutes(duplicateTimestampPairs - 1);
+
+                Assert.IsNotNull(ts, "Time series is null.");
+                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
+                Assert.AreEqual(3 + duplicateTimestampPairs, ts.Count);
+                Assert.AreEqual(ts.Count, ts.Select(o => o.Index).Distinct().Count(), "Duplicate date indices detected.");
+                Assert.AreEqual(2000d + duplicateTimestampPairs - 1, ts.Single(o => o.Index == finalDuplicateTimestamp).Value);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
+                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
+                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS instantaneous data request.");
+                Assert.IsFalse(decompressHandler.Requests.Any(GuardedUsgsInstantaneousHandler.IsBlockedPreflight));
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies a deterministic USGS instantaneous download preserves nonuniform timestamps.
+        /// </summary>
+        /// <param name="seriesType">The instantaneous USGS series type to request.</param>
+        /// <param name="parameterCode">The expected USGS parameter code.</param>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// The fixture has a 15-minute step followed by a 30-minute step. The downloader must keep
+        /// those timestamps exactly and must not convert the series into a regular interval.
+        /// </remarks>
+        private static async Task VerifyUsgsInstantaneousDownloadIsIrregular(
+            TimeSeriesDownload.TimeSeriesType seriesType,
+            string parameterCode)
+        {
+            var defaultHandler = new GuardedUsgsInstantaneousHandler(parameterCode);
+            var decompressHandler = new GuardedUsgsInstantaneousHandler(parameterCode);
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_6, seriesType);
+                var expectedDates = new[]
+                {
+                    new DateTime(2024, 1, 1, 0, 0, 0),
+                    new DateTime(2024, 1, 1, 0, 15, 0),
+                    new DateTime(2024, 1, 1, 0, 45, 0)
+                };
+
+                Assert.IsNotNull(ts, "Time series is null.");
+                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
+                Assert.AreEqual(expectedDates.Length, ts.Count);
+                CollectionAssert.AreEqual(expectedDates, ts.Select(o => o.Index).ToArray());
+                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
+                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
+                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS instantaneous data request.");
+                Assert.IsTrue(decompressHandler.Requests[0].Contains("/nwis/iv/", StringComparison.OrdinalIgnoreCase));
+                Assert.IsTrue(decompressHandler.Requests[0].Contains($"parameterCd={parameterCode}", StringComparison.OrdinalIgnoreCase));
+                Assert.IsTrue(decompressHandler.Requests[0].Contains("startDT=1900-01-01", StringComparison.OrdinalIgnoreCase));
+                Assert.IsFalse(decompressHandler.Requests.Any(GuardedUsgsInstantaneousHandler.IsBlockedPreflight));
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
         /// Tests full-period-of-record USGS daily discharge download.
         /// </summary>
         [TestMethod, TestCategory("Integration")]
@@ -858,6 +1442,127 @@ namespace Data.TimeSeriesAnalysis
         #endregion
 
         #region GHCN Tests
+
+        /// <summary>
+        /// Verifies deterministic GHCN daily precipitation downloads parse station files directly.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// The fixture pins the request to NOAA NCEI station <c>USC00040741</c>, confirms no
+        /// connectivity preflight is made, and verifies GHCN tenths-of-millimeters are converted to
+        /// inches.
+        /// </remarks>
+        [TestMethod]
+        public async Task GHCN_DailyPrecipitation_DeterministicDownload_ParsesAndNoPreflight()
+        {
+            var defaultHandler = new GuardedGhcnDailyHandler();
+            var decompressHandler = new GuardedGhcnDailyHandler();
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var ts = await TimeSeriesDownload.FromGHCN(
+                    GHCN_1,
+                    TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
+                    TimeSeriesDownload.DepthUnit.Inches);
+
+                Assert.IsNotNull(ts, "Time series is null.");
+                Assert.AreEqual(TimeInterval.OneDay, ts.TimeInterval);
+                Assert.AreEqual(31, ts.Count);
+                Assert.AreEqual(new DateTime(2024, 1, 1), ts.StartDate);
+                Assert.AreEqual(new DateTime(2024, 1, 31), ts.EndDate);
+                Assert.AreEqual(1d, ts[0].Value);
+                Assert.IsTrue(double.IsNaN(ts[1].Value));
+                Assert.AreEqual(2d, ts[2].Value);
+                Assert.HasCount(1, defaultHandler.Requests, "Expected exactly one GHCN station-file request.");
+                Assert.IsEmpty(decompressHandler.Requests, "GHCN should not use the compressed client.");
+                Assert.IsFalse(defaultHandler.Requests.Any(GuardedGhcnDailyHandler.IsBlockedPreflight));
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies GHCN duplicate daily timestamps are replaced while station rows are parsed.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// This pins the intended single-pass behavior: the later GHCN row for a duplicate date wins
+        /// at ordinate creation time, avoiding the previous post-download duplicate scan.
+        /// </remarks>
+        [TestMethod]
+        public async Task GHCN_DailyPrecipitation_DuplicateDateTimes_LastValueWinsInline()
+        {
+            var defaultHandler = new GuardedGhcnDailyHandler(includeDuplicatePrecipitationRow: true);
+            var decompressHandler = new GuardedGhcnDailyHandler(includeDuplicatePrecipitationRow: true);
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var ts = await TimeSeriesDownload.FromGHCN(
+                    GHCN_1,
+                    TimeSeriesDownload.TimeSeriesType.DailyPrecipitation,
+                    TimeSeriesDownload.DepthUnit.Inches);
+
+                Assert.AreEqual(31, ts.Count);
+                Assert.AreEqual(ts.Count, ts.Select(o => o.Index).Distinct().Count(), "Duplicate date indices detected.");
+                Assert.AreEqual(3d, ts[0].Value);
+                Assert.AreEqual(4d, ts[1].Value);
+                Assert.AreEqual(5d, ts[2].Value);
+                Assert.HasCount(1, defaultHandler.Requests, "Expected exactly one GHCN station-file request.");
+                Assert.IsEmpty(decompressHandler.Requests, "GHCN should not use the compressed client.");
+                Assert.IsFalse(defaultHandler.Requests.Any(GuardedGhcnDailyHandler.IsBlockedPreflight));
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
+
+        /// <summary>
+        /// Verifies GHCN timeout messages use the longer GHCN provider limit.
+        /// </summary>
+        /// <returns>A task that completes when the regression check finishes.</returns>
+        /// <remarks>
+        /// NOAA NCEI can take longer than the generic provider timeout to return station-file
+        /// headers. The handler throws a timeout immediately after URL validation so this test does
+        /// not wait for the full provider timeout.
+        /// </remarks>
+        [TestMethod]
+        public async Task GHCN_DailyPrecipitation_TimeoutMessage_UsesGhcnLimit()
+        {
+            var defaultHandler = new GuardedGhcnDailyHandler(simulateTimeout: true);
+            var decompressHandler = new GuardedGhcnDailyHandler(simulateTimeout: true);
+
+            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+
+            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+            try
+            {
+                var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
+                    await TimeSeriesDownload.FromGHCN(
+                        GHCN_1,
+                        TimeSeriesDownload.TimeSeriesType.DailyPrecipitation));
+
+                Assert.Contains("240 seconds", exception.Message);
+                Assert.HasCount(2, defaultHandler.Requests, "Expected the retry helper to make two GHCN attempts.");
+                Assert.IsEmpty(decompressHandler.Requests, "GHCN should not use the compressed client.");
+                Assert.IsFalse(defaultHandler.Requests.Any(GuardedGhcnDailyHandler.IsBlockedPreflight));
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+        }
 
         /// <summary>
         /// Tests full-period-of-record GHCN daily precipitation download.
