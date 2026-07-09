@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite our article in the Journal of Open Source Software."
 type: software
 title: "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, and Risk Assessment"
-version: "2.1.1"
-date-released: "2026-06-17"
+version: "2.1.2"
+date-released: "2026-07-09"
 license: 0BSD
 repository-code: "https://github.com/USACE-RMC/Numerics"
 url: "https://github.com/USACE-RMC/Numerics"
