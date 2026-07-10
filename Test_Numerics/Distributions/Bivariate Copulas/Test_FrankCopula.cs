@@ -161,5 +161,38 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(0.0, copulaNeg.UpperTailDependence, 1E-10, "Frank copula should have no upper tail dependence for negative θ.");
             Assert.AreEqual(0.0, copulaNeg.LowerTailDependence, 1E-10, "Frank copula should have no lower tail dependence for negative θ.");
         }
+
+        /// <summary>
+        /// Test that ParametersValid holds across the Frank copula's unbounded θ range.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParametersValid()
+        {
+            Assert.IsTrue(new FrankCopula(4.2).ParametersValid);
+            Assert.IsTrue(new FrankCopula(-7.5).ParametersValid);
+        }
+
+        /// <summary>
+        /// Test Clone produces an independent copy with deep-copied marginals.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone()
+        {
+            var copula = new FrankCopula(4.2, new Normal(100, 10), new Gumbel(50, 5));
+            var clone = copula.Clone() as FrankCopula;
+            Assert.IsNotNull(clone);
+            Assert.AreEqual(copula.Theta, clone.Theta);
+            Assert.IsTrue(clone.ParametersValid);
+
+            // Marginals are deep-copied (distributions memoize lazily, so clones must
+            // not share marginal instances), with identical quantiles
+            Assert.AreNotSame(copula.MarginalDistributionX, clone.MarginalDistributionX);
+            Assert.AreNotSame(copula.MarginalDistributionY, clone.MarginalDistributionY);
+            Assert.AreEqual(copula.MarginalDistributionY.InverseCDF(0.9), clone.MarginalDistributionY.InverseCDF(0.9));
+
+            // Mutating the clone should not affect the original
+            clone.Theta = 2.0;
+            Assert.AreEqual(4.2, copula.Theta);
+        }
     }
 }

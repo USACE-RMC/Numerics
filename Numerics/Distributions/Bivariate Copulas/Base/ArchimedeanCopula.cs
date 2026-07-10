@@ -60,7 +60,11 @@ namespace Numerics.Distributions.Copulas
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be less than or equal to " + ThetaMaximum.ToString() + ".");
                 return new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be less than or equal to " + ThetaMaximum.ToString() + ".");
             }
-            return new ArgumentOutOfRangeException(nameof(Theta),"Parameter is valid");
+            // A valid parameter must return null: the Theta setter derives ParametersValid
+            // from 'ValidateParameter(value, false) is null', so returning a sentinel
+            // exception here left ParametersValid permanently false for every Archimedean
+            // family that did not override this method (Clayton, Gumbel, Joe).
+            return null;
         }
 
         /// <inheritdoc/>

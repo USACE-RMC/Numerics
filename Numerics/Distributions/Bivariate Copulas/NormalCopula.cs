@@ -178,7 +178,7 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
-            return new NormalCopula(Theta, MarginalDistributionX, MarginalDistributionY);
+            return new NormalCopula(Theta, CloneMarginal(MarginalDistributionX), CloneMarginal(MarginalDistributionY));
         }
 
     }

@@ -167,7 +167,7 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
-            return new AMHCopula(Theta, MarginalDistributionX, MarginalDistributionY);
+            return new AMHCopula(Theta, CloneMarginal(MarginalDistributionX), CloneMarginal(MarginalDistributionY));
         }
 
         /// <summary>
