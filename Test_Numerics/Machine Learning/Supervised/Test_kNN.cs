@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using System.Collections.Generic;
@@ -14,7 +14,7 @@ namespace MachineLearning
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -67,7 +67,7 @@ namespace MachineLearning
         /// <summary>
         /// Testing classification method in kNN. Expected a classification of 0.
         /// <para>
-        /// <see cref="https://www.geeksforgeeks.org/k-nearest-neighbours/"/>
+        /// <see href="https://www.geeksforgeeks.org/k-nearest-neighbours/"/>
         /// </para>
         /// </summary>
         [TestMethod()]
@@ -88,10 +88,10 @@ namespace MachineLearning
         }
 
         /// <summary>
-        /// Testing regression method in kNN. This test is mainly meant for demonstration. 
+        /// Testing regression method in kNN. This test is mainly meant for demonstration.
         /// I compare kNN regression against linear regression, and show kNN has better performance against the observed data.
         /// <para>
-        /// <see cref="https://otexts.com/fpp3/least-squares.html"/>
+        /// <see href="https://otexts.com/fpp3/least-squares.html"/>
         /// </para>
         /// </summary>
         [TestMethod]
@@ -130,7 +130,7 @@ namespace MachineLearning
             // Get R-Squared of predictions
             var knnR2 = GoodnessOfFit.RSquared(Y_test.Array, knnPredict);
             var lmR2 = GoodnessOfFit.RSquared(Y_test.Array, lmPredict);
-            
+
             // kNN is better
             Assert.IsGreaterThan(lmR2, knnR2 );
 

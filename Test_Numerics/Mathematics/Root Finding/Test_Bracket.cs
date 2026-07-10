@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.RootFinding;
 using System;
 
@@ -10,7 +10,7 @@ namespace Mathematics.RootFinding
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -21,7 +21,7 @@ namespace Mathematics.RootFinding
     {
 
         /// <summary>
-        /// Test with a quadratic function. 
+        /// Test with a quadratic function.
         /// </summary>
         [TestMethod()]
         public void Test_Quadratic()
@@ -33,7 +33,7 @@ namespace Mathematics.RootFinding
         }
 
         /// <summary>
-        /// Test with a cubic function. 
+        /// Test with a cubic function.
         /// </summary>
         [TestMethod()]
         public void Test_Cubic()
@@ -45,7 +45,7 @@ namespace Mathematics.RootFinding
         }
 
         /// <summary>
-        /// Test with a trigonometric function. 
+        /// Test with a trigonometric function.
         /// </summary>
         [TestMethod()]
         public void Test_Trigonometric()

@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.RootFinding;
 using System;
 
@@ -10,7 +10,7 @@ namespace Mathematics.RootFinding
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -60,7 +60,7 @@ namespace Mathematics.RootFinding
         }
 
         /// <summary>
-        /// Testing edge case where the function is discontinuous within the interval        
+        /// Testing edge case where the function is discontinuous within the interval
         /// </summary>
         public double Undefined(double x)
         {
@@ -68,6 +68,9 @@ namespace Mathematics.RootFinding
             return F;
         }
 
+        /// <summary>
+        /// Tests secant method edge-case behavior.
+        /// </summary>
         [TestMethod()]
         public void Test_Edge()
         {

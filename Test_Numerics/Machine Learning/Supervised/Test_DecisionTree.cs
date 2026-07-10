@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
@@ -14,7 +14,7 @@ namespace MachineLearning
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -24,7 +24,7 @@ namespace MachineLearning
     public class Test_DecisionTree
     {
         /// <summary>
-        /// Decision Tree Classification is tested against the Iris dataset. 
+        /// Decision Tree Classification is tested against the Iris dataset.
         /// </summary>
         [TestMethod]
         public void Test_DecisionTree_Iris()
@@ -65,11 +65,11 @@ namespace MachineLearning
         }
 
         /// <summary>
-        /// Testing the Decision Tree (DT) regression method. This test is mainly meant for demonstration. 
-        /// I compare the DT regression against linear regression, and show the DT has worse performance against the observed data. 
+        /// Testing the Decision Tree (DT) regression method. This test is mainly meant for demonstration.
+        /// I compare the DT regression against linear regression, and show the DT has worse performance against the observed data.
         /// Use a Random Forest to get better performance.
         /// <para>
-        /// <see cref="https://otexts.com/fpp3/least-squares.html"/>
+        /// <see href="https://otexts.com/fpp3/least-squares.html"/>
         /// </para>
         /// </summary>
         [TestMethod]

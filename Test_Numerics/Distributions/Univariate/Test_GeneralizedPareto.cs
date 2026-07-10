@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
@@ -15,7 +15,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -37,7 +37,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 8.3.1 page 279.
@@ -89,7 +89,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 8.3.1 page 279.
@@ -116,7 +116,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 8.3.1 page 279.
@@ -143,7 +143,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 8.3.2 page 283.
@@ -184,7 +184,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 8.3.3 page 286.
@@ -326,7 +326,7 @@ namespace Distributions.Univariate
             var GPA3 = new GeneralizedPareto(100, 10, 1);
             Assert.AreEqual(double.NaN, GPA3.StandardDeviation);
         }
-        
+
         /// <summary>
         /// Testing the skew function.
         /// </summary>
@@ -373,7 +373,7 @@ namespace Distributions.Univariate
         /// Testing maximum function.
         /// </summary>
         [TestMethod()]
-        public void Test_Maximum() 
+        public void Test_Maximum()
         {
             var GPA = new GeneralizedPareto();
             Assert.AreEqual(double.PositiveInfinity, GPA.Maximum);

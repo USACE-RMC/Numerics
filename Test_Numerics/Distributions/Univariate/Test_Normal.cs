@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -13,7 +13,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -35,7 +35,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 5.1.1 page 88.
@@ -106,7 +106,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 5.1.2 page 91.
@@ -129,7 +129,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 5.1.3 page 94.

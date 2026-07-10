@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -13,7 +13,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -49,6 +49,9 @@ namespace Distributions.Univariate
             Assert.IsLessThan(0.01d, (lambda - trueL) / trueL);
         }
 
+        /// <summary>
+        /// Verifies gamma distribution fitting with linear moments.
+        /// </summary>
         [TestMethod()]
         public void Test_GammaDist_LMOM_Fit()
         {
@@ -74,7 +77,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 7.4 page 93.
@@ -98,7 +101,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 5.3 page 52.
@@ -121,7 +124,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 6.1.3 page 138.
@@ -319,7 +322,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 7.4 page 93.
@@ -343,7 +346,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 7.4 page 93.
@@ -412,7 +415,7 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Validating Wilson Hilferty Inverse CDF function. 
+        /// Validating Wilson Hilferty Inverse CDF function.
         /// <see href="extension://efaidnbmnnnibpcajpcglclefindmkaj/https://faculty.washington.edu/smukherj/mypubs/Gamma_normal_methods_2008.pdf"/>
         /// </summary>
         [TestMethod()]

@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
 
 namespace Mathematics.Optimization
@@ -9,7 +9,7 @@ namespace Mathematics.Optimization
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     /// </list>
     /// </para>
@@ -174,7 +174,7 @@ namespace Mathematics.Optimization
 
         /// <summary>
         /// Test the MS algorithm with the Beale Function
-        /// </summary
+        /// </summary>
         [TestMethod]
         public void Test_Beale()
         {

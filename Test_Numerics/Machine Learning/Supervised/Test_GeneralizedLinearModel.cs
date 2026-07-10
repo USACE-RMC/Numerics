@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 using Numerics.Functions;
 using Numerics.MachineLearning;
@@ -18,7 +18,7 @@ namespace MachineLearning
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     /// </list>
     /// </para>
@@ -28,7 +28,7 @@ namespace MachineLearning
     {
 
         /// <summary>
-        /// Test simple linear regression. 
+        /// Test simple linear regression.
         /// </summary>
         [TestMethod]
         public void Test_SimpleLinearRegression()
@@ -51,7 +51,7 @@ namespace MachineLearning
             var true_se = 0.6026;
             var true_sigA = 0.05569;
             var true_sigB = 0.04744;
-            // var true_r2 = 0.159; Never used below. 
+            // var true_r2 = 0.159; Never used below.
             var true_df = 185;
 
             Assert.AreEqual(a, true_a, 1E-3);
@@ -61,19 +61,19 @@ namespace MachineLearning
             Assert.AreEqual(se, true_se, 1E-3);
             Assert.AreEqual(df, true_df);
 
-            // Test summary output table 
+            // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
                 //Debug.WriteLine(summary[i]);
             }
 
-            /**  
+            /*
                 Generalized Linear Model (187 obs, 2 parameters):
                 Model for predicting Consumption:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
-                Intercept           0.54510     0.05569       9.789     < 1E-15 ***
+                Intercept           0.54510     0.05569       9.789     &lt; 1E-15 ***
                 β1                  0.28057     0.04744       5.914   3.34E-009 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
@@ -90,7 +90,7 @@ namespace MachineLearning
 
 
         /// <summary>
-        /// Test multiple linear regression. 
+        /// Test multiple linear regression.
         /// </summary>
         [TestMethod]
         public void Test_MultipleLinearRegression()
@@ -127,7 +127,7 @@ namespace MachineLearning
             Assert.AreEqual(df, true_df);
 
 
-            // Test summary output table 
+            // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -135,15 +135,15 @@ namespace MachineLearning
                 //Debug.WriteLine(summary[i]);
             }
 
-            /**  
+            /*
                 Generalized Linear Model (187 obs, 5 parameters):
                 Model for predicting Consumption:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
                 Intercept           0.26729     0.03721       7.184   6.79E-013 ***
-                β1                  0.71448     0.04219      16.934     < 1E-15 ***
+                β1                  0.71448     0.04219      16.934     &lt; 1E-15 ***
                 β2                  0.04588     0.02588       1.773      0.0762 .
-                β3                 -0.04527     0.00278     -16.286     < 1E-15 ***
+                β3                 -0.04527     0.00278     -16.286     &lt; 1E-15 ***
                 β4                 -0.20484     0.10550      -1.942      0.0522 .
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
@@ -192,7 +192,7 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
-            // Test summary output table 
+            // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -200,14 +200,14 @@ namespace MachineLearning
                 Debug.WriteLine(summary[i]);
             }
 
-            /**  
+            /*
                 Generalized Linear Model (26 obs, 3 parameters):
                 Model for predicting admits:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
-                Intercept           6.32270     0.00033  19,261.610     < 1E-15 ***
-                β1                  0.00240     0.00000   5,917.117     < 1E-15 ***
-                β2                 -0.00015     0.00000    -200.082     < 1E-15 ***
+                Intercept           6.32270     0.00033  19,261.610     &lt; 1E-15 ***
+                β1                  0.00240     0.00000   5,917.117     &lt; 1E-15 ***
+                β2                 -0.00015     0.00000    -200.082     &lt; 1E-15 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -256,7 +256,7 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
-            // Test summary output table 
+            // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -264,7 +264,7 @@ namespace MachineLearning
                 //Debug.WriteLine(summary[i]);
             }
 
-            /**  
+            /*
                 Generalized Linear Model (400 obs, 4 parameters):
                 Model for predicting admits:
                 Parameters:
@@ -321,7 +321,7 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
-            // Test summary output table 
+            // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -329,7 +329,7 @@ namespace MachineLearning
                 //Debug.WriteLine(summary[i]);
             }
 
-            /**  
+            /*
                 Generalized Linear Model (400 obs, 4 parameters):
                 Model for predicting admits:
                 Parameters:
@@ -388,7 +388,7 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
-            // Test summary output table 
+            // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -396,7 +396,7 @@ namespace MachineLearning
                 Debug.WriteLine(summary[i]);
             }
 
-            /**  
+            /*
                 Generalized Linear Model (400 obs, 4 parameters):
                 Model for predicting admits:
                 Parameters:

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.LinearAlgebra;
 
@@ -10,7 +10,7 @@ namespace Mathematics.LinearAlgebra
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -62,14 +62,13 @@ namespace Mathematics.LinearAlgebra
 
         /// <summary>
         /// Test Cholesky Decomposition method with known values from textbook.
-        /// <para>
         /// </summary>
-       
-        
+
+
         [TestMethod()]
         public void Test_CholeskyDecompVals()
         {
-            
+
             var A = new Matrix(3);
             A[0, 0] = 16d;
             A[0, 1] = 4d;
@@ -94,7 +93,7 @@ namespace Mathematics.LinearAlgebra
             L[2, 1] = -3d;
             L[2, 2] = 3d;
 
-            //Test Decomposition 
+            //Test Decomposition
             var prod = L;
             for (int i = 0; i < prod.NumberOfRows; i++)
             {
@@ -121,7 +120,7 @@ namespace Mathematics.LinearAlgebra
             var chol = new CholeskyDecomposition(A);
 
             // Test Determinant
-            double true_det = 6.356108; //Math.Log(576) 
+            double true_det = 6.356108; //Math.Log(576)
             double det = chol.LogDeterminant();
             Assert.AreEqual(det, true_det, 0.0001d);
         }
@@ -182,7 +181,7 @@ namespace Mathematics.LinearAlgebra
             A[2, 2] = 22d;
             var chol = new CholeskyDecomposition(A);
 
-            //Test Solve 
+            //Test Solve
             var B = new Vector(new[] { 16d, 18d, -22d });
             var trueX = new Vector(new[] { 1d, 2d, -1d });
             var X = chol.Solve(B);
@@ -192,7 +191,7 @@ namespace Mathematics.LinearAlgebra
 
         /// <summary>
         /// Test Forward-substitution method
-        /// </summary>        
+        /// </summary>
         [TestMethod()]
         public void Test_Forward()
         {
@@ -207,7 +206,7 @@ namespace Mathematics.LinearAlgebra
             A[2, 1] = -4d;
             A[2, 2] = 22d;
             var chol = new CholeskyDecomposition(A);
-      
+
             var b = new Vector(new double[] { 16d, 18d, -22d });
             var true_y = new double[] { 4d, 7d, -3d };
             var y = chol.Forward(b);
@@ -217,7 +216,7 @@ namespace Mathematics.LinearAlgebra
 
         /// <summary>
         /// Tests Back-substitution method
-        /// </summary>        
+        /// </summary>
         [TestMethod()]
         public void Test_Back()
         {
@@ -232,14 +231,14 @@ namespace Mathematics.LinearAlgebra
             A[2, 1] = -4d;
             A[2, 2] = 22d;
             var chol = new CholeskyDecomposition(A);
-            
+
             var Y = new Vector(new double[] { 4d, 7d, -3d });
             var right_x = new double[] { 1d, 2d, -1d };
             var x = chol.Backward(Y);
             for (int i = 0; i < x.Length; i++)
                 Assert.AreEqual(x[i], right_x[i], 0.0001d);
         }
-  
+
     }
 }
 

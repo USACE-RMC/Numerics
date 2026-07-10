@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
 namespace Distributions.Univariate
@@ -12,7 +12,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -34,7 +34,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 9.2.1 page 311.
@@ -64,7 +64,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 9.2.1 page 311.
@@ -97,7 +97,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 9.1.1 page 313.
@@ -124,7 +124,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "Flood Frequency Analysis", A.R. Rao & K.H. Hamed, CRC Press, 2000.
+        /// Reference: "Flood Frequency Analysis", A.R. Rao &amp; K.H. Hamed, CRC Press, 2000.
         /// </para>
         /// <para>
         /// Example 9.2.2 page 315.
@@ -263,7 +263,7 @@ namespace Distributions.Univariate
             var l2 = new GeneralizedLogistic(100, 10, 1);
             Assert.AreEqual(95, l2.Mode);
         }
-        
+
         /// <summary>
         /// Checking Standard deviation.
         /// </summary>
@@ -329,7 +329,7 @@ namespace Distributions.Univariate
         /// Testing maximum function.
         /// </summary>
         [TestMethod()]
-        public void Test_Maximum() 
+        public void Test_Maximum()
         {
             var l = new GeneralizedLogistic();
             Assert.AreEqual(double.PositiveInfinity, l.Maximum);

@@ -80,6 +80,9 @@ namespace Sampling.MCMC
             return (rhats, esss, acfs);
         }
 
+        /// <summary>
+        /// Verifies recomputation preserves the output sample reference.
+        /// </summary>
         [TestMethod]
         public void Recompute_PreservesOutputReference()
         {
@@ -93,6 +96,9 @@ namespace Sampling.MCMC
             Assert.HasCount(1000, results.Output, "Output count must be preserved.");
         }
 
+        /// <summary>
+        /// Verifies recomputation preserves MAP results.
+        /// </summary>
         [TestMethod]
         public void Recompute_PreservesMAP()
         {
@@ -108,6 +114,9 @@ namespace Sampling.MCMC
             Assert.AreEqual(fitnessBefore, results.MAP.Fitness, 1e-12, "MAP fitness must not change.");
         }
 
+        /// <summary>
+        /// Verifies recomputation preserves R-hat diagnostics.
+        /// </summary>
         [TestMethod]
         public void Recompute_PreservesRhat()
         {
@@ -123,6 +132,9 @@ namespace Sampling.MCMC
             }
         }
 
+        /// <summary>
+        /// Verifies recomputation preserves effective sample size diagnostics.
+        /// </summary>
         [TestMethod]
         public void Recompute_PreservesESS()
         {
@@ -138,6 +150,9 @@ namespace Sampling.MCMC
             }
         }
 
+        /// <summary>
+        /// Verifies recomputation preserves autocorrelation diagnostics.
+        /// </summary>
         [TestMethod]
         public void Recompute_PreservesAutocorrelation()
         {
@@ -162,6 +177,9 @@ namespace Sampling.MCMC
             }
         }
 
+        /// <summary>
+        /// Verifies recomputation narrows credible intervals when alpha increases.
+        /// </summary>
         [TestMethod]
         public void Recompute_NarrowsCIWhenAlphaIncreases()
         {
@@ -183,6 +201,9 @@ namespace Sampling.MCMC
             }
         }
 
+        /// <summary>
+        /// Verifies recomputation widens credible intervals when alpha decreases.
+        /// </summary>
         [TestMethod]
         public void Recompute_WidensCIWhenAlphaDecreases()
         {
@@ -204,6 +225,9 @@ namespace Sampling.MCMC
             }
         }
 
+        /// <summary>
+        /// Verifies recomputation preserves mean and median summaries.
+        /// </summary>
         [TestMethod]
         public void Recompute_PreservesMeanAndMedian()
         {
@@ -223,6 +247,9 @@ namespace Sampling.MCMC
             }
         }
 
+        /// <summary>
+        /// Verifies recomputation on empty results does not throw.
+        /// </summary>
         [TestMethod]
         public void Recompute_OnEmptyResults_DoesNotThrow()
         {

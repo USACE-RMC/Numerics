@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.SpecialFunctions;
 
@@ -222,7 +222,7 @@ namespace Mathematics.SpecialFunctions
         public void Test_Combinations()
         {
             int[,] valid = new int[7,3]
-                { 
+                {
                     { 1, 0 ,0 },
                     { 0, 1, 0 },
                     { 0, 0, 1 },

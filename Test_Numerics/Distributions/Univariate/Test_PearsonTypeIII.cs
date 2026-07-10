@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -13,7 +13,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -35,7 +35,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 6.3 page 70.
@@ -105,7 +105,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 6.1 page 64.
@@ -150,7 +150,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 6.1 page 64.
@@ -170,10 +170,10 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
-        /// Example 6.1 & 6.3 page 64-70.
+        /// Example 6.1 &amp; 6.3 page 64-70.
         /// </para>
         /// </remarks>
         [TestMethod()]
@@ -347,7 +347,7 @@ namespace Distributions.Univariate
         /// Testing maximum function.
         /// </summary>
         [TestMethod()]
-        public void Test_Maximum() 
+        public void Test_Maximum()
         {
             var P3 = new PearsonTypeIII();
             Assert.AreEqual(double.PositiveInfinity, P3.Maximum);

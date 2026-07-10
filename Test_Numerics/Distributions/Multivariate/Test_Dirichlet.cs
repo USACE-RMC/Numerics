@@ -132,7 +132,7 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Test that Mode throws when any alpha <= 1.
+        /// Test that Mode throws when any alpha &lt;= 1.
         /// </summary>
         [TestMethod]
         public void Test_Mode_Invalid()
