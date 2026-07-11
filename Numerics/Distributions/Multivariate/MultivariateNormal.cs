@@ -323,11 +323,198 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Attempts to set the distribution parameters without throwing: the covariance
+        /// is factorized eagerly, and when it is not positive-definite the density is
+        /// marked invalid — <see cref="LogPDF"/> returns negative infinity and
+        /// <see cref="PDF"/> returns zero until a valid covariance is set.
+        /// </summary>
+        /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
+        /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
+        /// <returns>True when the covariance is positive-definite and the density is usable.</returns>
+        /// <remarks>
+        /// The non-throwing mutable path for samplers and likelihood loops that swap
+        /// covariances per evaluation (e.g., MCMC proposals of correlation parameters):
+        /// an infeasible proposal scores −∞ and is rejected instead of raising an
+        /// exception. <see cref="SetParameters"/> keeps its throwing contract.
+        /// </remarks>
+        public bool TrySetParameters(double[] mean, double[,] covariance)
+        {
+            // The Cholesky constructor itself throws on strongly indefinite matrices
+            // (negative pivots) while merely flagging weakly non-positive-definite
+            // ones, so the non-throwing contract absorbs both failure modes.
+            try
+            {
+                if (ValidateParameters(mean, covariance, false) is null)
+                {
+                    SetParameters(mean, covariance);
+                    _densityValid = true;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"TrySetParameters rejected a covariance: {ex.Message}");
+            }
+            _densityValid = false;
+            return false;
+        }
+
+        /// <summary>
+        /// Attempts to swap the covariance matrix in place (the mean is kept) without
+        /// throwing; see <see cref="TrySetParameters"/> for the invalid-density
+        /// contract.
+        /// </summary>
+        /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
+        /// <returns>True when the covariance is positive-definite and the density is usable.</returns>
+        public bool TrySetCovariance(double[,] covariance)
+        {
+            return TrySetParameters(_mean, covariance);
+        }
+
+        /// <summary>
+        /// Whether the current covariance factorization supports density evaluation.
+        /// False after a failed <see cref="TrySetParameters"/>/<see cref="TrySetCovariance"/>
+        /// until a valid covariance is set.
+        /// </summary>
+        public bool IsDensityValid => _densityValid;
+
+        /// <summary>Tracks the non-throwing mutable-covariance state.</summary>
+        private bool _densityValid = true;
+
+        /// <summary>
+        /// Returns the marginal distribution over a subset of the dimensions — the
+        /// sub-mean and sub-covariance at the given indices (the marginal of a joint
+        /// Gaussian is the corresponding sub-Gaussian).
+        /// </summary>
+        /// <param name="indices">The zero-based dimension indices to keep, in the output order.</param>
+        /// <returns>The marginal distribution.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the indices are null, empty, repeated, or out of range.</exception>
+        public MultivariateNormal Marginal(params int[] indices)
+        {
+            ValidateIndices(indices, Dimension);
+            var mean = new double[indices.Length];
+            var covariance = new double[indices.Length, indices.Length];
+            for (int i = 0; i < indices.Length; i++)
+            {
+                mean[i] = _mean[indices[i]];
+                for (int j = 0; j < indices.Length; j++)
+                {
+                    covariance[i, j] = _covariance[indices[i], indices[j]];
+                }
+            }
+            return new MultivariateNormal(mean, covariance);
+        }
+
+        /// <summary>
+        /// Returns the conditional distribution of the remaining dimensions given
+        /// observed values at a subset of the dimensions:
+        /// μ_c = μ₁ + Σ₁₂·Σ₂₂⁻¹·(x₂ − μ₂) and Σ_c = Σ₁₁ − Σ₁₂·Σ₂₂⁻¹·Σ₂₁ (the Schur
+        /// complement), with Σ₂₂ solved through its Cholesky factorization.
+        /// </summary>
+        /// <param name="observedIndices">The zero-based dimension indices of the observed subset.</param>
+        /// <param name="observedValues">The observed values, parallel to the indices.</param>
+        /// <returns>The conditional distribution over the remaining dimensions, in ascending dimension order.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the indices are invalid, the values length differs, or every dimension is observed.</exception>
+        /// <remarks>
+        /// Reference: Eaton, M.L. (1983). Multivariate Statistics: A Vector Space
+        /// Approach. Wiley. (The Gaussian conditioning identities.)
+        /// </remarks>
+        public MultivariateNormal Conditional(int[] observedIndices, double[] observedValues)
+        {
+            ValidateIndices(observedIndices, Dimension);
+            if (observedValues == null || observedValues.Length != observedIndices.Length)
+                throw new ArgumentOutOfRangeException(nameof(observedValues), "The observed values must parallel the observed indices.");
+            if (observedIndices.Length >= Dimension)
+                throw new ArgumentOutOfRangeException(nameof(observedIndices), "At least one dimension must remain unobserved.");
+
+            // The remaining (free) dimensions in ascending order.
+            var isObserved = new bool[Dimension];
+            foreach (int index in observedIndices)
+                isObserved[index] = true;
+            var free = new int[Dimension - observedIndices.Length];
+            int f = 0;
+            for (int i = 0; i < Dimension; i++)
+            {
+                if (!isObserved[i]) free[f++] = i;
+            }
+
+            // Partition: Σ22 (observed), Σ12 (free × observed), and the innovation
+            // z = x₂ − μ₂.
+            int nObserved = observedIndices.Length, nFree = free.Length;
+            var sigma22 = new Matrix(nObserved, nObserved);
+            for (int i = 0; i < nObserved; i++)
+            {
+                for (int j = 0; j < nObserved; j++)
+                    sigma22[i, j] = _covariance[observedIndices[i], observedIndices[j]];
+            }
+            var cholesky22 = new CholeskyDecomposition(sigma22);
+            if (!cholesky22.IsPositiveDefinite)
+                throw new ArgumentOutOfRangeException(nameof(observedIndices), "The observed sub-covariance is not positive-definite.");
+
+            var z = new double[nObserved];
+            for (int i = 0; i < nObserved; i++)
+                z[i] = observedValues[i] - _mean[observedIndices[i]];
+            var solvedZ = cholesky22.Solve(new Vector(z));
+
+            // Solve Σ22⁻¹·Σ21 column-by-column (Σ21 columns are the free rows of Σ12ᵀ).
+            var solvedColumns = new Vector[nFree];
+            for (int i = 0; i < nFree; i++)
+            {
+                var column = new double[nObserved];
+                for (int j = 0; j < nObserved; j++)
+                    column[j] = _covariance[observedIndices[j], free[i]];
+                solvedColumns[i] = cholesky22.Solve(new Vector(column));
+            }
+
+            var conditionalMean = new double[nFree];
+            var conditionalCovariance = new double[nFree, nFree];
+            for (int i = 0; i < nFree; i++)
+            {
+                double meanAdjustment = 0d;
+                for (int j = 0; j < nObserved; j++)
+                    meanAdjustment += _covariance[free[i], observedIndices[j]] * solvedZ[j];
+                conditionalMean[i] = _mean[free[i]] + meanAdjustment;
+                for (int k = 0; k < nFree; k++)
+                {
+                    double schur = 0d;
+                    for (int j = 0; j < nObserved; j++)
+                        schur += _covariance[free[i], observedIndices[j]] * solvedColumns[k][j];
+                    conditionalCovariance[i, k] = _covariance[free[i], free[k]] - schur;
+                }
+            }
+            return new MultivariateNormal(conditionalMean, conditionalCovariance);
+        }
+
+        /// <summary>
+        /// Validates a dimension-index subset: non-null, non-empty, in range, and
+        /// without repeats.
+        /// </summary>
+        /// <param name="indices">The indices to validate.</param>
+        /// <param name="dimension">The distribution dimension.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the subset is invalid.</exception>
+        private static void ValidateIndices(int[] indices, int dimension)
+        {
+            if (indices == null || indices.Length == 0)
+                throw new ArgumentOutOfRangeException(nameof(indices), "At least one dimension index is required.");
+            var seen = new bool[dimension];
+            foreach (int index in indices)
+            {
+                if (index < 0 || index >= dimension)
+                    throw new ArgumentOutOfRangeException(nameof(indices), "A dimension index is out of range.");
+                if (seen[index])
+                    throw new ArgumentOutOfRangeException(nameof(indices), "Dimension indices must not repeat.");
+                seen[index] = true;
+            }
+        }
+
+        /// <summary>
         /// The Probability Density Function (PDF) of the distribution evaluated at a point X.
         /// </summary>
         /// <param name="x">A point in the distribution space.</param>
         public override double PDF(double[] x)
         {
+            if (!_densityValid) return 0d;
             return Math.Exp(-0.5d * Mahalanobis(x) + _lnconstant);
         }
 
@@ -337,6 +524,7 @@ namespace Numerics.Distributions
         /// <param name="x">The vector of x values.</param>
         public override double LogPDF(double[] x)
         {
+            if (!_densityValid) return double.NegativeInfinity;
             double f = -0.5d * Mahalanobis(x) + _lnconstant;
             if (double.IsNaN(f) || double.IsInfinity(f)) return double.NegativeInfinity;
             return f;

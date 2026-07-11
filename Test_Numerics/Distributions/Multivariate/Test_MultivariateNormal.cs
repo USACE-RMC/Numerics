@@ -21,6 +21,129 @@ namespace Distributions.Multivariate
     {
 
         /// <summary>
+        /// Asserts the action throws an ArgumentOutOfRangeException (net481-compatible).
+        /// </summary>
+        /// <param name="action">The action expected to throw.</param>
+        private static void AssertThrowsOutOfRange(Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return;
+            }
+            Assert.Fail("Expected an ArgumentOutOfRangeException.");
+        }
+
+
+        /// <summary>
+        /// Verifies the non-throwing mutable-covariance path: a positive-definite swap
+        /// evaluates normally, a non-positive-definite swap marks the density invalid
+        /// (LogPDF = -inf, PDF = 0) without throwing, and a subsequent valid swap
+        /// restores evaluation.
+        /// </summary>
+        [TestMethod()]
+        public void Test_TrySetCovariance_NonThrowingInvalidState()
+        {
+            var mvn = new MultivariateNormal(new[] { 1d, 2d }, new[,] { { 1d, 0.3d }, { 0.3d, 2d } });
+            double validLogPdf = mvn.LogPDF(new[] { 1.2d, 1.8d });
+            Assert.IsTrue(mvn.IsDensityValid);
+            Assert.IsTrue(!double.IsNaN(validLogPdf) && !double.IsInfinity(validLogPdf));
+
+            // A non-positive-definite covariance: correlation beyond one.
+            Assert.IsFalse(mvn.TrySetCovariance(new[,] { { 1d, 1.5d }, { 1.5d, 1d } }));
+            Assert.IsFalse(mvn.IsDensityValid);
+            Assert.IsTrue(double.IsNegativeInfinity(mvn.LogPDF(new[] { 1.2d, 1.8d })));
+            Assert.AreEqual(0d, mvn.PDF(new[] { 1.2d, 1.8d }), 0d);
+
+            // Restore with the original covariance: the density comes back exactly.
+            Assert.IsTrue(mvn.TrySetCovariance(new[,] { { 1d, 0.3d }, { 0.3d, 2d } }));
+            Assert.IsTrue(mvn.IsDensityValid);
+            Assert.AreEqual(validLogPdf, mvn.LogPDF(new[] { 1.2d, 1.8d }), 1E-12);
+
+            // TrySetParameters also moves the mean.
+            Assert.IsTrue(mvn.TrySetParameters(new[] { 0d, 0d }, new[,] { { 1d, 0d }, { 0d, 1d } }));
+            Assert.AreEqual(-Math.Log(2d * Math.PI), mvn.LogPDF(new[] { 0d, 0d }), 1E-12);
+        }
+
+        /// <summary>
+        /// Verifies the marginal utility: the sub-mean and sub-covariance at the kept
+        /// indices, including a reordered subset, and the index validation matrix.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Marginal_SubsetAndValidation()
+        {
+            var mean = new[] { 1d, 2d, 3d };
+            var covariance = new[,]
+            {
+                { 4.0d, 1.2d, 0.5d },
+                { 1.2d, 9.0d, 2.1d },
+                { 0.5d, 2.1d, 16.0d }
+            };
+            var mvn = new MultivariateNormal(mean, covariance);
+
+            var marginal = mvn.Marginal(2, 0);
+            Assert.AreEqual(2, marginal.Dimension);
+            Assert.AreEqual(3d, marginal.Mean[0], 0d);
+            Assert.AreEqual(1d, marginal.Mean[1], 0d);
+            Assert.AreEqual(16d, marginal.Covariance[0, 0], 0d);
+            Assert.AreEqual(0.5d, marginal.Covariance[0, 1], 0d);
+            Assert.AreEqual(4d, marginal.Covariance[1, 1], 0d);
+
+            // The marginal of a joint Gaussian is its sub-Gaussian: densities agree
+            // with a directly constructed distribution.
+            var direct = new MultivariateNormal(new[] { 3d, 1d },
+                new[,] { { 16d, 0.5d }, { 0.5d, 4d } });
+            Assert.AreEqual(direct.LogPDF(new[] { 2.5d, 1.4d }), marginal.LogPDF(new[] { 2.5d, 1.4d }), 1E-12);
+
+            AssertThrowsOutOfRange(() => mvn.Marginal());
+            AssertThrowsOutOfRange(() => mvn.Marginal(0, 0));
+            AssertThrowsOutOfRange(() => mvn.Marginal(3));
+        }
+
+        /// <summary>
+        /// Verifies the conditional utility against hand-computed Gaussian
+        /// conditioning: for the bivariate case, X1 | X2 = x2 has mean
+        /// mu1 + rho*(s1/s2)*(x2 - mu2) and variance s1^2*(1 - rho^2); a trivariate
+        /// case checks the Schur complement, and observing everything throws.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Conditional_ClosedFormsAndValidation()
+        {
+            // Bivariate closed form.
+            double mu1 = 4d, mu2 = 2d, s1 = 2d, s2 = 3d, rho = 0.6d;
+            var bivariate = MultivariateNormal.Bivariate(mu1, mu2, s1, s2, rho);
+            var conditional = bivariate.Conditional(new[] { 1 }, new[] { 3.5d });
+            Assert.AreEqual(1, conditional.Dimension);
+            Assert.AreEqual(mu1 + rho * (s1 / s2) * (3.5d - mu2), conditional.Mean[0], 1E-12);
+            Assert.AreEqual(s1 * s1 * (1d - rho * rho), conditional.Covariance[0, 0], 1E-12);
+
+            // Trivariate Schur complement, observing the middle dimension.
+            var mean = new[] { 1d, 2d, 3d };
+            var covariance = new[,]
+            {
+                { 4.0d, 1.2d, 0.5d },
+                { 1.2d, 9.0d, 2.1d },
+                { 0.5d, 2.1d, 16.0d }
+            };
+            var trivariate = new MultivariateNormal(mean, covariance);
+            var given = trivariate.Conditional(new[] { 1 }, new[] { 4.0d });
+            // mu_c = mu_{0,2} + Sigma_{[0,2],1} * (4 - 2) / 9
+            Assert.AreEqual(1d + 1.2d * 2d / 9d, given.Mean[0], 1E-12);
+            Assert.AreEqual(3d + 2.1d * 2d / 9d, given.Mean[1], 1E-12);
+            // Sigma_c = Sigma_{[0,2],[0,2]} - outer(Sigma_{[0,2],1}) / 9
+            Assert.AreEqual(4d - 1.2d * 1.2d / 9d, given.Covariance[0, 0], 1E-12);
+            Assert.AreEqual(0.5d - 1.2d * 2.1d / 9d, given.Covariance[0, 1], 1E-12);
+            Assert.AreEqual(16d - 2.1d * 2.1d / 9d, given.Covariance[1, 1], 1E-12);
+
+            AssertThrowsOutOfRange(() => trivariate.Conditional(new[] { 0, 1, 2 }, new[] { 1d, 2d, 3d }));
+            AssertThrowsOutOfRange(() => trivariate.Conditional(new[] { 1 }, new[] { 1d, 2d }));
+        }
+
+
+        /// <summary>
         /// Verified using Accord.Net
         /// </summary>
         [TestMethod()]
