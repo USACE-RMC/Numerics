@@ -125,6 +125,38 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Attempts to create a distribution that can be initialized without external component distributions.
+        /// </summary>
+        /// <param name="distributionType">Distribution type.</param>
+        /// <param name="distribution">
+        /// When this method returns <see langword="true"/>, contains a distribution whose
+        /// <see cref="UnivariateDistributionBase.Type"/> matches <paramref name="distributionType"/>;
+        /// otherwise, <see langword="null"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when the requested distribution can be created without external components;
+        /// otherwise, <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// Composite distributions such as <see cref="CompetingRisks"/> and <see cref="Mixture"/>,
+        /// user-defined distributions, and undefined enumeration values cannot be created by this method.
+        /// </remarks>
+        public static bool TryCreateDistribution(UnivariateDistributionType distributionType, out UnivariateDistributionBase? distribution)
+        {
+            if (!Enum.IsDefined(typeof(UnivariateDistributionType), distributionType) ||
+                distributionType == UnivariateDistributionType.CompetingRisks ||
+                distributionType == UnivariateDistributionType.Mixture ||
+                distributionType == UnivariateDistributionType.UserDefined)
+            {
+                distribution = null;
+                return false;
+            }
+
+            distribution = CreateDistribution(distributionType);
+            return true;
+        }
+
+        /// <summary>
         /// Create a distribution from XElement.
         /// </summary>
         /// <param name="xElement">The XElement to deserialize into a univariate distribution.</param>

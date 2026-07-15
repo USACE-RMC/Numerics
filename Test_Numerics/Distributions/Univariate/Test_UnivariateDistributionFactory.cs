@@ -24,11 +24,18 @@ namespace Distributions.Univariate
                 {
                     AssertThrows<NotSupportedException>(
                         () => UnivariateDistributionFactory.CreateDistribution(type));
+                    Assert.IsFalse(
+                        UnivariateDistributionFactory.TryCreateDistribution(type, out var unsupportedDistribution));
+                    Assert.IsNull(unsupportedDistribution);
                 }
                 else
                 {
                     var distribution = UnivariateDistributionFactory.CreateDistribution(type);
                     Assert.AreEqual(type, distribution.Type);
+                    Assert.IsTrue(
+                        UnivariateDistributionFactory.TryCreateDistribution(type, out var createdDistribution));
+                    Assert.IsNotNull(createdDistribution);
+                    Assert.AreEqual(type, createdDistribution.Type);
                 }
             }
         }
@@ -41,6 +48,9 @@ namespace Distributions.Univariate
         {
             AssertThrows<ArgumentOutOfRangeException>(
                 () => UnivariateDistributionFactory.CreateDistribution((UnivariateDistributionType)int.MaxValue));
+            Assert.IsFalse(UnivariateDistributionFactory.TryCreateDistribution(
+                (UnivariateDistributionType)int.MaxValue, out var distribution));
+            Assert.IsNull(distribution);
         }
 
         /// <summary>
