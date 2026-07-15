@@ -397,22 +397,32 @@ namespace Numerics.Data.Statistics
         public void AddData(double data)
         {
             SortBins();
-            int index = GetBinIndexOf(data);
             if (data <= LowerBound)
             {
-                _bins.First().LowerBound = data;
+                if (data < LowerBound)
+                {
+                    _bins.First().LowerBound = data;
+                    LowerBound = data;
+                    _areBinsSorted = false;
+                }
                 _bins.First().Frequency += 1;
-                _areBinsSorted = false;
             }
             else if (data >= UpperBound)
             {
-                _bins.Last().UpperBound = data;
+                if (data > UpperBound)
+                {
+                    _bins.Last().UpperBound = data;
+                    UpperBound = data;
+                }
                 _bins.Last().Frequency += 1;
-                _areBinsSorted = false;
             }
-            else if (index >= 0 && index < NumberOfBins)
+            else
             {
-                _bins[index].Frequency += 1;
+                int index = GetBinIndexOf(data);
+                if (index >= 0 && index < NumberOfBins)
+                {
+                    _bins[index].Frequency += 1;
+                }
             }
         }
 

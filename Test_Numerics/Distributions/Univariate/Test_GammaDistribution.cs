@@ -429,5 +429,27 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.3566877, G2.WilsonHilfertyInverseCDF(0.05),1e-04);
             Assert.AreEqual(0.5326, G2.WilsonHilfertyInverseCDF(0.10), 1e-04);
         }
+
+        /// <summary>
+        /// Verifies the frequency-factor skew derivative at and around zero skew.
+        /// </summary>
+        [TestMethod]
+        public void Test_PartialKp_ZeroSkewLimitAndContinuity()
+        {
+            const double probability = 0.9d;
+            double z = Normal.StandardZ(probability);
+            double expected = (z * z - 1.0d) / 6.0d;
+
+            Assert.AreEqual(expected, GammaDistribution.PartialKp(0.0d, probability), 1E-15);
+            Assert.AreEqual(expected, GammaDistribution.PartialKp(9.9E-5, probability), 1E-15);
+            Assert.AreEqual(expected, GammaDistribution.PartialKp(-9.9E-5, probability), 1E-15);
+            Assert.AreEqual(expected, GammaDistribution.PartialKp(1.01E-4, probability), 1E-4);
+            Assert.AreEqual(expected, GammaDistribution.PartialKp(-1.01E-4, probability), 1E-4);
+
+            const double h = 1E-3;
+            double finiteDifference = (GammaDistribution.FrequencyFactorKp(h, probability) -
+                                       GammaDistribution.FrequencyFactorKp(-h, probability)) / (2.0d * h);
+            Assert.AreEqual(expected, finiteDifference, 1E-4);
+        }
     }
 }

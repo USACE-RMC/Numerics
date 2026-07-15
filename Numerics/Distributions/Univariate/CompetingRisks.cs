@@ -56,6 +56,7 @@ namespace Numerics.Distributions
         private bool _empiricalCDFCreated = false;
         private double[,] _correlationMatrix = null!;
         private bool _mvnCreated = false;
+        private Probability.DependencyType _dependency = Probability.DependencyType.Independent;
         private MultivariateNormal _mvn = null!;
 
         // Soft finite floor used in tail arithmetic before returning the final log-density.
@@ -85,7 +86,18 @@ namespace Numerics.Distributions
         /// <summary>
         /// The dependency between random variables. 
         /// </summary>
-        public Probability.DependencyType Dependency { get; set; } = Probability.DependencyType.Independent;
+        public Probability.DependencyType Dependency
+        {
+            get { return _dependency; }
+            set
+            {
+                if (_dependency != value)
+                {
+                    _dependency = value;
+                    _mvnCreated = false;
+                }
+            }
+        }
 
         /// <summary>
         /// The correlation matrix used for modeling dependency between the marginal distributions.
@@ -1022,7 +1034,6 @@ namespace Numerics.Distributions
             var sigma = new double[D, D];
             if (Dependency == Probability.DependencyType.PerfectlyNegative)
             {
-                CorrelationMatrix = new double[D, D];
                 double rho = -1d / (D - 1d) + Math.Sqrt(Tools.DoubleMachineEpsilon);
                 for (int i = 0; i < D; i++)
                 {

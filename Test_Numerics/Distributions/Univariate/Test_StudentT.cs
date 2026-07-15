@@ -36,7 +36,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(result, pdf, 1E-10);
             t = new StudentT(2.5d, 0.5d, 4d);
             pdf = t.PDF(1.4d);
-            result = 0.0516476521260042d;
+            result = 0.1032953042520084d;
             Assert.AreEqual(result, pdf, 1E-10);
         }
 
@@ -229,6 +229,49 @@ namespace Distributions.Univariate
             var t = new StudentT();
             Assert.AreEqual(double.NegativeInfinity, t.Minimum);
             Assert.AreEqual(double.PositiveInfinity, t.Maximum);
+        }
+
+        /// <summary>
+        /// Verifies that location-scale Student-t densities include the scale Jacobian.
+        /// </summary>
+        [TestMethod]
+        public void Test_StudentT_PDF_LocationScaleIdentityAndNormalization()
+        {
+            var standard = new StudentT(0.0d, 1.0d, 4.0d);
+            var scaled = new StudentT(2.5d, 0.5d, 4.0d);
+            const double x = 1.4d;
+            double z = (x - scaled.Mu) / scaled.Sigma;
+
+            Assert.AreEqual(standard.PDF(z) / scaled.Sigma, scaled.PDF(x), 1E-14);
+
+            const int intervals = 100000;
+            double lower = scaled.Mu - 100.0d * scaled.Sigma;
+            double upper = scaled.Mu + 100.0d * scaled.Sigma;
+            double width = (upper - lower) / intervals;
+            double integral = 0.5d * (scaled.PDF(lower) + scaled.PDF(upper));
+            for (int i = 1; i < intervals; i++)
+            {
+                integral += scaled.PDF(lower + i * width);
+            }
+
+            Assert.AreEqual(1.0d, integral * width, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that extreme finite Student-t quantiles retain location and scale.
+        /// </summary>
+        [TestMethod]
+        public void Test_StudentT_InverseCDF_ExtremeTailRetainsLocationAndScale()
+        {
+            const double probability = 1E-155;
+            var distribution = new StudentT(2.0d, 3.0d, 1.0d);
+
+            double actual = distribution.InverseCDF(probability);
+            double expected = 2.0d - 3.0d / (Math.PI * probability);
+
+            Assert.IsFalse(double.IsInfinity(actual));
+            Assert.AreEqual(expected, actual, Math.Abs(expected) * 1E-12);
+            Assert.IsLessThan(distribution.InverseCDF(1E-150), actual);
         }
     }
 }

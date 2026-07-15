@@ -1,6 +1,8 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics;
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Utilities
 {
@@ -333,6 +335,43 @@ namespace Utilities
             List<int> indicators = new List<int> { 1, 0, 0 };
             var result = Tools.Max(values, indicators);
             Assert.AreEqual(1, result);
+        }
+
+        /// <summary>
+        /// Verifies concurrent additions are committed exactly once and return their serialization positions.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_CommitsEveryConcurrentUpdate()
+        {
+            const int updateCount = 25000;
+            double total = 0d;
+            var committedValues = new double[updateCount];
+
+            Parallel.For(
+                0,
+                updateCount,
+                index => committedValues[index] = Tools.ParallelAdd(ref total, 1d));
+
+            Assert.AreEqual((double)updateCount, total);
+            Array.Sort(committedValues);
+            for (int i = 0; i < committedValues.Length; i++)
+            {
+                Assert.AreEqual(i + 1d, committedValues[i]);
+            }
+        }
+
+        /// <summary>
+        /// Verifies the compare-and-swap loop terminates when the accumulator contains NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_NaNAccumulatorTerminates()
+        {
+            double total = double.NaN;
+
+            double result = Tools.ParallelAdd(ref total, 1d);
+
+            Assert.IsTrue(double.IsNaN(total));
+            Assert.IsTrue(double.IsNaN(result));
         }
 
         /// <summary>

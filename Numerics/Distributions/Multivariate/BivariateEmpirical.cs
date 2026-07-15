@@ -143,6 +143,7 @@ namespace Numerics.Distributions
             X1Values = x1Values.ToArray();
             X2Values = x2Values.ToArray();
             ProbabilityValues = pValues;
+            bilinear = null;
             
         }
 

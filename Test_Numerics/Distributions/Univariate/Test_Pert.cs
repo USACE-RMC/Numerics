@@ -255,5 +255,27 @@ namespace Distributions.Univariate
             Assert.AreEqual(1, p2.Minimum);
             Assert.AreEqual(2, p2.Maximum);
         }
+
+        /// <summary>
+        /// Preserves the TotalRisk convention that equal PERT inputs represent a fixed value.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pert_EqualInputsRemainFixedValue()
+        {
+            const double value = 42.0d;
+            var distribution = new Pert(value, value, value);
+
+            Assert.IsTrue(distribution.ParametersValid);
+            Assert.AreEqual(value, distribution.Mean);
+            Assert.AreEqual(value, distribution.Median);
+            Assert.AreEqual(value, distribution.Mode);
+            Assert.AreEqual(0.0d, distribution.StandardDeviation);
+
+            double[] probabilities = [0.0d, 0.01d, 0.5d, 0.99d, 1.0d];
+            foreach (double probability in probabilities)
+            {
+                Assert.AreEqual(value, distribution.InverseCDF(probability));
+            }
+        }
     }
 }

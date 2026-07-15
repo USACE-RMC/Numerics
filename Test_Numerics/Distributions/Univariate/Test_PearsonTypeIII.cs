@@ -356,6 +356,48 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity, P3ii.Maximum);
         }
 
+        /// <summary>
+        /// Verifies signed, finite Pearson III L-moments and their Normal limit.
+        /// </summary>
+        [TestMethod]
+        public void Test_LinearMoments_SignedSmallAndZeroSkew()
+        {
+            var distribution = new PearsonTypeIII();
+            double[] normalMoments = distribution.LinearMomentsFromParameters([10.0d, 2.0d, 0.0d]);
+            Assert.AreEqual(10.0d, normalMoments[0]);
+            Assert.AreEqual(2.0d / Math.Sqrt(Math.PI), normalMoments[1], 1E-14);
+            Assert.AreEqual(0.0d, normalMoments[2]);
+            Assert.AreEqual(0.12260172d, normalMoments[3], 1E-14);
+
+            double[] normalParameters = distribution.ParametersFromLinearMoments(normalMoments);
+            Assert.AreEqual(10.0d, normalParameters[0]);
+            Assert.AreEqual(2.0d, normalParameters[1], 1E-14);
+            Assert.AreEqual(0.0d, normalParameters[2]);
+
+            double[] positive = distribution.LinearMomentsFromParameters([10.0d, 2.0d, 0.1d]);
+            double[] negative = distribution.LinearMomentsFromParameters([10.0d, 2.0d, -0.1d]);
+            Assert.AreEqual(10.0d, positive[0]);
+            Assert.AreEqual(positive[0], negative[0]);
+            Assert.AreEqual(positive[1], negative[1], 1E-14);
+            Assert.AreEqual(positive[2], -negative[2], 1E-14);
+            Assert.IsGreaterThan(0.0d, positive[2]);
+
+            foreach (double moment in positive)
+            {
+                Assert.IsFalse(double.IsNaN(moment));
+                Assert.IsFalse(double.IsInfinity(moment));
+            }
+
+            double[] recovered = distribution.ParametersFromLinearMoments(negative);
+            Assert.AreEqual(10.0d, recovered[0]);
+            Assert.AreEqual(2.0d, recovered[1], 1E-4);
+            Assert.AreEqual(-0.1d, recovered[2], 1E-4);
+
+            double expectedDerivative = 2.0d * GammaDistribution.PartialKp(0.0d, 0.9d);
+            var zeroSkew = new PearsonTypeIII(10.0d, 2.0d, 0.0d);
+            Assert.AreEqual(expectedDerivative, zeroSkew.QuantileGradientForMoments(0.9d)[2], 1E-14);
+        }
+
     }
 
 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Data.Statistics;
 using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
 using Numerics.Mathematics.SpecialFunctions;
@@ -450,6 +451,43 @@ namespace Distributions.Univariate
 
 
         #region Minimum Rule - 2 Distributions
+
+        /// <summary>
+        /// Verifies that dependency changes rebuild the cached Gaussian copula without mutating user correlation input.
+        /// </summary>
+        [TestMethod]
+        public void Test_DependencyChangeInvalidatesMvnWithoutMutatingCorrelation()
+        {
+            var correlation = new[,] { { 1d, 0.5d }, { 0.5d, 1d } };
+            var risks = new CompetingRisks(new IUnivariateDistribution[]
+            {
+                new Normal(),
+                new Normal()
+            })
+            {
+                CorrelationMatrix = (double[,])correlation.Clone(),
+                Dependency = Probability.DependencyType.PerfectlyNegative,
+                MinimumOfRandomVariables = true
+            };
+
+            double perfectlyNegative = risks.CDF(0d);
+
+            for (int row = 0; row < 2; row++)
+            {
+                for (int column = 0; column < 2; column++)
+                {
+                    Assert.AreEqual(correlation[row, column], risks.CorrelationMatrix[row, column], 0d);
+                }
+            }
+
+            risks.Dependency = Probability.DependencyType.CorrelationMatrix;
+            double correlated = risks.CDF(0d);
+            double expected = 0.75d - Math.Asin(0.5d) / (2d * Math.PI);
+
+            Assert.AreEqual(1d, perfectlyNegative, 5E-5);
+            Assert.AreEqual(expected, correlated, 1E-7);
+            Assert.IsGreaterThan(0.1d, perfectlyNegative - correlated);
+        }
 
         // Tolerances - competing risks MLE is harder than single distribution MLE
         private const double SHAPE_TOLERANCE_PERCENT = 0.25;  // 25% relative error

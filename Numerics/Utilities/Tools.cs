@@ -182,9 +182,11 @@ namespace Numerics
         /// Returns the base 10 logarithm of a specified number. 
         /// </summary>
         /// <param name="x">The number whose logarithm is to be found.</param>
+        /// <returns>The guarded base-10 logarithm of <paramref name="x"/>.</returns>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public static double Log10(double x)
         {
-            if (x < 1E-16 && Math.Sign(x) != -1) x = 1E-16;
+            if (x < 1E-16 && x >= 0d) x = 1E-16;
             return Math.Log10(x);
         }
 
@@ -662,8 +664,13 @@ namespace Numerics
         /// <summary>
         /// Supporting function used to add doubles from an interlocked parallel loop.
         /// </summary>
-        /// <param name="valueToAddTo">The value to add to.</param>
+        /// <param name="valueToAddTo">The accumulator to update atomically.</param>
         /// <param name="valueToAdd">The value to add.</param>
+        /// <returns>The value committed by the successful compare-and-swap operation.</returns>
+        /// <remarks>
+        /// Concurrent updates are not lost, but their order depends on thread scheduling. Floating-point
+        /// reductions using this method are therefore not guaranteed to be bit-reproducible.
+        /// </remarks>
         public static double ParallelAdd(ref double valueToAddTo, double valueToAdd)
         {
             double newCurrentValue = valueToAddTo;

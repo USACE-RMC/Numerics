@@ -1555,17 +1555,21 @@ namespace Numerics.Distributions
         /// <summary>
         /// Subroutine to sort integration limits and determine Cholesky factor.
         /// </summary>
-        /// <param name="N"></param>
-        /// <param name="LOWER"></param>
-        /// <param name="UPPER"></param>
-        /// <param name="CORREL"></param>
-        /// <param name="INFIN"></param>
-        /// <param name="Y"></param>
-        /// <param name="INFIS"></param>
-        /// <param name="A"></param>
-        /// <param name="B"></param>
-        /// <param name="COV"></param>
-        /// <param name="INFI"></param>
+        /// <param name="N">The number of integration dimensions.</param>
+        /// <param name="LOWER">The lower integration limits, reordered in place.</param>
+        /// <param name="UPPER">The upper integration limits, reordered in place.</param>
+        /// <param name="CORREL">The packed strict-lower-triangle correlation coefficients.</param>
+        /// <param name="INFIN">The bound flags: 0 for a lower-infinite interval, 1 for an upper-infinite interval, and 2 for finite bounds.</param>
+        /// <param name="Y">The conditioning work vector.</param>
+        /// <param name="INFIS">Receives the number of dimensions with no finite bound.</param>
+        /// <param name="A">Receives the sorted and standardized lower limits.</param>
+        /// <param name="B">Receives the sorted and standardized upper limits.</param>
+        /// <param name="COV">Receives the packed lower-triangular covariance factor.</param>
+        /// <param name="INFI">Receives the sorted bound flags.</param>
+        /// <remarks>
+        /// This is a zero-based translation of Alan Genz's MVNDST covariance sorting routine.
+        /// The degenerate branch preserves the packed-array permutation used for singular covariance matrices.
+        /// </remarks>
         private void COVSRT(int N, double[] LOWER, double[] UPPER, double[] CORREL, int[] INFIN, double[] Y, ref int INFIS, double[] A, double[] B, double[] COV, int[] INFI)
         {
             double SQTWPI = 2.506628274631001;
@@ -1723,7 +1727,7 @@ namespace Numerics.Distributions
 
                         // If the covariance matrix diagonal entry is zero, permute limits and/ or rows, if necessary.
 
-                        for (int j = i - 1; j < 0; j--)
+                        for (int j = i - 1; j >= 0; j--)
                         {
                             if (Math.Abs(COV[II + j]) > EPS)
                             {
@@ -1734,27 +1738,27 @@ namespace Numerics.Distributions
                                     Tools.Swap(ref A[i], ref B[i]);
                                     if (INFI[i] != 2) INFI[i] = 1 - INFI[i];
                                 }
-                                for (int l = 0; l < j; l++)
+                                for (int l = 0; l <= j; l++)
                                 {
                                     COV[II + l] = COV[II + l] / COV[II + j];
                                 }
-                                for (int l = j + 1; l < i - 1; l++)
+                                for (int l = j + 1; l <= i - 1; l++)
                                 {
-                                    if (COV[(l - 1) * l / 2 + j + 1] > 0)
+                                    if (COV[l * (l + 1) / 2 + j + 1] > 0)
                                     {
                                         IJ = II;
-                                        for (int k = i - 1; k < l; k--)
+                                        for (int k = i - 1; k >= l; k--)
                                         {
-                                            for (int m = 0; m < k; m++)
+                                            for (int m = 0; m <= k; m++)
                                             {
-                                                Tools.Swap(ref COV[IJ - k + m], ref COV[IJ + m]);
+                                                Tools.Swap(ref COV[IJ - k + m - 1], ref COV[IJ + m]);
                                             }
                                             Tools.Swap(ref A[k], ref A[k + 1]);
                                             Tools.Swap(ref B[k], ref B[k + 1]);
                                             M = INFI[k];
                                             INFI[k] = INFI[k + 1];
                                             INFI[k + 1] = M;
-                                            IJ = IJ - k;
+                                            IJ = IJ - k - 1;
                                         }
                                         goto twenty;
                                     }

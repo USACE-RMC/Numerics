@@ -346,12 +346,13 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, Sigma, DegreesOfFreedom, true);
-            double Z = (x - Mu) / Sigma;
+            double inverseSigma = 1.0d / Sigma;
+            double Z = (x - Mu) * inverseSigma;
             if (DegreesOfFreedom >= 100000000.0d)
             {
-                return Normal.StandardPDF(Z);
+                return Normal.StandardPDF(Z) * inverseSigma;
             }
-            return Math.Exp(Gamma.LogGamma((DegreesOfFreedom + 1.0d) / 2.0d) - Gamma.LogGamma(DegreesOfFreedom / 2.0d)) * Math.Pow(1.0d + Z * Z / DegreesOfFreedom, -0.5d * (DegreesOfFreedom + 1.0d)) / Math.Sqrt(DegreesOfFreedom * Math.PI);
+            return Math.Exp(Gamma.LogGamma((DegreesOfFreedom + 1.0d) / 2.0d) - Gamma.LogGamma(DegreesOfFreedom / 2.0d)) * Math.Pow(1.0d + Z * Z / DegreesOfFreedom, -0.5d * (DegreesOfFreedom + 1.0d)) * inverseSigma / Math.Sqrt(DegreesOfFreedom * Math.PI);
         }
 
         /// <inheritdoc/>
@@ -422,12 +423,7 @@ namespace Numerics.Distributions
                 }
 
                 double z = Beta.IncompleteInverse(0.5d * DegreesOfFreedom, 0.5d, 2.0d * probability);
-                double t = Math.Sqrt(DegreesOfFreedom / z - DegreesOfFreedom);
-                if (double.MaxValue * z < DegreesOfFreedom)
-                {
-                    return rflg * double.MaxValue;
-                }
-
+                double t = Math.Sqrt(DegreesOfFreedom) * Math.Sqrt(1.0d - z) / Math.Sqrt(z);
                 return Mu + Sigma * (rflg * t);
             }
         }

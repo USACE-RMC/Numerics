@@ -396,7 +396,7 @@ namespace Numerics.Sampling.MCMC
             double[] invMass = _inverseMassMatrix[chainIndex];
 
             // Half-step momentum update
-            double[] grad = NumericalDerivative.Gradient((y) => SafeLogLikelihood(y), theta, _lowerBounds, _upperBounds);
+            double[] grad = GradientFunction(theta).Array;
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
 
@@ -411,7 +411,7 @@ namespace Numerics.Sampling.MCMC
             }
 
             // Half-step momentum update
-            grad = NumericalDerivative.Gradient((y) => SafeLogLikelihood(y), theta, _lowerBounds, _upperBounds);
+            grad = GradientFunction(theta).Array;
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
         }

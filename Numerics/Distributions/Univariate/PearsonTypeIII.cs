@@ -409,6 +409,10 @@ namespace Numerics.Distributions
             double L1 = moments[0];
             double L2 = moments[1];
             double T3 = moments[2];
+            if (T3 == 0.0d)
+            {
+                return [L1, L2 * Math.Sqrt(Math.PI), 0.0d];
+            }
             double alpha = double.NaN;
             double z;
             // The following approximation has relative accuracy better than 5x10-5 for all values of alpha.
@@ -424,7 +428,17 @@ namespace Numerics.Distributions
             }
 
             double gamma = 2.0d * Math.Pow(alpha, -0.5d) * Math.Sign(T3);
-            double sigma = L2 * Math.Pow(Math.PI, 0.5d) * Math.Pow(alpha, 0.5d) * Mathematics.SpecialFunctions.Gamma.Function(alpha) / Mathematics.SpecialFunctions.Gamma.Function(alpha + 0.5d);
+            double sigma;
+            if (alpha < 100.0d)
+            {
+                sigma = L2 * Math.Sqrt(Math.PI) * Math.Sqrt(alpha) * Mathematics.SpecialFunctions.Gamma.Function(alpha) / Mathematics.SpecialFunctions.Gamma.Function(alpha + 0.5d);
+            }
+            else
+            {
+                double inverseAlpha = 1.0d / alpha;
+                double correction = 1.0d - inverseAlpha / 8.0d + inverseAlpha * inverseAlpha / 128.0d;
+                sigma = Math.Sqrt(Math.PI) * L2 / correction;
+            }
             double mu = L1;
             return [mu, sigma, gamma];
         }
@@ -435,11 +449,24 @@ namespace Numerics.Distributions
             double mu = parameters[0];
             double sigma = parameters[1];
             double gamma = parameters[2];
-            double xi = mu - 2.0d * sigma / gamma;
+            if (gamma == 0.0d)
+            {
+                return [mu, sigma / Math.Sqrt(Math.PI), 0.0d, 0.12260172d];
+            }
             double alpha = 4.0d / Math.Pow(gamma, 2d);
             double beta = 0.5d * sigma * gamma;
-            double L1 = xi + alpha * beta;
-            double L2 = Math.Abs(Math.Pow(Math.PI, -0.5d) * beta * Mathematics.SpecialFunctions.Gamma.Function(alpha + 0.5d) / Mathematics.SpecialFunctions.Gamma.Function(alpha));
+            double L1 = mu;
+            double L2;
+            if (alpha < 100.0d)
+            {
+                L2 = Math.Abs(beta * Mathematics.SpecialFunctions.Gamma.Function(alpha + 0.5d) / (Math.Sqrt(Math.PI) * Mathematics.SpecialFunctions.Gamma.Function(alpha)));
+            }
+            else
+            {
+                double inverseAlpha = 1.0d / alpha;
+                double correction = 1.0d - inverseAlpha / 8.0d + inverseAlpha * inverseAlpha / 128.0d;
+                L2 = sigma / Math.Sqrt(Math.PI) * correction;
+            }
             // The following approximations are accurate to 10-6. 
             double A0 = 0.32573501d;
             double A1 = 0.1686915d;
@@ -477,6 +504,7 @@ namespace Numerics.Distributions
                 T3 = (1d + E1 * alpha + E2 * Math.Pow(alpha, 2d) + E3 * Math.Pow(alpha, 3d)) / (1d + F1 * alpha + F2 * Math.Pow(alpha, 2d) + F3 * Math.Pow(alpha, 3d));
                 T4 = (1d + G1 * alpha + G2 * Math.Pow(alpha, 2d) + G3 * Math.Pow(alpha, 3d)) / (1d + H1 * alpha + H2 * Math.Pow(alpha, 2d) + H3 * Math.Pow(alpha, 3d));
             }
+            T3 *= Math.Sign(gamma);
 
             return [L1, L2, T3, T4];
         }

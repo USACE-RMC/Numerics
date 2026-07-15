@@ -192,5 +192,44 @@ namespace Data.Statistics
                 Assert.AreEqual(i, index);
             }
         }
+        /// <summary>
+        /// Verifies adaptive range extension, exact boundaries, batches, and unchanged in-range behavior.
+        /// </summary>
+        [TestMethod]
+        public void Test_AddData_AdaptsEndpointBins()
+        {
+            var histogram = new Histogram(new[] { 0d, 10d }, 2);
+            int firstFrequency = histogram[0].Frequency;
+            int lastFrequency = histogram[histogram.NumberOfBins - 1].Frequency;
+
+            histogram.AddData(2d);
+            Assert.AreEqual(0d, histogram.LowerBound);
+            Assert.AreEqual(10d, histogram.UpperBound);
+            Assert.AreEqual(firstFrequency + 1, histogram[0].Frequency);
+
+            histogram.AddData(0d);
+            histogram.AddData(10d);
+            Assert.AreEqual(firstFrequency + 2, histogram[0].Frequency);
+            Assert.AreEqual(lastFrequency + 1, histogram[histogram.NumberOfBins - 1].Frequency);
+
+            histogram.AddData(-5d);
+            histogram.AddData(-10d);
+            histogram.AddData(15d);
+            histogram.AddData(20d);
+            Assert.AreEqual(-10d, histogram.LowerBound);
+            Assert.AreEqual(20d, histogram.UpperBound);
+            Assert.AreEqual(-10d, histogram[0].LowerBound);
+            Assert.AreEqual(20d, histogram[histogram.NumberOfBins - 1].UpperBound);
+
+            histogram.AddData(new[] { -12d, 22d, 5d });
+            Assert.AreEqual(-12d, histogram.LowerBound);
+            Assert.AreEqual(22d, histogram.UpperBound);
+            Assert.AreEqual(-12d, histogram[0].LowerBound);
+            Assert.AreEqual(22d, histogram[histogram.NumberOfBins - 1].UpperBound);
+            Assert.AreEqual(12, histogram.DataCount);
+            Assert.AreEqual(
+                histogram.DataCount,
+                Enumerable.Range(0, histogram.NumberOfBins).Sum(index => histogram[index].Frequency));
+        }
     }
 }

@@ -204,7 +204,7 @@ namespace Distributions.Multivariate
             {
                 double mvtPdf = mvt.PDF(new[] { x });
                 double univPdf = univT.PDF(x);
-                Assert.AreEqual(univPdf / sigma, mvtPdf, 1E-12,
+                Assert.AreEqual(univPdf, mvtPdf, 1E-12,
                     $"1D MVT PDF does not match univariate StudentT PDF at x={x}");
             }
         }

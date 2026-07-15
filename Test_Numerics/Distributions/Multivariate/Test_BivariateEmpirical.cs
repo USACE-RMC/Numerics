@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using Numerics.Distributions;
 
 namespace Distributions.Multivariate
@@ -49,7 +50,30 @@ namespace Distributions.Multivariate
             double true_cdf5 = 0.386806419d;
             bv.ProbabilityTransform = Numerics.Data.Transform.NormalZ;
             double cdf5 = bv.CDF(3.22d, 8.15d);
+
             Assert.AreEqual(cdf5, true_cdf5, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that replacing the parameter grid invalidates the cached transformed interpolator.
+        /// </summary>
+        [TestMethod]
+        public void SetParametersInvalidatesBilinearInterpolator()
+        {
+            var x1 = new[] { 1d, 10d };
+            var x2 = new[] { 1d, 10d };
+            var original = new[,] { { 0.1d, 0.2d }, { 0.3d, 0.4d } };
+            var replacement = new[,] { { 0.6d, 0.7d }, { 0.8d, 0.9d } };
+            var distribution = new BivariateEmpirical(x1, x2, original)
+            {
+                X1Transform = Numerics.Data.Transform.Logarithmic,
+                X2Transform = Numerics.Data.Transform.Logarithmic
+            };
+
+            double coordinate = Math.Sqrt(10d);
+            Assert.AreEqual(0.25d, distribution.CDF(coordinate, coordinate), 1E-12);
+            distribution.SetParameters(x1, x2, replacement);
+            Assert.AreEqual(0.75d, distribution.CDF(coordinate, coordinate), 1E-12);
         }
 
     }

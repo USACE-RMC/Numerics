@@ -305,6 +305,7 @@ namespace Numerics.Data.Statistics
 
             // Get z-values
             double zMin = -9, zMax = 9;
+            const double minimumCdf = 1E-300;
             var R = new double[n, n];
             Array.Copy(correlationMatrix, R, correlationMatrix.Length);
             int i, j, k, ir, ic;
@@ -325,7 +326,7 @@ namespace Numerics.Data.Statistics
             z1 = R[0, 0];
             pdf = Normal.StandardPDF(z1);
             cdf = Normal.StandardCDF(z1);
-            //if (cdf < 1e-300) cdf = 1e-300;
+            if (cdf < minimumCdf) cdf = minimumCdf;
             A = pdf / cdf;
             B = A * (z1 + A);
             for (k = 1; k < n; k++)
@@ -352,7 +353,7 @@ namespace Numerics.Data.Statistics
                 z1 = R[j, j - 1];
                 pdf = Normal.StandardPDF(z1);
                 cdf = Normal.StandardCDF(z1);
-                if (cdf < 1e-300) cdf = 1e-300;
+                if (cdf < minimumCdf) cdf = minimumCdf;
                 A = pdf / cdf;
                 B = A * (z1 + A);
                 for (k = j + 1; k < n; k++)

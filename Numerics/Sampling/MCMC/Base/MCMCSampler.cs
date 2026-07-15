@@ -359,6 +359,7 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Initialize the Markov Chains.
         /// </summary>
+        /// <returns>The initialized parameter state for each Markov chain.</returns>
         protected virtual ParameterSet[] InitializeChains()
         {
             if (Initialize == InitializationType.UserDefined)
@@ -394,7 +395,7 @@ namespace Numerics.Sampling.MCMC
                     {
                         _mapSuccessful = true;
                         // Get MAP
-                        MAP = DE.BestParameterSet.Clone();
+                        MAP = new ParameterSet((double[])DE.BestParameterSet.Values.Clone(), -DE.BestParameterSet.Fitness);
                         // Get Fisher Information Matrix
                         if (DE.Hessian == null) throw new InvalidOperationException("Hessian matrix is not available.");
                         var fisher = DE.Hessian * -1d;

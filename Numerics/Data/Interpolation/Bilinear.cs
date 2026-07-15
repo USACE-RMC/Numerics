@@ -142,11 +142,11 @@ namespace Numerics.Data
             x1ub = X1Values[X1LI.Count - 1];
             if (X1Transform == Transform.Logarithmic)
             {
-                x1 = Math.Log10(x1);
-                x1i = Math.Log10(x1i);
-                x1ii = Math.Log10(x1ii);
-                x1lb = Math.Log10(x1lb);
-                x1ub = Math.Log10(x1ub);
+                x1 = Tools.Log10(x1);
+                x1i = Tools.Log10(x1i);
+                x1ii = Tools.Log10(x1ii);
+                x1lb = Tools.Log10(x1lb);
+                x1ub = Tools.Log10(x1ub);
             }
             else if (X1Transform == Transform.NormalZ)
             {
@@ -164,11 +164,11 @@ namespace Numerics.Data
             x2ub = X2Values[X2LI.Count - 1];
             if (X2Transform == Transform.Logarithmic)
             {
-                x2 = Math.Log10(x2);
-                x2j = Math.Log10(x2j);
-                x2jj = Math.Log10(x2jj);
-                x2lb = Math.Log10(x2lb);
-                x2ub = Math.Log10(x2ub);
+                x2 = Tools.Log10(x2);
+                x2j = Tools.Log10(x2j);
+                x2jj = Tools.Log10(x2jj);
+                x2lb = Tools.Log10(x2lb);
+                x2ub = Tools.Log10(x2ub);
             }
             else if (X2Transform == Transform.NormalZ)
             {
@@ -186,10 +186,10 @@ namespace Numerics.Data
             yijj = YValues[i, j + 1];
             if (YTransform == Transform.Logarithmic)
             {
-                yij = Math.Log10(yij);
-                yiij = Math.Log10(yiij);
-                yiijj = Math.Log10(yiijj);
-                yijj = Math.Log10(yijj);
+                yij = Tools.Log10(yij);
+                yiij = Tools.Log10(yiij);
+                yiijj = Tools.Log10(yiijj);
+                yijj = Tools.Log10(yijj);
             }
             else if (YTransform == Transform.NormalZ)
             {

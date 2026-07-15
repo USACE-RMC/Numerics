@@ -354,5 +354,92 @@ namespace Distributions.Multivariate
 
         }
          
-    }
+        /// <summary>
+        /// Verifies that perfectly correlated variables collapse to their tightest univariate bound.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_PerfectCorrelationCollapsesToNormal()
+        {
+            double probability = EvaluateStandardCdf(new[] { 0.8d, -0.3d, 0.2d }, new[] { 1d, 1d, 1d });
+            Assert.AreEqual(Normal.StandardCDF(-0.3d), probability, 1E-10);
+        }
+
+        /// <summary>
+        /// Verifies that perfectly anticorrelated variables collapse to a bounded normal interval.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_PerfectAnticorrelationCollapsesToNormalInterval()
+        {
+            double probability = EvaluateStandardCdf(new[] { 0.7d, 0.2d }, new[] { -1d });
+            double expected = Normal.StandardCDF(0.7d) - Normal.StandardCDF(-0.2d);
+
+            Assert.AreEqual(expected, probability, 1E-10);
+        }
+
+        /// <summary>
+        /// Verifies equivalent results for permutations of a rank-deficient covariance matrix.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_PermutedRankDeficientMatricesCollapseAnalytically()
+        {
+            double expected = Normal.StandardCDF(0.2d) * Normal.StandardCDF(-0.4d);
+            Assert.AreEqual(
+                expected,
+                EvaluateStandardCdf(new[] { 0.2d, -0.4d, 0.7d }, new[] { 0d, 1d, 0d }),
+                1E-10);
+            Assert.AreEqual(
+                expected,
+                EvaluateStandardCdf(new[] { 0.7d, 0.2d, -0.4d }, new[] { 1d, 0d, 0d }),
+                1E-10);
+        }
+
+        /// <summary>
+        /// Verifies the unchanged nonsingular path immediately above perfect correlation.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_NearSingularCorrelationMatchesBivariateFormula()
+        {
+            const double correlation = 1d - 1E-12;
+            var distribution = MultivariateNormal.Bivariate(0d, 0d, 1d, 1d, correlation);
+            distribution.MVNUNI = new MersenneTwister(12345);
+            double expected = 0.25d + Math.Asin(correlation) / (2d * Math.PI);
+
+            Assert.AreEqual(expected, distribution.CDF(new[] { 0d, 0d }), 1E-10);
+        }
+
+        /// <summary>
+        /// Evaluates a standard multivariate-normal CDF through the public Genz integration entry point.
+        /// </summary>
+        /// <param name="upper">The upper integration limits.</param>
+        /// <param name="correlations">The packed strict-lower-triangle correlation coefficients.</param>
+        /// <returns>The evaluated multivariate-normal probability.</returns>
+        private static double EvaluateStandardCdf(double[] upper, double[] correlations)
+        {
+            int dimensions = upper.Length;
+            var distribution = new MultivariateNormal(dimensions)
+            {
+                MVNUNI = new MersenneTwister(12345)
+            };
+            var lower = new double[dimensions];
+            var infinities = new int[dimensions];
+            double error = 0d;
+            double value = 0d;
+            int inform = 0;
+
+            distribution.MVNDST(
+                dimensions,
+                lower,
+                upper,
+                infinities,
+                correlations,
+                25000,
+                1E-10,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+            return value;
+        }
+
 }
+    }

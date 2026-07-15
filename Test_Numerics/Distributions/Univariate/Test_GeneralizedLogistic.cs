@@ -382,5 +382,42 @@ namespace Distributions.Univariate
             Assert.AreEqual(100, l2.InverseCDF(0.5));
             Assert.AreEqual(105.714285, l2.InverseCDF(0.7), 1e-04);
         }
+
+        /// <summary>
+        /// Verifies the Logistic L-moment limit and stable near-zero round trips.
+        /// </summary>
+        [TestMethod]
+        public void Test_LinearMoments_ZeroAndNearZeroKappa()
+        {
+            var distribution = new GeneralizedLogistic();
+            double[] logistic = distribution.LinearMomentsFromParameters([2.0d, 3.0d, 0.0d]);
+
+            Assert.AreEqual(2.0d, logistic[0]);
+            Assert.AreEqual(3.0d, logistic[1]);
+            Assert.AreEqual(0.0d, logistic[2]);
+            Assert.AreEqual(1.0d / 6.0d, logistic[3], 1E-15);
+
+            double[] recoveredLogistic = distribution.ParametersFromLinearMoments(logistic);
+            Assert.AreEqual(2.0d, recoveredLogistic[0]);
+            Assert.AreEqual(3.0d, recoveredLogistic[1]);
+            Assert.AreEqual(0.0d, recoveredLogistic[2]);
+
+            foreach (double kappa in new[] { -1E-8, 1E-8, -5E-5, 5E-5 })
+            {
+                double[] parameters = [2.0d, 3.0d, kappa];
+                double[] moments = distribution.LinearMomentsFromParameters(parameters);
+                double[] recovered = distribution.ParametersFromLinearMoments(moments);
+
+                for (int i = 0; i < moments.Length; i++)
+                {
+                    Assert.IsFalse(double.IsNaN(moments[i]));
+                    Assert.IsFalse(double.IsInfinity(moments[i]));
+                }
+
+                Assert.AreEqual(parameters[0], recovered[0], 1E-12);
+                Assert.AreEqual(parameters[1], recovered[1], 1E-12);
+                Assert.AreEqual(parameters[2], recovered[2], 1E-15);
+            }
+        }
     }
 }
