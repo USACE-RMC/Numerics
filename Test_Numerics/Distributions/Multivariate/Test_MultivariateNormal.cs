@@ -232,6 +232,142 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
+        /// Verifies the documented invalid-dimension termination status without entering MVNDNT initialization.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_InvalidDimensionReturnsStatusTwo()
+        {
+            var distribution = new MultivariateNormal(1);
+            double error = 0d;
+            double value = 0d;
+            int inform = 0;
+
+            distribution.MVNDST(0, new double[0], new double[0], new int[0], new double[0], 1, 0d, 0d, ref error, ref value, ref inform);
+
+            Assert.AreEqual(2, inform);
+            Assert.AreEqual(0d, value, 0d);
+            Assert.AreEqual(1d, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies that dimensions flagged as completely unbounded collapse to probability one with successful status.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_AllUnboundedReturnsExactProbability()
+        {
+            var distribution = new MultivariateNormal(2);
+            double error = -1d;
+            double value = -1d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                2,
+                new[] { 0d, 0d },
+                new[] { 0d, 0d },
+                new[] { -1, -1 },
+                new[] { 0d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(0, inform);
+            Assert.AreEqual(1d, value, 0d);
+            Assert.AreEqual(0d, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies the exact one-active-dimension Normal limit and its successful initialization status.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_OneActiveDimensionMatchesNormalProbability()
+        {
+            var distribution = new MultivariateNormal(2);
+            double error = 0d;
+            double value = 0d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                2,
+                new[] { 0d, 0d },
+                new[] { 0d, 0d },
+                new[] { 0, -1 },
+                new[] { 0.7d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(0, inform);
+            Assert.AreEqual(0.5d, value, 1E-15);
+            Assert.AreEqual(2E-16, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies the analytical bivariate collapse against the zero-threshold quadrant probability for correlation one-half.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_BivariateCollapseMatchesAnalyticalProbability()
+        {
+            var distribution = new MultivariateNormal(2);
+            double error = 0d;
+            double value = 0d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                2,
+                new[] { 0d, 0d },
+                new[] { 0d, 0d },
+                new[] { 0, 0 },
+                new[] { 0.5d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(0, inform);
+            Assert.AreEqual(1d / 3d, value, 1E-12);
+            Assert.AreEqual(2E-16, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies that only the lattice integration stage changes successful initialization into a budget-exhaustion status.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_InsufficientBudgetReturnsStatusOne()
+        {
+            var distribution = new MultivariateNormal(3) { MVNUNI = new MersenneTwister(12345) };
+            double error = 0d;
+            double value = 0d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                3,
+                new[] { 0d, 0d, 0d },
+                new[] { 0.2d, 0.5d, 1d },
+                new[] { 0, 0, 0 },
+                new[] { 0.25d, 0.1d, 0.3d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(1, inform);
+            Assert.IsTrue(value >= 0d && value <= 1d);
+            Assert.IsGreaterThanOrEqualTo(0d, error);
+            Assert.IsFalse(double.IsNaN(error));
+            Assert.IsFalse(double.IsInfinity(error));
+        }
+
+        /// <summary>
         /// Verified against R "mvtnorm" package
         /// </summary>
         [TestMethod]

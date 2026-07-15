@@ -1376,7 +1376,7 @@ namespace Numerics.Distributions
         /// <param name="LOWER">array of lower integration limits.</param>
         /// <param name="UPPER">array of upper integration limits.</param>
         /// <param name="INFIN">array of integration limits flags:
-        ///            if INFIN(I) &gt; 0, Ith limits are (-infinity, infinity);
+        ///            if INFIN(I) &lt; 0, Ith limits are (-infinity, infinity);
         ///            if INFIN(I) = 0, Ith limits are(-infinity, UPPER(I)];
         ///            if INFIN(I) = 1, Ith limits are[LOWER(I), infinity);
         ///            if INFIN(I) = 2, Ith limits are[LOWER(I), UPPER(I)].</param>
@@ -1402,7 +1402,8 @@ namespace Numerics.Distributions
             }
             else
             {
-                INFORM = (int)MVNDNT(N, CORREL, LOWER, UPPER, INFIN, ref INFIS, ref D, ref E, Y);
+                INFORM = 0;
+                MVNDNT(N, CORREL, LOWER, UPPER, INFIN, ref INFIS, ref D, ref E, Y);
                 if (N - INFIS == 0)
                 {
                     VALUE = 1;
@@ -1499,10 +1500,25 @@ namespace Numerics.Distributions
             return result;
         }
 
-        private double MVNDNT(int N, double[] CORREL, double[] LOWER, double[] UPPER, int[] INFIN, ref int INFIS, ref double D, ref double E, double[] Y)
+        /// <summary>
+        /// Initializes the transformed limits and covariance factor used by the multivariate-normal integrand.
+        /// </summary>
+        /// <param name="N">The number of integration dimensions.</param>
+        /// <param name="CORREL">The packed strict-lower-triangle correlation coefficients.</param>
+        /// <param name="LOWER">The lower integration limits.</param>
+        /// <param name="UPPER">The upper integration limits.</param>
+        /// <param name="INFIN">The integration-bound flags.</param>
+        /// <param name="INFIS">Receives the number of dimensions having no finite bound, including any analytically collapsed dimension.</param>
+        /// <param name="D">Receives the lower transformed probability for an analytically evaluated one- or two-dimensional problem.</param>
+        /// <param name="E">Receives the upper transformed probability for an analytically evaluated one- or two-dimensional problem.</param>
+        /// <param name="Y">The conditioning work vector used while sorting the covariance matrix.</param>
+        /// <remarks>
+        /// This method is the C# translation of the <c>MVNDNT</c> initialization entry point in Alan Genz's
+        /// Fortran <c>MVNDFN</c> routine. The original function returns zero solely to initialize the caller's
+        /// <c>INFORM</c> status; <see cref="MVNDST"/> performs that initialization explicitly in C#.
+        /// </remarks>
+        private void MVNDNT(int N, double[] CORREL, double[] LOWER, double[] UPPER, int[] INFIN, ref int INFIS, ref double D, ref double E, double[] Y)
         {
-            double result = 0;
-
             COVSRT(N, LOWER, UPPER, CORREL, INFIN, Y, ref INFIS, MVNDFN_A, MVNDFN_B, MVNDFN_COV, MVNDFN_INFI);
          
             if (N - INFIS == 1)
@@ -1536,8 +1552,6 @@ namespace Numerics.Distributions
                 }
                 INFIS++;
             }
-
-            return result;
         }
 
         private void MVNLMS(double A, double B, int INFIN, ref double LOWER, ref double UPPER)

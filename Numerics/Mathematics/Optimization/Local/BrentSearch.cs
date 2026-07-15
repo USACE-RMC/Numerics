@@ -157,45 +157,83 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Bracket the objective function minimum.
         /// </summary>
-        /// <param name="s">Starting step size. Default = 1E-2.</param>
-        /// <param name="k">Expansion factor. Default = 2.</param>
+        /// <param name="s">The finite, nonzero starting step size. A negative value searches toward decreasing coordinates first. Default = 1E-2.</param>
+        /// <param name="k">The finite geometric expansion factor, which must be greater than one. Default = 2.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="s"/> is zero or non-finite, or <paramref name="k"/> is non-finite or not greater than one.</exception>
+        /// <exception cref="ArgumentException">The bracket is not found within <see cref="Optimizer.MaxIterations"/> and <see cref="Optimizer.ReportFailure"/> is <see langword="true"/>.</exception>
+        /// <exception cref="ArithmeticException">The search leaves the finite range of <see cref="double"/> and <see cref="Optimizer.ReportFailure"/> is <see langword="true"/>.</exception>
+        /// <exception cref="InvalidOperationException">The objective function returns <see cref="double.NaN"/> and <see cref="Optimizer.ReportFailure"/> is <see langword="true"/>.</exception>
+        /// <remarks>
+        /// The first three trial coordinates are equally spaced. After each unsuccessful downhill step,
+        /// the signed step is multiplied by <paramref name="k"/> until the middle value is no greater
+        /// than either endpoint. Failed searches leave the existing bounds unchanged.
+        /// </remarks>
         public void Bracket(double s = 1E-2, double k = 2d)
         {
+            if (!Tools.IsFinite(s) || s == 0d)
+                throw new ArgumentOutOfRangeException(nameof(s), "The starting step size must be finite and nonzero.");
+            if (!Tools.IsFinite(k) || k <= 1d)
+                throw new ArgumentOutOfRangeException(nameof(k), "The expansion factor must be finite and greater than one.");
+
             double a = LowerBound, b = a + s;
-            double fa = ObjectiveFunction(new double[] { a });
-            double fb = ObjectiveFunction(new double[] { b });
-            double c, fc, temp;
-            if (fb > fa)
+            if (!Tools.IsFinite(a) || !Tools.IsFinite(b))
             {
-                temp = a;
-                a = b;
-                b = temp;
-                temp = fa;
-                fa = fb;
-                fb = temp;
-                s *= -1;
-            }
-            while (true)
-            {
-                c = b + s;
-                fc = ObjectiveFunction(new double[] { c });
-                if (fc > fb) break;
-                a = b;          
-                b = c;
-                fa = fb;
-                fb = fc;
-            }
-            if (a < c)
-            {
-                LowerBound = a;
-                UpperBound = c;
-            }
-            else
-            {
-                LowerBound = c;
-                UpperBound = a;
+                UpdateStatus(OptimizationStatus.Failure, new ArithmeticException("The initial bracketing coordinates must be finite."));
+                return;
             }
 
+            double fa = ObjectiveFunction(new double[] { a });
+            double fb = ObjectiveFunction(new double[] { b });
+            if (double.IsNaN(fa) || double.IsNaN(fb))
+            {
+                UpdateStatus(OptimizationStatus.Failure, new InvalidOperationException("The objective function returned NaN while initializing the bracket."));
+                return;
+            }
+
+            if (fb > fa)
+            {
+                double temp = a;
+                a = b;
+                b = temp;
+                fb = fa;
+                s *= -1;
+            }
+
+            for (int iteration = 0; iteration < MaxIterations; iteration++)
+            {
+                double c = b + s;
+                if (!Tools.IsFinite(c))
+                {
+                    UpdateStatus(OptimizationStatus.Failure, new ArithmeticException("The bracketing search exceeded the finite range of double-precision coordinates."));
+                    return;
+                }
+
+                double fc = ObjectiveFunction(new double[] { c });
+                if (double.IsNaN(fc))
+                {
+                    UpdateStatus(OptimizationStatus.Failure, new InvalidOperationException("The objective function returned NaN while expanding the bracket."));
+                    return;
+                }
+
+                if (fc >= fb)
+                {
+                    LowerBound = Math.Min(a, c);
+                    UpperBound = Math.Max(a, c);
+                    return;
+                }
+
+                a = b;
+                b = c;
+                fb = fc;
+                s *= k;
+                if (!Tools.IsFinite(s))
+                {
+                    UpdateStatus(OptimizationStatus.Failure, new ArithmeticException("The geometric bracketing step exceeded the finite range of double precision."));
+                    return;
+                }
+            }
+
+            UpdateStatus(OptimizationStatus.MaximumIterationsReached);
         }
 
     }
