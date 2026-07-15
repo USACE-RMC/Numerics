@@ -149,7 +149,7 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
-            return new GumbelCopula(Theta, MarginalDistributionX, MarginalDistributionY);
+            return new GumbelCopula(Theta, CloneMarginal(MarginalDistributionX), CloneMarginal(MarginalDistributionY));
         }
 
         /// <summary>

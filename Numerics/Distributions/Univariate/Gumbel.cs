@@ -227,11 +227,9 @@ namespace Numerics.Distributions
         /// <param name="scale">The scale parameter α (alpha).</param>
         public void SetParameters(double location, double scale)
         {
-            // Validate parameters
-            _parametersValid = ValidateParameters(location, scale, false) is null;
-            // Set parameters
-            Xi = location;
+            _xi = location;
             _alpha = scale;
+            _parametersValid = ValidateParameters(location, scale, false) is null;
         }
 
         /// <inheritdoc/>

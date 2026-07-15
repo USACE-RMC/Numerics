@@ -10,8 +10,8 @@ jobs:
     with:
       dotnet-version: '10.0.x'
       project-names: 'Numerics'
-      # Snapshot workflow appends .<run_number>-dev, so this tracks the next development patch after v2.1.2.
-      version: '2.1.3'
+      # Snapshot workflow appends .<run_number>-dev, so this tracks the next development patch after v2.1.3.
+      version: '2.1.4'
       # PR integration already runs the full multi-target test suite.
       run-tests: false
       nuget-source: 'https://www.hec.usace.army.mil/nexus/repository/consequences-nuget-public/'

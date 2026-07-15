@@ -304,6 +304,7 @@ namespace Data.Interpolation
             x2 = 75;
             y = bilinear.Interpolate(x1, x2);
             Assert.AreEqual(859.405, y, 1E-6);
+
             // Bottom
             x1 = 600;
             x2 = 225;
@@ -323,5 +324,38 @@ namespace Data.Interpolation
             Assert.AreEqual(929.65000, y, 1E-6);
 
         }
-    }
+        /// <summary>
+        /// Verifies guarded logarithmic transforms for zero and sub-floor coordinates and ordinates.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogarithmicFloorMatchesLinearInterpolation()
+        {
+            var coordinates = new[] { 0d, 1E-15, 1d };
+            var secondCoordinates = new[] { 0d, 1E-15, 1d };
+            var values = new[,]
+            {
+                { 0d, 0d, 0d },
+                { 1E-15, 1E-15, 1E-15 },
+                { 1d, 1d, 1d }
+            };
+            var bilinear = new Bilinear(coordinates, secondCoordinates, values)
+            {
+                X1Transform = Transform.Logarithmic,
+                X2Transform = Transform.Logarithmic,
+                YTransform = Transform.Logarithmic
+            };
+            var linear = new Linear(coordinates, new[] { 0d, 1E-15, 1d })
+            {
+                XTransform = Transform.Logarithmic,
+                YTransform = Transform.Logarithmic
+            };
+
+            double atZero = bilinear.Interpolate(0d, 0d);
+            double belowFloor = bilinear.Interpolate(5E-17, 5E-17);
+            Assert.IsFalse(double.IsNaN(atZero) || double.IsInfinity(atZero));
+            Assert.IsFalse(double.IsNaN(belowFloor) || double.IsInfinity(belowFloor));
+            Assert.AreEqual(linear.Interpolate(5E-17), belowFloor, 1E-28);
+        }
+
 }
+    }

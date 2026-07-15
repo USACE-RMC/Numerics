@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -7,6 +7,9 @@ using Numerics.Sampling;
 
 namespace Mathematics.Optimization
 {
+    /// <summary>
+    /// Tests binary heap behavior used by dynamic optimization routines.
+    /// </summary>
     [TestClass]
     public class BinaryHeapTesting
     {
@@ -119,7 +122,7 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// Decrease key for ordering 
+        /// Decrease key for ordering
         /// </summary>
         [TestMethod]
         public void DecreaseKeyTest()

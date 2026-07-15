@@ -398,16 +398,34 @@ namespace Numerics.Data
 
             // Perform bisection search
             int xlo = start, xhi = N, xm = 0;
-            while (xhi - xlo > 1)
+            if (order == SortOrder.Ascending)
             {
-                xm = xlo + (xhi - xlo >> 1); 
-                if (x >= values[xm] && order == SortOrder.Ascending)
+                while (xhi - xlo > 1)
                 {
-                    xlo = xm;
+                    xm = xlo + (xhi - xlo >> 1);
+                    if (x >= values[xm])
+                    {
+                        xlo = xm;
+                    }
+                    else
+                    {
+                        xhi = xm;
+                    }
                 }
-                else
+            }
+            else
+            {
+                while (xhi - xlo > 1)
                 {
-                    xhi = xm;
+                    xm = xlo + (xhi - xlo >> 1);
+                    if (x < values[xm])
+                    {
+                        xlo = xm;
+                    }
+                    else
+                    {
+                        xhi = xm;
+                    }
                 }
             }
             // Return XLO
@@ -480,16 +498,34 @@ namespace Numerics.Data
 
             // Perform bisection search
             int xlo = start, xhi = N, xm = 0;
-            while (xhi - xlo > 1)
+            if (orderedPairedData.OrderX == SortOrder.Ascending)
             {
-                xm = xlo + (xhi - xlo >> 1);
-                if (x >= orderedPairedData[xm].X && orderedPairedData.OrderX == SortOrder.Ascending)
+                while (xhi - xlo > 1)
                 {
-                    xlo = xm;
+                    xm = xlo + (xhi - xlo >> 1);
+                    if (x >= orderedPairedData[xm].X)
+                    {
+                        xlo = xm;
+                    }
+                    else
+                    {
+                        xhi = xm;
+                    }
                 }
-                else
+            }
+            else
+            {
+                while (xhi - xlo > 1)
                 {
-                    xhi = xm;
+                    xm = xlo + (xhi - xlo >> 1);
+                    if (x < orderedPairedData[xm].X)
+                    {
+                        xlo = xm;
+                    }
+                    else
+                    {
+                        xhi = xm;
+                    }
                 }
             }
             // Return XLO
@@ -563,16 +599,34 @@ namespace Numerics.Data
 
             // Perform bisection search
             int xlo = start, xhi = N, xm = 0;
-            while (xhi - xlo > 1)
+            if (order == SortOrder.Ascending)
             {
-                xm = xlo + (xhi - xlo >> 1);
-                if (x >= ordinates[xm].X && order == SortOrder.Ascending)
+                while (xhi - xlo > 1)
                 {
-                    xlo = xm;
+                    xm = xlo + (xhi - xlo >> 1);
+                    if (x >= ordinates[xm].X)
+                    {
+                        xlo = xm;
+                    }
+                    else
+                    {
+                        xhi = xm;
+                    }
                 }
-                else
+            }
+            else
+            {
+                while (xhi - xlo > 1)
                 {
-                    xhi = xm;
+                    xm = xlo + (xhi - xlo >> 1);
+                    if (x < ordinates[xm].X)
+                    {
+                        xlo = xm;
+                    }
+                    else
+                    {
+                        xhi = xm;
+                    }
                 }
             }
             // Return XLO
@@ -660,7 +714,7 @@ namespace Numerics.Data
             }
             else
             {
-                if (x >= values[xlo] && order == SortOrder.Ascending)
+                if ((x >= values[xlo]) == (order == SortOrder.Ascending))
                 {
                     // Hunt up
                     for (;;)
@@ -668,7 +722,7 @@ namespace Numerics.Data
                         // Not done hunting so double the increment
                         xhi = xlo + inc;
                         if (xhi >= N - 1) { xhi = N - 1; break; }
-                        else if (x < values[xhi] && order == SortOrder.Ascending) break;
+                        else if ((x < values[xhi]) == (order == SortOrder.Ascending)) break;
                         else
                         {
                             xlo = xhi;
@@ -684,7 +738,7 @@ namespace Numerics.Data
                     {
                         xlo = xlo - inc;
                         if (xlo <= 0) { xlo = 0; break; }
-                        else if (x >= values[xlo] && order == SortOrder.Ascending) break;
+                        else if ((x >= values[xlo]) == (order == SortOrder.Ascending)) break;
                         else
                         {
                             xhi = xlo;
@@ -698,7 +752,7 @@ namespace Numerics.Data
             while (xhi - xlo > 1)
             {
                 xm = xlo + (xhi - xlo >> 1);
-                if (x >= values[xm] && order == SortOrder.Ascending)
+                if ((x >= values[xm]) == (order == SortOrder.Ascending))
                 {
                     xlo = xm;
                 }
@@ -840,7 +894,7 @@ namespace Numerics.Data
             while (XHI - XLO > 1)
             {
                 XM = XLO + (XHI - XLO >> 1);
-                if (X >= orderedPairedData[XM].X && ASCND == true)
+                if ((X >= orderedPairedData[XM].X) == ASCND)
                 {
                     XLO = XM;
                 }
@@ -988,7 +1042,7 @@ namespace Numerics.Data
             while (XHI - XLO > 1)
             {
                 XM = XLO + (XHI - XLO >> 1);
-                if (X >= ordinateData[XM].X && ASCND == true)
+                if ((X >= ordinateData[XM].X) == ASCND)
                 {
                     XLO = XM;
                 }

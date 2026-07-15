@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.LinearAlgebra;
 
@@ -10,7 +10,7 @@ namespace Mathematics.LinearAlgebra
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -64,7 +64,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Tests nullity function. 
+        /// Tests nullity function.
         /// </summary>
         [TestMethod()]
         public void Test_Nullity()
@@ -86,7 +86,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Tests known Range of matrix. 
+        /// Tests known Range of matrix.
         /// The function should return the column space of the matrix.
         /// </summary>
         [TestMethod()]
@@ -129,7 +129,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Tests known Nullspace of a matrix 
+        /// Tests known Nullspace of a matrix
         /// </summary>
         [TestMethod()]
         public void Test_Nullspace()
@@ -175,7 +175,7 @@ namespace Mathematics.LinearAlgebra
 
             var B = new Vector(new[] { 7d, -2d, 0 });
 
-            //Testing Solve with vector input 
+            //Testing Solve with vector input
             var true_x = new[] { 1d, -1d, 2 };
             var x = svd.Solve(B);
             for (int i = 0; i < x.Length; i++)
@@ -183,7 +183,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Evaluating A*x = B with a B matrix input 
+        /// Evaluating A*x = B with a B matrix input
         /// </summary>
         [TestMethod()]
         public void Test_SolveMatrix()
@@ -265,13 +265,13 @@ namespace Mathematics.LinearAlgebra
                     Assert.AreEqual(V[i, j], svd.V[i, j], 0.0001d);
             }
 
-            ///Tested with the Test_Decompose() matrix to see if U and V were equal
-            ///svd() function assigns switched left and right singular vectors, however 
-            ///the overall decomposition is the same for both functions. Test passed.
+            //Tested with the Test_Decompose() matrix to see if U and V were equal
+            //svd() function assigns switched left and right singular vectors, however
+            //the overall decomposition is the same for both functions. Test passed.
         }
 
         /// <summary>
-        /// Testing log determinant of decomposed matrix 
+        /// Testing log determinant of decomposed matrix
         /// </summary>
         [TestMethod()]
         public void Test_LogDeterminant()
@@ -289,7 +289,7 @@ namespace Mathematics.LinearAlgebra
             var svd = new SingularValueDecomposition(A);
 
             // Test Determinant
-            double true_det = 6.356108; //Math.Log(576) 
+            double true_det = 6.356108; //Math.Log(576)
             double det = svd.LogDeterminant();
             Assert.AreEqual(det, true_det, 0.0001d);
         }
@@ -313,7 +313,7 @@ namespace Mathematics.LinearAlgebra
             var svd = new SingularValueDecomposition(A);
 
             // Test Determinant
-            double true_det = 6.356108; //Math.Log(576) 
+            double true_det = 6.356108; //Math.Log(576)
             double det = svd.LogPseudoDeterminant();
             Assert.AreEqual(det, true_det, 0.0001d);
         }

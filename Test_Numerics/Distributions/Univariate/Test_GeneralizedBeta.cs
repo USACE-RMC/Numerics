@@ -38,7 +38,7 @@ namespace Distributions.Univariate
 
             double true_mean = 0.21105527638190955d;
             double true_median = 0.11577706212908731d;
-            double true_mode = 57.999999999999957d;
+            double true_mode = 0.0d;
             double true_var = 0.055689279830523512d;
             double true_pdf = 0.94644031936694828d;
             double true_cdf = 0.69358638272337991d;
@@ -331,6 +331,28 @@ namespace Distributions.Univariate
             // Alpha=5, Beta=2 on [0,1]: mode = (5-1)/(5+2-2) = 0.8
             var b4 = new GeneralizedBeta(5, 2, 0, 1);
             Assert.AreEqual(0.8, b4.Mode, 1E-10);
+        }
+
+        /// <summary>
+        /// Verifies boundary and legacy non-unique mode conventions.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mode_BoundaryShapes()
+        {
+            var decreasing = new GeneralizedBeta(0.42d, 1.57d, -10.0d, 20.0d);
+            Assert.AreEqual(-10.0d, decreasing.Mode);
+
+            var increasing = new GeneralizedBeta(1.57d, 0.42d, -10.0d, 20.0d);
+            Assert.AreEqual(20.0d, increasing.Mode);
+
+            var lowerBoundary = new GeneralizedBeta(0.5d, 1.0d, -10.0d, 20.0d);
+            Assert.AreEqual(-10.0d, lowerBoundary.Mode);
+
+            var upperBoundary = new GeneralizedBeta(1.0d, 0.5d, -10.0d, 20.0d);
+            Assert.AreEqual(20.0d, upperBoundary.Mode);
+
+            var uShaped = new GeneralizedBeta(0.5d, 0.5d, -10.0d, 20.0d);
+            Assert.AreEqual(5.0d, uShaped.Mode);
         }
     }
 }

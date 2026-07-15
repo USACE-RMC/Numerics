@@ -109,6 +109,39 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Verifies HPCM remains finite for endpoint and subnormal marginal probabilities.
+        /// </summary>
+        [TestMethod]
+        public void Test_JointProbabilityHPCM_ExtremeProbabilitiesRemainFinite()
+        {
+            var probabilities = new[] { 0d, 1E-320, 0.5d };
+            var indicators = new[] { 1, 1, 1 };
+            var correlation = new double[,]
+            {
+                { 1d, 0.5d, 0.25d },
+                { 0.5d, 1d, 0.25d },
+                { 0.25d, 0.25d, 1d }
+            };
+            var conditionalProbabilities = new double[probabilities.Length];
+
+            double joint = Probability.JointProbabilityHPCM(
+                probabilities,
+                indicators,
+                correlation,
+                conditionalProbabilities);
+
+            Assert.IsFalse(double.IsNaN(joint));
+            Assert.IsFalse(double.IsInfinity(joint));
+            Assert.IsTrue(joint >= 0d && joint <= 1d);
+            foreach (double conditionalProbability in conditionalProbabilities)
+            {
+                Assert.IsFalse(double.IsNaN(conditionalProbability));
+                Assert.IsFalse(double.IsInfinity(conditionalProbability));
+                Assert.IsTrue(conditionalProbability >= 0d && conditionalProbability <= 1d);
+            }
+        }
+
+        /// <summary>
         /// Test joint probability of ABCD assuming perfect positive dependence. 
         /// </summary>
         [TestMethod]

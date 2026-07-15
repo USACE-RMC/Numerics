@@ -220,14 +220,15 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override void SetParameters(IList<double> parameters)
         {
-            DegreesOfFreedom = (int)parameters[0];
-            Sigma = parameters[1];
+            _degreesOfFreedom = (int)parameters[0];
+            _sigma = parameters[1];
+            _parametersValid = ValidateParameters(parameters, false) is null;
         }
 
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (parameters[0] < 1.0d)
+            if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]) || parameters[0] < 1.0d)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom ν (nu) must greater than or equal to one.");

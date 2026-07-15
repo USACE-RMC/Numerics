@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
@@ -19,7 +19,7 @@ namespace Data.Statistics
     /// <b> References: </b>
     /// <list type="bullet">
     /// <item>
-    /// R Core Team (2013). R: A language and environment for statistical computing. R Foundation for Statistical Computing, 
+    /// R Core Team (2013). R: A language and environment for statistical computing. R Foundation for Statistical Computing,
     /// Vienna, Austria. ISBN 3-900051-07-0, URL http://www.R-project.org/.
     /// </item>
     /// <item>
@@ -137,7 +137,7 @@ namespace Data.Statistics
         /// <remarks>
         /// <b> References: </b>
         /// <list type="bullet">
-        /// <item><description> 
+        /// <item><description>
         /// Lukasz Komsta (2005). moments: Moments, Cumulants, Skewness, Kurtosis and Related Tests. R package version 0.14.1, https://cran.r-project.org/web/packages/moments
         /// </description></item>
         /// <item><description>
@@ -313,7 +313,7 @@ namespace Data.Statistics
         /// </summary>
         /// <remarks>
         /// <b> References: </b>
-        /// Scrucca, L., Fop, M., Murphy, T. B., & Raftery, A. E. (2016). mclust 5: Clustering, Classification and Density Estimation Using Gaussian Finite Mixture Models. The R Journal, 8(1), 289–317. https://doi.org/10.32614/RJ-2016-021
+        /// Scrucca, L., Fop, M., Murphy, T. B., &amp; Raftery, A. E. (2016). mclust 5: Clustering, Classification and Density Estimation Using Gaussian Finite Mixture Models. The R Journal, 8(1), 289–317. https://doi.org/10.32614/RJ-2016-021
         /// </remarks>
         [TestMethod]
         public void Test_UnimodalityTest()
@@ -327,8 +327,8 @@ namespace Data.Statistics
             double true_pval = 0.4142441;
             Assert.AreEqual(true_pval, pval, 1E-4);
 
-            var bimodalData = new double[] { 3.8, 3.9, 4.0, 3.9, 4.0, 4.1, 4.0, 3.8, 3.9, 4.0, 
-                4.1, 4.0, 3.9, 4.0, 4.0, 4.3, 4.4, 4.4, 4.5, 4.4, 4.3, 
+            var bimodalData = new double[] { 3.8, 3.9, 4.0, 3.9, 4.0, 4.1, 4.0, 3.8, 3.9, 4.0,
+                4.1, 4.0, 3.9, 4.0, 4.0, 4.3, 4.4, 4.4, 4.5, 4.4, 4.3,
                 4.4, 4.5, 4.4, 4.3, 4.4, 4.4, 4.5, 4.4, 4.3 };
 
             pval = HypothesisTests.UnimodalityTest(bimodalData);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 
@@ -238,7 +238,7 @@ namespace Data.Interpolation
         public void Test_RevLin()
         {
             var XArray = new double[] { 50d, 100d, 150d, 200d, 250d };
-            var YArray = new double[] { 100d, 200d, 300d, 400d, 500d };         
+            var YArray = new double[] { 100d, 200d, 300d, 400d, 500d };
             Array.Reverse(XArray);
             Array.Reverse(YArray);
             var LI = new Linear(XArray, YArray, SortOrder.Descending);
@@ -300,6 +300,9 @@ namespace Data.Interpolation
         }
 
         // ???
+        /// <summary>
+        /// Tests linear interpolation from list inputs.
+        /// </summary>
         [TestMethod]
         public void Test_Lin_List()
         {

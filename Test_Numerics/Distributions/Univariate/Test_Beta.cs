@@ -196,6 +196,18 @@ namespace Distributions.Univariate
 
             var b4 = new BetaDistribution(9, 1);
             Assert.AreEqual(1, b4.Mode);
+
+            var lowerBoundary = new BetaDistribution(0.5d, 1.0d);
+            Assert.AreEqual(0.0d, lowerBoundary.Mode);
+
+            var upperBoundary = new BetaDistribution(1.0d, 0.5d);
+            Assert.AreEqual(1.0d, upperBoundary.Mode);
+
+            var uShaped = new BetaDistribution(0.5d, 0.5d);
+            Assert.AreEqual(0.5d, uShaped.Mode);
+
+            var interior = new BetaDistribution(2.0d, 5.0d);
+            Assert.AreEqual(0.2d, interior.Mode, 1E-14);
         }
 
         /// <summary>

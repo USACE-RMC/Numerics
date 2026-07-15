@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
@@ -14,7 +14,7 @@ namespace MachineLearning
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     /// </list>
     /// </para>
@@ -23,7 +23,7 @@ namespace MachineLearning
     public class Test_RandomForest
     {
         /// <summary>
-        /// Random Forest Classification is tested against the Iris dataset. 
+        /// Random Forest Classification is tested against the Iris dataset.
         /// </summary>
         [TestMethod]
         public void Test_RandomForest_Iris()
@@ -64,10 +64,10 @@ namespace MachineLearning
         }
 
         /// <summary>
-        /// Testing the Random Forest (RF) regression method. This test is mainly meant for demonstration. 
-        /// I compare the RF regression against linear regression, and show the RF has better performance against the observed data. 
+        /// Testing the Random Forest (RF) regression method. This test is mainly meant for demonstration.
+        /// I compare the RF regression against linear regression, and show the RF has better performance against the observed data.
         /// <para>
-        /// <see cref="https://otexts.com/fpp3/least-squares.html"/>
+        /// <see href="https://otexts.com/fpp3/least-squares.html"/>
         /// </para>
         /// </summary>
         [TestMethod]

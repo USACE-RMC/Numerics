@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <DebugType>embedded</DebugType>
-	
+
     <Description>Numerics is a free and open-source .NET library developed by USACE-RMC, providing numerical methods, probability distributions, statistical analysis, optimization, machine learning, and Bayesian inference tools for quantitative risk assessment in water resources engineering.</Description>
     <Authors>C. Haden Smith; Woodrow L. Fields; Julian Gonzalez; Sadie Niblett; Brennan Beam; Brian Skahill</Authors>
     <PackageProjectUrl>https://github.com/USACE-RMC/Numerics</PackageProjectUrl>
@@ -28,11 +28,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- 1587 is an xml comment not placed on a valid member (in our case, mostly license text at top of files) -->
-    <NoWarn>CS1587</NoWarn>
-    <Version>2.1.2</Version>
-    <PackageReleaseNotes>Version 2.1.2 improves time-series download reliability and statistics utilities. Time-series downloads now prefer IPv4 while preserving IPv6 fallback, avoid unrelated connectivity preflights on restricted networks, normalize duplicate USGS/GHCN timestamps deterministically, and fix Series.Clear()/RemoveAt behavior with large or duplicate-valued series. This release also adds RunningStatistics.Clone() and fixes Combine()/+ so combined statistics do not alias input instances when one operand is empty.</PackageReleaseNotes>
-    <AssemblyVersion>2.1.2.0</AssemblyVersion>
+    <Version>2.1.3</Version>
+    <PackageReleaseNotes>Version 2.1.3 hardens numerical edge cases and distribution validation. This release enforces XML documentation warnings, fixes audited interpolation/search, histogram, probability, MVNDST/COVSRT, Brent bracketing, and atomic double-addition behavior, improves copula clone and parameter-validity handling, and adds MultivariateNormal non-throwing covariance mutation plus marginal and conditional utilities with expanded regression coverage.</PackageReleaseNotes>
+    <AssemblyVersion>2.1.3.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>
@@ -72,7 +70,7 @@
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
     <PackageReference Include="System.ValueTuple" Version="4.6.1" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <None Remove="new-joe-kuo-6.21201" />
     <None Remove="Properties\new-joe-kuo-6.21201" />
@@ -107,5 +105,5 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
-  
+
 </Project>

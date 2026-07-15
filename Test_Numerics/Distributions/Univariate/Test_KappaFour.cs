@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Mathematics;
 
@@ -13,7 +13,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -26,6 +26,9 @@ namespace Distributions.Univariate
     public class Test_KappaFour
     {
 
+        /// <summary>
+        /// Verifies Kappa Four fitting with linear moments.
+        /// </summary>
         [TestMethod]
         public void Test_K4_LMOM()
         {
@@ -55,7 +58,7 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Verification using R lmom package. 
+        /// Verification using R lmom package.
         /// </summary>
         [TestMethod]
         public void Test_K4_CDF()
@@ -77,6 +80,9 @@ namespace Distributions.Univariate
         }
 
 
+        /// <summary>
+        /// Verifies Kappa Four distribution values.
+        /// </summary>
         [TestMethod]
         public void Test_K4_Dist()
         {
@@ -98,10 +104,13 @@ namespace Distributions.Univariate
 
         }
 
+        /// <summary>
+        /// Verifies Kappa Four partial derivative calculations.
+        /// </summary>
         [TestMethod]
         public void Test_K4_PartialDerivatives()
         {
-           
+
             // Air quality - wind data from R
             var data = new double[] { 7.4, 8, 12.6, 11.5, 14.3, 14.9, 8.6, 13.8, 20.1, 8.6, 6.9, 9.7, 9.2, 10.9, 13.2, 11.5, 12, 18.4, 11.5, 9.7, 9.7, 16.6, 9.7, 12, 16.6, 14.9, 8, 12, 14.9, 5.7, 7.4, 8.6, 9.7, 16.1, 9.2, 8.6, 14.3, 9.7, 6.9, 13.8, 11.5, 10.9, 9.2, 8, 13.8, 11.5, 14.9, 20.7, 9.2, 11.5, 10.3, 6.3, 1.7, 4.6, 6.3, 8, 8, 10.3, 11.5, 14.9, 8, 4.1, 9.2, 9.2, 10.9, 4.6, 10.9, 5.1, 6.3, 5.7, 7.4, 8.6, 14.3, 14.9, 14.9, 14.3, 6.9, 10.3, 6.3, 5.1, 11.5, 6.9, 9.7, 11.5, 8.6, 8, 8.6, 12, 7.4, 7.4, 7.4, 9.2, 6.9, 13.8, 7.4, 6.9, 7.4, 4.6, 4, 10.3, 8, 8.6, 11.5, 11.5, 11.5, 9.7, 11.5, 10.3, 6.3, 7.4, 10.9, 10.3, 15.5, 14.3, 12.6, 9.7, 3.4, 8, 5.7, 9.7, 2.3, 6.3, 6.3, 6.9, 5.1, 2.8, 4.6, 7.4, 15.5, 10.9, 10.3, 10.9, 9.7, 14.9, 15.5, 6.3, 10.9, 11.5, 6.9, 13.8, 10.3, 10.3, 8, 12.6, 9.2, 10.3, 10.3, 16.6, 6.9, 13.2, 14.3, 8, 11.5 };
             var kappa4 = new KappaFour();
@@ -109,7 +118,7 @@ namespace Distributions.Univariate
             double p = 0.999;
 
             var pd1 = kappa4.QuantileGradient(p);
-            var pd2 = NumericalDerivative.Gradient(x => 
+            var pd2 = NumericalDerivative.Gradient(x =>
             {
                 var K4 = new KappaFour();
                 K4.SetParameters(x);

@@ -184,5 +184,46 @@ namespace Distributions.BivariateCopulas
             Assert.IsGreaterThan(0.99, copulaLarge.UpperTailDependence, "λ_U should approach 1 for large θ.");
         }
 
+        /// <summary>
+        /// Test that ParametersValid tracks the dependency parameter's valid range.
+        /// Regression: the Archimedean base ValidateParameter returned a non-null
+        /// sentinel for valid parameters, leaving ParametersValid permanently false.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParametersValid()
+        {
+            var copula = new GumbelCopula(2.0);
+            Assert.IsTrue(copula.ParametersValid);
+
+            copula.Theta = 0.5; // below the minimum of 1
+            Assert.IsFalse(copula.ParametersValid);
+
+            copula.Theta = 3.0;
+            Assert.IsTrue(copula.ParametersValid);
+        }
+
+        /// <summary>
+        /// Test Clone produces an independent copy with deep-copied marginals.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone()
+        {
+            var copula = new GumbelCopula(2.0, new Normal(100, 10), new Gumbel(50, 5));
+            var clone = copula.Clone() as GumbelCopula;
+            Assert.IsNotNull(clone);
+            Assert.AreEqual(copula.Theta, clone.Theta);
+            Assert.IsTrue(clone.ParametersValid);
+
+            // Marginals are deep-copied (distributions memoize lazily, so clones must
+            // not share marginal instances), with identical quantiles
+            Assert.AreNotSame(copula.MarginalDistributionX, clone.MarginalDistributionX);
+            Assert.AreNotSame(copula.MarginalDistributionY, clone.MarginalDistributionY);
+            Assert.AreEqual(copula.MarginalDistributionY.InverseCDF(0.9), clone.MarginalDistributionY.InverseCDF(0.9));
+
+            // Mutating the clone should not affect the original
+            clone.Theta = 3.0;
+            Assert.AreEqual(2.0, copula.Theta);
+        }
+
     }
 }

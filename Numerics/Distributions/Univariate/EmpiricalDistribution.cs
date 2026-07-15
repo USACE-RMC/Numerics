@@ -24,8 +24,8 @@ namespace Numerics.Distributions
     /// <para>
     /// This distribution specifies a cumulative distribution with n points. The range of the distribution
     /// is set by the minimum and maximum arguments. Each point on the cumulative curve has an X value and
-    /// a probability. Points on the cumulative curve must be entered with increasing value and increasing
-    /// probability. Even though the (X,p) points define the distribution, and value between the minimum
+    /// a probability. Points on the cumulative curve must be entered with nondecreasing values and increasing
+    /// probabilities. Even though the (X,p) points define the distribution, any value between the minimum
     /// and maximum can be returned.
     /// </para>
     /// <para>
@@ -102,7 +102,7 @@ namespace Numerics.Distributions
                 }
                 if (isAsc == true)
                 {
-                    opd = new OrderedPairedData(_xValues, _pValues, true, SortOrder.Ascending, true, SortOrder.Ascending);
+                    opd = new OrderedPairedData(_xValues, _pValues, orderedPairedData.StrictX, SortOrder.Ascending, true, SortOrder.Ascending);
                 }
                 else
                 {
@@ -113,20 +113,22 @@ namespace Numerics.Distributions
             {
                 _pValues = orderedPairedData.Select(v => v.Y).ToArray();
             }
+            _parametersValid = ValidateData(opd, _pValues, false) is null;
             _momentsComputed = false;
         }
 
         /// <summary>
         /// Constructs a Univariate Empirical CDF from sample data.
         /// </summary>
-        /// <param name="sample"></param>
+        /// <param name="sample">The sample values used as empirical ordinates; duplicate values are permitted.</param>
         /// <param name="plottingPostionType">The plotting position formula type. Default = Weibull.</param>
         public EmpiricalDistribution(IList<double> sample, PlottingPositions.PlottingPostionType plottingPostionType = PlottingPositions.PlottingPostionType.Weibull)
         {
             _xValues = sample.ToArray();
             Array.Sort(_xValues);
             _pValues = PlottingPositions.Function(_xValues.Count(), plottingPostionType)!;
-            opd = new OrderedPairedData(_xValues, _pValues, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            opd = new OrderedPairedData(_xValues, _pValues, false, SortOrder.Ascending, true, SortOrder.Ascending);
+            _parametersValid = ValidateData(opd, _pValues, false) is null;
             _momentsComputed = false;
         }
 
@@ -138,7 +140,7 @@ namespace Numerics.Distributions
 
         /// <summary>
         /// Returns the array of X values. Points On the cumulative curve are specified
-        /// with increasing value and increasing probability.
+        /// with nondecreasing values and increasing probabilities.
         /// </summary>
         public ReadOnlyCollection<double> XValues => new(_xValues);
 
@@ -345,11 +347,17 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="xValues">Array of X values.</param>
         /// <param name="pValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
+        /// <exception cref="ArgumentException">The value and probability collections have different lengths.</exception>
         public void SetParameters(IList<double> xValues, IList<double> pValues)
         {
+            if (xValues.Count != pValues.Count)
+            {
+                throw new ArgumentException("The value and probability arrays must have the same length.", nameof(pValues));
+            }
             _xValues = xValues.ToArray();
             _pValues = pValues.ToArray();
-            opd = new OrderedPairedData(xValues, pValues, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            opd = new OrderedPairedData(xValues, pValues, false, SortOrder.Ascending, true, SortOrder.Ascending);
+            _parametersValid = ValidateData(opd, pValues, false) is null;
             _momentsComputed = false;
         }
 
@@ -360,12 +368,52 @@ namespace Numerics.Distributions
         /// <param name="pValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
         /// <param name="XOrder">Sort order of X values.</param>
         /// <param name="probabilityOrder">Sort order of probability values.</param>
+        /// <exception cref="ArgumentException">The value and probability collections have different lengths.</exception>
         public void SetParameters(IList<double> xValues, IList<double> pValues, SortOrder XOrder, SortOrder probabilityOrder)
         {
+            if (xValues.Count != pValues.Count)
+            {
+                throw new ArgumentException("The value and probability arrays must have the same length.", nameof(pValues));
+            }
             _xValues = xValues.ToArray();
             _pValues = pValues.ToArray();
-            opd = new OrderedPairedData(xValues, pValues, true, XOrder, true, probabilityOrder);
+            opd = new OrderedPairedData(xValues, pValues, false, XOrder, true, probabilityOrder);
+            _parametersValid = ValidateData(opd, pValues, false) is null;
             _momentsComputed = false;
+        }
+
+        /// <summary>
+        /// Validates empirical ordinates and their cumulative probabilities.
+        /// </summary>
+        /// <param name="data">The ordered paired data to validate.</param>
+        /// <param name="probabilities">The cumulative probabilities.</param>
+        /// <param name="throwException">Whether to throw the validation exception.</param>
+        /// <returns><see langword="null"/> when the data are valid; otherwise, the validation exception.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="throwException"/> is true and the data are invalid.</exception>
+        private static ArgumentOutOfRangeException? ValidateData(OrderedPairedData data, IList<double> probabilities, bool throwException)
+        {
+            ArgumentOutOfRangeException? exception = null;
+            if (data.Count < 2)
+            {
+                exception = new ArgumentOutOfRangeException(nameof(data), "At least two empirical ordinates are required.");
+            }
+            else if (!data.IsValid)
+            {
+                exception = new ArgumentOutOfRangeException(nameof(data), "Empirical ordinates must be finite and follow the configured ordering.");
+            }
+            else
+            {
+                for (int i = 0; i < probabilities.Count; i++)
+                {
+                    if (double.IsNaN(probabilities[i]) || double.IsInfinity(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
+                    {
+                        exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must be finite and between zero and one.");
+                        break;
+                    }
+                }
+            }
+            if (throwException && exception is not null) throw exception;
+            return exception;
         }
 
         /// <inheritdoc/>
@@ -427,6 +475,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double CDF(double X)
         {
+            if (_parametersValid == false) ValidateData(opd, _pValues, true);
             double p = 0;
             if (opd.OrderY == SortOrder.Ascending || opd.OrderY == SortOrder.None)
             {
@@ -443,6 +492,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
+            if (_parametersValid == false) ValidateData(opd, _pValues, true);
             // Validate probability
             if (probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");

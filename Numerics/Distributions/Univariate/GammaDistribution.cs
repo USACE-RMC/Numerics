@@ -689,12 +689,17 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="skewness">Coefficient of skewness.</param>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The partial derivative of the frequency factor with respect to skewness.</returns>
         public static double PartialKp(double skewness, double probability)
         {
             double C = skewness;
             double absC = Math.Abs(C);
-            // If skew is sufficiently close to zero, return standard Normal Z variate.
-            if (absC < 0.0001d) return Normal.StandardZ(probability);
+            // Use the Cornish-Fisher derivative limit at zero skew.
+            if (absC < 0.0001d)
+            {
+                double z = Normal.StandardZ(probability);
+                return (z * z - 1.0d) / 6.0d;
+            }
 
             // If abs(skew) is less than or equal to 2, use Cornish-Fisher transformation (Fisher and Cornish, 1960)
             if (absC <= 2d)

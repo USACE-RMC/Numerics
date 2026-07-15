@@ -50,6 +50,8 @@ namespace Numerics.Distributions
         }
 
         private double[] _weights = null!;
+        private bool _isZeroInflated;
+        private double _zeroWeight;
         private UnivariateDistributionBase[] _distributions = null!;
         private EmpiricalDistribution _empiricalCDF = null!;
         private bool _momentsComputed = false;
@@ -67,14 +69,47 @@ namespace Numerics.Distributions
         public UnivariateDistributionBase[] Distributions => _distributions;
 
         /// <summary>
-        /// Determines whether to use assign a weight to all data points less than or equal to zero.
+        /// Gets or sets whether a separate probability weight is assigned to values less than or equal to zero.
         /// </summary>
-        public bool IsZeroInflated { get; set; } = false;
+        public bool IsZeroInflated
+        {
+            get { return _isZeroInflated; }
+            set
+            {
+                _isZeroInflated = value;
+                RefreshConfigurationState();
+            }
+        }
 
         /// <summary>
-        /// The zero-value weight used if the mixture is zero-inflated.
+        /// Gets or sets the zero-value probability weight used when the mixture is zero-inflated.
         /// </summary>
-        public double ZeroWeight { get; set; } = 0.0;
+        public double ZeroWeight
+        {
+            get { return _zeroWeight; }
+            set
+            {
+                _zeroWeight = value;
+                RefreshConfigurationState();
+            }
+        }
+
+        /// <summary>
+        /// Refreshes validity and cached results after zero-inflation configuration changes.
+        /// </summary>
+        private void RefreshConfigurationState()
+        {
+            if (_weights is null || _distributions is null)
+            {
+                _parametersValid = false;
+            }
+            else
+            {
+                _parametersValid = ValidateParameters(GetParameters, false) is null;
+            }
+            _momentsComputed = false;
+            _empiricalCDFCreated = false;
+        }
 
         /// <summary>
         /// Determines the interpolation transform for the X-values.
@@ -377,6 +412,7 @@ namespace Numerics.Distributions
 
             _weights = weights;
             _distributions = distributions;
+            _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
         }
@@ -399,6 +435,7 @@ namespace Numerics.Distributions
             {
                 _distributions[i] = (UnivariateDistributionBase)distributions[i];
             }
+            _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
         }
@@ -432,6 +469,7 @@ namespace Numerics.Distributions
                 Distributions[i].SetParameters(parms);
                 t += Distributions[i].NumberOfParameters;
             }
+            _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
         }
@@ -712,8 +750,26 @@ namespace Numerics.Distributions
                         {
                             wgt += likelihood[i, k];
                         }
-                    }  
+                    }
                     mleWeights[k] = wgt / N;
+                }
+
+                // Keep component weights on the configured simplex. For a zero-inflated
+                // mixture, finite-sample zero counts need not equal the fixed ZeroWeight.
+                double componentWeightSum = mleWeights.Sum();
+                double componentWeightTarget = IsZeroInflated ? 1d - ZeroWeight : 1d;
+                if (componentWeightSum > 0d)
+                {
+                    double scale = componentWeightTarget / componentWeightSum;
+                    for (int k = 0; k < K; k++)
+                    {
+                        mleWeights[k] *= scale;
+                    }
+                }
+                else
+                {
+                    double weight = componentWeightTarget / K;
+                    for (int k = 0; k < K; k++) mleWeights[k] = weight;
                 }
                 // MLE
                 var solver = new NelderMead(logLH, Np, x, Lowers, Uppers);

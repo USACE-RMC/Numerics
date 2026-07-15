@@ -55,7 +55,8 @@ namespace Mathematics.Integration
         /// <summary>
         /// Test function. The integral of Pi. Should equal ~3.14
         /// </summary>
-        /// <param name="vals">Array of values.</param>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
         public static double PI2D(double x, double y)
         {
             return (x * x + y * y < 1) ? 1 : 0;
@@ -81,7 +82,14 @@ namespace Mathematics.Integration
             return A / (1.0 - Math.Cos(x[0]) * Math.Cos(x[1]) * Math.Cos(x[2]));
         }
 
+        /// <summary>
+        /// Mean values for the 20-dimensional sum-of-normals integration fixture.
+        /// </summary>
         public static double[] mu20 = new double[] { 10, 30, 17, 99, 68, 26, 35, 55, 13, 59, 12, 28, 49, 54, 20, 47, 12, 76, 70, 57 };
+
+        /// <summary>
+        /// Standard deviation values for the 20-dimensional sum-of-normals integration fixture.
+        /// </summary>
         public static double[] sigma20 = new double[] { 2, 15, 5, 14, 7, 24, 29, 22, 22, 1, 3, 28, 19, 18, 4, 24, 23, 26, 26, 19 };
 
         /// <summary>

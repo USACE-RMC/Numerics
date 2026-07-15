@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.LinearAlgebra;
 
 namespace Mathematics.LinearAlgebra
@@ -9,7 +9,7 @@ namespace Mathematics.LinearAlgebra
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -18,6 +18,9 @@ namespace Mathematics.LinearAlgebra
     [TestClass]
     public class Test_GaussJordanElimination
     {
+        /// <summary>
+        /// Tests Gauss-Jordan elimination against a known solution.
+        /// </summary>
         [TestMethod()]
         public void Test_GaussJordanElim()
         {
@@ -32,8 +35,8 @@ namespace Mathematics.LinearAlgebra
                     Assert.AreEqual(true_IA[i, j], A[i, j]);
             }
 
-            /// Recreated Gauss Jordan test in R to compare the inverted A matrices.
-            /// I utilized library(matlib), gaussianElimination(), and inv() functions. Test passed.
+            // Recreated Gauss Jordan test in R to compare the inverted A matrices.
+            // I utilized library(matlib), gaussianElimination(), and inv() functions. Test passed.
         }
 
     }

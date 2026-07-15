@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.LinearAlgebra;
 
 namespace Mathematics.LinearAlgebra
@@ -9,7 +9,7 @@ namespace Mathematics.LinearAlgebra
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -67,11 +67,11 @@ namespace Mathematics.LinearAlgebra
                 }
             }
 
-            /// Replicated LU decomposition in R and compared with decomposition results.
-            /// Used lu() function for recreation. Test passed. 
+            // Replicated LU decomposition in R and compared with decomposition results.
+            // Used lu() function for recreation. Test passed.
         }
         /// <summary>
-        /// Testing Solve with vector input 
+        /// Testing Solve with vector input
         /// </summary>
         [TestMethod()]
         public void Test_SolveVector() {
@@ -89,7 +89,7 @@ namespace Mathematics.LinearAlgebra
             var B = new Vector(new[] { 6d, -4, 27d });
             var lu = new LUDecomposition(A);
 
-            
+
             var true_x = new[] { 5d, 3d, -2 };
             var x = lu.Solve(B);
             for (int i = 0; i < x.Length; i++)
@@ -97,7 +97,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Testing Solve with matrix input 
+        /// Testing Solve with matrix input
         /// </summary>
         [TestMethod()]
         public void Test_SolveMatrix() {
@@ -130,9 +130,9 @@ namespace Mathematics.LinearAlgebra
             for (int i = 0; i < matX.NumberOfRows; i++)
             {
                     Assert.AreEqual(matX[i,0], true_matX[i,0], 0.0001d);
-                
+
             }
-                    
+
         }
 
         /// <summary>

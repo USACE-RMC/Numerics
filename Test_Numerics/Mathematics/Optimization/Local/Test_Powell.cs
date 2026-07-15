@@ -187,5 +187,29 @@ namespace Mathematics.Optimization
             Assert.AreEqual(y, validY, 1E-4);
         }
 
+        /// <summary>
+        /// Verifies that Powell's Brent line search reaches a distant minimum without linear bracketing work.
+        /// </summary>
+        [TestMethod]
+        public void Test_DistantLineMinimumUsesGeometricBracket()
+        {
+            var solver = new Powell(
+                x => (x[0] - 50d) * (x[0] - 50d),
+                1,
+                new[] { 0d },
+                new[] { -100d },
+                new[] { 100d })
+            {
+                ComputeHessian = false,
+                RecordTraces = false
+            };
+
+            solver.Minimize();
+
+            Assert.AreEqual(50d, solver.BestParameterSet.Values[0], 1E-4);
+            Assert.AreEqual(0d, solver.BestParameterSet.Fitness, 1E-8);
+            Assert.IsLessThan(200, solver.FunctionEvaluations, $"Expected fewer than 200 objective evaluations, but observed {solver.FunctionEvaluations}.");
+        }
+
     }
 }

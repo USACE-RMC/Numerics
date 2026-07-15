@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.RootFinding;
 using System;
 
@@ -10,7 +10,7 @@ namespace Mathematics.RootFinding
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -90,6 +90,9 @@ namespace Mathematics.RootFinding
             Assert.AreEqual(X, trueX, 1E-5);
         }
 
+        /// <summary>
+        /// Tests the first bisection edge case.
+        /// </summary>
         [TestMethod()]
         public void Test_BisectionEdge1()
         {
@@ -102,6 +105,9 @@ namespace Mathematics.RootFinding
             });
         }
 
+        /// <summary>
+        /// Tests the second bisection edge case.
+        /// </summary>
         [TestMethod()]
         public void Test_BisectionEdge2()
         {
@@ -114,6 +120,9 @@ namespace Mathematics.RootFinding
             });
         }
 
+        /// <summary>
+        /// Tests the third bisection edge case.
+        /// </summary>
         [TestMethod()]
         public void Test_BisectionEdge3()
         {

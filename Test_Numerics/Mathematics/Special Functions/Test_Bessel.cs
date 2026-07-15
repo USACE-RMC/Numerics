@@ -252,7 +252,7 @@ namespace Mathematics.SpecialFunctions
         }
 
         /// <summary>
-        /// Test Jn using the Miller's downward recurrence path (x <= n).
+        /// Test Jn using the Miller's downward recurrence path (x &lt;= n).
         /// </summary>
         [TestMethod]
         public void Test_Jn_MillerRecurrence()

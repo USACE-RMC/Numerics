@@ -97,6 +97,12 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
+            if (double.IsNaN(parameter) || double.IsInfinity(parameter))
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter must be finite.");
+                if (throwException) throw exception;
+                return exception;
+            }
             if (parameter < ThetaMinimum)
             {
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The correlation parameter ρ (rho) must be greater than " + ThetaMinimum.ToString() + ".");
@@ -178,7 +184,7 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public override BivariateCopula Clone()
         {
-            return new NormalCopula(Theta, MarginalDistributionX, MarginalDistributionY);
+            return new NormalCopula(Theta, CloneMarginal(MarginalDistributionX), CloneMarginal(MarginalDistributionY));
         }
 
     }

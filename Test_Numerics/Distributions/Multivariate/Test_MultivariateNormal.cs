@@ -21,6 +21,129 @@ namespace Distributions.Multivariate
     {
 
         /// <summary>
+        /// Asserts the action throws an ArgumentOutOfRangeException (net481-compatible).
+        /// </summary>
+        /// <param name="action">The action expected to throw.</param>
+        private static void AssertThrowsOutOfRange(Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return;
+            }
+            Assert.Fail("Expected an ArgumentOutOfRangeException.");
+        }
+
+
+        /// <summary>
+        /// Verifies the non-throwing mutable-covariance path: a positive-definite swap
+        /// evaluates normally, a non-positive-definite swap marks the density invalid
+        /// (LogPDF = -inf, PDF = 0) without throwing, and a subsequent valid swap
+        /// restores evaluation.
+        /// </summary>
+        [TestMethod()]
+        public void Test_TrySetCovariance_NonThrowingInvalidState()
+        {
+            var mvn = new MultivariateNormal(new[] { 1d, 2d }, new[,] { { 1d, 0.3d }, { 0.3d, 2d } });
+            double validLogPdf = mvn.LogPDF(new[] { 1.2d, 1.8d });
+            Assert.IsTrue(mvn.IsDensityValid);
+            Assert.IsTrue(!double.IsNaN(validLogPdf) && !double.IsInfinity(validLogPdf));
+
+            // A non-positive-definite covariance: correlation beyond one.
+            Assert.IsFalse(mvn.TrySetCovariance(new[,] { { 1d, 1.5d }, { 1.5d, 1d } }));
+            Assert.IsFalse(mvn.IsDensityValid);
+            Assert.IsTrue(double.IsNegativeInfinity(mvn.LogPDF(new[] { 1.2d, 1.8d })));
+            Assert.AreEqual(0d, mvn.PDF(new[] { 1.2d, 1.8d }), 0d);
+
+            // Restore with the original covariance: the density comes back exactly.
+            Assert.IsTrue(mvn.TrySetCovariance(new[,] { { 1d, 0.3d }, { 0.3d, 2d } }));
+            Assert.IsTrue(mvn.IsDensityValid);
+            Assert.AreEqual(validLogPdf, mvn.LogPDF(new[] { 1.2d, 1.8d }), 1E-12);
+
+            // TrySetParameters also moves the mean.
+            Assert.IsTrue(mvn.TrySetParameters(new[] { 0d, 0d }, new[,] { { 1d, 0d }, { 0d, 1d } }));
+            Assert.AreEqual(-Math.Log(2d * Math.PI), mvn.LogPDF(new[] { 0d, 0d }), 1E-12);
+        }
+
+        /// <summary>
+        /// Verifies the marginal utility: the sub-mean and sub-covariance at the kept
+        /// indices, including a reordered subset, and the index validation matrix.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Marginal_SubsetAndValidation()
+        {
+            var mean = new[] { 1d, 2d, 3d };
+            var covariance = new[,]
+            {
+                { 4.0d, 1.2d, 0.5d },
+                { 1.2d, 9.0d, 2.1d },
+                { 0.5d, 2.1d, 16.0d }
+            };
+            var mvn = new MultivariateNormal(mean, covariance);
+
+            var marginal = mvn.Marginal(2, 0);
+            Assert.AreEqual(2, marginal.Dimension);
+            Assert.AreEqual(3d, marginal.Mean[0], 0d);
+            Assert.AreEqual(1d, marginal.Mean[1], 0d);
+            Assert.AreEqual(16d, marginal.Covariance[0, 0], 0d);
+            Assert.AreEqual(0.5d, marginal.Covariance[0, 1], 0d);
+            Assert.AreEqual(4d, marginal.Covariance[1, 1], 0d);
+
+            // The marginal of a joint Gaussian is its sub-Gaussian: densities agree
+            // with a directly constructed distribution.
+            var direct = new MultivariateNormal(new[] { 3d, 1d },
+                new[,] { { 16d, 0.5d }, { 0.5d, 4d } });
+            Assert.AreEqual(direct.LogPDF(new[] { 2.5d, 1.4d }), marginal.LogPDF(new[] { 2.5d, 1.4d }), 1E-12);
+
+            AssertThrowsOutOfRange(() => mvn.Marginal());
+            AssertThrowsOutOfRange(() => mvn.Marginal(0, 0));
+            AssertThrowsOutOfRange(() => mvn.Marginal(3));
+        }
+
+        /// <summary>
+        /// Verifies the conditional utility against hand-computed Gaussian
+        /// conditioning: for the bivariate case, X1 | X2 = x2 has mean
+        /// mu1 + rho*(s1/s2)*(x2 - mu2) and variance s1^2*(1 - rho^2); a trivariate
+        /// case checks the Schur complement, and observing everything throws.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Conditional_ClosedFormsAndValidation()
+        {
+            // Bivariate closed form.
+            double mu1 = 4d, mu2 = 2d, s1 = 2d, s2 = 3d, rho = 0.6d;
+            var bivariate = MultivariateNormal.Bivariate(mu1, mu2, s1, s2, rho);
+            var conditional = bivariate.Conditional(new[] { 1 }, new[] { 3.5d });
+            Assert.AreEqual(1, conditional.Dimension);
+            Assert.AreEqual(mu1 + rho * (s1 / s2) * (3.5d - mu2), conditional.Mean[0], 1E-12);
+            Assert.AreEqual(s1 * s1 * (1d - rho * rho), conditional.Covariance[0, 0], 1E-12);
+
+            // Trivariate Schur complement, observing the middle dimension.
+            var mean = new[] { 1d, 2d, 3d };
+            var covariance = new[,]
+            {
+                { 4.0d, 1.2d, 0.5d },
+                { 1.2d, 9.0d, 2.1d },
+                { 0.5d, 2.1d, 16.0d }
+            };
+            var trivariate = new MultivariateNormal(mean, covariance);
+            var given = trivariate.Conditional(new[] { 1 }, new[] { 4.0d });
+            // mu_c = mu_{0,2} + Sigma_{[0,2],1} * (4 - 2) / 9
+            Assert.AreEqual(1d + 1.2d * 2d / 9d, given.Mean[0], 1E-12);
+            Assert.AreEqual(3d + 2.1d * 2d / 9d, given.Mean[1], 1E-12);
+            // Sigma_c = Sigma_{[0,2],[0,2]} - outer(Sigma_{[0,2],1}) / 9
+            Assert.AreEqual(4d - 1.2d * 1.2d / 9d, given.Covariance[0, 0], 1E-12);
+            Assert.AreEqual(0.5d - 1.2d * 2.1d / 9d, given.Covariance[0, 1], 1E-12);
+            Assert.AreEqual(16d - 2.1d * 2.1d / 9d, given.Covariance[1, 1], 1E-12);
+
+            AssertThrowsOutOfRange(() => trivariate.Conditional(new[] { 0, 1, 2 }, new[] { 1d, 2d, 3d }));
+            AssertThrowsOutOfRange(() => trivariate.Conditional(new[] { 1 }, new[] { 1d, 2d }));
+        }
+
+
+        /// <summary>
         /// Verified using Accord.Net
         /// </summary>
         [TestMethod()]
@@ -106,6 +229,142 @@ namespace Distributions.Multivariate
                 INFIN[0] = INFIN[0] - 1;
             }
 
+        }
+
+        /// <summary>
+        /// Verifies the documented invalid-dimension termination status without entering MVNDNT initialization.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_InvalidDimensionReturnsStatusTwo()
+        {
+            var distribution = new MultivariateNormal(1);
+            double error = 0d;
+            double value = 0d;
+            int inform = 0;
+
+            distribution.MVNDST(0, new double[0], new double[0], new int[0], new double[0], 1, 0d, 0d, ref error, ref value, ref inform);
+
+            Assert.AreEqual(2, inform);
+            Assert.AreEqual(0d, value, 0d);
+            Assert.AreEqual(1d, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies that dimensions flagged as completely unbounded collapse to probability one with successful status.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_AllUnboundedReturnsExactProbability()
+        {
+            var distribution = new MultivariateNormal(2);
+            double error = -1d;
+            double value = -1d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                2,
+                new[] { 0d, 0d },
+                new[] { 0d, 0d },
+                new[] { -1, -1 },
+                new[] { 0d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(0, inform);
+            Assert.AreEqual(1d, value, 0d);
+            Assert.AreEqual(0d, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies the exact one-active-dimension Normal limit and its successful initialization status.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_OneActiveDimensionMatchesNormalProbability()
+        {
+            var distribution = new MultivariateNormal(2);
+            double error = 0d;
+            double value = 0d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                2,
+                new[] { 0d, 0d },
+                new[] { 0d, 0d },
+                new[] { 0, -1 },
+                new[] { 0.7d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(0, inform);
+            Assert.AreEqual(0.5d, value, 1E-15);
+            Assert.AreEqual(2E-16, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies the analytical bivariate collapse against the zero-threshold quadrant probability for correlation one-half.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_BivariateCollapseMatchesAnalyticalProbability()
+        {
+            var distribution = new MultivariateNormal(2);
+            double error = 0d;
+            double value = 0d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                2,
+                new[] { 0d, 0d },
+                new[] { 0d, 0d },
+                new[] { 0, 0 },
+                new[] { 0.5d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(0, inform);
+            Assert.AreEqual(1d / 3d, value, 1E-12);
+            Assert.AreEqual(2E-16, error, 0d);
+        }
+
+        /// <summary>
+        /// Verifies that only the lattice integration stage changes successful initialization into a budget-exhaustion status.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNDST_InsufficientBudgetReturnsStatusOne()
+        {
+            var distribution = new MultivariateNormal(3) { MVNUNI = new MersenneTwister(12345) };
+            double error = 0d;
+            double value = 0d;
+            int inform = -1;
+
+            distribution.MVNDST(
+                3,
+                new[] { 0d, 0d, 0d },
+                new[] { 0.2d, 0.5d, 1d },
+                new[] { 0, 0, 0 },
+                new[] { 0.25d, 0.1d, 0.3d },
+                1,
+                0d,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+
+            Assert.AreEqual(1, inform);
+            Assert.IsTrue(value >= 0d && value <= 1d);
+            Assert.IsGreaterThanOrEqualTo(0d, error);
+            Assert.IsFalse(double.IsNaN(error));
+            Assert.IsFalse(double.IsInfinity(error));
         }
 
         /// <summary>
@@ -231,5 +490,92 @@ namespace Distributions.Multivariate
 
         }
          
-    }
+        /// <summary>
+        /// Verifies that perfectly correlated variables collapse to their tightest univariate bound.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_PerfectCorrelationCollapsesToNormal()
+        {
+            double probability = EvaluateStandardCdf(new[] { 0.8d, -0.3d, 0.2d }, new[] { 1d, 1d, 1d });
+            Assert.AreEqual(Normal.StandardCDF(-0.3d), probability, 1E-10);
+        }
+
+        /// <summary>
+        /// Verifies that perfectly anticorrelated variables collapse to a bounded normal interval.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_PerfectAnticorrelationCollapsesToNormalInterval()
+        {
+            double probability = EvaluateStandardCdf(new[] { 0.7d, 0.2d }, new[] { -1d });
+            double expected = Normal.StandardCDF(0.7d) - Normal.StandardCDF(-0.2d);
+
+            Assert.AreEqual(expected, probability, 1E-10);
+        }
+
+        /// <summary>
+        /// Verifies equivalent results for permutations of a rank-deficient covariance matrix.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_PermutedRankDeficientMatricesCollapseAnalytically()
+        {
+            double expected = Normal.StandardCDF(0.2d) * Normal.StandardCDF(-0.4d);
+            Assert.AreEqual(
+                expected,
+                EvaluateStandardCdf(new[] { 0.2d, -0.4d, 0.7d }, new[] { 0d, 1d, 0d }),
+                1E-10);
+            Assert.AreEqual(
+                expected,
+                EvaluateStandardCdf(new[] { 0.7d, 0.2d, -0.4d }, new[] { 1d, 0d, 0d }),
+                1E-10);
+        }
+
+        /// <summary>
+        /// Verifies the unchanged nonsingular path immediately above perfect correlation.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_NearSingularCorrelationMatchesBivariateFormula()
+        {
+            const double correlation = 1d - 1E-12;
+            var distribution = MultivariateNormal.Bivariate(0d, 0d, 1d, 1d, correlation);
+            distribution.MVNUNI = new MersenneTwister(12345);
+            double expected = 0.25d + Math.Asin(correlation) / (2d * Math.PI);
+
+            Assert.AreEqual(expected, distribution.CDF(new[] { 0d, 0d }), 1E-10);
+        }
+
+        /// <summary>
+        /// Evaluates a standard multivariate-normal CDF through the public Genz integration entry point.
+        /// </summary>
+        /// <param name="upper">The upper integration limits.</param>
+        /// <param name="correlations">The packed strict-lower-triangle correlation coefficients.</param>
+        /// <returns>The evaluated multivariate-normal probability.</returns>
+        private static double EvaluateStandardCdf(double[] upper, double[] correlations)
+        {
+            int dimensions = upper.Length;
+            var distribution = new MultivariateNormal(dimensions)
+            {
+                MVNUNI = new MersenneTwister(12345)
+            };
+            var lower = new double[dimensions];
+            var infinities = new int[dimensions];
+            double error = 0d;
+            double value = 0d;
+            int inform = 0;
+
+            distribution.MVNDST(
+                dimensions,
+                lower,
+                upper,
+                infinities,
+                correlations,
+                25000,
+                1E-10,
+                0d,
+                ref error,
+                ref value,
+                ref inform);
+            return value;
+        }
+
 }
+    }

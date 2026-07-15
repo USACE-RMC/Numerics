@@ -1,8 +1,11 @@
-﻿
+
 using Numerics.Mathematics.Optimization;
 
 namespace Mathematics.Optimization
 {
+    /// <summary>
+    /// Tests shortest-path routing behavior for Dijkstra networks.
+    /// </summary>
     [TestClass]
     public class ShortestPathTesting
     {
@@ -32,7 +35,7 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// Simple network run, testing to see if algorithm chooses 
+        /// Simple network run, testing to see if algorithm chooses
         /// the lowest cost path as it should.
         /// </summary>
         [TestMethod]
@@ -223,7 +226,7 @@ namespace Mathematics.Optimization
         [TestMethod]
         public void DisconnectedComponent()
         {
-            // Graph: 
+            // Graph:
             // 0 - 1      2 - 3
             var edges = new List<Edge>
             {

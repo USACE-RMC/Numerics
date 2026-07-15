@@ -137,9 +137,32 @@ namespace Numerics.Distributions.Copulas
         public abstract ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException);
 
         /// <summary>
-        /// Create a deep copy of the copula.
+        /// Create a deep copy of the copula, including independently cloned marginal
+        /// distributions.
         /// </summary>
+        /// <remarks>
+        /// Marginals are deep-copied through <see cref="CloneMarginal"/> because
+        /// distributions memoize internal state lazily — clones sharing marginal
+        /// references are not safe to use concurrently (e.g., one clone per thread in
+        /// Monte Carlo frameworks or parallel likelihood evaluation).
+        /// </remarks>
         public abstract BivariateCopula Clone();
+
+        /// <summary>
+        /// Deep-copies an attached marginal distribution for <see cref="Clone"/>.
+        /// </summary>
+        /// <param name="marginal">The marginal distribution, or null when unattached.</param>
+        /// <returns>An independent copy of the marginal; null when unattached. A marginal
+        /// implementation outside <see cref="UnivariateDistributionBase"/> (which carries the
+        /// clone support) is returned by reference, preserving the previous behavior.</returns>
+        protected static IUnivariateDistribution? CloneMarginal(IUnivariateDistribution? marginal)
+        {
+            if (marginal is UnivariateDistributionBase cloneable)
+            {
+                return cloneable.Clone();
+            }
+            return marginal;
+        }
 
         /// <summary>
         /// Returns the OR joint exceedance probability. When either of the variables exceeds a particular threshold value

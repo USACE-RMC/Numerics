@@ -189,7 +189,8 @@ namespace Numerics.Distributions
         /// <param name="v">The degrees of freedom ν (nu). Range: ν > 0.</param>
         public void SetParameters(double v)
         {
-            DegreesOfFreedom = (int)v;
+            _degreesOfFreedom = (int)v;
+            _parametersValid = !double.IsNaN(v) && !double.IsInfinity(v) && ValidateParameters(_degreesOfFreedom, false) is null;
         }
 
         /// <inheritdoc/>
@@ -218,6 +219,12 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
+            if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]))
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom must be finite.");
+                if (throwException) throw exception;
+                return exception;
+            }
             return ValidateParameters((int)parameters[0], throwException);
         }
 

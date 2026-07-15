@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mathematics.Integration
 {
@@ -56,7 +56,7 @@ namespace Mathematics.Integration
 
 
         /// <summary>
-        /// Test Simpsons Rule Method. 
+        /// Test Simpsons Rule Method.
         /// </summary>
         [TestMethod()]
         public void Test_SimpsonsRule()
@@ -68,7 +68,7 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
-        /// Midpoint Method. 
+        /// Midpoint Method.
         /// </summary>
         [TestMethod()]
         public void Test_MidPoint()

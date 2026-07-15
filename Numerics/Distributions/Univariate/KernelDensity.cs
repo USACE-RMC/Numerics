@@ -552,7 +552,7 @@ namespace Numerics.Distributions
         /// </summary>
         private ArgumentOutOfRangeException? ValidateParameters(double value, bool throwException)
         {
-            if (value <= 0d)
+            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0d)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(Bandwidth), "The bandwidth must be a positive number!");

@@ -205,5 +205,44 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(0.0, copulaHigh.UpperTailDependence, 1E-10, "Normal copula should have no tail dependence even with high ρ.");
             Assert.AreEqual(0.0, copulaHigh.LowerTailDependence, 1E-10, "Normal copula should have no tail dependence even with high ρ.");
         }
+
+        /// <summary>
+        /// Test that ParametersValid tracks the correlation parameter's valid range.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParametersValid()
+        {
+            var copula = new NormalCopula(0.5);
+            Assert.IsTrue(copula.ParametersValid);
+
+            copula.Theta = 1.5; // above the maximum of 1
+            Assert.IsFalse(copula.ParametersValid);
+
+            copula.Theta = -0.35;
+            Assert.IsTrue(copula.ParametersValid);
+        }
+
+        /// <summary>
+        /// Test Clone produces an independent copy with deep-copied marginals.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone()
+        {
+            var copula = new NormalCopula(0.5, new Normal(100, 10), new Gumbel(50, 5));
+            var clone = copula.Clone() as NormalCopula;
+            Assert.IsNotNull(clone);
+            Assert.AreEqual(copula.Theta, clone.Theta);
+            Assert.IsTrue(clone.ParametersValid);
+
+            // Marginals are deep-copied (distributions memoize lazily, so clones must
+            // not share marginal instances), with identical quantiles
+            Assert.AreNotSame(copula.MarginalDistributionX, clone.MarginalDistributionX);
+            Assert.AreNotSame(copula.MarginalDistributionY, clone.MarginalDistributionY);
+            Assert.AreEqual(copula.MarginalDistributionY.InverseCDF(0.9), clone.MarginalDistributionY.InverseCDF(0.9));
+
+            // Mutating the clone should not affect the original
+            clone.Theta = 0.9;
+            Assert.AreEqual(0.5, copula.Theta);
+        }
     }
 }

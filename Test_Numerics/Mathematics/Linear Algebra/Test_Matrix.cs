@@ -1,15 +1,15 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.LinearAlgebra;
 
 namespace Mathematics.LinearAlgebra
-{ 
+{
     /// <summary>
     /// A class unit testing all Matrix Operations.
     /// </summary>
     /// <remarks>
     /// <para>
     ///     <b> Authors: </b>
-    ///     <list type="bullet"> 
+    ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil </item>
     /// </list>
@@ -35,33 +35,33 @@ namespace Mathematics.LinearAlgebra
             A[2, 1] = 8d;
             A[2, 2] = 9d;
 
-            ///<summary>
-            /// Testing .Row
-            /// </summary>
+            //<summary>
+            // Testing .Row
+            // </summary>
             var true_row = new[] { 4d, 5d, 6d };
             var row = A.Row(1);
             for (int i = 0; i < row.Length; i++)
                 Assert.AreEqual(row[i], true_row[i]);
 
-            ///<summary>
-            /// Testing .Column
-            /// </summary>
+            //<summary>
+            // Testing .Column
+            // </summary>
             var true_col = new[] { 2d, 5d, 8d };
             var col = A.Column(1);
             for (int i = 0; i < col.Length; i++)
                 Assert.AreEqual(col[i], true_col[i]);
 
-            ///<summary> 
-            ///Testing .Diagonal
-            /// </summary>
+            //<summary>
+            //Testing .Diagonal
+            // </summary>
             var true_diag = new[] { 1d, 5d, 9d };
             var diag = A.Diagonal();
             for (int i = 0; i < diag.Length; i++)
                 Assert.AreEqual(diag[i], true_diag[i]);
 
-            ///<summary>
-            ///Testing upper triangular
-            /// </summary>
+            //<summary>
+            //Testing upper triangular
+            // </summary>
             var true_upT = new Matrix(3);
             true_upT[0, 0] = 1d;
             true_upT[0, 1] = 2d;
@@ -76,9 +76,9 @@ namespace Mathematics.LinearAlgebra
                     Assert.AreEqual(upT[i, j], true_upT[i, j]);
             }
 
-            ///<summary>
-            ///Testing lower triangular
-            /// </summary>
+            //<summary>
+            //Testing lower triangular
+            // </summary>
             var true_lowT = new Matrix(3);
             true_lowT[0, 0] = 1d;
             true_lowT[1, 0] = 4d;
@@ -330,7 +330,7 @@ namespace Mathematics.LinearAlgebra
                     Assert.AreEqual(result[i, j], true_result[i, j]);
             }
         }
-        
+
         /// <summary>
         /// Sum all elements in the matrix
         /// </summary>
@@ -479,7 +479,7 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Multiply matrix by scalar. 
+        /// Multiply matrix by scalar.
         /// </summary>
         [TestMethod()]
         public void Test_MultiplyByScalar()

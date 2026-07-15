@@ -1,0 +1,13 @@
+<Project>
+
+  <PropertyGroup>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
+    <EnforceXmlDocumentation Condition="'$(EnforceXmlDocumentation)' == ''">true</EnforceXmlDocumentation>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnforceXmlDocumentation)' == 'true'">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsAsErrors>$(WarningsAsErrors);CS1570;CS1571;CS1572;CS1573;CS1574;CS1584;CS1587;CS1589;CS1591</WarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

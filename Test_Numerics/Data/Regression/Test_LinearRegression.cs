@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Diagnostics; // keep to be able to uncomment and run Debug.WriteLine()
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
@@ -7,7 +7,7 @@ using Numerics.Mathematics.LinearAlgebra;
 namespace Data.Regression
 {
     /// <summary>
-    /// Unit tests for the Linear Regression class. The linear regression models are validated against R's "lm( )" method, while 
+    /// Unit tests for the Linear Regression class. The linear regression models are validated against R's "lm( )" method, while
     /// the prediction methods are validated with the "predict.lm( )" function.
     /// </summary>
     /// <remarks>
@@ -25,7 +25,7 @@ namespace Data.Regression
     public class Test_LinearRegression
     {
         /// <summary>
-        /// Test simple linear regression. 
+        /// Test simple linear regression.
         /// </summary>
         [TestMethod]
         public void Test_SimpleLinearRegression()
@@ -62,7 +62,7 @@ namespace Data.Regression
             Assert.AreEqual(ar2, true_ar2, 1E-4);
             Assert.AreEqual(df, true_df);
 
-            // Test summary output table 
+            // Test summary output table
             var summary = LM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -87,7 +87,7 @@ namespace Data.Regression
         }
 
         /// <summary>
-        /// Test multiple linear regression. 
+        /// Test multiple linear regression.
         /// </summary>
         [TestMethod]
         public void Test_MultipleLinearRegression()
@@ -121,14 +121,14 @@ namespace Data.Regression
                 Assert.AreEqual(par[i], true_par[i], 1E-4);
                 Assert.AreEqual(sig[i], true_sig[i], 1E-4);
             }
-        
+
             Assert.AreEqual(se, true_se, 1E-4);
             Assert.AreEqual(r2, true_r2, 1E-3);
             Assert.AreEqual(ar2, true_ar2, 1E-3);
             Assert.AreEqual(df, true_df);
 
 
-            // Test summary output table 
+            // Test summary output table
             var summary = LM.Summary();
             for (int i = 0; i < summary.Count; i++)
             {
@@ -136,23 +136,23 @@ namespace Data.Regression
                 // Debug.WriteLine(summary[i]);
             }
 
-            /** The below summary table is shown for demonstration. 
+            /* The below summary table is shown for demonstration.
              * This is the same summary that would be outputted from the R lm() method.
-             * 
+             *
              * Model for predicting Consumption:
              * Parameters:
              *                    Estimate  Std. Error     t value    Pr(>|t|)
              * Intercept           0.26729     0.03721       7.184   1.68E-011 ***
-             * Income              0.71448     0.04219      16.934      <1E-15 ***
+             * Income              0.71448     0.04219      16.934      &lt;1E-15 ***
              * Production          0.04589     0.02588       1.773      0.0778 .
-             * Savings            -0.04527     0.00278     -16.287      <1E-15 ***
+             * Savings            -0.04527     0.00278     -16.287      &lt;1E-15 ***
              * Unemployment       -0.20477     0.10550      -1.941      0.0538 .
              * ---
              * Signif.codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
              *
              * Residual standard error: 0.3286 on 182 degrees of freedom
              * Multiple R-squared: 0.7540,  Adjusted R-squared: 0.7486
-             * F-statistic: 139.5, on 4 and 182 DF, p-value: < 1E-15
+             * F-statistic: 139.5, on 4 and 182 DF, p-value: &lt; 1E-15
              *
              * Residuals:
              *        Min        1Q    Median        3Q       Max
@@ -279,7 +279,7 @@ namespace Data.Regression
                 { 0.1024060, 2.110207, 1.10630631 },
             };
             var testY = LM.PredictionIntervals(testX);
-            
+
             for(int i = 0; i < 4; ++i)
             {
                 for (int j = 0; j < 3; j++)
@@ -306,7 +306,7 @@ namespace Data.Regression
             var LM = new LinearRegression(x, y);
 
             var tx = new double[,]
-            { 
+            {
                 { -1, -1, 1, -0.25 },
                 { -2, -2, 2, -0.15 },
                 { 1, 1, 3, 0.15 },

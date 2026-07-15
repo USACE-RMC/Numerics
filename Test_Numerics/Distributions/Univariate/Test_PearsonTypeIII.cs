@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -13,7 +13,7 @@ namespace Distributions.Univariate
     ///     <list type="bullet">
     ///     <item> Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil </item>
     ///     <item> Tiki Gonzalez, USACE Risk Management Center, julian.t.gonzalez@usace.army.mil</item>
-    ///     </list> 
+    ///     </list>
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -35,7 +35,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 6.3 page 70.
@@ -105,7 +105,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 6.1 page 64.
@@ -150,7 +150,7 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
         /// Example 6.1 page 64.
@@ -170,10 +170,10 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
+        /// Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee &amp; F. Ashkar, Water Resources Publications, 1991.
         /// </para>
         /// <para>
-        /// Example 6.1 & 6.3 page 64-70.
+        /// Example 6.1 &amp; 6.3 page 64-70.
         /// </para>
         /// </remarks>
         [TestMethod()]
@@ -347,13 +347,55 @@ namespace Distributions.Univariate
         /// Testing maximum function.
         /// </summary>
         [TestMethod()]
-        public void Test_Maximum() 
+        public void Test_Maximum()
         {
             var P3 = new PearsonTypeIII();
             Assert.AreEqual(double.PositiveInfinity, P3.Maximum);
 
             var P3ii = new PearsonTypeIII(1, 1, 1);
             Assert.AreEqual(double.PositiveInfinity, P3ii.Maximum);
+        }
+
+        /// <summary>
+        /// Verifies signed, finite Pearson III L-moments and their Normal limit.
+        /// </summary>
+        [TestMethod]
+        public void Test_LinearMoments_SignedSmallAndZeroSkew()
+        {
+            var distribution = new PearsonTypeIII();
+            double[] normalMoments = distribution.LinearMomentsFromParameters([10.0d, 2.0d, 0.0d]);
+            Assert.AreEqual(10.0d, normalMoments[0]);
+            Assert.AreEqual(2.0d / Math.Sqrt(Math.PI), normalMoments[1], 1E-14);
+            Assert.AreEqual(0.0d, normalMoments[2]);
+            Assert.AreEqual(0.12260172d, normalMoments[3], 1E-14);
+
+            double[] normalParameters = distribution.ParametersFromLinearMoments(normalMoments);
+            Assert.AreEqual(10.0d, normalParameters[0]);
+            Assert.AreEqual(2.0d, normalParameters[1], 1E-14);
+            Assert.AreEqual(0.0d, normalParameters[2]);
+
+            double[] positive = distribution.LinearMomentsFromParameters([10.0d, 2.0d, 0.1d]);
+            double[] negative = distribution.LinearMomentsFromParameters([10.0d, 2.0d, -0.1d]);
+            Assert.AreEqual(10.0d, positive[0]);
+            Assert.AreEqual(positive[0], negative[0]);
+            Assert.AreEqual(positive[1], negative[1], 1E-14);
+            Assert.AreEqual(positive[2], -negative[2], 1E-14);
+            Assert.IsGreaterThan(0.0d, positive[2]);
+
+            foreach (double moment in positive)
+            {
+                Assert.IsFalse(double.IsNaN(moment));
+                Assert.IsFalse(double.IsInfinity(moment));
+            }
+
+            double[] recovered = distribution.ParametersFromLinearMoments(negative);
+            Assert.AreEqual(10.0d, recovered[0]);
+            Assert.AreEqual(2.0d, recovered[1], 1E-4);
+            Assert.AreEqual(-0.1d, recovered[2], 1E-4);
+
+            double expectedDerivative = 2.0d * GammaDistribution.PartialKp(0.0d, 0.9d);
+            var zeroSkew = new PearsonTypeIII(10.0d, 2.0d, 0.0d);
+            Assert.AreEqual(expectedDerivative, zeroSkew.QuantileGradientForMoments(0.9d)[2], 1E-14);
         }
 
     }

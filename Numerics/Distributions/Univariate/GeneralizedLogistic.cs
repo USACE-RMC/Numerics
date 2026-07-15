@@ -465,8 +465,27 @@ namespace Numerics.Distributions
             double T3 = moments[2];
             double T4 = moments[3];
             double kappa = -T3;
-            double alpha = L2 * Math.Sin(kappa * Math.PI) / (kappa * Math.PI);
-            double xi = L1 - alpha * (1.0d / kappa - Math.PI / Math.Sin(kappa * Math.PI));
+            double alpha;
+            double xi;
+            if (kappa == 0.0d)
+            {
+                alpha = L2;
+                xi = L1;
+            }
+            else if (Math.Abs(kappa) <= NearZero)
+            {
+                double kappa2 = kappa * kappa;
+                double pi2 = Math.PI * Math.PI;
+                double sinc = 1.0d - pi2 * kappa2 / 6.0d + pi2 * pi2 * kappa2 * kappa2 / 120.0d;
+                double reciprocalDifference = -pi2 * kappa / 6.0d - 7.0d * pi2 * pi2 * kappa * kappa2 / 360.0d;
+                alpha = L2 * sinc;
+                xi = L1 - alpha * reciprocalDifference;
+            }
+            else
+            {
+                alpha = L2 * Math.Sin(kappa * Math.PI) / (kappa * Math.PI);
+                xi = L1 - alpha * (1.0d / kappa - Math.PI / Math.Sin(kappa * Math.PI));
+            }
             return [xi, alpha, kappa];
         }
 
@@ -478,8 +497,27 @@ namespace Numerics.Distributions
             double kappa = parameters[2];
             if (Math.Abs(kappa) >= 1.0d)
                 throw new ArgumentOutOfRangeException(nameof(Kappa), "L-moments can only be defined for -1 < kappa < 1.");
-            double L1 = xi + alpha * (1.0d / kappa - Math.PI / Math.Sin(kappa * Math.PI));
-            double L2 = alpha * kappa * Math.PI / Math.Sin(kappa * Math.PI);
+            double L1;
+            double L2;
+            if (kappa == 0.0d)
+            {
+                L1 = xi;
+                L2 = alpha;
+            }
+            else if (Math.Abs(kappa) <= NearZero)
+            {
+                double kappa2 = kappa * kappa;
+                double pi2 = Math.PI * Math.PI;
+                double reciprocalDifference = -pi2 * kappa / 6.0d - 7.0d * pi2 * pi2 * kappa * kappa2 / 360.0d;
+                double reciprocalSinc = 1.0d + pi2 * kappa2 / 6.0d + 7.0d * pi2 * pi2 * kappa2 * kappa2 / 360.0d;
+                L1 = xi + alpha * reciprocalDifference;
+                L2 = alpha * reciprocalSinc;
+            }
+            else
+            {
+                L1 = xi + alpha * (1.0d / kappa - Math.PI / Math.Sin(kappa * Math.PI));
+                L2 = alpha * kappa * Math.PI / Math.Sin(kappa * Math.PI);
+            }
             double T3 = -kappa;
             double T4 = (1.0d + 5.0d * Math.Pow(kappa, 2.0d)) / 6.0d;
             return [L1, L2, T3, T4];

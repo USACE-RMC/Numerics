@@ -206,8 +206,9 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override void SetParameters(IList<double> parameters)
         {
-            ProbabilityOfSuccess = parameters[0];
-            NumberOfTrials = (int)parameters[1];
+            _probabilityOfSuccess = parameters[0];
+            _numberOfTrials = (int)parameters[1];
+            _parametersValid = ValidateParameters(parameters, false) is null;
         }
 
         /// <inheritdoc/>

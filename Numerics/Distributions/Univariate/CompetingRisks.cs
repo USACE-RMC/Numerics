@@ -56,6 +56,7 @@ namespace Numerics.Distributions
         private bool _empiricalCDFCreated = false;
         private double[,] _correlationMatrix = null!;
         private bool _mvnCreated = false;
+        private Probability.DependencyType _dependency = Probability.DependencyType.Independent;
         private MultivariateNormal _mvn = null!;
 
         // Soft finite floor used in tail arithmetic before returning the final log-density.
@@ -85,7 +86,18 @@ namespace Numerics.Distributions
         /// <summary>
         /// The dependency between random variables. 
         /// </summary>
-        public Probability.DependencyType Dependency { get; set; } = Probability.DependencyType.Independent;
+        public Probability.DependencyType Dependency
+        {
+            get { return _dependency; }
+            set
+            {
+                if (_dependency != value)
+                {
+                    _dependency = value;
+                    _mvnCreated = false;
+                }
+            }
+        }
 
         /// <summary>
         /// The correlation matrix used for modeling dependency between the marginal distributions.
@@ -339,6 +351,7 @@ namespace Numerics.Distributions
         {
             if (distributions == null) throw new ArgumentNullException(nameof(Distributions));
             _distributions = distributions;
+            _parametersValid = ValidateParameters(Array.Empty<double>(), false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
             _mvnCreated = false;
@@ -356,15 +369,25 @@ namespace Numerics.Distributions
             {
                 _distributions[i] = (UnivariateDistributionBase)distributions[i];
             }
+            _parametersValid = ValidateParameters(Array.Empty<double>(), false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
             _mvnCreated = false;
         }
 
         /// <inheritdoc/>
+        /// <exception cref="ArgumentException">Thrown when the flattened parameter count does not match the component distributions.</exception>
         public override void SetParameters(IList<double> parameters)
         {
-            if (Distributions == null || Distributions.Count == 0) return;
+            if (Distributions == null || Distributions.Count == 0)
+            {
+                _parametersValid = false;
+                return;
+            }
+            if (parameters.Count != NumberOfParameters)
+            {
+                throw new ArgumentException("The length of the parameter array is invalid.", nameof(parameters));
+            }
 
             int t = 0;
             for (int i = 0; i < Distributions.Count; i++)
@@ -378,6 +401,7 @@ namespace Numerics.Distributions
                 t += Distributions[i].NumberOfParameters;
             }
 
+            _parametersValid = ValidateParameters(parameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
             _mvnCreated = false;
@@ -386,7 +410,12 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (Distributions.Count == 0) return new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least 1 distribution");
+            if (Distributions.Count == 0)
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least 1 distribution.");
+                if (throwException) throw exception;
+                return exception;
+            }
             for (int i = 0; i < Distributions.Count; i++)
             {
                 if (Distributions[i].ParametersValid == false)
@@ -1022,7 +1051,6 @@ namespace Numerics.Distributions
             var sigma = new double[D, D];
             if (Dependency == Probability.DependencyType.PerfectlyNegative)
             {
-                CorrelationMatrix = new double[D, D];
                 double rho = -1d / (D - 1d) + Math.Sqrt(Tools.DoubleMachineEpsilon);
                 for (int i = 0; i < D; i++)
                 {

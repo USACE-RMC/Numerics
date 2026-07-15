@@ -230,8 +230,9 @@ namespace Numerics.Distributions
         /// <param name="mu">The noncentrality parameter μ (mu).</param>
         public void SetParameters(double v, double mu)
         {
-            DegreesOfFreedom = v;
-            Noncentrality = mu;
+            _degreesOfFreedom = v;
+            _noncentrality = mu;
+            _parametersValid = ValidateParameters(v, mu, false) is null;
         }
 
         /// <inheritdoc/>
@@ -245,10 +246,12 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="v">The degrees of freedom ν (nu). Range: ν > 0.</param>
         /// <param name="mu">The noncentrality parameter μ (mu).</param>
-        /// <param name="throwException"></param>
+        /// <param name="throwException">Whether to throw the validation exception.</param>
+        /// <returns><see langword="null"/> when the parameters are valid; otherwise, the validation exception.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="throwException"/> is true and either parameter is invalid.</exception>
         public ArgumentOutOfRangeException? ValidateParameters(double v, double mu, bool throwException)
         {
-            if (v < 1.0d)
+            if (double.IsNaN(v) || double.IsInfinity(v) || v < 1.0d)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom ν (nu) must greater than or equal to one.");
@@ -279,8 +282,8 @@ namespace Numerics.Distributions
             double v = DegreesOfFreedom;
             if (x != 0)
             {
-                double A = NCT_CDF(x * Math.Sqrt(1 + 2 / v), v + 2, u);
-                double B = NCT_CDF(x, v, u);
+                double A = EvaluateCdfWithFallback(x * Math.Sqrt(1 + 2 / v), v + 2, u);
+                double B = EvaluateCdfWithFallback(x, v, u);
                 double C = v / x;
                 return C * (A - B);
             }
@@ -299,7 +302,7 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_degreesOfFreedom, Noncentrality, true);
-            return NCTDist(x, DegreesOfFreedom, Noncentrality);
+            return EvaluateCdfSeries(x, DegreesOfFreedom, Noncentrality);
         }
 
         /// <inheritdoc/>
@@ -307,7 +310,7 @@ namespace Numerics.Distributions
         {
             // Validate probability
             if (probability < 0.0d || probability > 1.0d)
-                throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
+                throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
             if (probability == 1.0d)
@@ -316,7 +319,7 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters(_degreesOfFreedom, Noncentrality, true);
             // 
-            return NCT_INV(probability, DegreesOfFreedom, Noncentrality);
+            return InverseCdf(probability, DegreesOfFreedom, Noncentrality);
         }
 
         
@@ -328,22 +331,23 @@ namespace Numerics.Distributions
         /// <param name="t">A single point in the distribution range.</param>
         /// <param name="df">The degrees of freedom.</param>
         /// <param name="delta">The noncentrality parameter.</param>
-        private double NCT_CDF(double t, double df, double delta)
+        /// <returns>The cumulative probability, using a normal approximation if the series does not converge.</returns>
+        private static double EvaluateCdfWithFallback(double t, double df, double delta)
         {
-            double ANS;
+            double result;
             try
             {
-                ANS = NCTDist(t, df, delta);
+                result = EvaluateCdfSeries(t, df, delta);
             }
             catch (ArgumentException)
             {
                 // If the series fails to converge, use normal approximation
-                double Z = (t * (1.0d - 1.0d / (4.0d * df)) - delta) / Math.Sqrt(1.0d + t * t / (2.0d * df));
-                ANS = Normal.StandardCDF(Z);
-                if (ANS < 0d) ANS = 0d;
-                if (ANS > 1d) ANS = 1d;
+                double z = (t * (1.0d - 1.0d / (4.0d * df)) - delta) / Math.Sqrt(1.0d + t * t / (2.0d * df));
+                result = Normal.StandardCDF(z);
+                if (result < 0d) result = 0d;
+                if (result > 1d) result = 1d;
             }
-            return ANS;
+            return result;
         }
 
         /// <summary>
@@ -354,132 +358,98 @@ namespace Numerics.Distributions
         /// <param name="t">A single point in the distribution range.</param>
         /// <param name="df">The degrees of freedom.</param>
         /// <param name="delta">The noncentrality parameter.</param>
+        /// <returns>The cumulative probability at <paramref name="t"/>.</returns>
+        /// <exception cref="ArgumentException">Thrown when the AS 243 series exceeds its iteration limit.</exception>
         /// <remarks>
         /// The function is based on ALGORITHM AS 243  APPL. STATIST. (1989), VOL.38, NO. 1.
         /// Original FORTRAN code can be found at:
         /// http://people.sc.fsu.edu/~jburkardt/f77_src/asa243/asa243.html
         /// </remarks>
-        private double NCTDist(double t, double df, double delta)
+        private static double EvaluateCdfSeries(double t, double df, double delta)
         {
-
-            // REAL FUNCTION TNC(T, DF, DELTA, IFAULT)
-            // 
-            // ALGORITHM AS 243  APPL. STATIST. (1989), VOL.38, NO. 1
-            // 
-            // Cumulative probability at T of the non-central t-distribution
-            // with DF degrees of freedom (may be fractional) and non-centrality
-            // parameter DELTA.
-            // 
-            // Note - requires the following auxiliary routines
-            // ALOGAM (X)                         - ACM 291 or AS 245
-            // BETAIN (X, A, B, ALBETA, IFAULT)   - AS 63 (updated in ASR 19)
-            // ALNORM (X, UPPER)                  - AS 66
-            // 
-            // Translated by William A. Huber.  www.quantdec.com
-            // 
             double a;
-            double ALBETA;
+            double logBeta;
             double b;
-            double DEL;
-            var N = default(int);
-            double ERRBD;
-            double GEVEN;
-            double GODD;
-            double LAMBDA;
-            double P;
-            double q;
-            double RXB;
-            double s;
-            double TT;
+            double adjustedDelta;
+            int iteration = 0;
+            double errorBound;
+            double gEven;
+            double gOdd;
+            double lambda;
+            double pWeight;
+            double qWeight;
+            double oneMinusXPowerB;
+            double remainingWeight;
             double x;
-            double XEVEN;
-            double XODD;
-            double TNC;
-            bool NEGDEL;
-            // 
-            // Note - ITRMAX and ERRMAX may be changed to suit one's needs.
-            // 
-            const int ITRMAX = 10000;
-            const double Errmax = 0.000000001d;
-
-            // DATA ITRMAX/100.1/, ERRMAX/1.E-06/
-            // 
-            // Constants - R2PI = 1/ {GAMMA(1.5) * SQRT(2)} = SQRT(2 / PI)
-            // ALNRPI = Ln(SQRT(Pi))
-            // 
+            double xEven;
+            double xOdd;
+            double result;
+            bool reflected;
+            const int maxIterations = 10000;
+            const double maxError = 0.000000001d;
             const double zero = 0d;
             const double half = 0.5d;
             const double one = 1.0d;
             const double two = 2.0d;
-            const double r2pi = 0.797884560802865d;
-            const double alnrpi = 0.5723649429247d;
-            TNC = zero;
-            TT = t;
-            DEL = delta;
-            NEGDEL = false;
+            const double sqrtTwoOverPi = 0.797884560802865d;
+            const double logSqrtPi = 0.5723649429247d;
+            result = zero;
+            adjustedDelta = delta;
+            reflected = false;
             if (t < zero)
             {
-                NEGDEL = true;
-                TT = -TT;
-                DEL = -DEL;
+                reflected = true;
+                adjustedDelta = -adjustedDelta;
             }
-            // 
-            // Initialize twin series (Guenther, J. Statist. Computn. Simuln.
-            // vol.6, 199, 1978).
-            // 
+
+            // Initialize the twin series of Guenther (1978).
             x = t * t / (t * t + df);
-            if (x <= zero)
-                goto Twenty;
-            LAMBDA = DEL * DEL;
-            P = half * Math.Exp(-half * LAMBDA);
-            q = r2pi * P * DEL;
-            s = half - P;
-            a = half;
-            b = half * df;
-            RXB = Math.Pow(one - x, b);
-            ALBETA = alnrpi + Gamma.LogGamma(b) - Gamma.LogGamma(a + b);
-            XODD = Beta.IncompleteRatio(x, a, b, ALBETA);
-            GODD = two * RXB * Math.Exp(a * Math.Log(x) - ALBETA);
-            XEVEN = one - RXB;
-            GEVEN = b * x * RXB;
-            TNC = P * XODD + q * XEVEN;
-            // 
-            // Repeat until convergence
-            // 
-            N = 1;
-            do
+            if (x > zero)
             {
-                a = a + one;
-                XODD = XODD - GODD;
-                XEVEN = XEVEN - GEVEN;
-                GODD = GODD * x * (a + b - one) / a;
-                GEVEN = GEVEN * x * (a + b - half) / (a + half);
-                P = P * LAMBDA / (two * N);
-                q = q * LAMBDA / (two * N + one);
-                s = s - P;
-                N = N + 1;
-                TNC = TNC + P * XODD + q * XEVEN;
-                ERRBD = two * s * (XODD - GODD);
+                lambda = adjustedDelta * adjustedDelta;
+                pWeight = half * Math.Exp(-half * lambda);
+                qWeight = sqrtTwoOverPi * pWeight * adjustedDelta;
+                remainingWeight = half - pWeight;
+                a = half;
+                b = half * df;
+                oneMinusXPowerB = Math.Pow(one - x, b);
+                logBeta = logSqrtPi + Gamma.LogGamma(b) - Gamma.LogGamma(a + b);
+                xOdd = Beta.IncompleteRatio(x, a, b, logBeta);
+                gOdd = two * oneMinusXPowerB * Math.Exp(a * Math.Log(x) - logBeta);
+                xEven = one - oneMinusXPowerB;
+                gEven = b * x * oneMinusXPowerB;
+                result = pWeight * xOdd + qWeight * xEven;
+                iteration = 1;
+                do
+                {
+                    a = a + one;
+                    xOdd = xOdd - gOdd;
+                    xEven = xEven - gEven;
+                    gOdd = gOdd * x * (a + b - one) / a;
+                    gEven = gEven * x * (a + b - half) / (a + half);
+                    pWeight = pWeight * lambda / (two * iteration);
+                    qWeight = qWeight * lambda / (two * iteration + one);
+                    remainingWeight = remainingWeight - pWeight;
+                    iteration = iteration + 1;
+                    result = result + pWeight * xOdd + qWeight * xEven;
+                    errorBound = two * remainingWeight * (xOdd - gOdd);
+                }
+                while (errorBound > maxError && iteration <= maxIterations);
             }
-            while (ERRBD > Errmax && N <= ITRMAX);
-            // 
-            Twenty:
-            ;
-            if (N > ITRMAX)
+            if (iteration > maxIterations)
             {
                 throw new ArgumentException("Max number of iterations were exceeded.");
             }
 
-            if (NEGDEL)
+            if (reflected)
             {
-                // TNC = one - TNC
-                TNC = Normal.StandardCDF(DEL) - TNC;
+                result = Normal.StandardCDF(adjustedDelta) - result;
             }
             else
             {
-                TNC = TNC + (1.0d - Normal.StandardCDF(DEL));
-            } // Upper tail area of N(0,1)
-            return TNC;
+                result = result + (1.0d - Normal.StandardCDF(adjustedDelta));
+            }
+            return result;
         }
 
         /// <summary>
@@ -488,84 +458,86 @@ namespace Numerics.Distributions
         /// <param name="p">Probability between 0 and 1.</param>
         /// <param name="df">The degrees of freedom.</param>
         /// <param name="delta">The noncentrality parameter.</param>
-        private double NCT_INV(double p, double df, double delta)
+        /// <returns>The quantile associated with <paramref name="p"/>.</returns>
+        private static double InverseCdf(double p, double df, double delta)
         {
-            double t0, t1, t2, y0, y1, tInc, Slope;
-            int iter;
-            //double tEstimate;
-            const double ytol = 0.0000001d;         // Y-tolerance
-            const double xtol = 0.0000001d;         // X-tolerance
-            //const double w = 1.5d;                 // Over-shooting parameter (>= 1)
-            const int iterMax = 50;
-            t0 = NCTInv0(p, df, delta);
-            //tEstimate = t0;                          // Default if we run into trouble
-            y0 = NCTDist(t0, df, delta) - p;
-            if (y0 > ytol)
+            double lower;
+            double upper;
+            double candidate;
+            double lowerError;
+            double upperError;
+            double increment;
+            double slope;
+            int iteration;
+            const double probabilityTolerance = 0.0000001d;
+            const double quantileTolerance = 0.0000001d;
+            const int maxIterations = 50;
+            lower = InitialInverseCdfEstimate(p, df, delta);
+            lowerError = EvaluateCdfSeries(lower, df, delta) - p;
+            if (lowerError > probabilityTolerance)
             {
-                tInc = -1.0d;
+                increment = -1.0d;
             }
-            else if (y0 < -ytol)
+            else if (lowerError < -probabilityTolerance)
             {
-                tInc = 1.0d;
+                increment = 1.0d;
             }
             else
             {
-                return t0;
+                return lower;
             }
-            // 
-            // Find a bracket through overshooting.
-            // 
-            t1 = t0 + tInc;
-            y1 = NCTDist(t1, df, delta) - p;
-            iter = 0;
-            while ((y0 < 0d) != (y1 > 0d) && Math.Abs(t1 - t0) > xtol && iter < iterMax)
+
+            // Find a bracket by secant extrapolation with a factor-of-two overshoot.
+            upper = lower + increment;
+            upperError = EvaluateCdfSeries(upper, df, delta) - p;
+            iteration = 0;
+            while ((lowerError < 0d) != (upperError > 0d) && Math.Abs(upper - lower) > quantileTolerance && iteration < maxIterations)
             {
-                // 
-                // Use secant method to extrapolate a zero, but overshoot by w >= 1.
-                // 
-                Slope = (y1 - y0) / (t1 - t0);
-                if (Slope == 0d)
+                slope = (upperError - lowerError) / (upper - lower);
+                if (slope == 0d)
                 {
-                    return (t1 + t0) / 2.0d;
+                    return (upper + lower) / 2.0d;
                 }
 
-                t2 = t0 - 2.0d * y0 / Slope;
-                t0 = t1;
-                t1 = t2;
-                y0 = y1;
-                y1 = NCTDist(t1, df, delta) - p;
-                iter = iter + 1;
+                candidate = lower - 2.0d * lowerError / slope;
+                lower = upper;
+                upper = candidate;
+                lowerError = upperError;
+                upperError = EvaluateCdfSeries(upper, df, delta) - p;
+                iteration = iteration + 1;
             }
-            // Solve for T using Brent
-            double ANS = Brent.Solve(x => NCTDist(x, df, delta) - p, Math.Min(t0, t1), Math.Max(t0, t1), xtol, reportFailure: false);
-            return ANS;
+            return Brent.Solve(x => EvaluateCdfSeries(x, df, delta) - p, Math.Min(lower, upper), Math.Max(lower, upper), quantileTolerance, reportFailure: false);
         }
 
-        private double NCTInv0(double P, double N, double D)
+        /// <summary>
+        /// Computes the Johnson and Kotz starting estimate for noncentral-t inversion.
+        /// </summary>
+        /// <param name="probability">The cumulative probability.</param>
+        /// <param name="degreesOfFreedom">The degrees of freedom.</param>
+        /// <param name="noncentrality">The noncentrality parameter.</param>
+        /// <returns>An initial quantile estimate for the root search.</returns>
+        /// <remarks>Uses the Jennett and Welch approximation and falls back to an offset central-t quantile when necessary.</remarks>
+        private static double InitialInverseCdfEstimate(double probability, double degreesOfFreedom, double noncentrality)
         {
             // Approximates percentage points of the non-central t distribution.
-            // P is the percentage, N is the degrees of freedom, D is the non-centrality parameter.
             // Source: Johnson & Kotz, Continuous Univariate Distributions, Volume 2.
-            double z = Normal.StandardZ(P);
-            //
+            double z = Normal.StandardZ(probability);
+
             // Jennett & Welch approximation, formula (14.1).
-            // Intended for large values of D^2, such as are used for most tolerance interval calculations.
-            //
-            double b = Math.Exp(Gamma.LogGamma((N + 1d) / 2d) - Gamma.LogGamma(N / 2d)) * Math.Sqrt(2d / N);
-            double u2 = z * z;
-            double b2 = b * b;
-            double denom = b2 - u2 * (1d - b2);
-            double disc = b2 + (1d - b2) * (D * D - u2);
-            if (disc > 0d && Math.Abs(denom) > 1e-12)
+            // Intended for the large noncentralities common in tolerance-interval calculations.
+            double gammaRatio = Math.Exp(Gamma.LogGamma((degreesOfFreedom + 1d) / 2d) - Gamma.LogGamma(degreesOfFreedom / 2d)) * Math.Sqrt(2d / degreesOfFreedom);
+            double zSquared = z * z;
+            double gammaRatioSquared = gammaRatio * gammaRatio;
+            double denominator = gammaRatioSquared - zSquared * (1d - gammaRatioSquared);
+            double discriminant = gammaRatioSquared + (1d - gammaRatioSquared) * (noncentrality * noncentrality - zSquared);
+            if (discriminant > 0d && Math.Abs(denominator) > 1e-12)
             {
-                return (D * b + z * Math.Sqrt(disc)) / denom;
+                return (noncentrality * gammaRatio + z * Math.Sqrt(discriminant)) / denominator;
             }
-            else
-            {
-                // Fallback: offset central t quantile by the noncentrality parameter
-                var st = new StudentT(N);
-                return st.InverseCDF(P) + D;
-            }
+
+            // Fall back to an offset central-t quantile.
+            var studentT = new StudentT(degreesOfFreedom);
+            return studentT.InverseCDF(probability) + noncentrality;
         }
 
         /// <inheritdoc/>

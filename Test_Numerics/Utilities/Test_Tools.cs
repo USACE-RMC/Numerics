@@ -1,6 +1,9 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics;
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Utilities
 {
@@ -333,6 +336,155 @@ namespace Utilities
             List<int> indicators = new List<int> { 1, 0, 0 };
             var result = Tools.Max(values, indicators);
             Assert.AreEqual(1, result);
+        }
+
+        /// <summary>
+        /// Verifies concurrent additions are committed exactly once and return their serialization positions.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_CommitsEveryConcurrentUpdate()
+        {
+            const int updateCount = 25000;
+            double total = 0d;
+            var committedValues = new double[updateCount];
+
+            Parallel.For(
+                0,
+                updateCount,
+                index => committedValues[index] = Tools.ParallelAdd(ref total, 1d));
+
+            Assert.AreEqual((double)updateCount, total);
+            Array.Sort(committedValues);
+            for (int i = 0; i < committedValues.Length; i++)
+            {
+                Assert.AreEqual(i + 1d, committedValues[i]);
+            }
+        }
+
+        /// <summary>
+        /// Verifies the compare-and-swap loop terminates when the accumulator contains NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_NaNAccumulatorTerminates()
+        {
+            double total = double.NaN;
+
+            double result = Tools.ParallelAdd(ref total, 1d);
+
+            Assert.IsTrue(double.IsNaN(total));
+            Assert.IsTrue(double.IsNaN(result));
+        }
+
+        /// <summary>
+        /// Verifies signed zero, NaN, and infinity follow double-precision addition semantics.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_HandlesSpecialValues()
+        {
+            double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
+
+            double total = negativeZero;
+            double result = Tools.ParallelAdd(ref total, negativeZero);
+
+            Assert.AreEqual(long.MinValue, BitConverter.DoubleToInt64Bits(total));
+            Assert.AreEqual(long.MinValue, BitConverter.DoubleToInt64Bits(result));
+
+            total = negativeZero;
+            result = Tools.ParallelAdd(ref total, 0d);
+
+            Assert.AreEqual(0L, BitConverter.DoubleToInt64Bits(total));
+            Assert.AreEqual(0L, BitConverter.DoubleToInt64Bits(result));
+
+            total = 1d;
+            result = Tools.ParallelAdd(ref total, double.NaN);
+
+            Assert.IsTrue(double.IsNaN(total));
+            Assert.IsTrue(double.IsNaN(result));
+
+            total = double.PositiveInfinity;
+            result = Tools.ParallelAdd(ref total, 1d);
+
+            Assert.AreEqual(double.PositiveInfinity, total);
+            Assert.AreEqual(double.PositiveInfinity, result);
+
+            total = double.NegativeInfinity;
+            result = Tools.ParallelAdd(ref total, -1d);
+
+            Assert.AreEqual(double.NegativeInfinity, total);
+            Assert.AreEqual(double.NegativeInfinity, result);
+
+            total = double.PositiveInfinity;
+            result = Tools.ParallelAdd(ref total, double.NegativeInfinity);
+
+            Assert.IsTrue(double.IsNaN(total));
+            Assert.IsTrue(double.IsNaN(result));
+        }
+
+        /// <summary>
+        /// Verifies concurrent mixed-sign additions are all committed when the accumulator revisits values.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_CommitsMixedSignUpdates()
+        {
+            const int updateCount = 25000;
+            double total = 0d;
+
+            Parallel.For(
+                0,
+                updateCount,
+                index => Tools.ParallelAdd(ref total, index % 2 == 0 ? 2d : -1d));
+
+            Assert.AreEqual(updateCount / 2d, total);
+        }
+
+        /// <summary>
+        /// Verifies a negative-to-positive zero race cannot cause finite concurrent updates to be lost.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParallelAdd_SignedZeroContentionDoesNotLoseUpdates()
+        {
+            const int rounds = 256;
+            double total = 0d;
+            bool everyUpdateCommitted = true;
+            double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
+
+            using (var startBarrier = new Barrier(5))
+            using (var finishBarrier = new Barrier(5))
+            {
+                Func<double, Task> createWorker = valueToAdd => Task.Factory.StartNew(
+                    () =>
+                    {
+                        for (int round = 0; round < rounds; round++)
+                        {
+                            startBarrier.SignalAndWait();
+                            Tools.ParallelAdd(ref total, valueToAdd);
+                            finishBarrier.SignalAndWait();
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+
+                Task[] workers =
+                {
+                    createWorker(0d),
+                    createWorker(0d),
+                    createWorker(1d),
+                    createWorker(1d)
+                };
+
+                for (int round = 0; round < rounds; round++)
+                {
+                    total = negativeZero;
+                    startBarrier.SignalAndWait();
+                    finishBarrier.SignalAndWait();
+                    if (total != 2d) everyUpdateCommitted = false;
+                }
+
+                Task.WaitAll(workers);
+            }
+
+            Assert.IsTrue(everyUpdateCommitted, "A finite update was lost during signed-zero contention.");
         }
 
         /// <summary>

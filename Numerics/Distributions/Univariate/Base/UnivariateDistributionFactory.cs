@@ -23,155 +23,105 @@ namespace Numerics.Distributions
         /// <returns>
         /// A univariate distribution.
         /// </returns>
+        /// <exception cref="NotSupportedException">
+        /// The requested distribution type requires additional component distributions or a user implementation.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="distributionType"/> is not a defined <see cref="UnivariateDistributionType"/> value.
+        /// </exception>
         public static UnivariateDistributionBase CreateDistribution(UnivariateDistributionType distributionType)
         {
-            if (distributionType == UnivariateDistributionType.Bernoulli)
+            switch (distributionType)
             {
-                return new Bernoulli();
+                case UnivariateDistributionType.ChiSquared:
+                    return new ChiSquared();
+                case UnivariateDistributionType.Bernoulli:
+                    return new Bernoulli();
+                case UnivariateDistributionType.Beta:
+                    return new BetaDistribution();
+                case UnivariateDistributionType.Binomial:
+                    return new Binomial();
+                case UnivariateDistributionType.Cauchy:
+                    return new Cauchy();
+                case UnivariateDistributionType.Deterministic:
+                    return new Deterministic();
+                case UnivariateDistributionType.Empirical:
+                    return new EmpiricalDistribution();
+                case UnivariateDistributionType.Exponential:
+                    return new Exponential();
+                case UnivariateDistributionType.GammaDistribution:
+                    return new GammaDistribution();
+                case UnivariateDistributionType.GeneralizedBeta:
+                    return new GeneralizedBeta();
+                case UnivariateDistributionType.GeneralizedExtremeValue:
+                    return new GeneralizedExtremeValue();
+                case UnivariateDistributionType.GeneralizedLogistic:
+                    return new GeneralizedLogistic();
+                case UnivariateDistributionType.GeneralizedNormal:
+                    return new GeneralizedNormal();
+                case UnivariateDistributionType.GeneralizedPareto:
+                    return new GeneralizedPareto();
+                case UnivariateDistributionType.Geometric:
+                    return new Geometric();
+                case UnivariateDistributionType.Gumbel:
+                    return new Gumbel();
+                case UnivariateDistributionType.InverseChiSquared:
+                    return new InverseChiSquared();
+                case UnivariateDistributionType.InverseGamma:
+                    return new InverseGamma();
+                case UnivariateDistributionType.KappaFour:
+                    return new KappaFour();
+                case UnivariateDistributionType.KernelDensity:
+                    return new KernelDensity();
+                case UnivariateDistributionType.LnNormal:
+                    return new LnNormal();
+                case UnivariateDistributionType.Logistic:
+                    return new Logistic();
+                case UnivariateDistributionType.LogNormal:
+                    return new LogNormal();
+                case UnivariateDistributionType.LogPearsonTypeIII:
+                    return new LogPearsonTypeIII();
+                case UnivariateDistributionType.NoncentralT:
+                    return new NoncentralT();
+                case UnivariateDistributionType.Normal:
+                    return new Normal();
+                case UnivariateDistributionType.Pareto:
+                    return new Pareto();
+                case UnivariateDistributionType.PearsonTypeIII:
+                    return new PearsonTypeIII();
+                case UnivariateDistributionType.Pert:
+                    return new Pert();
+                case UnivariateDistributionType.PertPercentile:
+                    return new PertPercentile();
+                case UnivariateDistributionType.PertPercentileZ:
+                    return new PertPercentileZ();
+                case UnivariateDistributionType.Poisson:
+                    return new Poisson();
+                case UnivariateDistributionType.Rayleigh:
+                    return new Rayleigh();
+                case UnivariateDistributionType.StudentT:
+                    return new StudentT();
+                case UnivariateDistributionType.Triangular:
+                    return new Triangular();
+                case UnivariateDistributionType.TruncatedNormal:
+                    return new TruncatedNormal();
+                case UnivariateDistributionType.Uniform:
+                    return new Uniform();
+                case UnivariateDistributionType.UniformDiscrete:
+                    return new UniformDiscrete();
+                case UnivariateDistributionType.VonMises:
+                    return new VonMises();
+                case UnivariateDistributionType.Weibull:
+                    return new Weibull();
+                case UnivariateDistributionType.CompetingRisks:
+                case UnivariateDistributionType.Mixture:
+                case UnivariateDistributionType.UserDefined:
+                    throw new NotSupportedException(
+                        "Distribution type " + distributionType + " requires external components and cannot be created without parameters.");
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(distributionType), distributionType, "The distribution type is not defined.");
             }
-            else if (distributionType == UnivariateDistributionType.Beta)
-            {
-                return new BetaDistribution();
-            }
-            else if (distributionType == UnivariateDistributionType.Binomial)
-            {
-                return new Binomial();
-            }
-            else if (distributionType == UnivariateDistributionType.Cauchy)
-            {
-                return new Cauchy();
-            }
-            else if (distributionType == UnivariateDistributionType.ChiSquared)
-            {
-                return new ChiSquared();
-            }
-            else if (distributionType == UnivariateDistributionType.Exponential)
-            {
-                return new Exponential();
-            }
-            else if (distributionType == UnivariateDistributionType.GammaDistribution)
-            {
-                return new GammaDistribution();
-            }
-            else if (distributionType == UnivariateDistributionType.GeneralizedBeta)
-            {
-                return new GeneralizedBeta();
-            }
-            else if (distributionType == UnivariateDistributionType.GeneralizedExtremeValue)
-            {
-                return new GeneralizedExtremeValue();
-            }
-            else if (distributionType == UnivariateDistributionType.GeneralizedLogistic)
-            {
-                return new GeneralizedLogistic();
-            }
-            else if (distributionType == UnivariateDistributionType.GeneralizedNormal)
-            {
-                return new GeneralizedNormal();
-            }
-            else if (distributionType == UnivariateDistributionType.GeneralizedPareto)
-            {
-                return new GeneralizedPareto();
-            }
-            else if (distributionType == UnivariateDistributionType.Geometric)
-            {
-                return new Geometric();
-            }
-            else if (distributionType == UnivariateDistributionType.Gumbel)
-            {
-                return new Gumbel();
-            }
-            else if (distributionType == UnivariateDistributionType.InverseChiSquared)
-            {
-                return new InverseChiSquared();
-            }
-            else if (distributionType == UnivariateDistributionType.InverseGamma)
-            {
-                return new InverseGamma();
-            }
-            else if (distributionType == UnivariateDistributionType.KappaFour)
-            {
-                return new KappaFour();
-            }
-            else if (distributionType == UnivariateDistributionType.LnNormal)
-            {
-                return new LnNormal();
-            }
-            else if (distributionType == UnivariateDistributionType.Logistic)
-            {
-                return new Logistic();
-            }
-            else if (distributionType == UnivariateDistributionType.LogNormal)
-            {
-                return new LogNormal();
-            }
-            else if (distributionType == UnivariateDistributionType.LogPearsonTypeIII)
-            {
-                return new LogPearsonTypeIII();
-            }
-            else if (distributionType == UnivariateDistributionType.NoncentralT)
-            {
-                return new NoncentralT();
-            }
-            else if (distributionType == UnivariateDistributionType.Normal)
-            {
-                return new Normal();
-            }
-            else if (distributionType == UnivariateDistributionType.Pareto)
-            {
-                return new Pareto();
-            }
-            else if (distributionType == UnivariateDistributionType.PearsonTypeIII)
-            {
-                return new PearsonTypeIII();
-            }
-            else if (distributionType == UnivariateDistributionType.Pert)
-            {
-                return new Pert();
-            }
-            else if (distributionType == UnivariateDistributionType.PertPercentile)
-            {
-                return new PertPercentile();
-            }
-            else if (distributionType == UnivariateDistributionType.PertPercentileZ)
-            {
-                return new PertPercentileZ();
-            }
-            else if (distributionType == UnivariateDistributionType.Poisson)
-            {
-                return new Poisson();
-            }
-            else if (distributionType == UnivariateDistributionType.Rayleigh)
-            {
-                return new Rayleigh();
-            }
-            else if (distributionType == UnivariateDistributionType.StudentT)
-            {
-                return new StudentT();
-            }
-            else if (distributionType == UnivariateDistributionType.Triangular)
-            {
-                return new Triangular();
-            }
-            else if (distributionType == UnivariateDistributionType.TruncatedNormal)
-            {
-                return new TruncatedNormal();
-            }
-            else if (distributionType == UnivariateDistributionType.Uniform)
-            {
-                return new Uniform();
-            }
-            else if (distributionType == UnivariateDistributionType.UniformDiscrete)
-            {
-                return new UniformDiscrete();
-            }
-            else if (distributionType == UnivariateDistributionType.Weibull)
-            {
-                return new Weibull();
-            }
-
-            // Default to Deterministic for unrecognized types
-            return new Deterministic();
         }
 
         /// <summary>
@@ -181,6 +131,12 @@ namespace Numerics.Distributions
         /// <returns>
         /// A univariate distribution.
         /// </returns>
+        /// <exception cref="NotSupportedException">
+        /// The serialized distribution type requires a user-provided implementation.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The serialized distribution type is not a defined <see cref="UnivariateDistributionType"/> value.
+        /// </exception>
         public static UnivariateDistributionBase CreateDistribution(XElement xElement)
         {
             UnivariateDistributionType type = UnivariateDistributionType.Deterministic;

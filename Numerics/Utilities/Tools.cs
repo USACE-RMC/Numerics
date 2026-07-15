@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic; 
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Numerics
@@ -182,9 +183,11 @@ namespace Numerics
         /// Returns the base 10 logarithm of a specified number. 
         /// </summary>
         /// <param name="x">The number whose logarithm is to be found.</param>
+        /// <returns>The guarded base-10 logarithm of <paramref name="x"/>.</returns>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public static double Log10(double x)
         {
-            if (x < 1E-16 && Math.Sign(x) != -1) x = 1E-16;
+            if (x < 1E-16 && x >= 0d) x = 1E-16;
             return Math.Log10(x);
         }
 
@@ -662,17 +665,57 @@ namespace Numerics
         /// <summary>
         /// Supporting function used to add doubles from an interlocked parallel loop.
         /// </summary>
-        /// <param name="valueToAddTo">The value to add to.</param>
+        /// <param name="valueToAddTo">The accumulator to update atomically.</param>
         /// <param name="valueToAdd">The value to add.</param>
+        /// <returns>The accumulator value produced by the atomic addition.</returns>
+        /// <remarks>
+        /// All concurrent writes to <paramref name="valueToAddTo"/> must use this method or another
+        /// interlocked operation. The compare-and-swap operation can retry under contention. Concurrent
+        /// updates are not lost, but their order depends on thread scheduling, so floating-point reductions
+        /// using this method are not guaranteed to be bit-reproducible.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double ParallelAdd(ref double valueToAddTo, double valueToAdd)
         {
-            double newCurrentValue = valueToAddTo;
+            double currentValue = valueToAddTo;
+            double newValue = currentValue + valueToAdd;
+            double observedValue = Interlocked.CompareExchange(ref valueToAddTo, newValue, currentValue);
+            if (observedValue == currentValue &&
+                (currentValue != 0d ||
+                 BitConverter.DoubleToInt64Bits(observedValue) == BitConverter.DoubleToInt64Bits(currentValue)))
+            {
+                return newValue;
+            }
+            if (double.IsNaN(observedValue) && double.IsNaN(currentValue)) return newValue;
+            return ParallelAddRetry(ref valueToAddTo, valueToAdd, observedValue);
+        }
+
+        /// <summary>
+        /// Retries an atomic double addition after a failed compare-and-swap operation.
+        /// </summary>
+        /// <param name="valueToAddTo">The accumulator to update atomically.</param>
+        /// <param name="valueToAdd">The value to add.</param>
+        /// <param name="observedValue">The accumulator value observed by the failed operation.</param>
+        /// <returns>The accumulator value produced by the atomic addition.</returns>
+        /// <remarks>
+        /// The observed value seeds the lock-free retry loop so that another non-volatile read is unnecessary.
+        /// Signed zeros require a representation comparison because numerical equality does not distinguish
+        /// positive zero from negative zero, while compare-and-swap does.
+        /// </remarks>
+        private static double ParallelAddRetry(ref double valueToAddTo, double valueToAdd, double observedValue)
+        {
+            double newCurrentValue = observedValue;
             while (true)
             {
                 double currentValue = newCurrentValue;
                 double newValue = currentValue + valueToAdd;
                 newCurrentValue = Interlocked.CompareExchange(ref valueToAddTo, newValue, currentValue);
-                if (newCurrentValue == currentValue) return newValue;
+                if (newCurrentValue == currentValue &&
+                    (currentValue != 0d ||
+                     BitConverter.DoubleToInt64Bits(newCurrentValue) == BitConverter.DoubleToInt64Bits(currentValue)))
+                {
+                    return newValue;
+                }
                 if (double.IsNaN(newCurrentValue) && double.IsNaN(currentValue)) return newValue;
             }
         }

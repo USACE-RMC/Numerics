@@ -146,9 +146,11 @@ namespace Numerics.Distributions
             {
                 if (Alpha == 1d && Beta == 1d)
                     return 0.5d;
-                if (Alpha <= 1d && Beta > 1d)
+                if (Alpha < 1d && Beta < 1d)
+                    return 0.5d;
+                if (Alpha <= 1d && Beta >= 1d)
                     return 0.0d;
-                if (Alpha > 1d && Beta <= 1d)
+                if (Alpha >= 1d && Beta <= 1d)
                     return 1.0d;
                 return (Alpha - 1d) / (Alpha + Beta - 2d);
             }
