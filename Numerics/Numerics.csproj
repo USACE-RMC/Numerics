@@ -28,9 +28,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>2.1.2</Version>
-    <PackageReleaseNotes>Version 2.1.2 improves time-series download reliability and statistics utilities. Time-series downloads now prefer IPv4 while preserving IPv6 fallback, avoid unrelated connectivity preflights on restricted networks, normalize duplicate USGS/GHCN timestamps deterministically, and fix Series.Clear()/RemoveAt behavior with large or duplicate-valued series. This release also adds RunningStatistics.Clone() and fixes Combine()/+ so combined statistics do not alias input instances when one operand is empty.</PackageReleaseNotes>
-    <AssemblyVersion>2.1.2.0</AssemblyVersion>
+    <Version>2.1.3</Version>
+    <PackageReleaseNotes>Version 2.1.3 hardens numerical edge cases and distribution validation. This release enforces XML documentation warnings, fixes audited interpolation/search, histogram, probability, MVNDST/COVSRT, Brent bracketing, and atomic double-addition behavior, improves copula clone and parameter-validity handling, and adds MultivariateNormal non-throwing covariance mutation plus marginal and conditional utilities with expanded regression coverage.</PackageReleaseNotes>
+    <AssemblyVersion>2.1.3.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>
