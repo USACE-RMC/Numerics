@@ -190,6 +190,7 @@ namespace Numerics.Distributions
         public void SetParameters(double value)
         {
             Value = value;
+            _parametersValid = ValidateParameters([value], false) is null;
         }
 
         /// <inheritdoc/>

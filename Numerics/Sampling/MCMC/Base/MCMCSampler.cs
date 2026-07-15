@@ -385,7 +385,6 @@ namespace Numerics.Sampling.MCMC
                 // Use differential evolution to find a global optimum
                 var lowerBounds = PriorDistributions.Select(x => x.Minimum).ToArray();
                 var upperBounds = PriorDistributions.Select(x => x.Maximum).ToArray();
-                var inititals = lowerBounds.Add(upperBounds).Divide(2d);
                 var DE = new DifferentialEvolution((x) => { return LogLikelihoodFunction(x); }, NumberOfParameters, lowerBounds, upperBounds);
                 DE.ReportFailure = false;
                 DE.Maximize();

@@ -27,14 +27,16 @@ namespace Numerics.Distributions
             _baseDist = basDistribution;
             _min = min;
             _max = max;
-            _Fmin = _baseDist.CDF(_min);
-            _Fmax = _baseDist.CDF(_max);
+            var parameters = _baseDist.GetParameters.ToList();
+            parameters.Add(min);
+            parameters.Add(max);
+            _parametersValid = ValidateParametersCore(parameters, false, out _Fmin, out _Fmax) is null;
             _momentsComputed = false;
         }
 
         private readonly UnivariateDistributionBase _baseDist;
-        private double _min = double.NegativeInfinity;
-        private double _max = double.PositiveInfinity;
+        private double _min;
+        private double _max;
         private double _Fmin, _Fmax;
         private bool _momentsComputed = false;
         private double[] u = [double.NaN, double.NaN, double.NaN, double.NaN];
@@ -230,32 +232,73 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <exception cref="ArgumentException">Thrown when the flattened parameter count does not match the base distribution and two truncation bounds.</exception>
         public override void SetParameters(IList<double> parameters)
         {
-            _baseDist.SetParameters(parameters.ToArray().Subset(parameters.Count - 2));
+            if (parameters.Count != NumberOfParameters)
+            {
+                throw new ArgumentException("The length of the parameter array is invalid.", nameof(parameters));
+            }
+            var validation = ValidateParametersCore(parameters, false, out double lowerProbability, out double upperProbability);
+            _baseDist.SetParameters(parameters.ToArray().Subset(0, parameters.Count - 3));
             _min = parameters[parameters.Count - 2];
             _max = parameters[parameters.Count - 1];
-            _Fmin = _baseDist.CDF(_min);
-            _Fmax = _baseDist.CDF(_max);
+            _Fmin = lowerProbability;
+            _Fmax = upperProbability;
+            _parametersValid = validation is null;
             _momentsComputed = false;
         }
 
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (_baseDist is not null) _baseDist.ValidateParameters(parameters.ToArray().Subset(0, parameters.Count - 2), throwException);
-            if (double.IsNaN(Min) || double.IsNaN(Max) || double.IsInfinity(Min) || double.IsInfinity(Max) || Min >= Max)
+            return ValidateParametersCore(parameters, throwException, out _, out _);
+        }
+
+        /// <summary>
+        /// Validates a flattened base-distribution parameter vector and its truncation bounds.
+        /// </summary>
+        /// <param name="parameters">The base parameters followed by the lower and upper truncation bounds.</param>
+        /// <param name="throwException">Whether to throw the first validation exception.</param>
+        /// <param name="lowerProbability">The base-distribution CDF at the lower bound when valid; otherwise <see cref="double.NaN"/>.</param>
+        /// <param name="upperProbability">The base-distribution CDF at the upper bound when valid; otherwise <see cref="double.NaN"/>.</param>
+        /// <returns><see langword="null"/> when all parameters are valid; otherwise, the validation exception.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="throwException"/> is true and validation fails.</exception>
+        private ArgumentOutOfRangeException? ValidateParametersCore(IList<double> parameters, bool throwException, out double lowerProbability, out double upperProbability)
+        {
+            lowerProbability = double.NaN;
+            upperProbability = double.NaN;
+            if (parameters.Count != NumberOfParameters)
             {
-                if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Min), "The min must be less than the max.");
-                return new ArgumentOutOfRangeException(nameof(Min), "The min must be less than the max.");
+                var exception = new ArgumentOutOfRangeException(nameof(parameters), "The flattened parameter count is invalid.");
+                if (throwException) throw exception;
+                return exception;
             }
-            if (Math.Abs(_Fmin - _Fmax) < 1e-15)
+            var baseParameters = parameters.ToArray().Subset(0, parameters.Count - 3);
+            var baseValidation = _baseDist.ValidateParameters(baseParameters, false);
+            if (baseValidation is not null)
             {
-                if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
-                return new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
-            }              
+                if (throwException) _baseDist.ValidateParameters(baseParameters, true);
+                return baseValidation;
+            }
+            double min = parameters[parameters.Count - 2];
+            double max = parameters[parameters.Count - 1];
+            if (double.IsNaN(min) || double.IsNaN(max) || double.IsInfinity(min) || double.IsInfinity(max) || min >= max)
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(Min), "The min must be finite and less than the max.");
+                if (throwException) throw exception;
+                return exception;
+            }
+            var candidate = _baseDist.Clone();
+            candidate.SetParameters(baseParameters);
+            lowerProbability = candidate.CDF(min);
+            upperProbability = candidate.CDF(max);
+            if (Math.Abs(lowerProbability - upperProbability) < 1e-15)
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(Min), "Truncation interval has zero probability mass.");
+                if (throwException) throw exception;
+                return exception;
+            }
             return null;
         }
 

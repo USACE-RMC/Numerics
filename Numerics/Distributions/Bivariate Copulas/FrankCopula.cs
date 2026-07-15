@@ -81,6 +81,12 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
         {
+            if (double.IsNaN(parameter) || double.IsInfinity(parameter))
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter must be finite.");
+                if (throwException) throw exception;
+                return exception;
+            }
             if (parameter < ThetaMinimum)
             {
                 if (throwException) throw new ArgumentOutOfRangeException(nameof(Theta), "The dependency parameter θ (theta) must be greater than or equal to " + ThetaMinimum.ToString() + ".");

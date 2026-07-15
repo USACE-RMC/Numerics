@@ -171,6 +171,14 @@ namespace Numerics.Distributions
             }
 
             // Check if X1 and X2 are in ascending order
+            for (int i = 0; i < x1Values.Count; i++)
+            {
+                if (double.IsNaN(x1Values[i]) || double.IsInfinity(x1Values[i]))
+                {
+                    if (throwException) throw new ArgumentOutOfRangeException("Primary Values", "Primary values must be finite.");
+                    return new ArgumentOutOfRangeException("Primary Values", "Primary values must be finite.");
+                }
+            }
             for (int i = 1; i < x1Values.Count; i++)
             {
                 if (x1Values[i] <= x1Values[i - 1])
@@ -178,6 +186,14 @@ namespace Numerics.Distributions
                     if (throwException)
                         throw new ArgumentOutOfRangeException("Primary Values", "Primary values must be in ascending order.");
                     return new ArgumentOutOfRangeException("Primary Values", "Primary values must be in ascending order.");
+                }
+            }
+            for (int i = 0; i < x2Values.Count; i++)
+            {
+                if (double.IsNaN(x2Values[i]) || double.IsInfinity(x2Values[i]))
+                {
+                    if (throwException) throw new ArgumentOutOfRangeException("Secondary Values", "Secondary values must be finite.");
+                    return new ArgumentOutOfRangeException("Secondary Values", "Secondary values must be finite.");
                 }
             }
             for (int i = 1; i < x2Values.Count; i++)
@@ -208,7 +224,7 @@ namespace Numerics.Distributions
             {
                 for (int j = 0; j < pValues.GetLength(1); j++) // Columns
                 {
-                    if (pValues[i, j] < 0.0d || pValues[i, j] > 1.0d)
+                    if (double.IsNaN(pValues[i, j]) || double.IsInfinity(pValues[i, j]) || pValues[i, j] < 0.0d || pValues[i, j] > 1.0d)
                     {
                         if (throwException) throw new ArgumentOutOfRangeException(nameof(ProbabilityValues), "Probability values must be equal to or between 0 and 1.");
                         return new ArgumentOutOfRangeException(nameof(ProbabilityValues), "Probability values must be equal to or between 0 and 1.");

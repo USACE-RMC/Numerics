@@ -314,7 +314,7 @@ namespace Numerics.Distributions
         /// </returns>
         public ArgumentOutOfRangeException? ValidateParameters(double degreesOfFreedom, double[] location, double[,] scaleMatrix, bool throwException)
         {
-            if (degreesOfFreedom <= 0)
+            if (double.IsNaN(degreesOfFreedom) || double.IsInfinity(degreesOfFreedom) || degreesOfFreedom <= 0)
             {
                 var ex = new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "Degrees of freedom must be greater than zero.");
                 if (throwException) throw ex; else return ex;
@@ -329,6 +329,14 @@ namespace Numerics.Distributions
                 var ex = new ArgumentOutOfRangeException(nameof(scaleMatrix), "Scale matrix must not be null.");
                 if (throwException) throw ex; else return ex;
             }
+            for (int i = 0; i < location.Length; i++)
+            {
+                if (double.IsNaN(location[i]) || double.IsInfinity(location[i]))
+                {
+                    var ex = new ArgumentOutOfRangeException(nameof(location), "Location values must be finite.");
+                    if (throwException) throw ex; else return ex;
+                }
+            }
             var m = new Matrix(scaleMatrix);
             if (!m.IsSquare)
             {
@@ -339,6 +347,17 @@ namespace Numerics.Distributions
             {
                 var ex = new ArgumentOutOfRangeException(nameof(scaleMatrix), "Location vector length must match scale matrix dimension.");
                 if (throwException) throw ex; else return ex;
+            }
+            for (int i = 0; i < m.NumberOfRows; i++)
+            {
+                for (int j = 0; j < m.NumberOfColumns; j++)
+                {
+                    if (double.IsNaN(m[i, j]) || double.IsInfinity(m[i, j]))
+                    {
+                        var ex = new ArgumentOutOfRangeException(nameof(scaleMatrix), "Scale-matrix values must be finite.");
+                        if (throwException) throw ex; else return ex;
+                    }
+                }
             }
             try
             {

@@ -78,6 +78,49 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies that zero noncentrality reduces to the central Student-t distribution across both tails.
+        /// </summary>
+        [TestMethod]
+        public void Test_NoncentralT_ZeroNoncentralityMatchesStudentT()
+        {
+            var noncentral = new NoncentralT(12d, 0d);
+            var central = new StudentT(0d, 1d, 12d);
+            foreach (double x in new[] { -3d, -1d, 0d, 1d, 3d })
+            {
+                Assert.AreEqual(central.CDF(x), noncentral.CDF(x), 1E-8, $"CDF mismatch at x={x}.");
+                Assert.AreEqual(central.PDF(x), noncentral.PDF(x), 1E-7, $"PDF mismatch at x={x}.");
+            }
+        }
+
+        /// <summary>
+        /// Verifies negative-tail symmetry, the exact value at zero, and inverse-CDF round trips.
+        /// </summary>
+        [TestMethod]
+        public void Test_NoncentralT_NegativeTailSymmetryAndRoundTrips()
+        {
+            const double degreesOfFreedom = 9d;
+            const double noncentrality = 1.75d;
+            var positive = new NoncentralT(degreesOfFreedom, noncentrality);
+            var reflected = new NoncentralT(degreesOfFreedom, -noncentrality);
+
+            foreach (double x in new[] { -4d, -2d, -0.5d, 0d, 1.5d })
+            {
+                Assert.AreEqual(
+                    positive.CDF(x),
+                    1d - reflected.CDF(-x),
+                    1E-8,
+                    $"Reflection identity failed at x={x}.");
+            }
+            Assert.AreEqual(Normal.StandardCDF(-noncentrality), positive.CDF(0d), 1E-12);
+
+            foreach (double probability in new[] { 0.05d, 0.25d, 0.75d, 0.95d })
+            {
+                double quantile = positive.InverseCDF(probability);
+                Assert.AreEqual(probability, positive.CDF(quantile), 1E-6, $"Round trip failed at p={probability}.");
+            }
+        }
+
+        /// <summary>
         /// Verifying input parameters can create Noncentral T distribution.
         /// </summary>
         [TestMethod()]

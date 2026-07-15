@@ -293,9 +293,10 @@ namespace Numerics.Distributions
         /// <param name="v">The degrees of freedom ν (nu). Range: ν > 0.</param>
         public void SetParameters(double mu, double sigma, double v)
         {
-            Mu = mu;
-            Sigma = sigma;
-            DegreesOfFreedom = v;
+            _mu = mu;
+            _sigma = sigma;
+            _degreesOfFreedom = v;
+            _parametersValid = ValidateParameters(mu, sigma, v, false) is null;
         }
 
         /// <inheritdoc/>
@@ -325,7 +326,7 @@ namespace Numerics.Distributions
                     throw new ArgumentOutOfRangeException(nameof(Sigma), "Standard deviation must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Sigma), "Standard deviation must be positive.");
             }
-            if (v < 1.0d)
+            if (double.IsNaN(v) || double.IsInfinity(v) || v < 1.0d)
             {
                 if (throwException)
                     throw new ArgumentOutOfRangeException(nameof(DegreesOfFreedom), "The degrees of freedom ν (nu) must greater than or equal to one.");

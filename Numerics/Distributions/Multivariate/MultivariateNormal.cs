@@ -300,7 +300,15 @@ namespace Numerics.Distributions
             {
                 var ex = new ArgumentOutOfRangeException(nameof(covariance), "Covariance matrix must not be null.");
                 if (throwException) throw ex; else return ex;
-            }          
+            }
+            for (int i = 0; i < mean.Length; i++)
+            {
+                if (double.IsNaN(mean[i]) || double.IsInfinity(mean[i]))
+                {
+                    var ex = new ArgumentOutOfRangeException(nameof(mean), "Mean values must be finite.");
+                    if (throwException) throw ex; else return ex;
+                }
+            }
             var m = new Matrix(covariance);
             if (!m.IsSquare)
             {
@@ -311,6 +319,17 @@ namespace Numerics.Distributions
             {
                 var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Mean length must match covariance dimension.");
                 if (throwException) throw ex; else return ex;
+            }
+            for (int i = 0; i < m.NumberOfRows; i++)
+            {
+                for (int j = 0; j < m.NumberOfColumns; j++)
+                {
+                    if (double.IsNaN(m[i, j]) || double.IsInfinity(m[i, j]))
+                    {
+                        var ex = new ArgumentOutOfRangeException(nameof(covariance), "Covariance values must be finite.");
+                        if (throwException) throw ex; else return ex;
+                    }
+                }
             }
             
             var chol = new CholeskyDecomposition(m);

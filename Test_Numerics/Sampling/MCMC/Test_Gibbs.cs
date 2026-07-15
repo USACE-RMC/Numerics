@@ -36,10 +36,16 @@ namespace Sampling.MCMC
             int n = sample.Length;
             var mu = Statistics.Mean(sample);
             double mu0 = 0, sigma0 = 5E5;
-            var muPrior = new Normal(mu0, sigma0);
-            double alpha0 = 2, beta0 = 0.001;
-            var sigmaPrior = new InverseGamma(beta0, alpha0);
-            var priors = new List<IUnivariateDistribution> { muPrior, sigmaPrior };
+            // Preserve the reference model's limiting non-informative inverse-gamma prior.
+            double variancePriorShape = 0d, variancePriorScale = 0d;
+
+            // Use proper distributions solely to initialize the sampler state.
+            double initializationShape = 2d, initializationScale = 0.001d;
+            var muInitializationPrior = new Normal(mu0, sigma0);
+            var sigmaInitializationPrior = new InverseGamma(initializationScale, initializationShape);
+            var conditionalMean = new Normal();
+            var conditionalVariance = new InverseGamma();
+            var priors = new List<IUnivariateDistribution> { muInitializationPrior, sigmaInitializationPrior };
 
             // Create log-likelihood function
             double logLH(double[] x)
@@ -51,20 +57,15 @@ namespace Sampling.MCMC
             // Create proposal function
             double[] proposal(double[] x, Random random)
             {
-                // Sample mu 
-                double mun = (n * mu + mu0 / 2) / (n + 1 / (sigma0 * sigma0));
-                double sigma2 = (x[1] * x[1]) / (n + (x[1] * x[1]) / (sigma0 * sigma0));
-                muPrior.SetParameters(mun, Math.Sqrt(sigma2));
-                double mup = muPrior.InverseCDF(random.NextDouble());
+                // Sample the conditional mean given the current standard deviation.
+                var meanParameters = ConditionalMeanParameters(n, mu, x[1], mu0, sigma0);
+                conditionalMean.SetParameters(meanParameters.Mean, meanParameters.StandardDeviation);
+                double mup = conditionalMean.InverseCDF(random.NextDouble());
 
-                // Sample sigma
-                double alpha1 = n / 2d;
-                double sse = 0;
-                for (int i = 0; i < sample.Length; i++)
-                    sse += Math.Pow(sample[i] - mup, 2);
-                double beta1 = sse / 2d;
-                sigmaPrior.SetParameters(new double[] { beta1, alpha1 });
-                double sig2p = sigmaPrior.InverseCDF(random.NextDouble());
+                // Sample the conditional variance, then return its square root as sigma.
+                var varianceParameters = ConditionalVarianceParameters(sample, mup, variancePriorShape, variancePriorScale);
+                conditionalVariance.SetParameters(new[] { varianceParameters.Scale, varianceParameters.Shape });
+                double sig2p = conditionalVariance.InverseCDF(random.NextDouble());
 
                 // return proposal vector
                 return new double[] { mup, Math.Sqrt(sig2p) };
@@ -74,6 +75,10 @@ namespace Sampling.MCMC
             var sampler = new Gibbs(priors, logLH, proposal);
             sampler.Sample();
             var results = new MCMCResults(sampler);
+            Assert.AreEqual(mu0, muInitializationPrior.Mu);
+            Assert.AreEqual(sigma0, muInitializationPrior.Sigma);
+            Assert.AreEqual(initializationScale, sigmaInitializationPrior.Beta);
+            Assert.AreEqual(initializationShape, sigmaInitializationPrior.Alpha);
 
             /* Below are the results from 'rstan' using comparable MCMC settings:
             *            mean se_mean     sd       5%      50%      95% n_eff Rhat
@@ -82,8 +87,8 @@ namespace Sampling.MCMC
             *  lp__   -466.13    0.01   1.03  -468.17  -465.81  -465.15  9958    1
             * 
             *  Since MCMC methods rely on random number generation, results will not be 
-            *  exactly the same as those produced by other samplers. Therefore, these 
-            *  comparisons aim to verify whether the results are within 5% of 'rstan' results. 
+            *  exactly the same as those produced by other samplers. Therefore, these
+            *  comparisons verify that the results remain within 5% of the 'rstan' results.
             */
 
             // Mu 
@@ -98,6 +103,69 @@ namespace Sampling.MCMC
             Assert.AreEqual(4077.80, results.ParameterResults[1].SummaryStatistics.LowerCI, 0.05 * 4077.80);
             Assert.AreEqual(4796.63, results.ParameterResults[1].SummaryStatistics.Median, 0.05 * 4796.63);
             Assert.AreEqual(5771.81, results.ParameterResults[1].SummaryStatistics.UpperCI, 0.05 * 5771.81);
+        }
+
+        /// <summary>
+        /// Verifies the Normal and inverse-gamma full-conditionals with an informative, nonzero prior.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalParameters_InformativePrior()
+        {
+            var meanParameters = ConditionalMeanParameters(4, 10d, 2d, 2d, 3d);
+            Assert.AreEqual(9.2d, meanParameters.Mean, 1E-12);
+            Assert.AreEqual(Math.Sqrt(0.9d), meanParameters.StandardDeviation, 1E-12);
+
+            var varianceParameters = ConditionalVarianceParameters(new[] { 8d, 10d, 12d, 14d }, 10d, 2d, 0.5d);
+            Assert.AreEqual(12.5d, varianceParameters.Scale, 1E-12);
+            Assert.AreEqual(4d, varianceParameters.Shape, 1E-12);
+        }
+
+        /// <summary>
+        /// Computes the Normal full-conditional parameters for the population mean when the
+        /// likelihood variance is fixed at its current Gibbs state.
+        /// </summary>
+        /// <param name="sampleSize">The number of observations.</param>
+        /// <param name="sampleMean">The arithmetic mean of the observations.</param>
+        /// <param name="currentStandardDeviation">The current likelihood standard deviation.</param>
+        /// <param name="priorMean">The Normal prior mean.</param>
+        /// <param name="priorStandardDeviation">The Normal prior standard deviation.</param>
+        /// <returns>The conditional Normal mean and standard deviation.</returns>
+        private static (double Mean, double StandardDeviation) ConditionalMeanParameters(
+            int sampleSize,
+            double sampleMean,
+            double currentStandardDeviation,
+            double priorMean,
+            double priorStandardDeviation)
+        {
+            double likelihoodVariance = currentStandardDeviation * currentStandardDeviation;
+            double priorVariance = priorStandardDeviation * priorStandardDeviation;
+            double posteriorVariance = 1d / (sampleSize / likelihoodVariance + 1d / priorVariance);
+            double posteriorMean = posteriorVariance *
+                (sampleSize * sampleMean / likelihoodVariance + priorMean / priorVariance);
+            return (posteriorMean, Math.Sqrt(posteriorVariance));
+        }
+
+        /// <summary>
+        /// Computes the inverse-gamma full-conditional parameters for the likelihood variance.
+        /// </summary>
+        /// <param name="sample">The observed sample.</param>
+        /// <param name="conditionalMean">The mean drawn during the current Gibbs iteration.</param>
+        /// <param name="priorShape">The inverse-gamma prior shape.</param>
+        /// <param name="priorScale">The inverse-gamma prior scale.</param>
+        /// <returns>The conditional inverse-gamma scale and shape, in the order expected by <see cref="InverseGamma"/>.</returns>
+        private static (double Scale, double Shape) ConditionalVarianceParameters(
+            IList<double> sample,
+            double conditionalMean,
+            double priorShape,
+            double priorScale)
+        {
+            double sumOfSquaredErrors = 0d;
+            for (int i = 0; i < sample.Count; i++)
+            {
+                double residual = sample[i] - conditionalMean;
+                sumOfSquaredErrors += residual * residual;
+            }
+            return (priorScale + sumOfSquaredErrors / 2d, priorShape + sample.Count / 2d);
         }
       
     }
