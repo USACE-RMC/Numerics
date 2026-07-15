@@ -250,6 +250,56 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Test that enabling zero inflation rescales component weights to the remaining mass.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_ZeroInflation_RescalesComponentWeights()
+        {
+            var mix = new Mixture(
+                new[] { 0.25, 0.75 },
+                new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(5, 2) });
+
+            mix.ZeroWeight = 0.2;
+            mix.IsZeroInflated = true;
+
+            Assert.IsTrue(mix.ParametersValid);
+            Assert.AreEqual(0.2, mix.Weights[0], 1E-12);
+            Assert.AreEqual(0.6, mix.Weights[1], 1E-12);
+            Assert.AreEqual(1.0, mix.ZeroWeight + mix.Weights[0] + mix.Weights[1], 1E-12);
+
+            mix.IsZeroInflated = false;
+
+            Assert.IsFalse(mix.ParametersValid);
+        }
+
+        /// <summary>
+        /// Test that cloning preserves a valid zero-inflated mixture and its evaluated values.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_Clone_PreservesZeroInflation()
+        {
+            var mix = new Mixture(
+                new[] { 1.0 },
+                new UnivariateDistributionBase[] { new Normal(100, 10) })
+            {
+                IsZeroInflated = true,
+                ZeroWeight = 0.5
+            };
+
+            var clone = (Mixture)mix.Clone();
+
+            Assert.IsTrue(mix.ParametersValid);
+            Assert.IsTrue(clone.ParametersValid);
+            Assert.IsTrue(clone.IsZeroInflated);
+            Assert.AreEqual(0.5, mix.Weights[0], 1E-12);
+            Assert.AreEqual(mix.ZeroWeight, clone.ZeroWeight, 0.0);
+            Assert.AreEqual(mix.Weights[0], clone.Weights[0], 0.0);
+            Assert.AreEqual(mix.PDF(100.0), clone.PDF(100.0), 1E-12);
+            Assert.AreEqual(mix.CDF(100.0), clone.CDF(100.0), 1E-12);
+            Assert.AreNotSame(mix.Distributions[0], clone.Distributions[0]);
+        }
+
+        /// <summary>
         /// Test that a mixture with no component support at x returns log(0).
         /// </summary>
         [TestMethod]

@@ -71,12 +71,20 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets or sets whether a separate probability weight is assigned to values less than or equal to zero.
         /// </summary>
+        /// <remarks>
+        /// Enabling zero inflation rescales finite, nonnegative component weights so their sum
+        /// equals <c>1 - <see cref="ZeroWeight"/></c>.
+        /// </remarks>
         public bool IsZeroInflated
         {
             get { return _isZeroInflated; }
             set
             {
                 _isZeroInflated = value;
+                if (_isZeroInflated)
+                {
+                    NormalizeComponentWeights();
+                }
                 RefreshConfigurationState();
             }
         }
@@ -84,13 +92,59 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets or sets the zero-value probability weight used when the mixture is zero-inflated.
         /// </summary>
+        /// <remarks>
+        /// When zero inflation is enabled, assigning this property rescales finite, nonnegative
+        /// component weights to the remaining probability mass.
+        /// </remarks>
         public double ZeroWeight
         {
             get { return _zeroWeight; }
             set
             {
                 _zeroWeight = value;
+                if (IsZeroInflated)
+                {
+                    NormalizeComponentWeights();
+                }
                 RefreshConfigurationState();
+            }
+        }
+
+        /// <summary>
+        /// Rescales valid component weights to the probability mass remaining after zero inflation.
+        /// </summary>
+        /// <remarks>
+        /// Invalid zero weights and invalid component weights are left unchanged so parameter
+        /// validation can report the original configuration error.
+        /// </remarks>
+        private void NormalizeComponentWeights()
+        {
+            if (_weights is null || _weights.Length == 0 ||
+                double.IsNaN(ZeroWeight) || double.IsInfinity(ZeroWeight) ||
+                ZeroWeight < 0.0 || ZeroWeight > 1.0)
+            {
+                return;
+            }
+
+            double sum = 0.0;
+            for (int i = 0; i < _weights.Length; i++)
+            {
+                if (double.IsNaN(_weights[i]) || double.IsInfinity(_weights[i]) || _weights[i] < 0.0)
+                {
+                    return;
+                }
+                sum += _weights[i];
+            }
+
+            if (sum <= 0.0 || double.IsInfinity(sum))
+            {
+                return;
+            }
+
+            double scale = (1.0 - ZeroWeight) / sum;
+            for (int i = 0; i < _weights.Length; i++)
+            {
+                _weights[i] *= scale;
             }
         }
 
