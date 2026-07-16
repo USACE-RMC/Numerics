@@ -63,7 +63,11 @@ namespace Numerics.Functions
                 if (!Tools.IsFinite(values[i]))
                     throw new ArgumentException("Every representative value must be finite.", nameof(values));
 
-            Lambda = ValidateLambda(YeoJohnson.FitLambda(values), nameof(values));
+            double lambda = YeoJohnson.FitLambda(values);
+            if (!Tools.IsFinite(lambda))
+                throw new ArgumentException("Yeo-Johnson lambda fitting failed for the supplied representative values.", nameof(values));
+
+            Lambda = ValidateLambda(lambda, nameof(values));
         }
 
         /// <summary>

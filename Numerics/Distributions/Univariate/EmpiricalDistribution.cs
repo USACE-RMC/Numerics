@@ -397,23 +397,61 @@ namespace Numerics.Distributions
             {
                 exception = new ArgumentOutOfRangeException(nameof(data), "At least two empirical ordinates are required.");
             }
-            else if (!data.IsValid)
+            else if (probabilities.Count != data.Count)
             {
-                exception = new ArgumentOutOfRangeException(nameof(data), "Empirical ordinates must be finite and follow the configured ordering.");
+                exception = new ArgumentOutOfRangeException(nameof(probabilities), "The empirical ordinate and probability collections must have the same length.");
             }
             else
             {
-                for (int i = 0; i < probabilities.Count; i++)
+                for (int i = 0; i < data.Count; i++)
                 {
+                    if (double.IsNaN(data[i].X) || double.IsInfinity(data[i].X) || double.IsNaN(data[i].Y) || double.IsInfinity(data[i].Y))
+                    {
+                        exception = new ArgumentOutOfRangeException(nameof(data), "Empirical ordinates must be finite.");
+                        break;
+                    }
+
                     if (double.IsNaN(probabilities[i]) || double.IsInfinity(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
                     {
                         exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must be finite and between zero and one.");
+                        break;
+                    }
+
+                    if (i == 0) continue;
+
+                    if (!IsOrdered(data[i - 1].X, data[i].X, data.OrderX, data.StrictX))
+                    {
+                        exception = new ArgumentOutOfRangeException(nameof(data), "Empirical x-values must follow the configured ordering.");
+                        break;
+                    }
+
+                    if (!IsOrdered(data[i - 1].Y, data[i].Y, data.OrderY, data.StrictY))
+                    {
+                        exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must follow the configured ordering.");
                         break;
                     }
                 }
             }
             if (throwException && exception is not null) throw exception;
             return exception;
+        }
+
+        /// <summary>
+        /// Determines whether adjacent empirical ordinates satisfy a configured order.
+        /// </summary>
+        /// <param name="previous">The previous ordinate value.</param>
+        /// <param name="current">The current ordinate value.</param>
+        /// <param name="order">The required sort order.</param>
+        /// <param name="strict">Whether adjacent equal values are invalid.</param>
+        /// <returns><see langword="true"/> when the adjacent values satisfy the configured order; otherwise, <see langword="false"/>.</returns>
+        private static bool IsOrdered(double previous, double current, SortOrder order, bool strict)
+        {
+            return order switch
+            {
+                SortOrder.Ascending => strict ? current > previous : current >= previous,
+                SortOrder.Descending => strict ? current < previous : current <= previous,
+                _ => true
+            };
         }
 
         /// <inheritdoc/>
