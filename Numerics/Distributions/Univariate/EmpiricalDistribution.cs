@@ -66,8 +66,11 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="XValues">Array of X values.</param>
         /// <param name="PValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
-        /// <param name="XOrder">Sort order of X values.</param>
+        /// <param name="XOrder">Ascending sort order of X values.</param>
         /// <param name="probabilityOrder">Sort order of probability values.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the distribution is used and <paramref name="XOrder"/> is not ascending.
+        /// </exception>
         public EmpiricalDistribution(IList<double> XValues, IList<double> PValues, SortOrder XOrder, SortOrder probabilityOrder)
         {
             SetParameters(XValues, PValues, XOrder, probabilityOrder);
@@ -78,9 +81,12 @@ namespace Numerics.Distributions
         /// Constructs a Univariate Empirical CDF from ordered paired data.
         /// </summary>
         /// <param name="orderedPairedData">The ordered paired data.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the X values are not configured in ascending order.
+        /// </exception>
         public EmpiricalDistribution(OrderedPairedData orderedPairedData)
         {
-            if (orderedPairedData.OrderX != SortOrder.Ascending) throw new ArgumentException("The x values must be in ascending order", nameof(orderedPairedData));
+            if (orderedPairedData.OrderX != SortOrder.Ascending) throw new ArgumentOutOfRangeException(nameof(orderedPairedData), "Empirical x-values must be ordered ascending.");
             opd = orderedPairedData;
             _xValues = orderedPairedData.Select(v => v.X).ToArray();
 
@@ -366,9 +372,12 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="xValues">Array of X values.</param>
         /// <param name="pValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
-        /// <param name="XOrder">Sort order of X values.</param>
+        /// <param name="XOrder">Ascending sort order of X values.</param>
         /// <param name="probabilityOrder">Sort order of probability values.</param>
         /// <exception cref="ArgumentException">The value and probability collections have different lengths.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the distribution is used and <paramref name="XOrder"/> is not ascending.
+        /// </exception>
         public void SetParameters(IList<double> xValues, IList<double> pValues, SortOrder XOrder, SortOrder probabilityOrder)
         {
             if (xValues.Count != pValues.Count)
@@ -397,20 +406,29 @@ namespace Numerics.Distributions
             {
                 exception = new ArgumentOutOfRangeException(nameof(data), "At least two empirical ordinates are required.");
             }
+            else if (probabilities.Count != data.Count)
+            {
+                exception = new ArgumentOutOfRangeException(nameof(probabilities), "The empirical ordinate and probability collections must have the same length.");
+            }
+            else if (data.OrderX != SortOrder.Ascending)
+            {
+                exception = new ArgumentOutOfRangeException(nameof(data), "Empirical x-values must be ordered ascending.");
+            }
             else if (!data.IsValid)
             {
-                exception = new ArgumentOutOfRangeException(nameof(data), "Empirical ordinates must be finite and follow the configured ordering.");
+                List<string> errors = data.GetErrors().Distinct().ToList();
+                string message = errors.Count > 0
+                    ? string.Join(" ", errors)
+                    : "The empirical ordinates do not satisfy their configured ordering.";
+                exception = new ArgumentOutOfRangeException(nameof(data), message);
             }
-            else
+            else if (probabilities.Any(probability =>
+                double.IsNaN(probability) ||
+                double.IsInfinity(probability) ||
+                probability < 0d ||
+                probability > 1d))
             {
-                for (int i = 0; i < probabilities.Count; i++)
-                {
-                    if (double.IsNaN(probabilities[i]) || double.IsInfinity(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
-                    {
-                        exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must be finite and between zero and one.");
-                        break;
-                    }
-                }
+                exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must be finite and between zero and one.");
             }
             if (throwException && exception is not null) throw exception;
             return exception;

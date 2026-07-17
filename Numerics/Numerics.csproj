@@ -28,9 +28,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>2.1.3</Version>
-    <PackageReleaseNotes>Version 2.1.3 hardens numerical edge cases and distribution validation. This release enforces XML documentation warnings, fixes audited interpolation/search, histogram, probability, MVNDST/COVSRT, Brent bracketing, and atomic double-addition behavior, improves copula clone and parameter-validity handling, and adds MultivariateNormal non-throwing covariance mutation plus marginal and conditional utilities with expanded regression coverage.</PackageReleaseNotes>
-    <AssemblyVersion>2.1.3.0</AssemblyVersion>
+    <Version>2.1.4</Version>
+    <PackageReleaseNotes>Version 2.1.4 adds non-throwing univariate distribution factory creation, preserves valid zero-inflated mixture weights, hardens Box-Cox and Yeo-Johnson fitting and inversion against invalid candidates, and enforces ascending empirical distribution ordinates with expanded regression coverage.</PackageReleaseNotes>
+    <AssemblyVersion>2.1.4.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>

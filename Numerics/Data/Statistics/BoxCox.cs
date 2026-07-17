@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Numerics.Mathematics.Optimization;
 
@@ -28,17 +28,35 @@ namespace Numerics.Data.Statistics
         /// </remarks>
         public static void FitLambda(IList<double> values, out double lambda)
         {
-            // Solve with Brent 
-            var brent = new BrentSearch((x) => { return LogLikelihood(values, x); }, -5d, 5d);
+            lambda = double.NaN;
+            if (!CanFitLambda(values))
+                return;
+
+            // Keep BrentSearch arithmetic finite even when the profile likelihood is undefined.
+            var brent = new BrentSearch((x) =>
+            {
+                double logLikelihood = LogLikelihood(values, x);
+                return Tools.IsFinite(logLikelihood) ? logLikelihood : -double.MaxValue;
+            }, -5d, 5d)
+            {
+                ReportFailure = false,
+                ComputeHessian = false,
+                RecordTraces = false
+            };
+
             brent.Maximize();
-            if (brent.Status == OptimizationStatus.Success)
-            {
-                lambda = brent.BestParameterSet.Values[0];
-            }
-            else
-            {
-                lambda = double.NaN;
-            }
+            if (brent.Status != OptimizationStatus.Success ||
+                brent.BestParameterSet.Values == null ||
+                brent.BestParameterSet.Values.Length == 0)
+                return;
+
+            double candidate = brent.BestParameterSet.Values[0];
+            if (!Tools.IsFinite(candidate) ||
+                Math.Abs(candidate) > 5d ||
+                !Tools.IsFinite(LogLikelihood(values, candidate)))
+                return;
+
+            lambda = candidate;
         }
 
         /// <summary>
@@ -52,6 +70,9 @@ namespace Numerics.Data.Statistics
         /// </returns>
         public static double LogLikelihood(IList<double> values, double lambda1)
         {
+            if (!CanFitLambda(values) || !Tools.IsFinite(lambda1) || Math.Abs(lambda1) > 5d)
+                return double.NegativeInfinity;
+
             int n = values.Count;
             var y = new double[n];
             double mu = 0d;
@@ -59,16 +80,28 @@ namespace Numerics.Data.Statistics
             for (int i = 0; i < n; i++)
             {
                 y[i] = Transform(values[i], lambda1);
+                if (!Tools.IsFinite(y[i]))
+                    return double.NegativeInfinity;
+
                 mu += y[i];
                 sumX += Math.Log(values[i]);
             }
+            if (!Tools.IsFinite(mu) || !Tools.IsFinite(sumX))
+                return double.NegativeInfinity;
+
             mu = mu / n;
             double sse = 0d;
             for (int i = 0; i < n; i++)
                 sse += Math.Pow(y[i] - mu, 2d);
+            if (!Tools.IsFinite(sse) || sse <= 0d)
+                return double.NegativeInfinity;
+
             double sigma = Math.Sqrt(sse / n);
+            if (!Tools.IsFinite(sigma) || sigma <= 0d)
+                return double.NegativeInfinity;
+
             double ll = -n / 2.0d * Tools.LogSqrt2PI - n / 2.0d * Math.Log(sigma * sigma) - 1.0d / (2d * sigma * sigma) * sse + (lambda1 - 1d) * sumX;
-            return ll;
+            return Tools.IsFinite(ll) ? ll : double.NegativeInfinity;
         }
 
         /// <summary>
@@ -145,6 +178,33 @@ namespace Numerics.Data.Statistics
             for (int i = 0; i < values.Count; i++)
                 newValues.Add(InverseTransform(values[i], lambda));
             return newValues;
+        }
+
+        /// <summary>
+        /// Determines whether a sample can support Box-Cox lambda fitting.
+        /// </summary>
+        /// <param name="values">The sample values to inspect.</param>
+        /// <returns><see langword="true"/> when the sample is finite, positive, and non-degenerate.</returns>
+        private static bool CanFitLambda(IList<double> values)
+        {
+            if (values == null || values.Count < 2)
+                return false;
+
+            double first = values[0];
+            if (!Tools.IsFinite(first) || first <= 0d)
+                return false;
+
+            bool hasDifferentValue = false;
+            for (int i = 1; i < values.Count; i++)
+            {
+                double value = values[i];
+                if (!Tools.IsFinite(value) || value <= 0d)
+                    return false;
+                if (value != first)
+                    hasDifferentValue = true;
+            }
+
+            return hasDifferentValue;
         }
     }
 }

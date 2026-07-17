@@ -1,5 +1,6 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
+using System.Collections.Generic;
 
 namespace Data.Statistics
 {
@@ -49,6 +50,42 @@ namespace Data.Statistics
             double l1 = 0;
             BoxCox.FitLambda(sample, out l1);
             Assert.AreEqual(0.1314482, l1, 1E-6);
+        }
+
+        /// <summary>
+        /// FitLambda reports invalid or degenerate samples with NaN instead of throwing through BrentSearch.
+        /// </summary>
+        [TestMethod]
+        public void Test_Fit_InvalidSamples_ReturnsNaN()
+        {
+            IList<double>[] samples =
+            {
+                null!,
+                new[] { 1d },
+                new[] { 1d, 1d, 1d },
+                new[] { 0d, 10d, 11d },
+                new[] { -1d, 10d, 11d },
+                new[] { 1d, double.NaN, 2d },
+                new[] { 1d, double.PositiveInfinity, 2d }
+            };
+
+            foreach (IList<double> sample in samples)
+            {
+                BoxCox.FitLambda(sample, out double lambda);
+                Assert.IsTrue(double.IsNaN(lambda));
+            }
+        }
+
+        /// <summary>
+        /// LogLikelihood returns negative infinity for samples outside the Box-Cox domain.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogLikelihood_InvalidSamples_ReturnsNegativeInfinity()
+        {
+            Assert.AreEqual(double.NegativeInfinity, BoxCox.LogLikelihood(new[] { 0d, 1d }, 1d));
+            Assert.AreEqual(double.NegativeInfinity, BoxCox.LogLikelihood(new[] { 1d, 1d }, 1d));
+            Assert.AreEqual(double.NegativeInfinity, BoxCox.LogLikelihood(new[] { 1d, double.NaN }, 1d));
+            Assert.AreEqual(double.NegativeInfinity, BoxCox.LogLikelihood(new[] { 1d, 2d }, double.NaN));
         }
 
         /// <summary>

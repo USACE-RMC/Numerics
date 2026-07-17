@@ -1,4 +1,4 @@
-﻿using Numerics.Mathematics.Optimization;
+using Numerics.Mathematics.Optimization;
 using System;
 using System.Collections.Generic;
 
@@ -24,17 +24,35 @@ namespace Numerics.Data.Statistics
         /// <param name="lambda">Output. The transformation exponent. Range -5 to +5.</param>
         public static void FitLambda(IList<double> values, out double lambda)
         {
-            // Solve with Brent 
-            var brent = new BrentSearch((x) => { return LogLikelihood(values, x); }, -5d, 5d);
+            lambda = double.NaN;
+            if (!CanFitLambda(values))
+                return;
+
+            // Keep BrentSearch arithmetic finite even when the profile likelihood is undefined.
+            var brent = new BrentSearch((x) =>
+            {
+                double logLikelihood = LogLikelihood(values, x);
+                return Tools.IsFinite(logLikelihood) ? logLikelihood : -double.MaxValue;
+            }, -5d, 5d)
+            {
+                ReportFailure = false,
+                ComputeHessian = false,
+                RecordTraces = false
+            };
+
             brent.Maximize();
-            if (brent.Status == OptimizationStatus.Success)
-            {
-                lambda = brent.BestParameterSet.Values[0];
-            }
-            else
-            {
-                lambda = double.NaN;
-            }
+            if (brent.Status != OptimizationStatus.Success ||
+                brent.BestParameterSet.Values == null ||
+                brent.BestParameterSet.Values.Length == 0)
+                return;
+
+            double candidate = brent.BestParameterSet.Values[0];
+            if (!Tools.IsFinite(candidate) ||
+                Math.Abs(candidate) > 5d ||
+                !Tools.IsFinite(LogLikelihood(values, candidate)))
+                return;
+
+            lambda = candidate;
         }
 
         /// <summary>
@@ -62,6 +80,9 @@ namespace Numerics.Data.Statistics
         /// </returns>
         public static double LogLikelihood(IList<double> values, double lambda)
         {
+            if (!CanFitLambda(values) || !Tools.IsFinite(lambda) || Math.Abs(lambda) > 5d)
+                return double.NegativeInfinity;
+
             int n = values.Count;
             var transformed = new double[n];
             double sum = 0d;
@@ -72,8 +93,13 @@ namespace Numerics.Data.Statistics
             {
                 double xi = values[i];
                 double yi = Transform(xi, lambda);
+                if (!Tools.IsFinite(yi))
+                    return double.NegativeInfinity;
+
                 transformed[i] = yi;
                 sum += yi;
+                if (!Tools.IsFinite(sum))
+                    return double.NegativeInfinity;
 
                 // Compute derivative dT/dy for log-Jacobian
                 double dTdy;
@@ -91,6 +117,8 @@ namespace Numerics.Data.Statistics
                     logJacobianSum += Math.Log(dTdy);
                 else
                     return double.NegativeInfinity; // log-likelihood undefined
+                if (!Tools.IsFinite(logJacobianSum))
+                    return double.NegativeInfinity;
             }
 
             // Compute mean and SSE
@@ -101,14 +129,16 @@ namespace Numerics.Data.Statistics
                 double resid = transformed[i] - mu;
                 sse += resid * resid;
             }
+            if (!Tools.IsFinite(sse) || sse <= 0d)
+                return double.NegativeInfinity;
 
             double sigmaSq = sse / n;
-            if (sigmaSq <= 0 || double.IsNaN(sigmaSq))
+            if (!Tools.IsFinite(sigmaSq) || sigmaSq <= 0)
                 return double.NegativeInfinity;
 
             double logLikelihood = -n / 2.0 * Tools.LogSqrt2PI - n / 2.0 * Math.Log(sigmaSq) - sse / (2.0 * sigmaSq) + logJacobianSum;
 
-            return logLikelihood;
+            return Tools.IsFinite(logLikelihood) ? logLikelihood : double.NegativeInfinity;
         }
 
         /// <summary>
@@ -160,11 +190,11 @@ namespace Numerics.Data.Statistics
             {
                 return Math.Log(value + 1);
             }
-            else if (value < 0 && lambda != 2)
+            else if (value < 0 && Math.Abs(lambda - 2d) >= 1E-8)
             {
                 return -(Math.Pow(-value + 1, 2 - lambda) - 1) / (2 - lambda);
             }
-            else if (value < 0 && lambda == 2)
+            else if (value < 0 && Math.Abs(lambda - 2d) < 1E-8)
             {
                 return -Math.Log(-value + 1);
             }
@@ -216,11 +246,11 @@ namespace Numerics.Data.Statistics
             {
                 return Math.Exp(value) - 1;
             }
-            else if (value < 0 && lambda != 2)
+            else if (value < 0 && Math.Abs(lambda - 2d) >= 1E-8)
             {
                 return 1 - (Math.Pow(1 - (2 - lambda) * value, 1 / (2 - lambda)));
             }
-            else if (value < 0 && lambda == 2)
+            else if (value < 0 && Math.Abs(lambda - 2d) < 1E-8)
             {
                 return 1 - Math.Exp(-value);
             }
@@ -241,6 +271,33 @@ namespace Numerics.Data.Statistics
             for (int i = 0; i < values.Count; i++)
                 newValues.Add(InverseTransform(values[i], lambda));
             return newValues;
+        }
+
+        /// <summary>
+        /// Determines whether a sample can support Yeo-Johnson lambda fitting.
+        /// </summary>
+        /// <param name="values">The sample values to inspect.</param>
+        /// <returns><see langword="true"/> when the sample is finite and non-degenerate.</returns>
+        private static bool CanFitLambda(IList<double> values)
+        {
+            if (values == null || values.Count < 2)
+                return false;
+
+            double first = values[0];
+            if (!Tools.IsFinite(first))
+                return false;
+
+            bool hasDifferentValue = false;
+            for (int i = 1; i < values.Count; i++)
+            {
+                double value = values[i];
+                if (!Tools.IsFinite(value))
+                    return false;
+                if (value != first)
+                    hasDifferentValue = true;
+            }
+
+            return hasDifferentValue;
         }
     }
 }

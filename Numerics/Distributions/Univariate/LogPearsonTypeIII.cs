@@ -687,7 +687,7 @@ namespace Numerics.Distributions
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
             // 
-            // Estimate initial values using the method of linear moments.
+            // Estimate initial values using the method of moments.
             var mom = IndirectMethodOfMoments(sample);
             initialVals = [mom[0], mom[1], mom[2]];
             // Get bounds of mean

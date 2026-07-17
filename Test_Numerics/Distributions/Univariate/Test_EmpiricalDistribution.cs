@@ -326,5 +326,140 @@ namespace Distributions.Univariate
             }
         }
 
+        /// <summary>
+        /// Duplicate sample values are valid empirical ordinates for bootstrap samples.
+        /// </summary>
+        [TestMethod]
+        public void Test_DuplicateSampleValues_AreValidForCdfAndInverseCdf()
+        {
+            var sample = new[] { 100d, 100d, 125d, 150d, 150d, 200d };
+            var distribution = new EmpiricalDistribution(sample);
+
+            double cdf = distribution.CDF(150d);
+            double quantile = distribution.InverseCDF(0.5d);
+
+            Assert.IsFalse(double.IsNaN(cdf) || double.IsInfinity(cdf));
+            Assert.IsTrue(cdf >= 0d && cdf <= 1d);
+            Assert.IsFalse(double.IsNaN(quantile) || double.IsInfinity(quantile));
+            Assert.IsTrue(quantile >= distribution.Minimum && quantile <= distribution.Maximum);
+        }
+
+        /// <summary>
+        /// Duplicate x-values are valid when the empirical ordinate set is explicitly non-strict on x.
+        /// </summary>
+        [TestMethod]
+        public void Test_NonStrictDuplicateXValues_AreValidForCdfAndInverseCdf()
+        {
+            var xValues = new[] { 100d, 100d, 125d, 150d, 200d };
+            var pValues = new[] { 0.1d, 0.2d, 0.45d, 0.7d, 0.95d };
+            var distribution = new EmpiricalDistribution(xValues, pValues);
+
+            double cdf = distribution.CDF(125d);
+            double quantile = distribution.InverseCDF(0.45d);
+
+            Assert.IsFalse(double.IsNaN(cdf) || double.IsInfinity(cdf));
+            Assert.IsTrue(cdf >= 0d && cdf <= 1d);
+            Assert.AreEqual(125d, quantile, 1E-12);
+        }
+
+        /// <summary>
+        /// Duplicate x-values are rejected when the empirical ordinate set requires strict x ordering.
+        /// </summary>
+        [TestMethod]
+        public void Test_StrictDuplicateXValues_ThrowWhenUsed()
+        {
+            var orderedPairedData = new OrderedPairedData(
+                new[] { 100d, 100d, 125d },
+                new[] { 0.1d, 0.2d, 0.9d },
+                true,
+                SortOrder.Ascending,
+                true,
+                SortOrder.Ascending);
+            var distribution = new EmpiricalDistribution(orderedPairedData);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(110d));
+        }
+
+        /// <summary>
+        /// Decreasing x-values remain invalid for empirical distributions configured as ascending.
+        /// </summary>
+        [TestMethod]
+        public void Test_DecreasingXValues_ThrowWhenUsed()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 100d, 150d, 125d },
+                new[] { 0.1d, 0.5d, 0.9d });
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(125d));
+        }
+
+        /// <summary>
+        /// Empirical X values require an explicit ascending order even when the values happen to be ordered.
+        /// </summary>
+        [TestMethod]
+        public void Test_NoneXOrder_ThrowsForCdfAndInverseCdf()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 100d, 125d, 150d },
+                new[] { 0.1d, 0.5d, 0.9d },
+                SortOrder.None,
+                SortOrder.Ascending);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(125d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.InverseCDF(0.5d));
+        }
+
+        /// <summary>
+        /// Descending empirical X values are rejected because empirical interpolation requires ascending X values.
+        /// </summary>
+        [TestMethod]
+        public void Test_DescendingXOrder_ThrowsForCdfAndInverseCdf()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 200d, 150d, 100d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                SortOrder.Descending,
+                SortOrder.Descending);
+            var orderedPairedData = new OrderedPairedData(
+                new[] { 200d, 150d, 100d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                true,
+                SortOrder.Descending,
+                true,
+                SortOrder.Descending);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(150d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.InverseCDF(0.5d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EmpiricalDistribution(orderedPairedData));
+        }
+
+        /// <summary>
+        /// Descending probabilities remain valid when ascending X values define a survival curve.
+        /// </summary>
+        [TestMethod]
+        public void Test_DescendingProbabilityOrder_SupportsCdfAndInverseCdf()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 100d, 150d, 200d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                SortOrder.Ascending,
+                SortOrder.Descending);
+
+            Assert.AreEqual(0.5d, distribution.CDF(150d), 1E-12);
+            Assert.AreEqual(150d, distribution.InverseCDF(0.5d), 1E-12);
+        }
+
+        /// <summary>
+        /// Non-finite probabilities remain invalid.
+        /// </summary>
+        [TestMethod]
+        public void Test_NonFiniteProbability_ThrowsWhenUsed()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 100d, 125d, 150d },
+                new[] { 0.1d, double.NaN, 0.9d });
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(125d));
+        }
     }
 }

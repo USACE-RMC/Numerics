@@ -90,6 +90,19 @@ namespace Functions
         }
 
         /// <summary>
+        /// Verifies failed lambda fitting from finite values throws a controlled argument exception.
+        /// </summary>
+        [TestMethod]
+        public void Constructor_Values_LambdaFitFailure_Throws()
+        {
+            var exception = Assert.Throws<ArgumentException>(() =>
+                new YeoJohnsonLink(new[] { -double.MaxValue, -double.MaxValue / 2d, -double.MaxValue / 4d }));
+
+            Assert.AreEqual("values", exception.ParamName);
+            StringAssert.Contains(exception.Message, "lambda fitting failed");
+        }
+
+        /// <summary>
         /// Verifies the XML constructor rejects null.
         /// </summary>
         [TestMethod]
