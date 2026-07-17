@@ -66,8 +66,11 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="XValues">Array of X values.</param>
         /// <param name="PValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
-        /// <param name="XOrder">Sort order of X values.</param>
+        /// <param name="XOrder">Ascending sort order of X values.</param>
         /// <param name="probabilityOrder">Sort order of probability values.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the distribution is used and <paramref name="XOrder"/> is not ascending.
+        /// </exception>
         public EmpiricalDistribution(IList<double> XValues, IList<double> PValues, SortOrder XOrder, SortOrder probabilityOrder)
         {
             SetParameters(XValues, PValues, XOrder, probabilityOrder);
@@ -78,9 +81,12 @@ namespace Numerics.Distributions
         /// Constructs a Univariate Empirical CDF from ordered paired data.
         /// </summary>
         /// <param name="orderedPairedData">The ordered paired data.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the X values are not configured in ascending order.
+        /// </exception>
         public EmpiricalDistribution(OrderedPairedData orderedPairedData)
         {
-            if (orderedPairedData.OrderX != SortOrder.Ascending) throw new ArgumentException("The x values must be in ascending order", nameof(orderedPairedData));
+            if (orderedPairedData.OrderX != SortOrder.Ascending) throw new ArgumentOutOfRangeException(nameof(orderedPairedData), "Empirical x-values must be ordered ascending.");
             opd = orderedPairedData;
             _xValues = orderedPairedData.Select(v => v.X).ToArray();
 
@@ -366,9 +372,12 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="xValues">Array of X values.</param>
         /// <param name="pValues">Array of probability values. Range 0 ≤ p ≤ 1.</param>
-        /// <param name="XOrder">Sort order of X values.</param>
+        /// <param name="XOrder">Ascending sort order of X values.</param>
         /// <param name="probabilityOrder">Sort order of probability values.</param>
         /// <exception cref="ArgumentException">The value and probability collections have different lengths.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the distribution is used and <paramref name="XOrder"/> is not ascending.
+        /// </exception>
         public void SetParameters(IList<double> xValues, IList<double> pValues, SortOrder XOrder, SortOrder probabilityOrder)
         {
             if (xValues.Count != pValues.Count)
@@ -401,57 +410,28 @@ namespace Numerics.Distributions
             {
                 exception = new ArgumentOutOfRangeException(nameof(probabilities), "The empirical ordinate and probability collections must have the same length.");
             }
-            else
+            else if (data.OrderX != SortOrder.Ascending)
             {
-                for (int i = 0; i < data.Count; i++)
-                {
-                    if (double.IsNaN(data[i].X) || double.IsInfinity(data[i].X) || double.IsNaN(data[i].Y) || double.IsInfinity(data[i].Y))
-                    {
-                        exception = new ArgumentOutOfRangeException(nameof(data), "Empirical ordinates must be finite.");
-                        break;
-                    }
-
-                    if (double.IsNaN(probabilities[i]) || double.IsInfinity(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
-                    {
-                        exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must be finite and between zero and one.");
-                        break;
-                    }
-
-                    if (i == 0) continue;
-
-                    if (!IsOrdered(data[i - 1].X, data[i].X, data.OrderX, data.StrictX))
-                    {
-                        exception = new ArgumentOutOfRangeException(nameof(data), "Empirical x-values must follow the configured ordering.");
-                        break;
-                    }
-
-                    if (!IsOrdered(data[i - 1].Y, data[i].Y, data.OrderY, data.StrictY))
-                    {
-                        exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must follow the configured ordering.");
-                        break;
-                    }
-                }
+                exception = new ArgumentOutOfRangeException(nameof(data), "Empirical x-values must be ordered ascending.");
+            }
+            else if (!data.IsValid)
+            {
+                List<string> errors = data.GetErrors().Distinct().ToList();
+                string message = errors.Count > 0
+                    ? string.Join(" ", errors)
+                    : "The empirical ordinates do not satisfy their configured ordering.";
+                exception = new ArgumentOutOfRangeException(nameof(data), message);
+            }
+            else if (probabilities.Any(probability =>
+                double.IsNaN(probability) ||
+                double.IsInfinity(probability) ||
+                probability < 0d ||
+                probability > 1d))
+            {
+                exception = new ArgumentOutOfRangeException(nameof(probabilities), "Empirical probabilities must be finite and between zero and one.");
             }
             if (throwException && exception is not null) throw exception;
             return exception;
-        }
-
-        /// <summary>
-        /// Determines whether adjacent empirical ordinates satisfy a configured order.
-        /// </summary>
-        /// <param name="previous">The previous ordinate value.</param>
-        /// <param name="current">The current ordinate value.</param>
-        /// <param name="order">The required sort order.</param>
-        /// <param name="strict">Whether adjacent equal values are invalid.</param>
-        /// <returns><see langword="true"/> when the adjacent values satisfy the configured order; otherwise, <see langword="false"/>.</returns>
-        private static bool IsOrdered(double previous, double current, SortOrder order, bool strict)
-        {
-            return order switch
-            {
-                SortOrder.Ascending => strict ? current > previous : current >= previous,
-                SortOrder.Descending => strict ? current < previous : current <= previous,
-                _ => true
-            };
         }
 
         /// <inheritdoc/>

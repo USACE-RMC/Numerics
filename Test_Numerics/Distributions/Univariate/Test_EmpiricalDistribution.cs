@@ -394,6 +394,62 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Empirical X values require an explicit ascending order even when the values happen to be ordered.
+        /// </summary>
+        [TestMethod]
+        public void Test_NoneXOrder_ThrowsForCdfAndInverseCdf()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 100d, 125d, 150d },
+                new[] { 0.1d, 0.5d, 0.9d },
+                SortOrder.None,
+                SortOrder.Ascending);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(125d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.InverseCDF(0.5d));
+        }
+
+        /// <summary>
+        /// Descending empirical X values are rejected because empirical interpolation requires ascending X values.
+        /// </summary>
+        [TestMethod]
+        public void Test_DescendingXOrder_ThrowsForCdfAndInverseCdf()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 200d, 150d, 100d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                SortOrder.Descending,
+                SortOrder.Descending);
+            var orderedPairedData = new OrderedPairedData(
+                new[] { 200d, 150d, 100d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                true,
+                SortOrder.Descending,
+                true,
+                SortOrder.Descending);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(150d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => distribution.InverseCDF(0.5d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EmpiricalDistribution(orderedPairedData));
+        }
+
+        /// <summary>
+        /// Descending probabilities remain valid when ascending X values define a survival curve.
+        /// </summary>
+        [TestMethod]
+        public void Test_DescendingProbabilityOrder_SupportsCdfAndInverseCdf()
+        {
+            var distribution = new EmpiricalDistribution(
+                new[] { 100d, 150d, 200d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                SortOrder.Ascending,
+                SortOrder.Descending);
+
+            Assert.AreEqual(0.5d, distribution.CDF(150d), 1E-12);
+            Assert.AreEqual(150d, distribution.InverseCDF(0.5d), 1E-12);
+        }
+
+        /// <summary>
         /// Non-finite probabilities remain invalid.
         /// </summary>
         [TestMethod]
