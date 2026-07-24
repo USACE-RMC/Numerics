@@ -727,6 +727,10 @@ namespace Numerics.Distributions
 
             double F = CDF(x);
             double y = (x - Xi) / Alpha;
+            if (Kappa == 0d)
+            {
+                return Math.Exp(-y) / Alpha * Math.Pow(F, 1d - Hondo);
+            }
             double yy = 1 - Kappa * y;
             return (1 / Alpha) * Math.Pow(yy, 1 / Kappa - 1) * Math.Pow(F, 1 - Hondo);
         }
@@ -781,7 +785,7 @@ namespace Numerics.Distributions
             }
             else if (Kappa == 0 && Hondo != 0)
             {
-                return Xi - Alpha * Math.Log(1 - Math.Pow(probability, Hondo) / Hondo);
+                return Xi - Alpha * Math.Log((1 - Math.Pow(probability, Hondo)) / Hondo);
             }
             else
             {

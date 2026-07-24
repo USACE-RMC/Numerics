@@ -1,6 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Mathematics;
+using Numerics.Mathematics.Integration;
 
 namespace Distributions.Univariate
 {
@@ -104,6 +105,90 @@ namespace Distributions.Univariate
 
         }
 
+        /// <summary>
+        /// Verifies the zero-kappa density against the analytical CDF derivative.
+        /// </summary>
+        [TestMethod]
+        public void Test_K4_ZeroKappa_PDFMatchesAnalyticalDerivative()
+        {
+            const double xi = 2.5d;
+            const double alpha = 1.75d;
+            const double x = 4.0d;
+            foreach (double hondo in new[] { -0.2d, 0d, 0.2d })
+            {
+                var distribution = new KappaFour(xi, alpha, 0d, hondo);
+                double standardizedValue = (x - xi) / alpha;
+                double expected = Math.Exp(-standardizedValue) / alpha
+                    * Math.Pow(distribution.CDF(x), 1d - hondo);
+
+                Assert.AreEqual(expected, distribution.PDF(x), 1E-12d);
+            }
+        }
+
+        /// <summary>
+        /// Verifies the zero-kappa inverse CDF algebra and CDF round trip.
+        /// </summary>
+        [TestMethod]
+        public void Test_K4_ZeroKappa_InverseCDFMatchesAnalyticalSolution()
+        {
+            const double xi = 2.5d;
+            const double alpha = 1.75d;
+            foreach (double hondo in new[] { -0.2d, 0.2d })
+            {
+                var distribution = new KappaFour(xi, alpha, 0d, hondo);
+                foreach (double probability in new[] { 0.1d, 0.5d, 0.9d })
+                {
+                    double expected = xi - alpha
+                        * Math.Log((1d - Math.Pow(probability, hondo)) / hondo);
+                    double quantile = distribution.InverseCDF(probability);
+
+                    Assert.AreEqual(expected, quantile, 1E-12d);
+                    Assert.AreEqual(probability, distribution.CDF(quantile), 1E-12d);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Verifies normalization and support for the positive-hondo zero-kappa case.
+        /// </summary>
+        [TestMethod]
+        public void Test_K4_ZeroKappa_PositiveHondoHasNormalizedSupportedDensity()
+        {
+            var distribution = new KappaFour(2.5d, 1.75d, 0d, 0.2d);
+            const double lowerProbability = 1E-9d;
+            const double upperProbability = 1d - lowerProbability;
+            double lower = distribution.InverseCDF(lowerProbability);
+            double upper = distribution.InverseCDF(upperProbability);
+            var integrator = new AdaptiveGaussKronrod(distribution.PDF, lower, upper);
+
+            integrator.Integrate();
+
+            Assert.AreEqual(2.5d + 1.75d * Math.Log(0.2d), distribution.Minimum, 1E-12d);
+            Assert.AreEqual(0d, distribution.PDF(distribution.Minimum - 1E-6d));
+            Assert.AreEqual(upperProbability - lowerProbability, integrator.Result, 1E-8d);
+        }
+
+        /// <summary>
+        /// Verifies continuity of the general Kappa Four formulas as kappa approaches zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_K4_GeneralFormulaIsContinuousAtZeroKappa()
+        {
+            const double xi = 2.5d;
+            const double alpha = 1.75d;
+            const double hondo = 0.2d;
+            const double x = 4.0d;
+            const double probability = 0.7d;
+            var limit = new KappaFour(xi, alpha, 0d, hondo);
+
+            foreach (double kappa in new[] { -1E-7d, 1E-7d })
+            {
+                var nearby = new KappaFour(xi, alpha, kappa, hondo);
+                Assert.AreEqual(limit.CDF(x), nearby.CDF(x), 1E-7d);
+                Assert.AreEqual(limit.PDF(x), nearby.PDF(x), 1E-7d);
+                Assert.AreEqual(limit.InverseCDF(probability), nearby.InverseCDF(probability), 1E-6d);
+            }
+        }
         /// <summary>
         /// Verifies Kappa Four partial derivative calculations.
         /// </summary>
