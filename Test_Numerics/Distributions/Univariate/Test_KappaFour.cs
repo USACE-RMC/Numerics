@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
 using Numerics.Distributions;
 using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
@@ -189,6 +190,53 @@ namespace Distributions.Univariate
                 Assert.AreEqual(limit.InverseCDF(probability), nearby.InverseCDF(probability), 1E-6d);
             }
         }
+
+        /// <summary>
+        /// Verifies that representative finite shape pairs are valid and define internally consistent supports.
+        /// </summary>
+        [TestMethod]
+        public void Test_K4_FiniteShapePairsHaveConsistentSupport()
+        {
+            (double Kappa, double Hondo)[] shapePairs =
+            [
+                (-0.25d, -0.5d),
+                (-0.25d, 0.5d),
+                (0.25d, -0.5d),
+                (0.25d, 0.5d)
+            ];
+            double[] probabilities = [1E-6d, 0.1d, 0.5d, 0.9d, 1d - 1E-6d];
+
+            foreach ((double kappa, double hondo) in shapePairs)
+            {
+                var distribution = new KappaFour(2.5d, 1.75d, kappa, hondo);
+                Assert.IsTrue(distribution.ParametersValid, $"Finite shape pair (kappa={kappa}, h={hondo}) must be admissible.");
+
+                double previousQuantile = double.NegativeInfinity;
+                foreach (double probability in probabilities)
+                {
+                    double quantile = distribution.InverseCDF(probability);
+                    Assert.IsTrue(Tools.IsFinite(quantile));
+                    Assert.IsGreaterThan(previousQuantile, quantile);
+                    Assert.AreEqual(probability, distribution.CDF(quantile), 1E-10d);
+                    Assert.IsTrue(quantile >= distribution.Minimum && quantile <= distribution.Maximum);
+                    previousQuantile = quantile;
+                }
+
+                double medianDensity = distribution.PDF(distribution.InverseCDF(0.5d));
+                Assert.IsTrue(Tools.IsFinite(medianDensity) && medianDensity > 0d);
+                if (Tools.IsFinite(distribution.Minimum))
+                {
+                    Assert.AreEqual(0d, distribution.CDF(distribution.Minimum));
+                    Assert.AreEqual(0d, distribution.PDF(distribution.Minimum - 1d));
+                }
+                if (Tools.IsFinite(distribution.Maximum))
+                {
+                    Assert.AreEqual(1d, distribution.CDF(distribution.Maximum));
+                    Assert.AreEqual(0d, distribution.PDF(distribution.Maximum + 1d));
+                }
+            }
+        }
+
         /// <summary>
         /// Verifies Kappa Four partial derivative calculations.
         /// </summary>
