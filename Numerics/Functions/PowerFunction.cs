@@ -1,6 +1,8 @@
 ﻿using Numerics.Distributions;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Xml.Linq;
 
 namespace Numerics.Functions
 {
@@ -246,6 +248,55 @@ namespace Numerics.Functions
             if (x < Minimum) return Minimum;
             if (x > Maximum) return Maximum;
             return x;
+        }
+
+        /// <summary>
+        /// Serializes the function's configuration to an XElement: the parameters α, β, ξ, and σ,
+        /// the deterministic and inverse flags, and the upper support bound.
+        /// <see cref="Minimum"/> is derived from ξ and <see cref="ConfidenceLevel"/> is runtime
+        /// sampling state — neither is serialized.
+        /// </summary>
+        /// <returns>An XElement representation of the power function.</returns>
+        public XElement ToXElement()
+        {
+            var result = new XElement(nameof(PowerFunction));
+            result.SetAttributeValue(nameof(Alpha), Alpha.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Beta), Beta.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Xi), Xi.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Sigma), Sigma.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(IsDeterministic), IsDeterministic.ToString());
+            result.SetAttributeValue(nameof(IsInverse), IsInverse.ToString());
+            result.SetAttributeValue(nameof(Maximum), Maximum.ToString("G17", CultureInfo.InvariantCulture));
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes a power function from an XElement produced by <see cref="ToXElement"/>.
+        /// Missing or unparseable attributes keep the default-constructed values.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new <see cref="PowerFunction"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        public static PowerFunction FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            var function = new PowerFunction();
+            // Set the deterministic flag first: parameter validation is gated on it.
+            if (bool.TryParse(xElement.Attribute(nameof(IsDeterministic))?.Value, out bool isDeterministic))
+                function.IsDeterministic = isDeterministic;
+            if (bool.TryParse(xElement.Attribute(nameof(IsInverse))?.Value, out bool isInverse))
+                function.IsInverse = isInverse;
+            if (double.TryParse(xElement.Attribute(nameof(Alpha))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double alpha))
+                function.Alpha = alpha;
+            if (double.TryParse(xElement.Attribute(nameof(Beta))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double beta))
+                function.Beta = beta;
+            if (double.TryParse(xElement.Attribute(nameof(Xi))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double xi))
+                function.Xi = xi;
+            if (double.TryParse(xElement.Attribute(nameof(Sigma))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double sigma))
+                function.Sigma = sigma;
+            if (double.TryParse(xElement.Attribute(nameof(Maximum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double maximum))
+                function.Maximum = maximum;
+            return function;
         }
 
     }

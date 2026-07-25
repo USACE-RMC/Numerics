@@ -1,6 +1,8 @@
 ﻿using Numerics.Distributions;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Xml.Linq;
 
 namespace Numerics.Functions
 {
@@ -191,6 +193,51 @@ namespace Numerics.Functions
             if (x < Minimum) return Minimum;
             if (x > Maximum) return Maximum;
             return x;
+        }
+
+        /// <summary>
+        /// Serializes the function's configuration to an XElement: the parameters α, β, and σ,
+        /// the deterministic flag, and the support bounds. <see cref="ConfidenceLevel"/> is
+        /// runtime sampling state and is deliberately not serialized.
+        /// </summary>
+        /// <returns>An XElement representation of the linear function.</returns>
+        public XElement ToXElement()
+        {
+            var result = new XElement(nameof(LinearFunction));
+            result.SetAttributeValue(nameof(Alpha), Alpha.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Beta), Beta.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Sigma), Sigma.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(IsDeterministic), IsDeterministic.ToString());
+            result.SetAttributeValue(nameof(Minimum), Minimum.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Maximum), Maximum.ToString("G17", CultureInfo.InvariantCulture));
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes a linear function from an XElement produced by <see cref="ToXElement"/>.
+        /// Missing or unparseable attributes keep the default-constructed values.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new <see cref="LinearFunction"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        public static LinearFunction FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            var function = new LinearFunction();
+            // Set the deterministic flag first: parameter validation is gated on it.
+            if (bool.TryParse(xElement.Attribute(nameof(IsDeterministic))?.Value, out bool isDeterministic))
+                function.IsDeterministic = isDeterministic;
+            if (double.TryParse(xElement.Attribute(nameof(Alpha))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double alpha))
+                function.Alpha = alpha;
+            if (double.TryParse(xElement.Attribute(nameof(Beta))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double beta))
+                function.Beta = beta;
+            if (double.TryParse(xElement.Attribute(nameof(Sigma))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double sigma))
+                function.Sigma = sigma;
+            if (double.TryParse(xElement.Attribute(nameof(Minimum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double minimum))
+                function.Minimum = minimum;
+            if (double.TryParse(xElement.Attribute(nameof(Maximum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double maximum))
+                function.Maximum = maximum;
+            return function;
         }
 
     }

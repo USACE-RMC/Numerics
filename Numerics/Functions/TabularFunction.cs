@@ -1,6 +1,8 @@
 ﻿using Numerics.Data;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Xml.Linq;
 
 namespace Numerics.Functions
 {
@@ -147,8 +149,55 @@ namespace Numerics.Functions
         {
             // Validate parameters
             if (ParametersValid == false) ValidateParameters(new double[] { 0 }, true);
-            y = AllowNegativeYValues == false && (double.IsNaN(y) || y < 0) ? 0 : y;          
+            y = AllowNegativeYValues == false && (double.IsNaN(y) || y < 0) ? 0 : y;
             return opd.GetXFromY(y, XTransform, YTransform);
+        }
+
+        /// <summary>
+        /// Serializes the function's configuration to an XElement: the embedded uncertain ordered
+        /// paired data plus the axis transforms, the negative-Y policy, and the support bounds.
+        /// <see cref="ConfidenceLevel"/> is runtime sampling state and is deliberately not
+        /// serialized; <see cref="IsDeterministic"/> derives from the table's distribution type.
+        /// </summary>
+        /// <returns>An XElement representation of the tabular function.</returns>
+        public XElement ToXElement()
+        {
+            var result = new XElement(nameof(TabularFunction));
+            result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
+            result.SetAttributeValue(nameof(YTransform), YTransform.ToString());
+            result.SetAttributeValue(nameof(AllowNegativeYValues), AllowNegativeYValues.ToString());
+            result.SetAttributeValue(nameof(Minimum), Minimum.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(Maximum), Maximum.ToString("G17", CultureInfo.InvariantCulture));
+            result.Add(PairedData.SaveToXElement());
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes a tabular function from an XElement produced by <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new <see cref="TabularFunction"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the element carries no embedded uncertain ordered paired data.</exception>
+        public static TabularFunction FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            var tableElement = xElement.Element("UncertainOrderedPairedData");
+            if (tableElement == null)
+                throw new ArgumentException("The serialized tabular function is missing its embedded UncertainOrderedPairedData.", nameof(xElement));
+
+            var function = new TabularFunction(new UncertainOrderedPairedData(tableElement));
+            if (Enum.TryParse(xElement.Attribute(nameof(XTransform))?.Value, out Transform xTransform))
+                function.XTransform = xTransform;
+            if (Enum.TryParse(xElement.Attribute(nameof(YTransform))?.Value, out Transform yTransform))
+                function.YTransform = yTransform;
+            if (bool.TryParse(xElement.Attribute(nameof(AllowNegativeYValues))?.Value, out bool allowNegative))
+                function.AllowNegativeYValues = allowNegative;
+            if (double.TryParse(xElement.Attribute(nameof(Minimum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double minimum))
+                function.Minimum = minimum;
+            if (double.TryParse(xElement.Attribute(nameof(Maximum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double maximum))
+                function.Maximum = maximum;
+            return function;
         }
     }
 }
