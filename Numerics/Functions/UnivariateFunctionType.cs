@@ -38,5 +38,11 @@ namespace Numerics.Functions
         /// (<see cref="SegmentedPowerFunction"/>).
         /// </summary>
         SegmentedPower,
+
+        /// <summary>
+        /// A weighted combination of child functions with weighted-average and mixture modes
+        /// (<see cref="CompositeFunction"/>).
+        /// </summary>
+        Composite,
     }
 }
