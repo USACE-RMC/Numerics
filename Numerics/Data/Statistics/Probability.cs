@@ -1062,6 +1062,43 @@ namespace Numerics.Data.Statistics
         /// </remarks>
         public static void IndependentExclusive(IList<double> probabilities, int[] binomialCombinations, int[,] indicators, out List<double> eventProbabilities, out List<int[]> eventIndicators, double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
         {
+            eventProbabilities = new List<double>();
+            eventIndicators = new List<int[]>();
+            IndependentExclusive(probabilities, binomialCombinations, indicators, eventProbabilities, eventIndicators, absoluteTolerance, relativeTolerance);
+        }
+
+        /// <summary>
+        /// The pooled-output form of
+        /// <see cref="IndependentExclusive(IList{double}, int[], int[,], out List{double}, out List{int[]}, double, double)"/>:
+        /// the caller supplies (and reuses) the output lists across calls, and existing
+        /// indicator row arrays of matching length are refilled in place — so a hot loop that
+        /// calls this per evaluation performs no per-call output allocations after the first.
+        /// The return value surfaces the inclusion-exclusion truncation that was previously
+        /// silent.
+        /// </summary>
+        /// <param name="probabilities">An array of probabilities for each event. Each element represents the probability of an individual event occurring.</param>
+        /// <param name="binomialCombinations">An array of binomial combinations that define the number of events to consider for each calculation.</param>
+        /// <param name="eventProbabilities">The caller-owned output list of exclusive event probabilities; cleared and refilled.</param>
+        /// <param name="eventIndicators">The caller-owned output list of event indicator rows; existing rows of matching length are refilled in place, and the list is trimmed to the produced count.</param>
+        /// <param name="indicators">A 2D array of indicators, where each row represents a combination of events, and 0 means the event did not occur, 1 means the event did occur.</param>
+        /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <param name="relativeTolerance">The relative tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <returns>
+        /// True when the inclusion-exclusion expansion converged early and the deepest
+        /// combinations were TRUNCATED — the outputs then end with one closing pseudo-row
+        /// carrying half the remaining inclusion-exclusion gap; false when every combination
+        /// was enumerated.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when either output list is null.</exception>
+        /// <exception cref="ArgumentException">Thrown if the probabilities array is null, empty, or if the lengths of the probabilities and indicators arrays do not match.</exception>
+        /// <remarks>
+        /// This method uses the inclusion-exclusion principle to compute the exclusive
+        /// probability of each event combination, exactly as the allocating overload does (which
+        /// now delegates here); only the output-buffer ownership and the truncation visibility
+        /// differ.
+        /// </remarks>
+        public static bool IndependentExclusive(IList<double> probabilities, int[] binomialCombinations, int[,] indicators, List<double> eventProbabilities, List<int[]> eventIndicators, double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
+        {
             // Validation Checks
             if (probabilities == null || probabilities.Count == 0)
                 throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
@@ -1069,9 +1106,38 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The indicators array must have at least one row.", nameof(indicators));
             if (probabilities.Count != indicators.GetLength(1))
                 throw new ArgumentException("The probabilities array and the indicator array must have the same length.", nameof(probabilities));
+            if (eventProbabilities == null) throw new ArgumentNullException(nameof(eventProbabilities));
+            if (eventIndicators == null) throw new ArgumentNullException(nameof(eventIndicators));
 
-            eventProbabilities = new List<double>();
-            eventIndicators = new List<int[]>();
+            int n = probabilities.Count;
+            int used = 0; // Output rows placed this call
+            eventProbabilities.Clear();
+
+            // Copies an indicator row into the pooled output slot, reusing an existing row
+            // array of matching length in place (the steady-state zero-allocation path).
+            int[] PlaceRow(int rowIndex)
+            {
+                int[] row;
+                if (used < eventIndicators.Count && eventIndicators[used] != null && eventIndicators[used].Length == n)
+                {
+                    row = eventIndicators[used];
+                }
+                else
+                {
+                    row = new int[n];
+                    if (used < eventIndicators.Count) eventIndicators[used] = row;
+                    else eventIndicators.Add(row);
+                }
+                for (int column = 0; column < n; column++) row[column] = indicators[rowIndex, column];
+                used++;
+                return row;
+            }
+
+            // Trims stale rows from a previous, larger call.
+            void TrimToUsed()
+            {
+                while (eventIndicators.Count > used) eventIndicators.RemoveAt(eventIndicators.Count - 1);
+            }
 
             double union = 0;
             double s = 1; // Sign for inclusion-exclusion
@@ -1098,9 +1164,10 @@ namespace Numerics.Data.Statistics
                     double diff = Math.Abs(inc - exc);
                     if (j > 0 && j < binomialCombinations.Length && diff <= absoluteTolerance && diff <= relativeTolerance * Math.Min(inc, exc))
                     {
-                        eventIndicators.Add(indicators.GetRow(indicators.GetLength(0) - 1)); // Add last indicator row
+                        PlaceRow(indicators.GetLength(0) - 1); // Add last indicator row
                         eventProbabilities.Add(0.5 * diff); // Add the average of the difference to the event probabilities
-                        return; // Exit early when convergence is reached
+                        TrimToUsed();
+                        return true; // Exit early when convergence is reached — the deepest combinations are truncated
                     }
 
                     // Flip the sign for the next inclusion-exclusion term
@@ -1114,10 +1181,10 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Record the current indicators
-                eventIndicators.Add(indicators.GetRow(i));
+                var currentRow = PlaceRow(i);
 
                 // Compute the exclusive event probability and add to the list
-                eventProbabilities.Add(IndependentExclusive(probabilities, eventIndicators.Last()));
+                eventProbabilities.Add(IndependentExclusive(probabilities, currentRow));
 
                 // Calculate the union of probabilities (inclusion-exclusion)
                 if (i < probabilities.Count)
@@ -1126,11 +1193,13 @@ namespace Numerics.Data.Statistics
                 }
                 else
                 {
-                    union += s * IndependentJointProbability(probabilities, eventIndicators.Last());
+                    union += s * IndependentJointProbability(probabilities, currentRow);
                 }
 
             }
 
+            TrimToUsed();
+            return false;
         }
 
         #endregion
