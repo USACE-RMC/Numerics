@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics.Optimization;
@@ -660,7 +662,97 @@ namespace Numerics.Distributions
                 };
             }
         }
- 
+
+        /// <summary>
+        /// Serializes the kernel density to an XElement, overriding the base scalar-only form:
+        /// the sample data (round-trip-exact "G17"), the kernel type, the bandwidth, the
+        /// optional per-sample weights, and both interpolation transforms. The base
+        /// implementation writes only scalar parameters, which lost the sample entirely.
+        /// </summary>
+        /// <returns>An XElement representation of the kernel density.</returns>
+        public override XElement ToXElement()
+        {
+            var result = new XElement("Distribution");
+            result.SetAttributeValue(nameof(Type), Type.ToString());
+            result.SetAttributeValue(nameof(KernelDistribution), KernelDistribution.ToString());
+            result.SetAttributeValue(nameof(Bandwidth), Bandwidth.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
+            result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+            result.SetAttributeValue(nameof(BoundedByData), BoundedByData.ToString());
+
+            var samples = new string[SampleData.Count];
+            for (int i = 0; i < SampleData.Count; i++)
+                samples[i] = SampleData[i].ToString("G17", CultureInfo.InvariantCulture);
+            result.SetAttributeValue(nameof(SampleData), string.Join("|", samples));
+
+            if (_weights != null)
+            {
+                var weights = new string[_weights.Length];
+                for (int i = 0; i < _weights.Length; i++)
+                    weights[i] = _weights[i].ToString("G17", CultureInfo.InvariantCulture);
+                result.SetAttributeValue("Weights", string.Join("|", weights));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes a kernel density from an XElement produced by <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new <see cref="KernelDensity"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the element carries no parseable sample data.</exception>
+        public static KernelDensity FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            string? sampleText = xElement.Attribute(nameof(SampleData))?.Value;
+            if (string.IsNullOrEmpty(sampleText))
+                throw new ArgumentException("The serialized kernel density is missing its sample data.", nameof(xElement));
+
+            string[] tokens = sampleText!.Split('|');
+            var samples = new double[tokens.Length];
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                if (!double.TryParse(tokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out samples[i]))
+                    throw new ArgumentException("The serialized kernel density carries an unparseable sample value.", nameof(xElement));
+            }
+
+            var kernel = KernelType.Gaussian;
+            var kernelAttr = xElement.Attribute(nameof(KernelDistribution));
+            if (kernelAttr != null) Enum.TryParse(kernelAttr.Value, out kernel);
+
+            double bandwidth = 0d;
+            bool hasBandwidth = double.TryParse(xElement.Attribute(nameof(Bandwidth))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out bandwidth);
+
+            KernelDensity distribution;
+            string? weightsText = xElement.Attribute("Weights")?.Value;
+            if (!string.IsNullOrEmpty(weightsText))
+            {
+                string[] weightTokens = weightsText!.Split('|');
+                if (weightTokens.Length != samples.Length)
+                    throw new ArgumentException("The serialized kernel density's weight count does not match its sample count.", nameof(xElement));
+                var weights = new double[weightTokens.Length];
+                for (int i = 0; i < weightTokens.Length; i++)
+                {
+                    if (!double.TryParse(weightTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out weights[i]))
+                        throw new ArgumentException("The serialized kernel density carries an unparseable weight value.", nameof(xElement));
+                }
+                distribution = hasBandwidth ? new KernelDensity(samples, weights, kernel, bandwidth) : new KernelDensity(samples, weights, kernel);
+            }
+            else
+            {
+                distribution = hasBandwidth ? new KernelDensity(samples, kernel, bandwidth) : new KernelDensity(samples, kernel);
+            }
+
+            if (Enum.TryParse(xElement.Attribute(nameof(XTransform))?.Value, out Transform xTransform))
+                distribution.XTransform = xTransform;
+            if (Enum.TryParse(xElement.Attribute(nameof(ProbabilityTransform))?.Value, out Transform probabilityTransform))
+                distribution.ProbabilityTransform = probabilityTransform;
+            if (bool.TryParse(xElement.Attribute(nameof(BoundedByData))?.Value, out bool bounded))
+                distribution.BoundedByData = bounded;
+            return distribution;
+        }
+
         /// <summary>
         /// Create the empirical CDF.
         /// </summary>

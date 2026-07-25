@@ -193,6 +193,14 @@ namespace Numerics.Distributions
                 {
                     return PertPercentileZ.FromXElement(xElement)!;
                 }
+                else if (type == UnivariateDistributionType.Empirical)
+                {
+                    return EmpiricalDistribution.FromXElement(xElement);
+                }
+                else if (type == UnivariateDistributionType.KernelDensity)
+                {
+                    return KernelDensity.FromXElement(xElement);
+                }
             }
 
             var dist = CreateDistribution(type);

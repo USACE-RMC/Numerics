@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Xml.Linq;
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
@@ -536,6 +538,82 @@ namespace Numerics.Distributions
         public override UnivariateDistributionBase Clone()
         {
             return new EmpiricalDistribution(XValues, ProbabilityValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
+        }
+
+        /// <summary>
+        /// Serializes the empirical distribution to an XElement, overriding the base scalar-only
+        /// form: the X and probability tables (round-trip-exact "G17"), the probability sort
+        /// order, and both interpolation transforms. The base implementation writes only scalar
+        /// parameters, which lost the tables entirely.
+        /// </summary>
+        /// <returns>An XElement representation of the empirical distribution.</returns>
+        public override XElement ToXElement()
+        {
+            var result = new XElement("Distribution");
+            result.SetAttributeValue(nameof(Type), Type.ToString());
+            result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
+            result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+
+            var xValues = new string[XValues.Count];
+            var pValues = new string[ProbabilityValues.Count];
+            for (int i = 0; i < XValues.Count; i++)
+                xValues[i] = XValues[i].ToString("G17", CultureInfo.InvariantCulture);
+            for (int i = 0; i < ProbabilityValues.Count; i++)
+                pValues[i] = ProbabilityValues[i].ToString("G17", CultureInfo.InvariantCulture);
+            result.SetAttributeValue(nameof(XValues), string.Join("|", xValues));
+            result.SetAttributeValue(nameof(ProbabilityValues), string.Join("|", pValues));
+
+            // The stored probability ladder may run ascending (non-exceedance) or descending
+            // (exceedance); record the order so deserialization restores the same convention.
+            var order = SortOrder.Ascending;
+            if (ProbabilityValues.Count > 1 && ProbabilityValues[0] > ProbabilityValues[ProbabilityValues.Count - 1])
+                order = SortOrder.Descending;
+            result.SetAttributeValue("ProbabilityOrder", order.ToString());
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes an empirical distribution from an XElement produced by
+        /// <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new <see cref="EmpiricalDistribution"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the element carries no parseable X/probability tables.</exception>
+        public static EmpiricalDistribution FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            string? xText = xElement.Attribute(nameof(XValues))?.Value;
+            string? pText = xElement.Attribute(nameof(ProbabilityValues))?.Value;
+            if (string.IsNullOrEmpty(xText) || string.IsNullOrEmpty(pText))
+                throw new ArgumentException("The serialized empirical distribution is missing its X or probability table.", nameof(xElement));
+
+            string[] xTokens = xText!.Split('|');
+            string[] pTokens = pText!.Split('|');
+            if (xTokens.Length != pTokens.Length)
+                throw new ArgumentException("The serialized empirical distribution's X and probability tables differ in length.", nameof(xElement));
+
+            var xValues = new double[xTokens.Length];
+            var pValues = new double[pTokens.Length];
+            for (int i = 0; i < xTokens.Length; i++)
+            {
+                if (!double.TryParse(xTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out xValues[i])
+                    || !double.TryParse(pTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out pValues[i]))
+                {
+                    throw new ArgumentException("The serialized empirical distribution carries an unparseable table value.", nameof(xElement));
+                }
+            }
+
+            var order = SortOrder.Ascending;
+            var orderAttr = xElement.Attribute("ProbabilityOrder");
+            if (orderAttr != null) Enum.TryParse(orderAttr.Value, out order);
+
+            var distribution = new EmpiricalDistribution(xValues, pValues, SortOrder.Ascending, order);
+            if (Enum.TryParse(xElement.Attribute(nameof(XTransform))?.Value, out Transform xTransform))
+                distribution.XTransform = xTransform;
+            if (Enum.TryParse(xElement.Attribute(nameof(ProbabilityTransform))?.Value, out Transform probabilityTransform))
+                distribution.ProbabilityTransform = probabilityTransform;
+            return distribution;
         }
 
 
