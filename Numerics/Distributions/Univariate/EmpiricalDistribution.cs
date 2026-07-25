@@ -541,6 +541,215 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Convolves two empirical distributions with a log-spaced output grid — the opt-in
+        /// alternative for order-of-magnitude (heavy-tail) supports that the linear output grid
+        /// under-resolves. The FFT pipeline is exactly the linear-grid
+        /// <see cref="Convolve(EmpiricalDistribution, EmpiricalDistribution, int)"/> (unchanged,
+        /// byte-identical when this overload is not used); only the OUTPUT resampling differs:
+        /// the returned distribution's CDF is re-read on a log-spaced ladder between the summed
+        /// supports, keeping tail resolution across decades.
+        /// </summary>
+        /// <param name="dist1">The first empirical distribution.</param>
+        /// <param name="dist2">The second empirical distribution.</param>
+        /// <param name="numberOfPoints">The number of output points. Default = 1024.</param>
+        /// <param name="logSpacedOutput">True for the log-spaced output ladder; false delegates to the linear-grid method unchanged.</param>
+        /// <returns>The convolved empirical distribution.</returns>
+        /// <exception cref="ArgumentException">Thrown when a log-spaced output is requested over a non-positive summed support.</exception>
+        public static EmpiricalDistribution Convolve(EmpiricalDistribution dist1, EmpiricalDistribution dist2, int numberOfPoints, bool logSpacedOutput)
+        {
+            var linear = Convolve(dist1, dist2, numberOfPoints);
+            if (!logSpacedOutput) return linear;
+
+            double minimum = linear.Minimum;
+            double maximum = linear.Maximum;
+            if (minimum <= 0d || maximum <= 0d)
+                throw new ArgumentException("A log-spaced output grid requires a strictly positive summed support.", nameof(logSpacedOutput));
+
+            double logMin = Math.Log10(minimum);
+            double logMax = Math.Log10(maximum);
+            var xValues = new double[numberOfPoints];
+            var pValues = new double[numberOfPoints];
+            double previous = double.NegativeInfinity;
+            int count = 0;
+            for (int i = 0; i < numberOfPoints; i++)
+            {
+                double x = Math.Pow(10d, logMin + (logMax - logMin) * i / (numberOfPoints - 1d));
+                double p = linear.CDF(x);
+                // The CDF ladder must stay strictly increasing for the empirical constructor.
+                if (p > previous)
+                {
+                    xValues[count] = x;
+                    pValues[count] = p;
+                    previous = p;
+                    count++;
+                }
+            }
+            var trimmedX = new double[count];
+            var trimmedP = new double[count];
+            Array.Copy(xValues, trimmedX, count);
+            Array.Copy(pValues, trimmedP, count);
+            return new EmpiricalDistribution(trimmedX, trimmedP) { XTransform = dist1.XTransform, ProbabilityTransform = dist1.ProbabilityTransform };
+        }
+
+        /// <summary>
+        /// Convolves two discrete (atom-bearing) distributions EXACTLY on a shared uniform
+        /// lattice — the atom-aware form the continuous <c>Convolve</c> cannot represent: it
+        /// samples continuous PDFs, so a point mass (a CDF jump, e.g. the zero-inflation atom of
+        /// a defective risk curve) has no representation there. Each input's atoms deposit onto
+        /// the lattice with a moment-preserving two-node split (input means are preserved
+        /// exactly), the mass vectors convolve by FFT, and the result is the discrete mass
+        /// ladder on the summed lattice.
+        /// </summary>
+        /// <param name="values1">The first distribution's atom values.</param>
+        /// <param name="masses1">The first distribution's atom masses (non-negative; typically summing to one).</param>
+        /// <param name="values2">The second distribution's atom values.</param>
+        /// <param name="masses2">The second distribution's atom masses.</param>
+        /// <param name="latticePoints">The per-input lattice resolution (rounded up to a power of two). Default = 4096.</param>
+        /// <param name="values">The convolved lattice values (uniform, ascending).</param>
+        /// <param name="masses">The convolved lattice masses (non-negative; FFT ringing is floored and the total mass renormalized to the product of the input totals).</param>
+        /// <exception cref="ArgumentNullException">Thrown when any input list is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when a values/masses pair is empty or mismatched in length, or a mass is negative or non-finite.</exception>
+        public static void ConvolveDiscrete(IList<double> values1, IList<double> masses1, IList<double> values2, IList<double> masses2,
+            int latticePoints, out double[] values, out double[] masses)
+        {
+            ValidateAtoms(values1, masses1, nameof(values1));
+            ValidateAtoms(values2, masses2, nameof(values2));
+            if (latticePoints < 8) latticePoints = 8;
+            int n = Tools.NextPowerOfTwo(latticePoints);
+
+            // The shared lattice: each input is binned over its own span, but on the SAME step
+            // so the convolution lattice is uniform. The step spans the summed support.
+            double min1 = Min(values1), max1 = Max(values1);
+            double min2 = Min(values2), max2 = Max(values2);
+            double span = Math.Max((max1 - min1) + (max2 - min2), Tools.DoubleMachineEpsilon);
+            double step = span / (n - 1);
+
+            var lattice1 = DepositAtoms(values1, masses1, min1, step, n);
+            var lattice2 = DepositAtoms(values2, masses2, min2, step, n);
+
+            // FFT convolution of the mass vectors (zero-padded complex arrays).
+            int fftSize = Tools.NextPowerOfTwo(2 * n);
+            var fft1 = new double[2 * fftSize];
+            var fft2 = new double[2 * fftSize];
+            for (int i = 0; i < n; i++)
+            {
+                fft1[2 * i] = lattice1[i];
+                fft2[2 * i] = lattice2[i];
+            }
+            Mathematics.Fourier.FFT(fft1);
+            Mathematics.Fourier.FFT(fft2);
+            var product = new double[2 * fftSize];
+            for (int i = 0; i < fftSize; i++)
+            {
+                double re1 = fft1[2 * i], im1 = fft1[2 * i + 1];
+                double re2 = fft2[2 * i], im2 = fft2[2 * i + 1];
+                product[2 * i] = re1 * re2 - im1 * im2;
+                product[2 * i + 1] = re1 * im2 + im1 * re2;
+            }
+            Mathematics.Fourier.FFT(product, inverse: true);
+
+            // The result ladder: 2n − 1 meaningful nodes from min1 + min2, floored against FFT
+            // ringing and renormalized to the exact product of the input mass totals.
+            int resultCount = 2 * n - 1;
+            values = new double[resultCount];
+            masses = new double[resultCount];
+            double total = 0d;
+            for (int i = 0; i < resultCount; i++)
+            {
+                values[i] = (min1 + min2) + i * step;
+                double mass = product[2 * i] / fftSize;
+                masses[i] = mass > 0d ? mass : 0d;
+                total += masses[i];
+            }
+            double expected = Sum(masses1) * Sum(masses2);
+            if (total > 0d && expected > 0d)
+            {
+                double scale = expected / total;
+                for (int i = 0; i < resultCount; i++) masses[i] *= scale;
+            }
+        }
+
+        /// <summary>
+        /// Validates one atom list pair.
+        /// </summary>
+        /// <param name="values">The atom values.</param>
+        /// <param name="masses">The atom masses.</param>
+        /// <param name="parameterName">The reported parameter name.</param>
+        private static void ValidateAtoms(IList<double> values, IList<double> masses, string parameterName)
+        {
+            if (values == null || masses == null) throw new ArgumentNullException(parameterName);
+            if (values.Count == 0 || values.Count != masses.Count)
+                throw new ArgumentException("Atom values and masses must be non-empty and equal in length.", parameterName);
+            for (int i = 0; i < masses.Count; i++)
+            {
+                if (!Tools.IsFinite(values[i]) || !Tools.IsFinite(masses[i]) || masses[i] < 0d)
+                    throw new ArgumentException("Atom values must be finite and masses non-negative.", parameterName);
+            }
+        }
+
+        /// <summary>
+        /// Deposits atoms onto a uniform lattice with the moment-preserving two-node split: an
+        /// atom between nodes splits its mass so the lattice mean reproduces the atom mean
+        /// exactly.
+        /// </summary>
+        /// <param name="values">The atom values.</param>
+        /// <param name="masses">The atom masses.</param>
+        /// <param name="origin">The lattice origin.</param>
+        /// <param name="step">The lattice step.</param>
+        /// <param name="n">The lattice node count.</param>
+        /// <returns>The lattice mass vector.</returns>
+        private static double[] DepositAtoms(IList<double> values, IList<double> masses, double origin, double step, int n)
+        {
+            var lattice = new double[n];
+            for (int i = 0; i < values.Count; i++)
+            {
+                double position = (values[i] - origin) / step;
+                int lower = (int)Math.Floor(position);
+                if (lower < 0) lower = 0;
+                if (lower > n - 1) lower = n - 1;
+                int upper = lower + 1;
+                if (upper > n - 1)
+                {
+                    lattice[n - 1] += masses[i];
+                    continue;
+                }
+                double fraction = position - lower;
+                if (fraction < 0d) fraction = 0d;
+                if (fraction > 1d) fraction = 1d;
+                lattice[lower] += masses[i] * (1d - fraction);
+                lattice[upper] += masses[i] * fraction;
+            }
+            return lattice;
+        }
+
+        /// <summary>Returns the smallest value of a list.</summary>
+        /// <param name="values">The list.</param>
+        private static double Min(IList<double> values)
+        {
+            double minimum = double.MaxValue;
+            for (int i = 0; i < values.Count; i++) if (values[i] < minimum) minimum = values[i];
+            return minimum;
+        }
+
+        /// <summary>Returns the largest value of a list.</summary>
+        /// <param name="values">The list.</param>
+        private static double Max(IList<double> values)
+        {
+            double maximum = double.MinValue;
+            for (int i = 0; i < values.Count; i++) if (values[i] > maximum) maximum = values[i];
+            return maximum;
+        }
+
+        /// <summary>Returns the sum of a list.</summary>
+        /// <param name="values">The list.</param>
+        private static double Sum(IList<double> values)
+        {
+            double sum = 0d;
+            for (int i = 0; i < values.Count; i++) sum += values[i];
+            return sum;
+        }
+
+        /// <summary>
         /// Serializes the empirical distribution to an XElement, overriding the base scalar-only
         /// form: the X and probability tables (round-trip-exact "G17"), the probability sort
         /// order, and both interpolation transforms. The base implementation writes only scalar
