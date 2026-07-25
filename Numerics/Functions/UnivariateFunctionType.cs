@@ -31,5 +31,12 @@ namespace Numerics.Functions
         /// The tabular (nonparametric) function over uncertain ordered paired data (<see cref="TabularFunction"/>).
         /// </summary>
         Tabular,
+
+        /// <summary>
+        /// The BaRatin addition-mode segmented power function
+        /// Q(h) = Σₖ αₖ(h − hₖ)^βₖ·𝟙{h &gt; hₖ} with a log₁₀-space residual
+        /// (<see cref="SegmentedPowerFunction"/>).
+        /// </summary>
+        SegmentedPower,
     }
 }

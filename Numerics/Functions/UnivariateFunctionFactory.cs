@@ -47,6 +47,8 @@ namespace Numerics.Functions
                     return new PowerFunction();
                 case UnivariateFunctionType.Tabular:
                     throw new NotSupportedException("Function type " + type + " requires uncertain ordered paired data and cannot be created without parameters.");
+                case UnivariateFunctionType.SegmentedPower:
+                    return new SegmentedPowerFunction();
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type), type, "The function type is not defined.");
             }
@@ -71,6 +73,8 @@ namespace Numerics.Functions
                     return PowerFunction.FromXElement(xElement);
                 case nameof(TabularFunction):
                     return TabularFunction.FromXElement(xElement);
+                case nameof(SegmentedPowerFunction):
+                    return SegmentedPowerFunction.FromXElement(xElement);
                 default:
                     throw new NotSupportedException("Unknown function type: '" + xElement.Name.LocalName + "'.");
             }
@@ -89,6 +93,7 @@ namespace Numerics.Functions
             if (function is LinearFunction) return UnivariateFunctionType.Linear;
             if (function is PowerFunction) return UnivariateFunctionType.Power;
             if (function is TabularFunction) return UnivariateFunctionType.Tabular;
+            if (function is SegmentedPowerFunction) return UnivariateFunctionType.SegmentedPower;
             throw new NotSupportedException("The function type '" + function.GetType().Name + "' is not a library function type.");
         }
     }
