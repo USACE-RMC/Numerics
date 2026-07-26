@@ -69,6 +69,20 @@ namespace Numerics.Distributions
         public ReadOnlyCollection<UnivariateDistributionBase> Distributions => new(_distributions);
 
         /// <summary>
+        /// The seed for the multivariate normal's quadrature randomizer, used by the dependent
+        /// (perfectly negative and correlation-matrix) branches.
+        /// </summary>
+        /// <remarks>
+        /// Those branches evaluate Genz's randomized-lattice rectangle integral, which draws from
+        /// <see cref="MultivariateNormal.MVNUNI"/>, so the incidence and union results carry a small
+        /// stochastic error. Fixing the seed here makes them reproducible; callers deriving seeds
+        /// from model content assign their own so the results are tied to the model rather than to
+        /// a shared constant. Applied when the multivariate normal is built, so set it before the
+        /// first dependent evaluation.
+        /// </remarks>
+        public int PRNGSeed { get; set; } = MultivariateNormal.DefaultMVNUNISeed;
+
+        /// <summary>
         /// Determines the interpolation transform for the X-values.
         /// </summary>
         public Transform XTransform { get; set; } = Transform.None;
@@ -1068,7 +1082,7 @@ namespace Numerics.Distributions
                         sigma[i, j] = CorrelationMatrix[i, j];
                 }
             }
-            _mvn = new MultivariateNormal(mu, sigma);
+            _mvn = new MultivariateNormal(mu, sigma) { MVNUNI = new MersenneTwister(PRNGSeed) };
             _mvnCreated = true;
         }
 

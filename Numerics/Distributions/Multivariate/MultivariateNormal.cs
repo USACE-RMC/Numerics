@@ -70,7 +70,7 @@ namespace Numerics.Distributions
         // variables required for the multivariate CDF
         private Matrix _correlation = null!;
         private double[] _correl = null!;
-        private Random _MVNUNI = new MersenneTwister();
+        private Random _MVNUNI = new MersenneTwister(DefaultMVNUNISeed);
         private int _maxEvaluations = 100000;
         private double _absoluteError = 1E-4;
         private double _relativeError = 1E-4;
@@ -81,8 +81,27 @@ namespace Numerics.Distributions
         private bool _covSRTed = false;
 
         /// <summary>
+        /// The default <see cref="MVNUNI"/> seed. Fixed, never clock-derived — see <see cref="MVNUNI"/>.
+        /// </summary>
+        public const int DefaultMVNUNISeed = 12345;
+
+        /// <summary>
         /// The uniform(0,1) random number generator required to compute the multivariate CDF for dimensions greater than 2.
         /// </summary>
+        /// <remarks>
+        /// MVNDST is a RANDOMIZED lattice rule: it draws from this generator to randomize its
+        /// quadrature, so the returned probability carries a small stochastic error and two calls
+        /// with different generator states do not agree bit-for-bit. This defaulted to
+        /// <c>new MersenneTwister()</c>, which seeds from the wall clock, so every CDF and Interval
+        /// evaluation above two dimensions was irreproducible across runs — silently, because the
+        /// error sits near the requested tolerance and statistical tests absorb it. The default is
+        /// now the fixed <see cref="DefaultMVNUNISeed"/>. Callers that need results tied to their
+        /// own content-derived seed assign a seeded generator here.
+        /// <para>
+        /// Not thread-safe: MVNDST advances this generator, so an instance shared across threads
+        /// must be cloned per thread (as <c>Probability.JointProbabilitiesMVN</c> does).
+        /// </para>
+        /// </remarks>
         public Random MVNUNI
         {
            get { return _MVNUNI; }
