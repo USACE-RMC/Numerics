@@ -27,6 +27,12 @@ namespace Numerics.Distributions
     /// </remarks>
     public class UncertaintyAnalysisResults
     {
+        /// <summary>
+        /// The number of accumulation chunks used by the reduction over sampled distributions.
+        /// Fixed, not derived from the processor count, so the summation order — and therefore the
+        /// mean curve — does not vary with the machine or the thread count.
+        /// </summary>
+        private const int ReductionChunks = 64;
 
         /// <summary>
         /// Construct an instance of the UncertaintyAnalysisResults class.
@@ -452,20 +458,43 @@ namespace Numerics.Distributions
                 quantiles[i] = Math.Pow(10, logX) - shift;
             }
 
-            // Compute expected probability for each quantile
+            // Compute the expected probability at each quantile, summing over fixed chunks so the
+            // result is independent of the thread count. The monotonic filter below can turn a
+            // last-bit difference into a different number of interpolation knots.
+            int chunkCount = Math.Min(ReductionChunks, B);
+            var chunkSums = new double[chunkCount][];
+            var chunkValid = new int[chunkCount];
+            for (int c = 0; c < chunkCount; c++) chunkSums[c] = new double[bins];
+
+            Parallel.For(0, chunkCount, c =>
+            {
+                var accumulator = chunkSums[c];
+                int start = (int)((long)c * B / chunkCount);
+                int end = (int)((long)(c + 1) * B / chunkCount);
+                int valid = 0;
+                for (int j = start; j < end; j++)
+                {
+                    var distribution = sampledDistributions[j];
+                    if (distribution is null) continue;
+                    valid++;
+                    for (int i = 0; i < bins; i++)
+                    {
+                        accumulator[i] += distribution.CDF(quantiles[i]);
+                    }
+                }
+                chunkValid[c] = valid;
+            });
+
+            int validDistributions = 0;
+            for (int c = 0; c < chunkCount; c++) validDistributions += chunkValid[c];
+            if (validDistributions == 0) validDistributions = 1;
+
             var expected = new double[bins];
             for (int i = 0; i < bins; i++)
             {
                 double total = 0d;
-                Parallel.For(0, B, () => 0d, (j, loop, sum) =>
-                {
-                    if (sampledDistributions[j] is not null)
-                    {
-                        sum += sampledDistributions[j].CDF(quantiles[i]);
-                    }
-                    return sum;
-                }, z => Tools.ParallelAdd(ref total, z));
-                expected[i] = total / B;
+                for (int c = 0; c < chunkCount; c++) total += chunkSums[c][i];
+                expected[i] = total / validDistributions;
             }
 
             // Build monotonic interpolation points

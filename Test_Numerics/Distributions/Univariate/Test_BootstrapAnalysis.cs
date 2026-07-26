@@ -3,9 +3,11 @@ using Numerics;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 using Numerics.Sampling;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using static System.Reflection.Metadata.BlobBuilder;
 
 namespace Distributions.Univariate
@@ -180,6 +182,71 @@ namespace Distributions.Univariate
             {
                 Assert.AreEqual(reference.MeanCurve[i], result.MeanCurve[i], 1E-8,
                     $"MeanCurve mismatch at index {i}");
+            }
+        }
+
+        /// <summary>
+        /// Verifies Estimate() is bit-reproducible across calls at the same seed. Compares raw
+        /// bits: a tolerance assert cannot detect a reduction-order difference.
+        /// </summary>
+        [TestMethod]
+        public void Test_Estimate_IsBitReproducible()
+        {
+            var probabilities = new double[] { 0.999, 0.99, 0.9, 0.5, 0.1, 0.01, 0.001 };
+            var dist = new Normal(3.122599, 0.5573654);
+
+            var first = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 1000).Estimate(probabilities);
+            var second = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 1000).Estimate(probabilities);
+
+            Assert.HasCount(first.MeanCurve.Length, second.MeanCurve);
+            for (int i = 0; i < first.MeanCurve.Length; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(first.MeanCurve[i]),
+                    BitConverter.DoubleToInt64Bits(second.MeanCurve[i]), $"MeanCurve differs at index {i}.");
+            }
+            for (int i = 0; i < first.ConfidenceIntervals.GetLength(0); i++)
+            {
+                for (int j = 0; j < 2; j++)
+                {
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(first.ConfidenceIntervals[i, j]),
+                        BitConverter.DoubleToInt64Bits(second.ConfidenceIntervals[i, j]), $"ConfidenceIntervals differ at [{i},{j}].");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Verifies the mean curve does not depend on how many threads compute it. Constraining
+        /// one arm to a single worker stands in for running on a machine with a different core
+        /// count.
+        /// </summary>
+        [TestMethod]
+        public void Test_ExpectedProbabilities_IsThreadCountIndependent()
+        {
+            var probabilities = new double[] { 0.99, 0.9, 0.5, 0.1, 0.01 };
+            var quantiles = new double[] { 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0 };
+            var dist = new Normal(3.122599, 0.5573654);
+            var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 1000);
+            var distributions = boot.Distributions();
+            Assert.AreEqual(0, boot.FailedReplications);
+
+            var parallelResult = boot.ExpectedProbabilities(quantiles, probabilities, distributions);
+
+            double[] serialResult;
+            ThreadPool.GetMinThreads(out int minWorker, out int minIO);
+            try
+            {
+                ThreadPool.SetMinThreads(1, minIO);
+                serialResult = boot.ExpectedProbabilities(quantiles, probabilities, distributions);
+            }
+            finally
+            {
+                ThreadPool.SetMinThreads(minWorker, minIO);
+            }
+
+            for (int i = 0; i < parallelResult.Length; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(parallelResult[i]),
+                    BitConverter.DoubleToInt64Bits(serialResult[i]), $"Expected probabilities differ at index {i}.");
             }
         }
 

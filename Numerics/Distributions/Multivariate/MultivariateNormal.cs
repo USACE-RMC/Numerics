@@ -89,18 +89,11 @@ namespace Numerics.Distributions
         /// The uniform(0,1) random number generator required to compute the multivariate CDF for dimensions greater than 2.
         /// </summary>
         /// <remarks>
-        /// MVNDST is a RANDOMIZED lattice rule: it draws from this generator to randomize its
-        /// quadrature, so the returned probability carries a small stochastic error and two calls
-        /// with different generator states do not agree bit-for-bit. This defaulted to
-        /// <c>new MersenneTwister()</c>, which seeds from the wall clock, so every CDF and Interval
-        /// evaluation above two dimensions was irreproducible across runs — silently, because the
-        /// error sits near the requested tolerance and statistical tests absorb it. The default is
-        /// now the fixed <see cref="DefaultMVNUNISeed"/>. Callers that need results tied to their
-        /// own content-derived seed assign a seeded generator here.
-        /// <para>
-        /// Not thread-safe: MVNDST advances this generator, so an instance shared across threads
-        /// must be cloned per thread (as <c>Probability.JointProbabilitiesMVN</c> does).
-        /// </para>
+        /// MVNDST is a randomized lattice rule and draws from this generator, so the CDF above two
+        /// dimensions carries a small stochastic error and only reproduces when the generator is
+        /// seeded. The default is the fixed <see cref="DefaultMVNUNISeed"/>; assign a seeded
+        /// generator to tie results to a caller's own seed. Not thread-safe — MVNDST advances the
+        /// generator, so an instance shared across threads must be cloned per thread.
         /// </remarks>
         public Random MVNUNI
         {

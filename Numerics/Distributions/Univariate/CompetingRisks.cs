@@ -73,12 +73,10 @@ namespace Numerics.Distributions
         /// (perfectly negative and correlation-matrix) branches.
         /// </summary>
         /// <remarks>
-        /// Those branches evaluate Genz's randomized-lattice rectangle integral, which draws from
-        /// <see cref="MultivariateNormal.MVNUNI"/>, so the incidence and union results carry a small
-        /// stochastic error. Fixing the seed here makes them reproducible; callers deriving seeds
-        /// from model content assign their own so the results are tied to the model rather than to
-        /// a shared constant. Applied when the multivariate normal is built, so set it before the
-        /// first dependent evaluation.
+        /// Those branches evaluate a randomized-lattice rectangle integral drawing from
+        /// <see cref="MultivariateNormal.MVNUNI"/>, so their results reproduce only when the seed
+        /// is fixed. Applied when the multivariate normal is built — set it before the first
+        /// dependent evaluation.
         /// </remarks>
         public int PRNGSeed { get; set; } = MultivariateNormal.DefaultMVNUNISeed;
 

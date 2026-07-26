@@ -316,25 +316,46 @@ namespace Numerics.Data.Statistics
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <param name="statistic">The statistic for estimating standard error.</param>
+        /// <remarks>
+        /// Chunked so the sum merges in a fixed order, independent of the thread count. Each chunk
+        /// refills one leave-one-out buffer rather than copying the sample per point.
+        /// </remarks>
         public static double JackKnifeStandardError(IList<double> data, Func<IList<double>, double> statistic)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             if (data.Count == 0) return double.NaN;
 
             int N = data.Count;
+            if (N == 1) return 0d;
             double theta = statistic(data);
-            double I = 0;
-            Parallel.For(0, N, () => 0d, (i, loop, subI) =>
+
+            int chunks = Math.Min(JackKnifeChunks, N);
+            var chunkSums = new double[chunks];
+            Parallel.For(0, chunks, c =>
             {
-                // Remove data point
-                var jackSample = new List<double>(data);
-                jackSample.RemoveAt(i);
-                // Compute statistic
-                subI += Tools.Sqr(statistic(jackSample) - theta);
-                return subI;
-            }, z => Tools.ParallelAdd(ref I, z));
+                var jackSample = new double[N - 1];
+                double sum = 0d;
+                int start = (int)((long)c * N / chunks);
+                int end = (int)((long)(c + 1) * N / chunks);
+                for (int i = start; i < end; i++)
+                {
+                    for (int k = 0; k < i; k++) jackSample[k] = data[k];
+                    for (int k = i + 1; k < N; k++) jackSample[k - 1] = data[k];
+                    sum += Tools.Sqr(statistic(jackSample) - theta);
+                }
+                chunkSums[c] = sum;
+            });
+
+            double I = 0d;
+            for (int c = 0; c < chunks; c++) I += chunkSums[c];
             return Math.Sqrt((N - 1) / (double)N * I);
         }
+
+        /// <summary>
+        /// The number of accumulation chunks used by the jackknife reductions — fixed, so the
+        /// floating-point association order does not vary with the machine or the thread count.
+        /// </summary>
+        private const int JackKnifeChunks = 64;
 
         /// <summary>
         /// Returns a jackknifed sample.
@@ -348,14 +369,21 @@ namespace Numerics.Data.Statistics
 
             int N = data.Count;
             var thetaJack = new double[N];
-            // Perform Jackknife
-            Parallel.For(0, N, i =>
+            if (N == 1) return thetaJack;
+
+            // Perform Jackknife, reusing one leave-one-out buffer per chunk.
+            int chunks = Math.Min(JackKnifeChunks, N);
+            Parallel.For(0, chunks, c =>
             {
-                // Remove data point
-                var jackSample = new List<double>(data);
-                jackSample.RemoveAt(i);
-                // Compute statistic
-                thetaJack[i] = statistic(jackSample);
+                var jackSample = new double[N - 1];
+                int start = (int)((long)c * N / chunks);
+                int end = (int)((long)(c + 1) * N / chunks);
+                for (int i = start; i < end; i++)
+                {
+                    for (int k = 0; k < i; k++) jackSample[k] = data[k];
+                    for (int k = i + 1; k < N; k++) jackSample[k - 1] = data[k];
+                    thetaJack[i] = statistic(jackSample);
+                }
             });
             return thetaJack;
         }
