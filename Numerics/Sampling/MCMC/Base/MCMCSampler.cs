@@ -295,27 +295,19 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The acceptance rate per chain.
         /// </summary>
-        public double[] AcceptanceRates => ComputeAcceptanceRates();
-
-        /// <summary>
-        /// Computes the sampler-appropriate acceptance statistic for each chain.
-        /// </summary>
-        /// <returns>The acceptance statistic for each chain.</returns>
-        /// <remarks>
-        /// Metropolis samplers use accepted proposal counts. Hamiltonian samplers may
-        /// override this hook when their meaningful statistic is a mean trajectory
-        /// acceptance probability rather than a binary retained-state count.
-        /// </remarks>
-        protected virtual double[] ComputeAcceptanceRates()
+        public double[] AcceptanceRates
         {
-            var acceptanceRates = new double[NumberOfChains];
-            for (int i = 0; i < NumberOfChains; i++)
+            get
             {
-                acceptanceRates[i] = SampleCount[i] > 0
-                    ? (double)AcceptCount[i] / SampleCount[i]
-                    : 0d;
+                var acceptanceRates = new double[NumberOfChains];
+                for (int i = 0; i < NumberOfChains; i++)
+                {
+                    acceptanceRates[i] = SampleCount[i] > 0
+                        ? (double)AcceptCount[i] / SampleCount[i]
+                        : 0d;
+                }
+                return acceptanceRates;
             }
-            return acceptanceRates;
         }
 
         /// <summary>

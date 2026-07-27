@@ -68,45 +68,50 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
-        /// Confirms that NUTS exposes post-warmup Hamiltonian acceptance and additive sampler diagnostics.
+        /// Confirms that NUTS diagnostic arrays are non-null and empty before sampling initializes them.
         /// </summary>
         [TestMethod]
-        public void NUTS_AcceptanceRatesAndDiagnosticsUsePostWarmupHamiltonianStatistics()
+        public void NUTS_DiagnosticArraysAreNonNullAndEmptyBeforeSampling()
         {
-            var priors = new List<IUnivariateDistribution>
-            {
-                new Uniform(-20d, 20d),
-                new Uniform(-20d, 20d)
-            };
-            double LogTarget(double[] values) => -0.5d * (values[0] * values[0] + values[1] * values[1]);
-            Vector Gradient(IList<double> values) => new Vector(new[] { -values[0], -values[1] });
-            var sampler = new SeedableNUTS(priors, LogTarget, Gradient)
-            {
-                NumberOfChains = 2,
-                InitialIterations = 2,
-                WarmupIterations = 50,
-                Iterations = 100,
-                OutputLength = 100,
-                ThinningInterval = 1,
-                PRNGSeed = 8675309,
-                ParallelizeChains = false
-            };
+            SeedableNUTS sampler = CreateNutsSampler();
+
+            Assert.IsEmpty(sampler.HamiltonianAcceptanceRates);
+            Assert.IsEmpty(sampler.DiagnosticSampleCounts);
+            Assert.IsEmpty(sampler.DivergenceCounts);
+            Assert.IsEmpty(sampler.MaxTreeDepthHitCounts);
+            Assert.IsEmpty(sampler.MeanTreeDepths);
+            Assert.IsEmpty(sampler.MeanLeapfrogSteps);
+            Assert.IsEmpty(sampler.StepSizes);
+            Assert.IsEmpty(sampler.EnergyBayesianFractionOfMissingInformation);
+        }
+
+        /// <summary>
+        /// Confirms that generic acceptance retains accepted-transition semantics while
+        /// NUTS results persist the Hamiltonian acceptance statistic used by BestFit.
+        /// </summary>
+        [TestMethod]
+        public void NUTS_AcceptanceContractsRemainSeparatedAndResultsPersistHamiltonianRates()
+        {
+            SeedableNUTS sampler = CreateNutsSampler();
             sampler.Seed(new ParameterSet(new[] { 0d, 0d }, 0d));
 
             sampler.Sample();
 
             for (int chainIndex = 0; chainIndex < sampler.NumberOfChains; chainIndex++)
             {
+                double expectedTransitionRate = (double)sampler.AcceptCount[chainIndex] /
+                    sampler.SampleCount[chainIndex];
                 Assert.AreEqual(sampler.SampleCount[chainIndex], sampler.AcceptCount[chainIndex]);
+                Assert.AreEqual(expectedTransitionRate, sampler.AcceptanceRates[chainIndex], 0d);
+                Assert.AreEqual(1d, sampler.AcceptanceRates[chainIndex], 0d);
                 Assert.AreEqual(
                     sampler.SampleCount[chainIndex] - sampler.WarmupIterations,
                     sampler.DiagnosticSampleCounts[chainIndex]);
-                Assert.AreEqual(
-                    sampler.HamiltonianAcceptanceRates[chainIndex],
+                Assert.IsGreaterThan(0d, sampler.HamiltonianAcceptanceRates[chainIndex]);
+                Assert.IsLessThan(1d, sampler.HamiltonianAcceptanceRates[chainIndex]);
+                Assert.AreNotEqual(
                     sampler.AcceptanceRates[chainIndex],
-                    0d);
-                Assert.IsGreaterThan(0d, sampler.AcceptanceRates[chainIndex]);
-                Assert.IsLessThan(1d, sampler.AcceptanceRates[chainIndex]);
+                    sampler.HamiltonianAcceptanceRates[chainIndex]);
                 Assert.IsGreaterThanOrEqualTo(1d, sampler.MeanTreeDepths[chainIndex]);
                 Assert.IsLessThanOrEqualTo(4d, sampler.MeanTreeDepths[chainIndex]);
                 Assert.IsGreaterThanOrEqualTo(1d, sampler.MeanLeapfrogSteps[chainIndex]);
@@ -115,32 +120,70 @@ namespace Sampling.MCMC
             }
 
             var results = new MCMCResults(sampler);
-            CollectionAssert.AreEqual(sampler.AcceptanceRates, results.AcceptanceRates);
-            CollectionAssert.AreEqual(sampler.DiagnosticSampleCounts, results.NUTSDiagnosticSampleCounts);
-            CollectionAssert.AreEqual(sampler.DivergenceCounts, results.NUTSDivergenceCounts);
-            CollectionAssert.AreEqual(sampler.MaxTreeDepthHitCounts, results.NUTSMaxTreeDepthHitCounts);
-            CollectionAssert.AreEqual(sampler.MeanTreeDepths, results.NUTSMeanTreeDepths);
-            CollectionAssert.AreEqual(sampler.MeanLeapfrogSteps, results.NUTSMeanLeapfrogSteps);
-            CollectionAssert.AreEqual(sampler.StepSizes, results.NUTSStepSizes);
-            CollectionAssert.AreEqual(
-                sampler.EnergyBayesianFractionOfMissingInformation,
-                results.NUTSEnergyBayesianFractionOfMissingInformation);
+            CollectionAssert.AreEqual(sampler.HamiltonianAcceptanceRates, results.AcceptanceRates);
 
             byte[] serialized = MCMCResults.ToByteArray(results);
-            MCMCResults restored = MCMCResults.FromByteArray(serialized);
+            string currentJson = System.Text.Encoding.UTF8.GetString(serialized);
+            Assert.IsFalse(currentJson.Contains("NUTSDivergenceCounts", StringComparison.Ordinal));
+            string staleJson = currentJson.Insert(1,
+                "\"NUTSDiagnosticSampleCounts\":[100,100]," +
+                "\"NUTSDivergenceCounts\":[0,0]," +
+                "\"NUTSMaxTreeDepthHitCounts\":[0,0]," +
+                "\"NUTSMeanTreeDepths\":[2.0,2.0]," +
+                "\"NUTSMeanLeapfrogSteps\":[4.0,4.0]," +
+                "\"NUTSStepSizes\":[0.1,0.1]," +
+                "\"NUTSEnergyBayesianFractionOfMissingInformation\":[0.8,0.8],");
+            MCMCResults restored = MCMCResults.FromByteArray(System.Text.Encoding.UTF8.GetBytes(staleJson));
             Assert.IsNotNull(restored);
             CollectionAssert.AreEqual(results.AcceptanceRates, restored.AcceptanceRates);
-            CollectionAssert.AreEqual(results.NUTSDiagnosticSampleCounts, restored.NUTSDiagnosticSampleCounts);
-            CollectionAssert.AreEqual(results.NUTSDivergenceCounts, restored.NUTSDivergenceCounts);
-            CollectionAssert.AreEqual(results.NUTSMaxTreeDepthHitCounts, restored.NUTSMaxTreeDepthHitCounts);
-            CollectionAssert.AreEqual(results.NUTSMeanTreeDepths, restored.NUTSMeanTreeDepths);
-            CollectionAssert.AreEqual(results.NUTSMeanLeapfrogSteps, restored.NUTSMeanLeapfrogSteps);
-            CollectionAssert.AreEqual(results.NUTSStepSizes, restored.NUTSStepSizes);
-            CollectionAssert.AreEqual(
-                results.NUTSEnergyBayesianFractionOfMissingInformation,
-                restored.NUTSEnergyBayesianFractionOfMissingInformation);
         }
 
+        /// <summary>
+        /// Confirms that MCMCResults retains its baseline nullability metadata and has no
+        /// sampler-specific NUTS result properties.
+        /// </summary>
+        [TestMethod]
+        public void MCMCResults_RetainsBaselineNullabilityAndOmitsNutsDiagnostics()
+        {
+            var nullabilityContext = new NullabilityInfoContext();
+            (string Name, NullabilityState State)[] expectedStates =
+            {
+                (nameof(MCMCResults.MarkovChains), NullabilityState.Nullable),
+                (nameof(MCMCResults.MeanLogLikelihood), NullabilityState.Nullable),
+                (nameof(MCMCResults.Output), NullabilityState.NotNull),
+                (nameof(MCMCResults.AcceptanceRates), NullabilityState.NotNull),
+                (nameof(MCMCResults.ParameterResults), NullabilityState.NotNull),
+                (nameof(MCMCResults.MAP), NullabilityState.NotNull),
+                (nameof(MCMCResults.PosteriorMean), NullabilityState.NotNull)
+            };
+
+            foreach ((string propertyName, NullabilityState expectedState) in expectedStates)
+            {
+                PropertyInfo property = typeof(MCMCResults).GetProperty(propertyName);
+                Assert.IsNotNull(property, $"Missing baseline MCMCResults property {propertyName}.");
+                Assert.AreEqual(
+                    expectedState,
+                    nullabilityContext.Create(property).ReadState,
+                    $"Unexpected nullability metadata for MCMCResults.{propertyName}.");
+            }
+
+            string[] removedProperties =
+            {
+                "NUTSDiagnosticSampleCounts",
+                "NUTSDivergenceCounts",
+                "NUTSMaxTreeDepthHitCounts",
+                "NUTSMeanTreeDepths",
+                "NUTSMeanLeapfrogSteps",
+                "NUTSStepSizes",
+                "NUTSEnergyBayesianFractionOfMissingInformation"
+            };
+            foreach (string propertyName in removedProperties)
+            {
+                Assert.IsNull(
+                    typeof(MCMCResults).GetProperty(propertyName),
+                    $"NUTS diagnostic {propertyName} must remain on NUTS rather than MCMCResults.");
+            }
+        }
         /// <summary>
         /// Confirms the streaming E-BFMI calculation matches Stan's
         /// <c>mean(diff(E)^2) / var(E)</c> convention.
@@ -158,6 +201,32 @@ namespace Sampling.MCMC
                 NUTS.ComputeEnergyBayesianFractionOfMissingInformation(1, 0d, 0d)));
         }
 
+        /// <summary>
+        /// Creates the deterministic two-chain NUTS fixture used by acceptance-contract tests.
+        /// </summary>
+        /// <returns>The configured sampler before sampling or user-defined seeding.</returns>
+        private static SeedableNUTS CreateNutsSampler()
+        {
+            var priors = new List<IUnivariateDistribution>
+            {
+                new Uniform(-20d, 20d),
+                new Uniform(-20d, 20d)
+            };
+            double LogTarget(double[] values) =>
+                -0.5d * (values[0] * values[0] + values[1] * values[1]);
+            Vector Gradient(IList<double> values) => new Vector(new[] { -values[0], -values[1] });
+            return new SeedableNUTS(priors, LogTarget, Gradient)
+            {
+                NumberOfChains = 2,
+                InitialIterations = 2,
+                WarmupIterations = 50,
+                Iterations = 100,
+                OutputLength = 100,
+                ThinningInterval = 1,
+                PRNGSeed = 8675309,
+                ParallelizeChains = false
+            };
+        }
         /// <summary>
         /// Creates a deterministic ARWMH sampler whose only finite-density state is the origin.
         /// </summary>

@@ -129,17 +129,17 @@ namespace Numerics.Sampling.MCMC
 
         // Per-chain post-warmup diagnostics. These are streaming accumulators so
         // diagnostic collection adds no target/gradient evaluations or draw storage.
-        private double[] _hamiltonianAcceptanceSums = null!;
-        private int[] _diagnosticSampleCounts = null!;
-        private int[] _divergenceCounts = null!;
-        private int[] _maxTreeDepthHitCounts = null!;
-        private double[] _treeDepthSums = null!;
-        private double[] _leapfrogStepSums = null!;
-        private double[] _energyMeans = null!;
-        private double[] _energyM2 = null!;
-        private double[] _energySquaredDifferenceSums = null!;
-        private double[] _previousEnergy = null!;
-        private bool[] _hasPreviousEnergy = null!;
+        private double[] _hamiltonianAcceptanceSums = Array.Empty<double>();
+        private int[] _diagnosticSampleCounts = Array.Empty<int>();
+        private int[] _divergenceCounts = Array.Empty<int>();
+        private int[] _maxTreeDepthHitCounts = Array.Empty<int>();
+        private double[] _treeDepthSums = Array.Empty<double>();
+        private double[] _leapfrogStepSums = Array.Empty<double>();
+        private double[] _energyMeans = Array.Empty<double>();
+        private double[] _energyM2 = Array.Empty<double>();
+        private double[] _energySquaredDifferenceSums = Array.Empty<double>();
+        private double[] _previousEnergy = Array.Empty<double>();
+        private bool[] _hasPreviousEnergy = Array.Empty<bool>();
 
         // Dual averaging hyperparameters (Hoffman & Gelman 2014, Section 3.2)
         private const double DELTA_TARGET = 0.80;
@@ -193,10 +193,14 @@ namespace Numerics.Sampling.MCMC
         {
             get
             {
+                if (_diagnosticSampleCounts.Length != NumberOfChains ||
+                    _hamiltonianAcceptanceSums.Length != NumberOfChains)
+                    return Array.Empty<double>();
+
                 var values = new double[NumberOfChains];
                 for (int i = 0; i < NumberOfChains; i++)
                 {
-                    values[i] = _diagnosticSampleCounts == null || _diagnosticSampleCounts[i] == 0
+                    values[i] = _diagnosticSampleCounts[i] == 0
                         ? 0d
                         : _hamiltonianAcceptanceSums[i] / _diagnosticSampleCounts[i];
                 }
@@ -207,22 +211,22 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Gets the number of post-warmup transitions contributing diagnostics per chain.
         /// </summary>
-        public int[] DiagnosticSampleCounts => _diagnosticSampleCounts == null
-            ? new int[NumberOfChains]
+        public int[] DiagnosticSampleCounts => _diagnosticSampleCounts.Length != NumberOfChains
+            ? Array.Empty<int>()
             : (int[])_diagnosticSampleCounts.Clone();
 
         /// <summary>
         /// Gets the number of divergent post-warmup transitions per chain.
         /// </summary>
-        public int[] DivergenceCounts => _divergenceCounts == null
-            ? new int[NumberOfChains]
+        public int[] DivergenceCounts => _divergenceCounts.Length != NumberOfChains
+            ? Array.Empty<int>()
             : (int[])_divergenceCounts.Clone();
 
         /// <summary>
         /// Gets the number of post-warmup transitions that exhausted <see cref="MaxTreeDepth"/> per chain.
         /// </summary>
-        public int[] MaxTreeDepthHitCounts => _maxTreeDepthHitCounts == null
-            ? new int[NumberOfChains]
+        public int[] MaxTreeDepthHitCounts => _maxTreeDepthHitCounts.Length != NumberOfChains
+            ? Array.Empty<int>()
             : (int[])_maxTreeDepthHitCounts.Clone();
 
         /// <summary>
@@ -239,7 +243,7 @@ namespace Numerics.Sampling.MCMC
         /// Gets the current adapted leapfrog step size for each chain.
         /// </summary>
         public double[] StepSizes => _chainStepSizes == null
-            ? new double[NumberOfChains]
+            ? Array.Empty<double>()
             : (double[])_chainStepSizes.Clone();
 
         /// <summary>
@@ -253,25 +257,23 @@ namespace Numerics.Sampling.MCMC
         {
             get
             {
+                if (_diagnosticSampleCounts.Length != NumberOfChains ||
+                    _energyM2.Length != NumberOfChains ||
+                    _energySquaredDifferenceSums.Length != NumberOfChains)
+                    return Array.Empty<double>();
+
                 var values = new double[NumberOfChains];
                 for (int i = 0; i < NumberOfChains; i++)
                 {
                     values[i] = ComputeEnergyBayesianFractionOfMissingInformation(
-                        _diagnosticSampleCounts == null ? 0 : _diagnosticSampleCounts[i],
-                        _energyM2 == null ? 0d : _energyM2[i],
-                        _energySquaredDifferenceSums == null ? 0d : _energySquaredDifferenceSums[i]);
+                        _diagnosticSampleCounts[i],
+                        _energyM2[i],
+                        _energySquaredDifferenceSums[i]);
                 }
                 return values;
             }
         }
 
-        /// <inheritdoc/>
-        protected override double[] ComputeAcceptanceRates()
-        {
-            if (_diagnosticSampleCounts == null || _diagnosticSampleCounts.Length != NumberOfChains)
-                return base.ComputeAcceptanceRates();
-            return HamiltonianAcceptanceRates;
-        }
 
         /// <summary>
         /// Computes per-chain diagnostic means from streaming sums.
@@ -280,10 +282,10 @@ namespace Numerics.Sampling.MCMC
         /// <returns>The corresponding per-chain means.</returns>
         private double[] ComputeDiagnosticMeans(double[] sums)
         {
-            var values = new double[NumberOfChains];
-            if (sums == null || _diagnosticSampleCounts == null)
-                return values;
+            if (sums.Length != NumberOfChains || _diagnosticSampleCounts.Length != NumberOfChains)
+                return Array.Empty<double>();
 
+            var values = new double[NumberOfChains];
             for (int i = 0; i < NumberOfChains; i++)
             {
                 if (_diagnosticSampleCounts[i] > 0)
