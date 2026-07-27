@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Numerics;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
@@ -145,6 +145,7 @@ namespace Sampling.MCMC
         [TestMethod]
         public void MCMCResults_RetainsBaselineNullabilityAndOmitsNutsDiagnostics()
         {
+#if NET6_0_OR_GREATER
             var nullabilityContext = new NullabilityInfoContext();
             (string Name, NullabilityState State)[] expectedStates =
             {
@@ -166,6 +167,8 @@ namespace Sampling.MCMC
                     nullabilityContext.Create(property).ReadState,
                     $"Unexpected nullability metadata for MCMCResults.{propertyName}.");
             }
+
+#endif
 
             string[] removedProperties =
             {
