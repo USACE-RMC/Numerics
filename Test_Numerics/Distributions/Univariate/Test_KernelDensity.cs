@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
 using Numerics.Distributions;
 
 namespace Distributions.Univariate
@@ -85,7 +86,7 @@ namespace Distributions.Univariate
             var distribution = new KernelDensity(constantSample);
 
             Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
-            Assert.IsTrue(double.IsFinite(distribution.PDF(5d)));
+            Assert.IsTrue(Tools.IsFinite(distribution.PDF(5d)));
             Assert.IsGreaterThan(0d, distribution.PDF(5d));
         }
         /// <summary>
@@ -100,7 +101,7 @@ namespace Distributions.Univariate
             var distribution = new KernelDensity(sample);
 
             Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
-            Assert.IsTrue(double.IsFinite(distribution.PDF(7d)));
+            Assert.IsTrue(Tools.IsFinite(distribution.PDF(7d)));
             Assert.IsGreaterThan(0d, distribution.PDF(7d));
         }
 
@@ -116,7 +117,7 @@ namespace Distributions.Univariate
             var distribution = new KernelDensity(constantSample);
 
             Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
-            Assert.IsTrue(double.IsFinite(distribution.PDF(0d)));
+            Assert.IsTrue(Tools.IsFinite(distribution.PDF(0d)));
             Assert.IsGreaterThan(0d, distribution.PDF(0d));
         }
 
@@ -133,7 +134,7 @@ namespace Distributions.Univariate
             var distribution = new KernelDensity(constantSample, weights);
 
             Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
-            Assert.IsTrue(double.IsFinite(distribution.PDF(-3d)));
+            Assert.IsTrue(Tools.IsFinite(distribution.PDF(-3d)));
             Assert.IsGreaterThan(0d, distribution.PDF(-3d));
         }
 
