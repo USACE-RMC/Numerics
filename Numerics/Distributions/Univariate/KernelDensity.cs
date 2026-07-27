@@ -535,7 +535,8 @@ namespace Numerics.Distributions
         public double BandwidthRule(IList<double> sampleData)
         {
             double sigma = Statistics.StandardDeviation(sampleData);
-            return sigma * Math.Pow(4.0d / (3.0d * sampleData.Count), 1.0d / 5.0d);
+            double factor = Math.Pow(4.0d / (3.0d * sampleData.Count), 1.0d / 5.0d);
+            return EnsurePositiveBandwidth(sigma, factor, sampleData);
         }
 
         /// <summary>
@@ -548,7 +549,46 @@ namespace Numerics.Distributions
             w ??= Enumerable.Repeat(1.0, sample.Count).ToArray();
             double m = w.Zip(sample, (wi, xi) => wi * xi).Sum() / w.Sum();
             double sd = Math.Sqrt(w.Zip(sample, (wi, xi) => wi * (xi - m) * (xi - m)).Sum() / w.Sum());
-            return sd * Math.Pow(4.0 / (3.0 * sample.Count), 0.2);
+            double factor = Math.Pow(4.0 / (3.0 * sample.Count), 0.2);
+            return EnsurePositiveBandwidth(sd, factor, sample);
+        }
+
+        /// <summary>
+        /// Produces a finite, strictly positive automatic bandwidth when the sample dispersion is zero or non-finite.
+        /// </summary>
+        /// <param name="dispersion">The sample dispersion used by the bandwidth rule.</param>
+        /// <param name="factor">The sample-size factor used by the bandwidth rule.</param>
+        /// <param name="sample">The finite, nonempty sample used to obtain a fallback scale.</param>
+        /// <returns>A finite, strictly positive bandwidth.</returns>
+        /// <remarks>
+        /// A constant sample has zero dispersion but remains a valid empirical sample. In that case, the
+        /// largest absolute observation supplies a scale; an all-zero sample uses unit scale. The lower
+        /// bound prevents underflow for subnormal sample values, while the upper guard prevents overflow.
+        /// </remarks>
+        private static double EnsurePositiveBandwidth(double dispersion, double factor, IList<double> sample)
+        {
+            double scale = dispersion;
+            if (!Tools.IsFinite(scale) || scale <= 0d)
+            {
+                scale = 0d;
+                for (int i = 0; i < sample.Count; i++)
+                {
+                    scale = Math.Max(scale, Math.Abs(sample[i]));
+                }
+
+                if (scale <= 0d)
+                {
+                    scale = 1d;
+                }
+            }
+
+            if (factor > 1d && scale > double.MaxValue / factor)
+            {
+                return double.MaxValue;
+            }
+
+            double bandwidth = scale * factor;
+            return bandwidth > 0d && Tools.IsFinite(bandwidth) ? bandwidth : double.Epsilon;
         }
 
 

@@ -73,6 +73,79 @@ namespace Distributions.Univariate
             Assert.AreEqual(28708.74, KDE.InverseCDF(KDE.CDF(x3)), 1E-2);
 
         }
+        /// <summary>
+        /// Verifies that automatic bandwidth selection supports a constant nonzero sample.
+        /// </summary>
+        [TestMethod]
+        public void ConstantNonzeroSample_UsesPositiveScaleAwareBandwidth()
+        {
+            double[] constantSample = { 5d, 5d, 5d, 5d };
+            double expected = 5d * Math.Pow(4d / (3d * constantSample.Length), 0.2d);
+
+            var distribution = new KernelDensity(constantSample);
+
+            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.IsTrue(double.IsFinite(distribution.PDF(5d)));
+            Assert.IsGreaterThan(0d, distribution.PDF(5d));
+        }
+        /// <summary>
+        /// Verifies that automatic bandwidth selection supports a single finite observation.
+        /// </summary>
+        [TestMethod]
+        public void SingleObservation_UsesPositiveScaleAwareBandwidth()
+        {
+            double[] sample = { 7d };
+            double expected = 7d * Math.Pow(4d / 3d, 0.2d);
+
+            var distribution = new KernelDensity(sample);
+
+            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.IsTrue(double.IsFinite(distribution.PDF(7d)));
+            Assert.IsGreaterThan(0d, distribution.PDF(7d));
+        }
+
+        /// <summary>
+        /// Verifies that automatic bandwidth selection supplies a positive unit-scale fallback for an all-zero sample.
+        /// </summary>
+        [TestMethod]
+        public void ConstantZeroSample_UsesPositiveUnitScaleBandwidth()
+        {
+            double[] constantSample = { 0d, 0d, 0d, 0d };
+            double expected = Math.Pow(4d / (3d * constantSample.Length), 0.2d);
+
+            var distribution = new KernelDensity(constantSample);
+
+            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.IsTrue(double.IsFinite(distribution.PDF(0d)));
+            Assert.IsGreaterThan(0d, distribution.PDF(0d));
+        }
+
+        /// <summary>
+        /// Verifies that weighted automatic bandwidth selection supports a constant sample.
+        /// </summary>
+        [TestMethod]
+        public void WeightedConstantSample_UsesPositiveScaleAwareBandwidth()
+        {
+            double[] constantSample = { -3d, -3d, -3d, -3d };
+            double[] weights = { 1d, 2d, 3d, 4d };
+            double expected = 3d * Math.Pow(4d / (3d * constantSample.Length), 0.2d);
+
+            var distribution = new KernelDensity(constantSample, weights);
+
+            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.IsTrue(double.IsFinite(distribution.PDF(-3d)));
+            Assert.IsGreaterThan(0d, distribution.PDF(-3d));
+        }
+
+        /// <summary>
+        /// Verifies that an explicitly supplied zero bandwidth remains invalid.
+        /// </summary>
+        [TestMethod]
+        public void ExplicitZeroBandwidth_RemainsInvalid()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new KernelDensity(new[] { -1d, 0d, 1d }, KernelDensity.KernelType.Gaussian, 0d));
+        }
 
 
 
