@@ -57,11 +57,11 @@ namespace Numerics.Data.Statistics
         public static double AAndB(double A, double B, double rho = 0d)
         {
             if (A == 0d || B == 0d) return 0d;
-            if (A == 1d) return B;
-            if (B == 1d) return A;
-            if (rho <= -0.999) return Math.Max(0d, A + B - 1);
-            if (rho >= 0.999) return Math.Min(A, B);
-            if (Math.Abs(rho) <= 1E-3) return A * B;
+            if (A == 1d) return Tools.Clamp(B, 0d, 1d);
+            if (B == 1d) return Tools.Clamp(A, 0d, 1d);
+            if (rho <= -0.999) return Tools.Clamp(A + B - 1d, 0d, 1d);
+            if (rho >= 0.999) return Tools.Clamp(Math.Min(A, B), 0d, 1d);
+            if (Math.Abs(rho) <= 1E-3) return Tools.Clamp(A * B, 0d, 1d);
             return Tools.Clamp(MultivariateNormal.BivariateCDF(Normal.StandardZ(1 - A), Normal.StandardZ(1 - B), rho), 0, 1);
         }
 
@@ -249,7 +249,7 @@ namespace Numerics.Data.Statistics
             // Validation Checks
             if (probabilities == null || probabilities.Count == 0)
                 throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
-            return Math.Max(0, Math.Min(1, Tools.Sum(probabilities)) - 1);
+            return Tools.Clamp(Math.Min(1d, Tools.Sum(probabilities)) - 1d, 0d, 1d);
         }
 
         /// <summary>
@@ -266,7 +266,7 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The indicators array must have at least one row.", nameof(indicators));
             if (probabilities.Count != indicators.Length)
                 throw new ArgumentException("The probabilities and indicators arrays must have the same length.", nameof(probabilities));
-            return Math.Max(0, Math.Min(1, Tools.Sum(probabilities, indicators)) - 1);
+            return Tools.Clamp(Math.Min(1d, Tools.Sum(probabilities, indicators)) - 1d, 0d, 1d);
         }
 
         /// <summary>
@@ -335,7 +335,7 @@ namespace Numerics.Data.Statistics
                 r12 = R[0, k];
                 r12 = Math.Abs(r12) < 1E-3 ? 0: r12;
                 p21 = MultivariateNormal.BivariateCDF(-z1, -z2, r12) / cdf;
-                p21 = Math.Max(0, Math.Min(1, p21));
+                p21 = Tools.Clamp(p21, 0d, 1d);
                 z21 = Tools.Clamp(Normal.StandardZ(p21), zMin, zMax);
                 R[k, 0] = z21;
             }
@@ -362,7 +362,7 @@ namespace Numerics.Data.Statistics
                     r12 = R[j, k];
                     r12 = Math.Abs(r12) < 1E-3 ? 0 : r12;
                     p21 = MultivariateNormal.BivariateCDF(-z1, -z2, r12) / cdf;
-                    p21 = Math.Max(0, Math.Min(1, p21));
+                    p21 = Tools.Clamp(p21, 0d, 1d);
                     z21 = Tools.Clamp(Normal.StandardZ(p21), zMin, zMax);
                     R[k, j] = z21;
 
@@ -379,15 +379,15 @@ namespace Numerics.Data.Statistics
             // Calculate the product of conditional marginals (PCM)
             jp = Math.Log(Normal.StandardCDF(R[0, 0]));
             if (conditionalProbabilities != null && conditionalProbabilities.Length == n)
-                conditionalProbabilities[0] = Normal.StandardCDF(R[0, 0]);
+                conditionalProbabilities[0] = Tools.Clamp(Normal.StandardCDF(R[0, 0]), 0d, 1d);
             for (i = 1; i < n; i++)
             {
                 jp += Math.Log(Normal.StandardCDF(R[i, i - 1]));
                 if (conditionalProbabilities != null && conditionalProbabilities.Length == n)
-                    conditionalProbabilities[i] = Normal.StandardCDF(R[i, i - 1]);
+                    conditionalProbabilities[i] = Tools.Clamp(Normal.StandardCDF(R[i, i - 1]), 0d, 1d);
             }
             jp = Math.Exp(jp);
-            jp = Math.Min(1, Math.Max(0, jp));
+            jp = Tools.Clamp(jp, 0d, 1d);
             if (double.IsNaN(jp)) jp = 0;
             return jp;
         }
@@ -491,15 +491,15 @@ namespace Numerics.Data.Statistics
             // Calculate the product of conditional marginals (PCM)
             double jp = Math.Log(Normal.StandardCDF(R[0, 0]));
             if (conditionalProbabilities != null && conditionalProbabilities.Length == n)
-                conditionalProbabilities[0] = Normal.StandardCDF(R[0, 0]);
+                conditionalProbabilities[0] = Tools.Clamp(Normal.StandardCDF(R[0, 0]), 0d, 1d);
             for (i = 1; i < n; i++)
             {
                 jp += Math.Log(Normal.StandardCDF(R[i, i - 1]));
                 if (conditionalProbabilities != null && conditionalProbabilities.Length == n)
-                    conditionalProbabilities[i] = Normal.StandardCDF(R[i, i - 1]);
+                    conditionalProbabilities[i] = Tools.Clamp(Normal.StandardCDF(R[i, i - 1]), 0d, 1d);
             }
             jp = Math.Exp(jp);
-            jp = Math.Min(1, Math.Max(0, jp));
+            jp = Tools.Clamp(jp, 0d, 1d);
             if (double.IsNaN(jp)) jp = 0;
             return jp;
         }
@@ -526,7 +526,7 @@ namespace Numerics.Data.Statistics
             {
                 if (idx < probabilities.Count)
                 {
-                    result[idx] = probabilities[idx];
+                    result[idx] = Tools.Clamp(probabilities[idx], 0d, 1d);
                 }
                 else
                 {
@@ -565,7 +565,7 @@ namespace Numerics.Data.Statistics
                 }
             }
             var p = multivariateNormal.CDF(zVals);
-            p = Math.Max(0, Math.Min(1, p));
+            p = Tools.Clamp(p, 0d, 1d);
             return p;
         }
 
@@ -591,7 +591,7 @@ namespace Numerics.Data.Statistics
             {
                 if (idx < probabilities.Count)
                 {
-                    result[idx] = probabilities[idx];
+                    result[idx] = Tools.Clamp(probabilities[idx], 0d, 1d);
                 }
                 else
                 {
@@ -635,7 +635,7 @@ namespace Numerics.Data.Statistics
         {
             if (probabilities == null || probabilities.Count == 0)
                 throw new ArgumentException("The probabilities list must be non-null and contain at least one element.");
-            if (probabilities.Count == 1) return probabilities[0];
+            if (probabilities.Count == 1) return Tools.Clamp(probabilities[0], 0d, 1d);
 
             double numerator = 1d;
             for (int i = 0; i < probabilities.Count; i++)
@@ -644,7 +644,7 @@ namespace Numerics.Data.Statistics
                 if (q == 0d) return 1d; // any event certain -> union = 1
                 numerator *= q;
             }
-            return 1d - numerator;
+            return Tools.Clamp(1d - numerator, 0d, 1d);
         }
 
         /// <summary>
@@ -655,7 +655,7 @@ namespace Numerics.Data.Statistics
         {
             if (probabilities == null || probabilities.Count == 0)
                 throw new ArgumentException("The probabilities list must be non-null and contain at least one element.");
-            if (probabilities.Count == 1) return probabilities[0];
+            if (probabilities.Count == 1) return Tools.Clamp(probabilities[0], 0d, 1d);
             return Tools.Clamp(Tools.Max(probabilities), 0, 1);
         }
 
@@ -667,12 +667,12 @@ namespace Numerics.Data.Statistics
         {
             if (probabilities == null || probabilities.Count == 0)
                 throw new ArgumentException("The probabilities list must be non-null and contain at least one element.");
-            if (probabilities.Count == 1) return probabilities[0];
+            if (probabilities.Count == 1) return Tools.Clamp(probabilities[0], 0d, 1d);
             return Tools.Clamp(Tools.Sum(probabilities), 0, 1);
         }
 
         /// <summary>
-        /// Returns the probability of union using the inclusion-exclusion method. Dependence between events is captured with the multivariate normal distribution.
+        /// Returns the probability of union using the inclusion-exclusion method. Dependence between events is captured with the PCM method.
         /// </summary>
         /// <param name="probabilities">List of probabilities.</param>
         /// <param name="correlationMatrix">The correlation matrix defining the dependency.</param>
@@ -686,22 +686,77 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("Input arrays must be non-empty and correlation matrix must not be null.");
             }
 
-            // Get number of unique combinations by subset
-            int N = probabilities.Count;
-            var binomialCombinations = new int[N];
-            for (int i = 1; i <= N; i++)
-            {
-                binomialCombinations[i - 1] = (int)Factorial.BinomialCoefficient(N, i);
-            }
-
-            // Get combination indicators
-            var indicators = Factorial.AllCombinations(N);
-
-            // Return Union
-            return UnionPCM(probabilities, binomialCombinations, indicators, correlationMatrix, absoluteTolerance, relativeTolerance);
-         
+            return UnionPCMLazy(probabilities, correlationMatrix, out _, absoluteTolerance, relativeTolerance);
         }
 
+        /// <summary>
+        /// Lazily returns the probability of union using inclusion-exclusion with Product of Conditional Marginals (PCM) dependence.
+        /// </summary>
+        /// <param name="probabilities">List of marginal event probabilities.</param>
+        /// <param name="correlationMatrix">The correlation matrix defining the dependency.</param>
+        /// <param name="status">The enumeration completion status.</param>
+        /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <param name="relativeTolerance">The relative tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <returns>The probability of the union of the events.</returns>
+        /// <exception cref="ArgumentException">Thrown when the probability collection is null or empty, or the correlation matrix is null.</exception>
+        /// <remarks>
+        /// Combinations are generated in the subset-size and lexicographic order used by
+        /// <see cref="Factorial.AllCombinations(int)"/>. The PCM calculation, alternating
+        /// inclusion-exclusion signs, dual convergence predicate, and half-gap closure are
+        /// identical to the dense overload.
+        /// </remarks>
+        public static double UnionPCMLazy(IList<double> probabilities, double[,] correlationMatrix,
+            out ExclusiveEnumerationStatus status, double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
+        {
+            ValidateLazyPCMInputs(probabilities, correlationMatrix, absoluteTolerance, relativeTolerance);
+
+            int n = probabilities.Count;
+            var row = new int[n];
+            double union = 0d;
+            double sign = 1d;
+            double inclusion = double.NaN;
+            double exclusion = double.NaN;
+            int previousSubsetSize = 0;
+
+            foreach (int[] combination in Factorial.AllCombinationsLazy(n))
+            {
+                int subsetSize = combination.Length;
+                if (subsetSize != previousSubsetSize)
+                {
+                    previousSubsetSize = subsetSize;
+                    if (subsetSize >= 2)
+                    {
+                        int block = subsetSize - 2;
+                        if (block > 0)
+                        {
+                            if (sign == 1d) inclusion = union;
+                            else if (sign == -1d) exclusion = union;
+                        }
+
+                        double difference = Math.Abs(inclusion - exclusion);
+                        if (block > 0 && block < n &&
+                            difference <= absoluteTolerance &&
+                            difference <= relativeTolerance * Math.Min(inclusion, exclusion))
+                        {
+                            status = ExclusiveEnumerationStatus.Converged;
+                            return Tools.Clamp(union + 0.5d * difference, 0d, 1d);
+                        }
+
+                        sign *= -1d;
+                    }
+                }
+
+                Array.Clear(row, 0, row.Length);
+                for (int i = 0; i < combination.Length; i++) row[combination[i]] = 1;
+                double jointProbability = subsetSize == 1
+                    ? probabilities[combination[0]]
+                    : JointProbability(probabilities, row, correlationMatrix);
+                union += sign * jointProbability;
+            }
+
+            status = ExclusiveEnumerationStatus.Complete;
+            return Tools.Clamp(union, 0d, 1d);
+        }
         /// <summary>
         /// Returns the probability of union using the inclusion-exclusion method. Dependence between events is captured with the PCM method.
         /// </summary>
@@ -744,7 +799,7 @@ namespace Numerics.Data.Statistics
                     double diff = Math.Abs(inc - exc);
                     if (j > 0 && j < binomialCombinations.Length && diff <= absoluteTolerance && diff <= relativeTolerance * Math.Min(inc, exc))
                     {
-                        return result + 0.5 * diff; // Converged, return the result with half of the difference
+                        return Tools.Clamp(result + 0.5d * diff, 0d, 1d); // Converged, return the result with half of the difference
                     }
 
                     s *= -1; // Alternate sign for inclusion-exclusion
@@ -769,7 +824,7 @@ namespace Numerics.Data.Statistics
 
             }
 
-            return result;
+            return Tools.Clamp(result, 0d, 1d);
         }
 
         /// <summary>
@@ -822,8 +877,8 @@ namespace Numerics.Data.Statistics
                     if (j > 0 && j < binomialCombinations.Length && diff <= absoluteTolerance && diff <= relativeTolerance * Math.Min(inc, exc))
                     {
                         eventIndicators.Add(indicators.GetRow(indicators.GetLength(0) - 1));  // Add the last row for event indicators
-                        eventProbabilities.Add(0.5 * diff);  // Add the averaged difference
-                        return union + 0.5 * diff; // Converged, return the result with half of the difference
+                        eventProbabilities.Add(Tools.Clamp(0.5d * diff, 0d, 1d));  // Add the averaged difference
+                        return Tools.Clamp(union + 0.5d * diff, 0d, 1d); // Converged, return the result with half of the difference
                     }
 
                     s *= -1; // Alternate the sign for inclusion-exclusion
@@ -843,18 +898,18 @@ namespace Numerics.Data.Statistics
                 if (i < probabilities.Count)
                 {
                     union += s * probabilities[i];  // If the event is within the range of probabilities, add directly
-                    eventProbabilities.Add(probabilities[i]);  // Store the probability
+                    eventProbabilities.Add(Tools.Clamp(probabilities[i], 0d, 1d));  // Store the probability
                 }
                 else
                 {
                     var jp = JointProbability(probabilities, indicators.GetRow(i), correlationMatrix);  // Otherwise, calculate the joint probability
                     union += s * jp;  // Add the joint probability contribution
-                    eventProbabilities.Add(jp);  // Store the joint probability
+                    eventProbabilities.Add(Tools.Clamp(jp, 0d, 1d));  // Store the joint probability
                 }
 
             }
 
-            return union;
+            return Tools.Clamp(union, 0d, 1d);
         }
 
         /// <summary>
@@ -942,7 +997,7 @@ namespace Numerics.Data.Statistics
                 }
             }
 
-            return result;
+            return Tools.Clamp(result, 0d, 1d);
         }
 
         #endregion
@@ -983,7 +1038,7 @@ namespace Numerics.Data.Statistics
                     result *= (1 - probabilities[i]);
                 }
             }
-            return result;
+            return Tools.Clamp(result, 0d, 1d);
         }
 
         /// <summary>
@@ -1161,7 +1216,7 @@ namespace Numerics.Data.Statistics
                     if (j > 0 && j < binomialCombinations.Length && diff <= absoluteTolerance && diff <= relativeTolerance * Math.Min(inc, exc))
                     {
                         PlaceRow(indicators.GetLength(0) - 1); // Add last indicator row
-                        eventProbabilities.Add(0.5 * diff); // Add the average of the difference to the event probabilities
+                        eventProbabilities.Add(Tools.Clamp(0.5d * diff, 0d, 1d)); // Add the average of the difference to the event probabilities
                         TrimToUsed();
                         return true; // Report that convergence ended the expansion early.
                     }
@@ -1180,7 +1235,7 @@ namespace Numerics.Data.Statistics
                 var currentRow = PlaceRow(i);
 
                 // Compute the exclusive event probability and add to the list
-                eventProbabilities.Add(IndependentExclusive(probabilities, currentRow));
+                eventProbabilities.Add(Tools.Clamp(IndependentExclusive(probabilities, currentRow), 0d, 1d));
 
                 // Calculate the union of probabilities (inclusion-exclusion)
                 if (i < probabilities.Count)
@@ -1198,6 +1253,26 @@ namespace Numerics.Data.Statistics
             return false;
         }
 
+        /// <summary>
+        /// Validates the common inputs for lazy PCM enumeration without changing the legacy tolerance or marginal-probability handling.
+        /// </summary>
+        /// <param name="probabilities">The marginal event probabilities.</param>
+        /// <param name="correlationMatrix">The PCM correlation matrix.</param>
+        /// <param name="absoluteTolerance">The absolute convergence tolerance.</param>
+        /// <param name="relativeTolerance">The relative convergence tolerance.</param>
+        /// <exception cref="ArgumentException">Thrown when the probability collection is null or empty, or the correlation matrix is null.</exception>
+        private static void ValidateLazyPCMInputs(IList<double> probabilities, double[,] correlationMatrix,
+            double absoluteTolerance, double relativeTolerance)
+        {
+            if (probabilities == null || probabilities.Count == 0 || correlationMatrix == null)
+                throw new ArgumentException("Input arrays must be non-empty and correlation matrix must not be null.");
+
+            // The established dense PCM overloads do not reject negative or non-finite tolerances.
+            // Preserve that validation behavior; these parameters are accepted here only to keep
+            // the common lazy call contract explicit.
+            _ = absoluteTolerance;
+            _ = relativeTolerance;
+        }
         /// <summary>
         /// Validates the structural metadata used by the pooled exclusive-probability overload.
         /// </summary>
@@ -1322,7 +1397,7 @@ namespace Numerics.Data.Statistics
             {
                 var row = Row();
                 for (int column = 0; column < n; column++) row[column] = 1;
-                eventProbabilities.Add(mass);
+                eventProbabilities.Add(Tools.Clamp(mass, 0d, 1d));
                 TrimToUsed();
                 return status;
             }
@@ -1334,7 +1409,7 @@ namespace Numerics.Data.Statistics
             if (includeNoEventRow)
             {
                 Row();
-                eventProbabilities.Add(noEventMass);
+                eventProbabilities.Add(Tools.Clamp(noEventMass, 0d, 1d));
                 emittedMass += noEventMass;
             }
 
@@ -1370,14 +1445,14 @@ namespace Numerics.Data.Statistics
                 {
                     if (maxEmittedCombinations > 0 && emitted >= maxEmittedCombinations)
                     {
-                        return Close(Math.Max(0d, totalOutputMass - emittedMass), ExclusiveEnumerationStatus.Capped);
+                        return Close(Tools.Clamp(totalOutputMass - emittedMass, 0d, 1d), ExclusiveEnumerationStatus.Capped);
                     }
 
                     var row = Row();
                     for (int t = 0; t < k; t++) row[combination[t]] = 1;
 
                     double exclusive = IndependentExclusive(probabilities, row);
-                    eventProbabilities.Add(exclusive);
+                    eventProbabilities.Add(Tools.Clamp(exclusive, 0d, 1d));
                     emittedMass += exclusive;
                     emitted++;
 
@@ -1426,7 +1501,7 @@ namespace Numerics.Data.Statistics
                     if (probabilities[i] > max) max = probabilities[i];
                 }
             }
-            return Math.Max(min - max, 0);
+            return Tools.Clamp(min - max, 0d, 1d);
         }
 
         /// <summary>
@@ -1542,7 +1617,7 @@ namespace Numerics.Data.Statistics
                     if (j > 0 && j < binomialCombinations.Length && diff <= absoluteTolerance && diff <= relativeTolerance * Math.Min(inc, exc))
                     {
                         eventIndicators.Add(indicators.GetRow(indicators.GetLength(0) - 1)); // Add last indicator row
-                        eventProbabilities.Add(0.5 * diff); // Add the average of the difference to the event probabilities
+                        eventProbabilities.Add(Tools.Clamp(0.5d * diff, 0d, 1d)); // Add the average of the difference to the event probabilities
                         return; // Exit early when convergence is reached
                     }
 
@@ -1560,7 +1635,7 @@ namespace Numerics.Data.Statistics
                 eventIndicators.Add(indicators.GetRow(i));
 
                 // Compute the exclusive event probability and add to the list
-                eventProbabilities.Add(PositivelyDependentExclusive(probabilities, eventIndicators.Last()));
+                eventProbabilities.Add(Tools.Clamp(PositivelyDependentExclusive(probabilities, eventIndicators.Last()), 0d, 1d));
 
                 // Calculate the union of probabilities (inclusion-exclusion)
                 if (i < probabilities.Count)
@@ -1576,6 +1651,111 @@ namespace Numerics.Data.Statistics
 
         }
 
+        /// <summary>
+        /// Lazily enumerates mutually exclusive event probabilities under perfect positive dependence.
+        /// </summary>
+        /// <param name="probabilities">The marginal event probabilities.</param>
+        /// <param name="eventProbabilities">The caller-owned output list of exclusive event probabilities; cleared and refilled.</param>
+        /// <param name="eventIndicators">The caller-owned output list of indicator rows; matching rows are reused.</param>
+        /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence. Default = 1E-4.</param>
+        /// <param name="relativeTolerance">The relative tolerance for evaluation convergence. Default = 1E-4.</param>
+        /// <returns>Whether every row was enumerated or the established convergence rule closed the expansion early.</returns>
+        /// <exception cref="ArgumentException">Thrown when the probability collection is null or empty.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when an output list is null.</exception>
+        /// <remarks>
+        /// Row ordering, joint-probability association, sign transitions, the dual convergence
+        /// predicate, and the all-ones half-gap closing row match the dense overload exactly.
+        /// </remarks>
+        public static ExclusiveEnumerationStatus PositivelyDependentExclusiveLazy(IList<double> probabilities,
+            List<double> eventProbabilities, List<int[]> eventIndicators,
+            double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
+        {
+            if (probabilities == null || probabilities.Count == 0)
+                throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
+            if (eventProbabilities == null) throw new ArgumentNullException(nameof(eventProbabilities));
+            if (eventIndicators == null) throw new ArgumentNullException(nameof(eventIndicators));
+
+            int n = probabilities.Count;
+            int used = 0;
+            eventProbabilities.Clear();
+
+            int[] Row()
+            {
+                int[] row;
+                if (used < eventIndicators.Count && eventIndicators[used] != null && eventIndicators[used].Length == n)
+                {
+                    row = eventIndicators[used];
+                    Array.Clear(row, 0, n);
+                }
+                else
+                {
+                    row = new int[n];
+                    if (used < eventIndicators.Count) eventIndicators[used] = row;
+                    else eventIndicators.Add(row);
+                }
+
+                used++;
+                return row;
+            }
+
+            void TrimToUsed()
+            {
+                while (eventIndicators.Count > used) eventIndicators.RemoveAt(eventIndicators.Count - 1);
+            }
+
+            ExclusiveEnumerationStatus Close(double mass)
+            {
+                int[] row = Row();
+                for (int i = 0; i < n; i++) row[i] = 1;
+                eventProbabilities.Add(Tools.Clamp(mass, 0d, 1d));
+                TrimToUsed();
+                return ExclusiveEnumerationStatus.Converged;
+            }
+
+            double union = 0d;
+            double sign = 1d;
+            double inclusion = double.NaN;
+            double exclusion = double.NaN;
+
+            for (int subsetSize = 1; subsetSize <= n; subsetSize++)
+            {
+                if (subsetSize >= 2)
+                {
+                    int block = subsetSize - 2;
+                    if (block > 0)
+                    {
+                        if (sign == 1d) inclusion = union;
+                        else if (sign == -1d) exclusion = union;
+                    }
+
+                    double difference = Math.Abs(inclusion - exclusion);
+                    if (block > 0 && block < n &&
+                        difference <= absoluteTolerance &&
+                        difference <= relativeTolerance * Math.Min(inclusion, exclusion))
+                    {
+                        return Close(0.5d * difference);
+                    }
+
+                    sign *= -1d;
+                }
+
+                var combination = new int[subsetSize];
+                for (int i = 0; i < subsetSize; i++) combination[i] = i;
+                do
+                {
+                    int[] row = Row();
+                    for (int i = 0; i < combination.Length; i++) row[combination[i]] = 1;
+                    eventProbabilities.Add(Tools.Clamp(PositivelyDependentExclusive(probabilities, row), 0d, 1d));
+                    union += sign * (subsetSize == 1
+                        ? probabilities[combination[0]]
+                        : PositiveJointProbability(probabilities, row));
+                }
+                while (Factorial.NextCombinationUnchecked(combination, n));
+            }
+
+            TrimToUsed();
+            return ExclusiveEnumerationStatus.Complete;
+        }
         #endregion
 
         #region Any Dependency
@@ -1613,7 +1793,7 @@ namespace Numerics.Data.Statistics
 
         /// <summary>
         /// Returns an array of exclusive probabilities of multiple events using the inclusion-exclusion method.
-        /// Dependence between events is captured with the multivariate normal distribution.
+        /// Dependence between events is captured with the PCM method.
         /// </summary>
         /// <param name="probabilities">A list of probabilities for each event.</param>
         /// <param name="binomialCombinations">An array of binomial combinations representing the number of possible event combinations for each subset.</param>
@@ -1670,7 +1850,7 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Correct for floating point issues
-                if (result[i] < 0d) result[i] = 0d;
+                result[i] = Tools.Clamp(result[i], 0d, 1d);
             }
 
             return result;
@@ -1687,7 +1867,7 @@ namespace Numerics.Data.Statistics
         /// <param name="correlationMatrix">The correlation matrix defining the dependency between events.</param>
         /// <param name="eventProbabilities">Output. A list of exclusive event probabilities for each event combination.</param>
         /// <param name="eventIndicators">Output. A list of event indicators corresponding to each event combination.</param>
-        /// <param name="absoluteTolerance">The absolute tolerance for convergence of the inclusion-exclusion algorithm. Default is 1E-8.</param>
+        /// <param name="absoluteTolerance">The absolute tolerance for convergence of the inclusion-exclusion algorithm. Default is 1E-4.</param>
         /// <param name="relativeTolerance">The relative tolerance for convergence of the inclusion-exclusion algorithm. Default is 1E-4.</param>
         /// <returns>A list of exclusive probabilities of the events based on the inclusion-exclusion method with early convergence checks.</returns>
         /// <exception cref="ArgumentException">Thrown if any array is invalid or if their lengths do not match.</exception>
@@ -1741,11 +1921,149 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Correct for floating point issues
-                if (result[i] < 0d) result[i] = 0d;
+                result[i] = Tools.Clamp(result[i], 0d, 1d);
             }
             eventProbabilities = result.ToList();
         }
 
+        /// <summary>
+        /// Lazily enumerates mutually exclusive event probabilities using PCM joint probabilities and inclusion-exclusion.
+        /// </summary>
+        /// <param name="probabilities">The marginal event probabilities.</param>
+        /// <param name="correlationMatrix">The correlation matrix defining the dependency.</param>
+        /// <param name="eventProbabilities">The caller-owned output list of exclusive event probabilities; cleared and refilled.</param>
+        /// <param name="eventIndicators">The caller-owned output list of indicator rows; matching rows are reused.</param>
+        /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence. Default = 1E-4.</param>
+        /// <param name="relativeTolerance">The relative tolerance for evaluation convergence. Default = 1E-4.</param>
+        /// <returns>Whether every row was enumerated or the established convergence rule closed the expansion early.</returns>
+        /// <exception cref="ArgumentException">Thrown when the probability collection is null or empty, or the correlation matrix is null.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when an output list is null.</exception>
+        /// <remarks>
+        /// This method streams the same joint rows as the dense overload, then applies its
+        /// exclusive inclusion-exclusion transform over the emitted rows. It does not renormalize
+        /// the resulting probabilities.
+        /// </remarks>
+        public static ExclusiveEnumerationStatus ExclusivePCMLazy(IList<double> probabilities,
+            double[,] correlationMatrix, List<double> eventProbabilities, List<int[]> eventIndicators,
+            double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
+        {
+            ValidateLazyPCMInputs(probabilities, correlationMatrix, absoluteTolerance, relativeTolerance);
+            if (eventProbabilities == null) throw new ArgumentNullException(nameof(eventProbabilities));
+            if (eventIndicators == null) throw new ArgumentNullException(nameof(eventIndicators));
+
+            int n = probabilities.Count;
+            int used = 0;
+            eventProbabilities.Clear();
+            var jointProbabilities = new List<double>();
+            var cumulativeCombinations = new List<int>();
+
+            int[] Row()
+            {
+                int[] row;
+                if (used < eventIndicators.Count && eventIndicators[used] != null && eventIndicators[used].Length == n)
+                {
+                    row = eventIndicators[used];
+                    Array.Clear(row, 0, n);
+                }
+                else
+                {
+                    row = new int[n];
+                    if (used < eventIndicators.Count) eventIndicators[used] = row;
+                    else eventIndicators.Add(row);
+                }
+
+                used++;
+                return row;
+            }
+
+            void TrimToUsed()
+            {
+                while (eventIndicators.Count > used) eventIndicators.RemoveAt(eventIndicators.Count - 1);
+            }
+
+            ExclusiveEnumerationStatus status = ExclusiveEnumerationStatus.Complete;
+            double union = 0d;
+            double sign = 1d;
+            double inclusion = double.NaN;
+            double exclusion = double.NaN;
+
+            for (int subsetSize = 1; subsetSize <= n; subsetSize++)
+            {
+                if (subsetSize >= 2)
+                {
+                    int block = subsetSize - 2;
+                    if (block > 0)
+                    {
+                        if (sign == 1d) inclusion = union;
+                        else if (sign == -1d) exclusion = union;
+                    }
+
+                    double difference = Math.Abs(inclusion - exclusion);
+                    if (block > 0 && block < n &&
+                        difference <= absoluteTolerance &&
+                        difference <= relativeTolerance * Math.Min(inclusion, exclusion))
+                    {
+                        int[] closingRow = Row();
+                        for (int i = 0; i < n; i++) closingRow[i] = 1;
+                        jointProbabilities.Add(Tools.Clamp(0.5d * difference, 0d, 1d));
+                        status = ExclusiveEnumerationStatus.Converged;
+                        break;
+                    }
+
+                    sign *= -1d;
+                }
+
+                var combination = new int[subsetSize];
+                for (int i = 0; i < subsetSize; i++) combination[i] = i;
+                do
+                {
+                    int[] row = Row();
+                    for (int i = 0; i < combination.Length; i++) row[combination[i]] = 1;
+                    double jointProbability = subsetSize == 1
+                        ? probabilities[combination[0]]
+                        : JointProbability(probabilities, row, correlationMatrix);
+                    jointProbabilities.Add(Tools.Clamp(jointProbability, 0d, 1d));
+                    union += sign * jointProbability;
+                }
+                while (Factorial.NextCombinationUnchecked(combination, n));
+
+                if (subsetSize < n) cumulativeCombinations.Add(jointProbabilities.Count);
+            }
+
+            int combinationBlock = 0;
+            int nextBlockStart = cumulativeCombinations.Count == 0
+                ? int.MaxValue
+                : cumulativeCombinations[0];
+
+            for (int i = 0; i < used; i++)
+            {
+                if (i == nextBlockStart)
+                {
+                    combinationBlock++;
+                    nextBlockStart = combinationBlock < cumulativeCombinations.Count
+                        ? cumulativeCombinations[combinationBlock]
+                        : int.MaxValue;
+                }
+
+                double exclusiveProbability = jointProbabilities[i];
+                double association = 1d;
+                for (int block = combinationBlock; block < cumulativeCombinations.Count; block++)
+                {
+                    association *= -1d;
+                    int start = cumulativeCombinations[block];
+                    int end = block == cumulativeCombinations.Count - 1
+                        ? cumulativeCombinations[block] + 1
+                        : cumulativeCombinations[block + 1];
+                    exclusiveProbability += association *
+                        SumSearch(jointProbabilities, eventIndicators[i], eventIndicators, start, end);
+                }
+
+                eventProbabilities.Add(Tools.Clamp(exclusiveProbability, 0d, 1d));
+            }
+
+            TrimToUsed();
+            return status;
+        }
         /// <summary>
         /// Returns an array of exclusive probabilities of multiple events using the inclusion-exclusion method. 
         /// Dependence between events is captured with the multivariate normal distribution.
@@ -1807,7 +2125,7 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Correct small negative values due to floating point precision issues
-                if (result[i] < 0d) result[i] = 0d;
+                result[i] = Tools.Clamp(result[i], 0d, 1d);
             }
 
             return result;
@@ -1872,7 +2190,7 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Correct small negative values due to floating point precision issues
-                if (result[i] < 0d) result[i] = 0d;
+                result[i] = Tools.Clamp(result[i], 0d, 1d);
             }
 
             return result;
@@ -1888,7 +2206,7 @@ namespace Numerics.Data.Statistics
         /// <param name="multivariateNormal">The multivariate normal distribution used to compute joint probabilities.</param>
         /// <param name="eventProbabilities">Output. A list of exclusive event probabilities.</param>
         /// <param name="eventIndicators">Output. A list of exclusive event indicators that were evaluated.</param>
-        /// <param name="absoluteTol">The absolute tolerance for convergence evaluation. Default is 1E-8.</param>
+        /// <param name="absoluteTol">The absolute tolerance for convergence evaluation. Default is 1E-4.</param>
         /// <param name="relativeTol">The relative tolerance for convergence evaluation. Default is 1E-4.</param>
         /// <exception cref="ArgumentException">Thrown if any input parameter is invalid.</exception>
         public static void ExclusiveMVN(IList<double> probabilities, int[] binomialCombinations, int[,] indicators, MultivariateNormal multivariateNormal, out List<double> eventProbabilities, out List<int[]> eventIndicators, double absoluteTol = 1E-4, double relativeTol = 1E-4)
@@ -1944,7 +2262,7 @@ namespace Numerics.Data.Statistics
                     if (j > 0 && j < binomialCombinations.Length && diff <= tol)
                     {
                         eventIndicators.Add(indicators.GetRow(indicators.GetLength(0) - 1));
-                        jointProbabilities.Add(0.5 * diff);
+                        jointProbabilities.Add(0.5d * diff);
                         goto Exclusive;
                     }
 
@@ -2005,7 +2323,7 @@ namespace Numerics.Data.Statistics
                 }
 
                 // Correct small negative values due to floating point precision issues
-                if (prob < 0d) prob = 0d;
+                prob = Tools.Clamp(prob, 0d, 1d);
                 eventProbabilities.Add(prob);
             }
         }
