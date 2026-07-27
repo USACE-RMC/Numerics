@@ -372,9 +372,5 @@ MigrationBackup/
 /TestResults
 
 # Local developer guidance and settings. These files are for developer machines only.
-/CLAUDE.md
-/Claude.md
-/AGENTS.md
-/Agents.md
 /.claude/
 /.agents/
