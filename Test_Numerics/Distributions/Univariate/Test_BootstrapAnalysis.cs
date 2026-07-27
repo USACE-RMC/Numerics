@@ -250,5 +250,36 @@ namespace Distributions.Univariate
             }
         }
 
+        /// <summary>
+        /// A sampled distribution that failed to fit contributes a NaN parameter set rather than a
+        /// null entry, matching BootstrapAnalysis.ParameterSets. Consumers index the array directly.
+        /// </summary>
+        [TestMethod]
+        public void Test_ProcessParameterSets_FillsFailuresWithNaN()
+        {
+            var probabilities = new double[] { 0.99, 0.9, 0.5, 0.1, 0.01 };
+            var dist = new Normal(3.122599, 0.5573654);
+            var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 200);
+            var sampled = boot.Distributions().Cast<UnivariateDistributionBase>().ToArray();
+            sampled[7] = null;
+
+            var results = new UncertaintyAnalysisResults(dist, sampled, probabilities, recordParameterSets: true);
+            var reference = boot.ParameterSets(sampled.Cast<IUnivariateDistribution>().ToArray());
+
+            Assert.HasCount(sampled.Length, results.ParameterSets);
+            for (int i = 0; i < sampled.Length; i++)
+            {
+                Assert.IsNotNull(results.ParameterSets[i], $"Parameter set {i} is null.");
+                Assert.HasCount(dist.NumberOfParameters, results.ParameterSets[i].Values);
+                for (int j = 0; j < dist.NumberOfParameters; j++)
+                {
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(reference[i].Values[j]),
+                        BitConverter.DoubleToInt64Bits(results.ParameterSets[i].Values[j]),
+                        $"Parameter set {i} value {j} differs from the BootstrapAnalysis form.");
+                }
+            }
+            Assert.IsTrue(double.IsNaN(results.ParameterSets[7].Values[0]));
+        }
+
     }
 }

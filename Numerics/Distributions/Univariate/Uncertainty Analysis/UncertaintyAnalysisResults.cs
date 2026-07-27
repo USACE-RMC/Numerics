@@ -422,25 +422,31 @@ namespace Numerics.Distributions
 
             int B = sampledDistributions.Length;
 
-            // Compute min and max X values across all distributions
+            // Compute min and max X values across all distributions. The extremes merge once per
+            // worker rather than once per distribution; min and max are order-independent, so the
+            // result is the same however the loop partitions.
             double minX = double.MaxValue;
             double maxX = double.MinValue;
             object lockObject = new object();
 
-            Parallel.For(0, B, j =>
-            {
-                if (sampledDistributions[j] is not null)
+            Parallel.For(0, B,
+                () => (Min: double.MaxValue, Max: double.MinValue),
+                (j, state, local) =>
                 {
+                    if (sampledDistributions[j] is null) return local;
                     var innerMin = sampledDistributions[j].InverseCDF(minProbability);
                     var innerMax = sampledDistributions[j].InverseCDF(maxProbability);
-
+                    return (innerMin < local.Min ? innerMin : local.Min,
+                            innerMax > local.Max ? innerMax : local.Max);
+                },
+                local =>
+                {
                     lock (lockObject)
                     {
-                        if (innerMin < minX) minX = innerMin;
-                        if (innerMax > maxX) maxX = innerMax;
+                        if (local.Min < minX) minX = local.Min;
+                        if (local.Max > maxX) maxX = local.Max;
                     }
-                }
-            });
+                });
 
             // Create log-spaced quantiles for efficient coverage
             double shift = minX <= 0 ? Math.Abs(minX) + 1d : 0;
@@ -527,15 +533,35 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Processes and stores the parameter sets from all sampled distributions.
+        /// Processes and stores the parameter sets from all sampled distributions. A sampled
+        /// distribution that failed to fit contributes a parameter set of NaN values rather than a
+        /// null entry, so a consumer indexing <see cref="ParameterSets"/> gets a value that
+        /// propagates as NaN instead of throwing. <c>BootstrapAnalysis.ParameterSets</c> fills
+        /// failures the same way.
         /// </summary>
         /// <param name="sampledDistributions">Array of sampled distributions to extract parameters from.</param>
+        /// <exception cref="ArgumentException">Thrown when the sampled distributions are null, empty, or all failed.</exception>
         public void ProcessParameterSets(UnivariateDistributionBase[] sampledDistributions)
         {
             if (sampledDistributions == null || sampledDistributions.Length == 0)
                 throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
 
             int B = sampledDistributions.Length;
+            int numberOfParameters = ParentDistribution?.NumberOfParameters ?? 0;
+            if (numberOfParameters == 0)
+            {
+                for (int i = 0; i < B; i++)
+                {
+                    if (sampledDistributions[i] is not null)
+                    {
+                        numberOfParameters = sampledDistributions[i].NumberOfParameters;
+                        break;
+                    }
+                }
+            }
+            if (numberOfParameters == 0)
+                throw new ArgumentException("Every sampled distribution is null; the parameter count is unknown.", nameof(sampledDistributions));
+
             ParameterSets = new ParameterSet[B];
 
             Parallel.For(0, B, idx =>
@@ -543,6 +569,12 @@ namespace Numerics.Distributions
                 if (sampledDistributions[idx] is not null)
                 {
                     ParameterSets[idx] = new ParameterSet(sampledDistributions[idx].GetParameters, double.NaN);
+                }
+                else
+                {
+                    var parameters = new double[numberOfParameters];
+                    for (int i = 0; i < numberOfParameters; i++) parameters[i] = double.NaN;
+                    ParameterSets[idx] = new ParameterSet(parameters, double.NaN);
                 }
             });
         }
