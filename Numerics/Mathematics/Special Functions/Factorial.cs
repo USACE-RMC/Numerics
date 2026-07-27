@@ -183,5 +183,56 @@ namespace Numerics.Mathematics.SpecialFunctions
             return output;
         }
 
+        /// <summary>
+        /// Advances a k-combination over [0, n) to its lexicographic successor, in place.
+        /// </summary>
+        /// <param name="combination">The current strictly increasing index tuple; advanced in place.</param>
+        /// <param name="n">The overall count.</param>
+        /// <returns>False when the combination was the last of its size.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when the combination is null.</exception>
+        public static bool NextCombination(int[] combination, int n)
+        {
+            if (combination == null) throw new ArgumentNullException(nameof(combination));
+            int k = combination.Length;
+            if (k == 0 || k > n) return false;
+
+            int i = k - 1;
+            while (i >= 0 && combination[i] == n - k + i) i--;
+            if (i < 0) return false;
+            combination[i]++;
+            for (int j = i + 1; j < k; j++) combination[j] = combination[j - 1] + 1;
+            return true;
+        }
+
+        /// <summary>
+        /// Enumerates every non-empty subset of n items as an index tuple, in the order
+        /// <see cref="AllCombinations(int)"/> lays out its rows — subset size ascending, then
+        /// lexicographic — without materializing the n·(2^n − 1) matrix.
+        /// </summary>
+        /// <param name="n">The overall count.</param>
+        /// <returns>The index tuples, in <see cref="AllCombinations(int)"/> row order.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when n is negative.</exception>
+        /// <remarks>
+        /// Yields a reused buffer, as <see cref="FindCombinations(int, int)"/> does; copy it to
+        /// retain it. Unlike <see cref="AllCombinations(int)"/> there is no upper bound on n, since
+        /// nothing is allocated per row — the caller decides how far to enumerate.
+        /// </remarks>
+        public static IEnumerable<int[]> AllCombinationsLazy(int n)
+        {
+            if (n < 0)
+                throw new ArgumentOutOfRangeException(nameof(n), "n must be non-negative.");
+
+            for (int k = 1; k <= n; k++)
+            {
+                var combination = new int[k];
+                for (int j = 0; j < k; j++) combination[j] = j;
+                do
+                {
+                    yield return combination;
+                }
+                while (NextCombination(combination, n));
+            }
+        }
+
     }
 }

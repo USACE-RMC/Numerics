@@ -1202,6 +1202,152 @@ namespace Numerics.Data.Statistics
             return false;
         }
 
+        /// <summary>
+        /// The outcome of a lazily enumerated exclusive-probability expansion.
+        /// </summary>
+        public enum ExclusiveEnumerationStatus
+        {
+            /// <summary>Every combination was enumerated.</summary>
+            Complete,
+
+            /// <summary>The inclusion-exclusion expansion converged; the deepest combinations were not enumerated.</summary>
+            Converged,
+
+            /// <summary>The emitted-combination cap was reached; the remaining combinations were not enumerated.</summary>
+            Capped,
+        }
+
+        /// <summary>
+        /// The lazily enumerated form of
+        /// <see cref="IndependentExclusive(IList{double}, int[], int[,], List{double}, List{int[]}, double, double)"/>:
+        /// the combinations are generated in <see cref="Factorial.AllCombinations(int)"/> order
+        /// rather than read from a materialized <c>n·(2^n − 1)</c> matrix, so the caller never
+        /// allocates one.
+        /// </summary>
+        /// <param name="probabilities">An array of probabilities for each event; n = Count.</param>
+        /// <param name="eventProbabilities">The caller-owned output list of exclusive event probabilities; cleared and refilled.</param>
+        /// <param name="eventIndicators">The caller-owned output list of indicator rows; rows of matching length are refilled in place, and the list is trimmed to the produced count.</param>
+        /// <param name="includeNoEventRow">True to emit the all-zero (no-event) combination first, carrying <c>Π(1 − pᵢ)</c>. Excluded from the inclusion-exclusion bracket.</param>
+        /// <param name="maxEmittedCombinations">The cap on emitted rows, excluding any closing row; non-positive means no cap.</param>
+        /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <param name="relativeTolerance">The relative tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <returns>Whether the expansion completed, converged early, or hit the cap.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when either output list is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the probabilities list is null or empty.</exception>
+        /// <remarks>
+        /// Emits the same rows, in the same order, with the same probabilities as the dense
+        /// overload. On convergence it closes with the same half-gap pseudo-row; at the cap it
+        /// closes with the exact residual <c>1 − Σ(emitted)</c>, which for independent events is
+        /// the mass of everything not enumerated. Both closing rows are attributed to the all-ones
+        /// combination.
+        /// </remarks>
+        public static ExclusiveEnumerationStatus IndependentExclusiveLazy(IList<double> probabilities,
+            List<double> eventProbabilities, List<int[]> eventIndicators, bool includeNoEventRow = false,
+            long maxEmittedCombinations = 0, double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
+        {
+            if (probabilities == null || probabilities.Count == 0)
+                throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
+            if (eventProbabilities == null) throw new ArgumentNullException(nameof(eventProbabilities));
+            if (eventIndicators == null) throw new ArgumentNullException(nameof(eventIndicators));
+
+            int n = probabilities.Count;
+            int used = 0;
+            eventProbabilities.Clear();
+
+            int[] Row()
+            {
+                int[] row;
+                if (used < eventIndicators.Count && eventIndicators[used] != null && eventIndicators[used].Length == n)
+                {
+                    row = eventIndicators[used];
+                    Array.Clear(row, 0, n);
+                }
+                else
+                {
+                    row = new int[n];
+                    if (used < eventIndicators.Count) eventIndicators[used] = row;
+                    else eventIndicators.Add(row);
+                }
+                used++;
+                return row;
+            }
+
+            void TrimToUsed()
+            {
+                while (eventIndicators.Count > used) eventIndicators.RemoveAt(eventIndicators.Count - 1);
+            }
+
+            // Closes the expansion on an all-ones row carrying the supplied mass.
+            ExclusiveEnumerationStatus Close(double mass, ExclusiveEnumerationStatus status)
+            {
+                var row = Row();
+                for (int column = 0; column < n; column++) row[column] = 1;
+                eventProbabilities.Add(mass);
+                TrimToUsed();
+                return status;
+            }
+
+            double emittedMass = 0d;
+            if (includeNoEventRow)
+            {
+                var noEvent = Row();
+                double none = IndependentExclusive(probabilities, noEvent);
+                eventProbabilities.Add(none);
+                emittedMass += none;
+            }
+
+            double union = 0;
+            double s = 1;
+            double inc = double.NaN;
+            double exc = double.NaN;
+            long emitted = 0;
+
+            for (int k = 1; k <= n; k++)
+            {
+                // The size-block transition, mirroring the dense form: the bracket is read at the
+                // first row of each size from two upward, and the sign alternates per block.
+                if (k >= 2)
+                {
+                    int block = k - 2;
+                    if (block > 0)
+                    {
+                        if (s == 1) inc = union;
+                        else if (s == -1) exc = union;
+                    }
+                    double diff = Math.Abs(inc - exc);
+                    if (block > 0 && block < n && diff <= absoluteTolerance && diff <= relativeTolerance * Math.Min(inc, exc))
+                    {
+                        return Close(0.5 * diff, ExclusiveEnumerationStatus.Converged);
+                    }
+                    s *= -1;
+                }
+
+                var combination = new int[k];
+                for (int t = 0; t < k; t++) combination[t] = t;
+                do
+                {
+                    if (maxEmittedCombinations > 0 && emitted >= maxEmittedCombinations)
+                    {
+                        return Close(Math.Max(0d, 1d - emittedMass), ExclusiveEnumerationStatus.Capped);
+                    }
+
+                    var row = Row();
+                    for (int t = 0; t < k; t++) row[combination[t]] = 1;
+
+                    double exclusive = IndependentExclusive(probabilities, row);
+                    eventProbabilities.Add(exclusive);
+                    emittedMass += exclusive;
+                    emitted++;
+
+                    union += s * (k == 1 ? probabilities[combination[0]] : IndependentJointProbability(probabilities, row));
+                }
+                while (Factorial.NextCombination(combination, n));
+            }
+
+            TrimToUsed();
+            return ExclusiveEnumerationStatus.Complete;
+        }
+
         #endregion
 
         #region Positively Dependent
