@@ -103,6 +103,34 @@ namespace Numerics.Mathematics.Integration
         private static readonly double[] wCapture = BuildCaptureWeights();
 
         /// <summary>
+        /// Per-slot capture buffers for the recorder's node abscissas, grown on demand. Only
+        /// allocated when <see cref="Recorder"/> is set.
+        /// </summary>
+        private double[]?[] _nodePool = Array.Empty<double[]?>();
+
+        /// <summary>
+        /// Per-slot capture buffers for the recorder's node values.
+        /// </summary>
+        private double[]?[] _valuePool = Array.Empty<double[]?>();
+
+        /// <summary>
+        /// Returns the capture buffer for a recursion slot, growing the pool as needed.
+        /// </summary>
+        /// <param name="pool">The pool to rent from.</param>
+        /// <param name="slot">The slot index; distinct for every interval alive at once.</param>
+        /// <returns>The buffer.</returns>
+        private static double[] RentCapture(ref double[]?[] pool, int slot)
+        {
+            if (slot >= pool.Length)
+            {
+                var grown = new double[]?[Math.Max(slot + 1, pool.Length * 2 + 8)];
+                Array.Copy(pool, grown, pool.Length);
+                pool = grown;
+            }
+            return pool[slot] ??= new double[21];
+        }
+
+        /// <summary>
         /// Builds the unscaled Kronrod weight layout matching the node-capture order.
         /// </summary>
         /// <returns>The 21 unscaled weights in capture order.</returns>
@@ -179,10 +207,10 @@ namespace Numerics.Mathematics.Integration
             try
             {
                 // Initial evaluation using Gauss-Kronrod rule on the whole interval
-                var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(a, b);
+                var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(a, b, 0);
 
                 // Recursively sub-divide
-                Result = AdaptiveGK(Function, a, b, MaxDepth, kronrodResult, gaussResult, a, b, nodes, values);
+                Result = AdaptiveGK(Function, a, b, MaxDepth, kronrodResult, gaussResult, a, b, nodes, values, 0);
 
                 // Standard error calculated after recursion completes
                 StandardError = Math.Sqrt(_squaredError);
@@ -222,10 +250,10 @@ namespace Numerics.Mathematics.Integration
                     // Initial evaluation using Gauss-Kronrod rule on the bin interval
                     double binA = bins[i].LowerBound;
                     double binB = bins[i].UpperBound;
-                    var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(binA, binB);
+                    var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(binA, binB, 0);
 
                     // Recursively sub-divide
-                    mu += AdaptiveGK(Function, binA, binB, MaxDepth, kronrodResult, gaussResult, binA, binB, nodes, values);
+                    mu += AdaptiveGK(Function, binA, binB, MaxDepth, kronrodResult, gaussResult, binA, binB, nodes, values, 0);
                 }
 
                 // Final result and standard error
@@ -257,16 +285,17 @@ namespace Numerics.Mathematics.Integration
         /// </summary>
         /// <param name="a">The lower bound of integration.</param>
         /// <param name="b">The upper bound of integration.</param>
+        /// <param name="slot">The capture-buffer slot; distinct for every interval alive at once.</param>
         /// <returns>A tuple containing (Kronrod estimate, Gauss estimate, captured nodes, captured values).</returns>
-        private (double kronrod, double gauss, double[]? nodes, double[]? values) EvaluateGaussKronrod(double a, double b)
+        private (double kronrod, double gauss, double[]? nodes, double[]? values) EvaluateGaussKronrod(double a, double b, int slot)
         {
             double center = 0.5 * (a + b);
             double halfLength = 0.5 * (b - a);
 
             double resultGauss = 0.0;
             double resultKronrod = 0.0;
-            double[]? nodes = Recorder != null ? new double[21] : null;
-            double[]? values = Recorder != null ? new double[21] : null;
+            double[]? nodes = Recorder != null ? RentCapture(ref _nodePool, slot) : null;
+            double[]? values = Recorder != null ? RentCapture(ref _valuePool, slot) : null;
 
             // Evaluate at center point (x = 0)
             double f0 = Function(center);
@@ -325,13 +354,14 @@ namespace Numerics.Mathematics.Integration
         /// <param name="b0">The original upper bound of the integral.</param>
         /// <param name="nodes">The interval's captured node abscissas (null when no recorder is attached).</param>
         /// <param name="values">The interval's captured function values (null when no recorder is attached).</param>
+        /// <param name="level">The recursion level, which selects this interval's children's capture slots.</param>
         /// <returns>
         /// An evaluation of the integral using adaptive Gauss-Kronrod with error less than the specified tolerance.
         /// This is accomplished by subdividing the interval until the error between the Gauss and Kronrod estimates
         /// is sufficiently small.
         /// </returns>
         private double AdaptiveGK(Func<double, double> f, double a, double b, int depth,
-            double kronrodWhole, double gaussWhole, double a0, double b0, double[]? nodes, double[]? values)
+            double kronrodWhole, double gaussWhole, double a0, double b0, double[]? nodes, double[]? values, int level)
         {
             // Error estimate: difference between Kronrod and Gauss results
             double error = Math.Abs(kronrodWhole - gaussWhole);
@@ -370,14 +400,17 @@ namespace Numerics.Mathematics.Integration
                 double m = (a + b) / 2.0;
 
                 // Evaluate Gauss-Kronrod on left half
-                var (kronrodLeft, gaussLeft, nodesLeft, valuesLeft) = EvaluateGaussKronrod(a, m);
+                // Both halves are evaluated before either recurses, so they need distinct capture
+                // slots; their own children take the slots of the next level, which are free by
+                // the time each subtree runs.
+                var (kronrodLeft, gaussLeft, nodesLeft, valuesLeft) = EvaluateGaussKronrod(a, m, 2 * level + 1);
 
                 // Evaluate Gauss-Kronrod on right half
-                var (kronrodRight, gaussRight, nodesRight, valuesRight) = EvaluateGaussKronrod(m, b);
+                var (kronrodRight, gaussRight, nodesRight, valuesRight) = EvaluateGaussKronrod(m, b, 2 * level + 2);
 
                 // Recursively subdivide the intervals and accumulate results
-                var leftResult = AdaptiveGK(f, a, m, depth - 1, kronrodLeft, gaussLeft, a0, b0, nodesLeft, valuesLeft);
-                var rightResult = AdaptiveGK(f, m, b, depth - 1, kronrodRight, gaussRight, a0, b0, nodesRight, valuesRight);
+                var leftResult = AdaptiveGK(f, a, m, depth - 1, kronrodLeft, gaussLeft, a0, b0, nodesLeft, valuesLeft, level + 1);
+                var rightResult = AdaptiveGK(f, m, b, depth - 1, kronrodRight, gaussRight, a0, b0, nodesRight, valuesRight, level + 1);
 
                 return leftResult + rightResult;
             }
