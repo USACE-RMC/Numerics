@@ -1068,34 +1068,26 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// The pooled-output form of
-        /// <see cref="IndependentExclusive(IList{double}, int[], int[,], out List{double}, out List{int[]}, double, double)"/>:
-        /// the caller supplies (and reuses) the output lists across calls, and existing
-        /// indicator row arrays of matching length are refilled in place — so a hot loop that
-        /// calls this per evaluation performs no per-call output allocations after the first.
-        /// The return value surfaces the inclusion-exclusion truncation that was previously
-        /// silent.
+        /// Computes independent exclusive probabilities into caller-owned output collections.
+        /// Existing indicator arrays with the required length are refilled and reused.
         /// </summary>
-        /// <param name="probabilities">An array of probabilities for each event. Each element represents the probability of an individual event occurring.</param>
-        /// <param name="binomialCombinations">An array of binomial combinations that define the number of events to consider for each calculation.</param>
-        /// <param name="eventProbabilities">The caller-owned output list of exclusive event probabilities; cleared and refilled.</param>
-        /// <param name="eventIndicators">The caller-owned output list of event indicator rows; existing rows of matching length are refilled in place, and the list is trimmed to the produced count.</param>
-        /// <param name="indicators">A 2D array of indicators, where each row represents a combination of events, and 0 means the event did not occur, 1 means the event did occur.</param>
-        /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
-        /// <param name="relativeTolerance">The relative tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
+        /// <param name="probabilities">The probability of each event.</param>
+        /// <param name="binomialCombinations">The number of combinations for each subset size.</param>
+        /// <param name="indicators">The event-indicator rows in subset-size order.</param>
+        /// <param name="eventProbabilities">The output probabilities; cleared and refilled.</param>
+        /// <param name="eventIndicators">The output indicator rows; matching arrays are reused.</param>
+        /// <param name="absoluteTolerance">The non-negative absolute convergence tolerance.</param>
+        /// <param name="relativeTolerance">The non-negative relative convergence tolerance.</param>
         /// <returns>
-        /// True when the inclusion-exclusion expansion converged early and the deepest
-        /// combinations were TRUNCATED — the outputs then end with one closing pseudo-row
-        /// carrying half the remaining inclusion-exclusion gap; false when every combination
-        /// was enumerated.
+        /// <see langword="true"/> when convergence stops the inclusion-exclusion expansion
+        /// before every combination is enumerated; otherwise, <see langword="false"/>.
         /// </returns>
-        /// <exception cref="ArgumentNullException">Thrown when either output list is null.</exception>
-        /// <exception cref="ArgumentException">Thrown if the probabilities array is null, empty, or if the lengths of the probabilities and indicators arrays do not match.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when an output collection or metadata array is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the probability or indicator metadata is structurally inconsistent.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a probability or tolerance is outside its valid range.</exception>
         /// <remarks>
-        /// This method uses the inclusion-exclusion principle to compute the exclusive
-        /// probability of each event combination, exactly as the allocating overload does (which
-        /// now delegates here); only the output-buffer ownership and the truncation visibility
-        /// differ.
+        /// After the output lists reach their required capacity, repeated calls with the same
+        /// dimensions reuse the indicator arrays and do not allocate output rows.
         /// </remarks>
         public static bool IndependentExclusive(IList<double> probabilities, int[] binomialCombinations, int[,] indicators, List<double> eventProbabilities, List<int[]> eventIndicators, double absoluteTolerance = 1E-4, double relativeTolerance = 1E-4)
         {
@@ -1108,9 +1100,10 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The probabilities array and the indicator array must have the same length.", nameof(probabilities));
             if (eventProbabilities == null) throw new ArgumentNullException(nameof(eventProbabilities));
             if (eventIndicators == null) throw new ArgumentNullException(nameof(eventIndicators));
+            ValidatePooledExclusiveMetadata(probabilities, binomialCombinations, indicators, absoluteTolerance, relativeTolerance);
 
             int n = probabilities.Count;
-            int used = 0; // Output rows placed this call
+            int used = 0; // Number of output rows used by this call.
             eventProbabilities.Clear();
 
             // Copies an indicator row into the pooled output slot, reusing an existing row
@@ -1167,7 +1160,7 @@ namespace Numerics.Data.Statistics
                         PlaceRow(indicators.GetLength(0) - 1); // Add last indicator row
                         eventProbabilities.Add(0.5 * diff); // Add the average of the difference to the event probabilities
                         TrimToUsed();
-                        return true; // Exit early when convergence is reached — the deepest combinations are truncated
+                        return true; // Report that convergence ended the expansion early.
                     }
 
                     // Flip the sign for the next inclusion-exclusion term
@@ -1202,6 +1195,35 @@ namespace Numerics.Data.Statistics
             return false;
         }
 
+        /// <summary>
+        /// Validates the structural metadata used by the pooled exclusive-probability overload.
+        /// </summary>
+        private static void ValidatePooledExclusiveMetadata(IList<double> probabilities, int[] binomialCombinations,
+            int[,] indicators, double absoluteTolerance, double relativeTolerance)
+        {
+            if (binomialCombinations == null)
+                throw new ArgumentNullException(nameof(binomialCombinations));
+            if (binomialCombinations.Length != probabilities.Count)
+                throw new ArgumentException("The binomial metadata must contain one count for each subset size.", nameof(binomialCombinations));
+            if (!Tools.IsFinite(absoluteTolerance) || absoluteTolerance < 0d)
+                throw new ArgumentOutOfRangeException(nameof(absoluteTolerance), "The absolute tolerance must be finite and non-negative.");
+            if (!Tools.IsFinite(relativeTolerance) || relativeTolerance < 0d)
+                throw new ArgumentOutOfRangeException(nameof(relativeTolerance), "The relative tolerance must be finite and non-negative.");
+
+            long rowCount = 0;
+            for (int i = 0; i < probabilities.Count; i++)
+            {
+                if (!Tools.IsFinite(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
+                    throw new ArgumentOutOfRangeException(nameof(probabilities), "Probabilities must be finite and between zero and one.");
+
+                int expected = checked((int)Factorial.BinomialCoefficient(probabilities.Count, i + 1));
+                if (binomialCombinations[i] != expected)
+                    throw new ArgumentException("The binomial metadata does not match the probability count.", nameof(binomialCombinations));
+                rowCount += expected;
+            }
+            if (rowCount != indicators.GetLength(0))
+                throw new ArgumentException("The indicator row count does not match the binomial metadata.", nameof(indicators));
+        }
         /// <summary>
         /// The outcome of a lazily enumerated exclusive-probability expansion.
         /// </summary>
@@ -1249,6 +1271,11 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
             if (eventProbabilities == null) throw new ArgumentNullException(nameof(eventProbabilities));
             if (eventIndicators == null) throw new ArgumentNullException(nameof(eventIndicators));
+            for (int i = 0; i < probabilities.Count; i++)
+            {
+                if (!Tools.IsFinite(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
+                    throw new ArgumentOutOfRangeException(nameof(probabilities), "Probabilities must be finite and between zero and one.");
+            }
 
             int n = probabilities.Count;
             int used = 0;
@@ -1287,13 +1314,15 @@ namespace Numerics.Data.Statistics
                 return status;
             }
 
+            double noEventMass = 1d;
+            for (int i = 0; i < n; i++) noEventMass *= 1d - probabilities[i];
+            double totalOutputMass = includeNoEventRow ? 1d : 1d - noEventMass;
             double emittedMass = 0d;
             if (includeNoEventRow)
             {
-                var noEvent = Row();
-                double none = IndependentExclusive(probabilities, noEvent);
-                eventProbabilities.Add(none);
-                emittedMass += none;
+                Row();
+                eventProbabilities.Add(noEventMass);
+                emittedMass += noEventMass;
             }
 
             double union = 0;
@@ -1328,7 +1357,7 @@ namespace Numerics.Data.Statistics
                 {
                     if (maxEmittedCombinations > 0 && emitted >= maxEmittedCombinations)
                     {
-                        return Close(Math.Max(0d, 1d - emittedMass), ExclusiveEnumerationStatus.Capped);
+                        return Close(Math.Max(0d, totalOutputMass - emittedMass), ExclusiveEnumerationStatus.Capped);
                     }
 
                     var row = Row();
@@ -1341,7 +1370,7 @@ namespace Numerics.Data.Statistics
 
                     union += s * (k == 1 ? probabilities[combination[0]] : IndependentJointProbability(probabilities, row));
                 }
-                while (Factorial.NextCombination(combination, n));
+                while (Factorial.NextCombinationUnchecked(combination, n));
             }
 
             TrimToUsed();

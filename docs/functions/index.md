@@ -1,4 +1,4 @@
-# Univariate Functions
+﻿# Univariate Functions
 
 [Back to Index](../index.md)
 
@@ -32,10 +32,10 @@ Every function implements `IUnivariateFunction`:
 
 ### Segmented power (BaRatin addition mode)
 
-`SegmentedPowerFunction` matches the RMC-BestFit rating-curve parameterization exactly. The
+`SegmentedPowerFunction` uses a parameter vector that can be applied directly to fitted draws. The
 parameter vector is `[h₁, log₁₀α₁, β₁, h₂, log₁₀α₂, β₂, …, σ]` (length `3·segments + 1`), so
 a fitted posterior `ParameterSet.Values` applies directly through `SetParameters`. Breakpoints
-must be strictly ordered, exponents non-negative (the monotone-rating constraint behind the
+must be strictly ordered, exponents positive (the monotonicity constraint behind the
 numeric Brent inverse), discharge is zero at and below the cease-to-flow stage `h₁`, and one
 segment degenerates to the plain `PowerFunction`.
 
@@ -46,7 +46,7 @@ using Numerics.Functions;
 var rating = new SegmentedPowerFunction(new[] { 1.0, 1.5, 2.0, 3.0, 1.2, 1.5, 0.1 });
 double q = rating.Function(5.0);            // deterministic (mean) discharge
 rating.IsDeterministic = false;
-rating.ConfidenceLevel = 0.75;              // multiplies by 10^(z·σ), the BestFit stochastic form
+rating.ConfidenceLevel = 0.75;              // multiplies by 10^(z·σ)
 double q75 = rating.Function(5.0);
 ```
 
@@ -79,8 +79,7 @@ derives from ξ and never serializes. The serialization surface lives on the con
 ## Posterior ensembles
 
 `EnsembleFunction` carries a template function plus an array of posterior `ParameterSet`
-draws — the vehicle for imported fitted functions (e.g., a BestFit rating-curve posterior)
-inside a simulation engine. Both sampling surfaces are **pure**: every call returns a fresh
+draws for use inside a simulation engine. Both sampling surfaces return a fresh
 clone of the template configured with the selected draw, so concurrent realizations share no
 mutable state.
 

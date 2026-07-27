@@ -157,68 +157,58 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Create a distribution from XElement.
+        /// Creates a distribution from its serialized representation.
         /// </summary>
-        /// <param name="xElement">The XElement to deserialize into a univariate distribution.</param>
-        /// <returns>
-        /// A univariate distribution.
-        /// </returns>
-        /// <exception cref="NotSupportedException">
-        /// The serialized distribution type requires a user-provided implementation.
-        /// </exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// The serialized distribution type is not a defined <see cref="UnivariateDistributionType"/> value.
-        /// </exception>
+        /// <param name="xElement">The element to deserialize.</param>
+        /// <returns>A validated univariate distribution.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the type or parameter data is missing or malformed.</exception>
+        /// <exception cref="NotSupportedException">Thrown when the serialized type requires a user-provided implementation.</exception>
         public static UnivariateDistributionBase CreateDistribution(XElement xElement)
         {
-            UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
-            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
-            if (typeAttr != null)
-            {
-                Enum.TryParse(typeAttr.Value, out type);
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
 
-                if (type == UnivariateDistributionType.Mixture)
-                {
-                    return Mixture.FromXElement(xElement)!;
-                }
-                else if (type == UnivariateDistributionType.CompetingRisks)
-                {
-                    return CompetingRisks.FromXElement(xElement)!;
-                }
-                else if (type == UnivariateDistributionType.PertPercentile)
-                {
-                    return PertPercentile.FromXElement(xElement)!;
-                }
-                else if (type == UnivariateDistributionType.PertPercentileZ)
-                {
-                    return PertPercentileZ.FromXElement(xElement)!;
-                }
-                else if (type == UnivariateDistributionType.Empirical)
-                {
-                    return EmpiricalDistribution.FromXElement(xElement);
-                }
-                else if (type == UnivariateDistributionType.KernelDensity)
-                {
-                    return KernelDensity.FromXElement(xElement);
-                }
+            var typeAttribute = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (typeAttribute == null
+                || !Enum.TryParse(typeAttribute.Value, out UnivariateDistributionType type)
+                || !Enum.IsDefined(typeof(UnivariateDistributionType), type))
+                throw new ArgumentException("The serialized distribution type is missing or invalid.", nameof(xElement));
+
+            if (type == UnivariateDistributionType.Mixture)
+                return Mixture.FromXElement(xElement)
+                    ?? throw new ArgumentException("The serialized mixture is invalid.", nameof(xElement));
+            if (type == UnivariateDistributionType.CompetingRisks)
+                return CompetingRisks.FromXElement(xElement)
+                    ?? throw new ArgumentException("The serialized competing-risks distribution is invalid.", nameof(xElement));
+            if (type == UnivariateDistributionType.PertPercentile)
+                return PertPercentile.FromXElement(xElement)
+                    ?? throw new ArgumentException("The serialized percentile PERT distribution is invalid.", nameof(xElement));
+            if (type == UnivariateDistributionType.PertPercentileZ)
+                return PertPercentileZ.FromXElement(xElement)
+                    ?? throw new ArgumentException("The serialized transformed percentile PERT distribution is invalid.", nameof(xElement));
+            if (type == UnivariateDistributionType.Empirical)
+                return EmpiricalDistribution.FromXElement(xElement);
+            if (type == UnivariateDistributionType.KernelDensity)
+                return KernelDensity.FromXElement(xElement);
+
+            var distribution = CreateDistribution(type);
+            var names = distribution.GetParameterPropertyNames;
+            var values = new double[distribution.NumberOfParameters];
+            for (int i = 0; i < values.Length; i++)
+            {
+                var parameterAttribute = xElement.Attribute(names[i]);
+                if (parameterAttribute == null
+                    || !double.TryParse(parameterAttribute.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out values[i])
+                    || !Tools.IsFinite(values[i]))
+                    throw new ArgumentException("The serialized distribution parameter '" + names[i] + "' is missing or invalid.", nameof(xElement));
             }
 
-            var dist = CreateDistribution(type);
-            var names = dist.GetParameterPropertyNames;
-            var parms = dist.GetParameters;
-            var vals = new double[dist.NumberOfParameters];
-            for (int i = 0; i < dist.NumberOfParameters; i++)
-            {
-                var paramAttr = xElement.Attribute(names[i]);
-                if (paramAttr != null)
-                {
-                    double.TryParse(paramAttr.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out vals[i]);
-                }
-            }
-            dist.SetParameters(vals);
-            return dist;
+            distribution.ValidateParameters(values, true);
+            distribution.SetParameters(values);
+            if (!distribution.ParametersValid)
+                throw new ArgumentException("The serialized parameters do not define a valid distribution.", nameof(xElement));
+            return distribution;
         }
-
 
     }
 }

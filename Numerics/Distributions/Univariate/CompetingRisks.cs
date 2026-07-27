@@ -58,6 +58,7 @@ namespace Numerics.Distributions
         private bool _mvnCreated = false;
         private Probability.DependencyType _dependency = Probability.DependencyType.Independent;
         private MultivariateNormal _mvn = null!;
+        private int _prngSeed = MultivariateNormal.DefaultMVNUNISeed;
 
         // Soft finite floor used in tail arithmetic before returning the final log-density.
         private const double _logZero = -745.0;
@@ -78,7 +79,17 @@ namespace Numerics.Distributions
         /// is fixed. Applied when the multivariate normal is built — set it before the first
         /// dependent evaluation.
         /// </remarks>
-        public int PRNGSeed { get; set; } = MultivariateNormal.DefaultMVNUNISeed;
+        public int PRNGSeed
+        {
+            get { return _prngSeed; }
+            set
+            {
+                if (_prngSeed == value) return;
+                _prngSeed = value;
+                _mvnCreated = false;
+                _empiricalCDFCreated = false;
+            }
+        }
 
         /// <summary>
         /// Determines the interpolation transform for the X-values.
@@ -1244,7 +1255,8 @@ namespace Numerics.Distributions
                 MinimumOfRandomVariables = MinimumOfRandomVariables,
                 Dependency = Dependency,
                 XTransform = XTransform,
-                ProbabilityTransform = ProbabilityTransform
+                ProbabilityTransform = ProbabilityTransform,
+                PRNGSeed = PRNGSeed
             };
             if (CorrelationMatrix != null)
                 cr.CorrelationMatrix = (double[,])CorrelationMatrix.Clone();
@@ -1261,6 +1273,7 @@ namespace Numerics.Distributions
             result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
             result.SetAttributeValue(nameof(MinimumOfRandomVariables), MinimumOfRandomVariables.ToString());
             result.SetAttributeValue(nameof(Dependency), Dependency.ToString());
+            result.SetAttributeValue(nameof(PRNGSeed), PRNGSeed.ToString(CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(Distributions), String.Join("|", Distributions.Select(x => x.Type)));
             // Parameters
             var parms = GetParameters;
@@ -1304,112 +1317,151 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Create a competing risks distribution from XElement.
+        /// Creates a competing-risks distribution from its serialized representation.
         /// </summary>
-        /// <param name="xElement">The XElement to deserialize.</param>
-        /// <returns>A new competing risks distribution.</returns>
+        /// <param name="xElement">The element to deserialize.</param>
+        /// <returns>A validated competing-risks distribution, or <see langword="null"/> when the element identifies another distribution type.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when serialized configuration, parameters, or correlation data is malformed.</exception>
         public static CompetingRisks? FromXElement(XElement xElement)
         {
-            UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
-            var typeAttr = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
-            if (typeAttr != null)
-            {
-                Enum.TryParse(typeAttr.Value, out type);
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
 
-            }
-            if (type == UnivariateDistributionType.CompetingRisks)
+            var typeAttribute = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
+            if (typeAttribute == null
+                || !Enum.TryParse(typeAttribute.Value, out UnivariateDistributionType type)
+                || !Enum.IsDefined(typeof(UnivariateDistributionType), type))
+                throw new ArgumentException("The serialized distribution type is missing or invalid.", nameof(xElement));
+            if (type != UnivariateDistributionType.CompetingRisks) return null;
+
+            var distributionsAttribute = xElement.Attribute(nameof(Distributions));
+            if (distributionsAttribute == null || string.IsNullOrWhiteSpace(distributionsAttribute.Value))
+                throw new ArgumentException("The serialized competing-risks distribution has no component distributions.", nameof(xElement));
+
+            string[] typeTokens = distributionsAttribute.Value.Split('|');
+            var distributions = new UnivariateDistributionBase[typeTokens.Length];
+            for (int i = 0; i < typeTokens.Length; i++)
             {
-                var distributions = new List<UnivariateDistributionBase>();
-                var distsAttr = xElement.Attribute(nameof(Distributions));
-                if (distsAttr != null)
+                if (!Enum.TryParse(typeTokens[i], out UnivariateDistributionType componentType)
+                    || !Enum.IsDefined(typeof(UnivariateDistributionType), componentType))
+                    throw new ArgumentException("The serialized competing-risks distribution contains an invalid component type.", nameof(xElement));
+                distributions[i] = UnivariateDistributionFactory.CreateDistribution(componentType);
+            }
+
+            var competingRisks = new CompetingRisks(distributions);
+
+            var xTransformAttribute = xElement.Attribute(nameof(XTransform));
+            if (xTransformAttribute != null)
+            {
+                if (!Enum.TryParse(xTransformAttribute.Value, out Transform xTransform)
+                    || !Enum.IsDefined(typeof(Transform), xTransform))
+                    throw new ArgumentException("The serialized X transform is invalid.", nameof(xElement));
+                competingRisks.XTransform = xTransform;
+            }
+
+            var probabilityTransformAttribute = xElement.Attribute(nameof(ProbabilityTransform));
+            if (probabilityTransformAttribute != null)
+            {
+                if (!Enum.TryParse(probabilityTransformAttribute.Value, out Transform probabilityTransform)
+                    || !Enum.IsDefined(typeof(Transform), probabilityTransform))
+                    throw new ArgumentException("The serialized probability transform is invalid.", nameof(xElement));
+                competingRisks.ProbabilityTransform = probabilityTransform;
+            }
+
+            var minimumAttribute = xElement.Attribute(nameof(MinimumOfRandomVariables));
+            if (minimumAttribute != null)
+            {
+                if (!bool.TryParse(minimumAttribute.Value, out bool minimumOfRandomVariables))
+                    throw new ArgumentException("The serialized minimum-selection flag is invalid.", nameof(xElement));
+                competingRisks.MinimumOfRandomVariables = minimumOfRandomVariables;
+            }
+
+            var dependencyAttribute = xElement.Attribute(nameof(Dependency));
+            if (dependencyAttribute != null)
+            {
+                if (!Enum.TryParse(dependencyAttribute.Value, out Probability.DependencyType dependency)
+                    || !Enum.IsDefined(typeof(Probability.DependencyType), dependency))
+                    throw new ArgumentException("The serialized dependency type is invalid.", nameof(xElement));
+                competingRisks.Dependency = dependency;
+            }
+
+            var seedAttribute = xElement.Attribute(nameof(PRNGSeed));
+            if (seedAttribute != null)
+            {
+                if (!int.TryParse(seedAttribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seed))
+                    throw new ArgumentException("The serialized competing-risks seed is invalid.", nameof(xElement));
+                competingRisks.PRNGSeed = seed;
+            }
+
+            var parametersAttribute = xElement.Attribute("Parameters");
+            if (parametersAttribute == null)
+                throw new ArgumentException("The serialized competing-risks parameters are missing.", nameof(xElement));
+            string[] parameterTokens = parametersAttribute.Value.Split('|');
+            if (parameterTokens.Length != competingRisks.NumberOfParameters)
+                throw new ArgumentException("The serialized competing-risks parameter count is invalid.", nameof(xElement));
+            var parameters = new double[parameterTokens.Length];
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (!double.TryParse(parameterTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out parameters[i])
+                    || !Tools.IsFinite(parameters[i]))
+                    throw new ArgumentException("The serialized competing-risks parameters contain an invalid value.", nameof(xElement));
+            }
+
+            int offset = 0;
+            for (int i = 0; i < distributions.Length; i++)
+            {
+                int count = distributions[i].NumberOfParameters;
+                var componentParameters = new double[count];
+                Array.Copy(parameters, offset, componentParameters, 0, count);
+                distributions[i].ValidateParameters(componentParameters, true);
+                offset += count;
+            }
+            competingRisks.SetParameters(parameters);
+            if (!competingRisks.ParametersValid)
+                throw new ArgumentException("The serialized competing-risks parameters are invalid.", nameof(xElement));
+
+            var correlationElement = xElement.Element(nameof(CorrelationMatrix));
+            var correlationRows = correlationElement?.Elements("Correlation_Row").ToArray() ?? Array.Empty<XElement>();
+            if (correlationRows.Length > 0)
+            {
+                int dimension = distributions.Length;
+                if (correlationRows.Length != dimension)
+                    throw new ArgumentException("The serialized correlation matrix has an invalid row count.", nameof(xElement));
+
+                var correlation = new double[dimension, dimension];
+                for (int i = 0; i < dimension; i++)
                 {
-                    var types = distsAttr.Value.Split('|');
-                    for (int i = 0; i < types.Length; i++)
+                    string[] entries = correlationRows[i].Value.Split('|');
+                    if (entries.Length != dimension)
+                        throw new ArgumentException("The serialized correlation matrix has an invalid column count.", nameof(xElement));
+                    for (int j = 0; j < dimension; j++)
                     {
-                        Enum.TryParse(types[i], out UnivariateDistributionType distType);
-                        distributions.Add(UnivariateDistributionFactory.CreateDistribution(distType));
+                        if (!double.TryParse(entries[j], NumberStyles.Any, CultureInfo.InvariantCulture, out correlation[i, j])
+                            || !Tools.IsFinite(correlation[i, j])
+                            || correlation[i, j] < -1d
+                            || correlation[i, j] > 1d)
+                            throw new ArgumentException("The serialized correlation matrix contains an invalid value.", nameof(xElement));
                     }
                 }
-                var competingRisks = new CompetingRisks(distributions.ToArray());
 
-                var xTransformAttr = xElement.Attribute(nameof(XTransform));
-                if (xTransformAttr != null)
+                for (int i = 0; i < dimension; i++)
                 {
-                    Enum.TryParse(xTransformAttr.Value, out Transform xTransform);
-                    competingRisks.XTransform = xTransform;
-                }
-                var probTransformAttr = xElement.Attribute(nameof(ProbabilityTransform));
-                if (probTransformAttr != null)
-                {
-                    Enum.TryParse(probTransformAttr.Value, out Transform probabilityTransform);
-                    competingRisks.ProbabilityTransform = probabilityTransform;
-                }
-                var minOfRVAttr = xElement.Attribute(nameof(MinimumOfRandomVariables));
-                if (minOfRVAttr != null)
-                {
-                    bool.TryParse(minOfRVAttr.Value, out bool minOfValues);
-                    competingRisks.MinimumOfRandomVariables = minOfValues;
-                }
-                var depAttr = xElement.Attribute(nameof(Dependency));
-                if (depAttr != null)
-                {
-                    Enum.TryParse(depAttr.Value, out Probability.DependencyType dependency);
-                    competingRisks.Dependency = dependency;
-                }
-
-                // Parameters
-                var paramsAttr = xElement.Attribute("Parameters");
-                if (paramsAttr != null)
-                {
-                    var vals = paramsAttr.Value.Split('|');
-                    var parameters = new List<double>();
-                    for (int i = 0; i < vals.Length; i++)
+                    if (Math.Abs(correlation[i, i] - 1d) > 1E-12)
+                        throw new ArgumentException("The serialized correlation matrix must have unit diagonal entries.", nameof(xElement));
+                    for (int j = i + 1; j < dimension; j++)
                     {
-                        double.TryParse(vals[i], NumberStyles.Any, CultureInfo.InvariantCulture, out var parm);
-                        parameters.Add(parm);
+                        if (Math.Abs(correlation[i, j] - correlation[j, i]) > 1E-12)
+                            throw new ArgumentException("The serialized correlation matrix must be symmetric.", nameof(xElement));
                     }
-                    competingRisks.SetParameters(parameters);
                 }
-
-                // Correlation matrix
-                var corrMatrixElement = xElement.Element(nameof(CorrelationMatrix));
-                if (corrMatrixElement != null)
-                {
-                    var _corrMatrix = new double[competingRisks.Distributions.Count, competingRisks.Distributions.Count];
-                    int counter = 0;
-                    foreach (var rowEl in corrMatrixElement.Elements("Correlation_Row"))
-                    {
-                        if (counter >= competingRisks.Distributions.Count)
-                            break;
-
-                        // Split on '|' to get each stringified value
-                        var parts = rowEl.Value.Split('|');
-                        int maxCols = Math.Min(parts.Length, competingRisks.Distributions.Count);
-
-                        for (int j = 0; j < maxCols; j++)
-                        {
-                            // Try to parse each part; if it fails, leave as 0 or assign NaN if you prefer
-                            if (double.TryParse(parts[j],NumberStyles.Any,CultureInfo.InvariantCulture, out var p))
-                            {
-                                _corrMatrix[counter, j] = p;
-                            }
-                            else
-                            {
-                                _corrMatrix[counter, j] = double.NaN;
-                            }
-                        }
-
-                        counter++;
-                    }
-                    competingRisks.CorrelationMatrix = _corrMatrix;
-                }
-
-                return competingRisks;
+                competingRisks.CorrelationMatrix = correlation;
             }
-            else
+            else if (competingRisks.Dependency == Probability.DependencyType.CorrelationMatrix)
             {
-                return null;
+                throw new ArgumentException("A correlation-matrix dependency requires serialized correlation data.", nameof(xElement));
             }
+
+            return competingRisks;
         }
 
     }

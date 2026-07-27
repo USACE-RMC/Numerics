@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
@@ -7,9 +7,8 @@ using Numerics.Mathematics.SpecialFunctions;
 namespace Data.Statistics
 {
     /// <summary>
-    /// Unit tests for the lazily enumerated exclusive expansion (N13): row-order equivalence with
-    /// <see cref="Factorial.AllCombinations(int)"/>, output parity with the dense overload, the
-    /// emitted-combination cap, and enumeration past the dense form's dimension ceiling.
+    /// Unit tests for lazy exclusive-probability enumeration, including dense-order agreement,
+    /// convergence, residual mass, row reuse, and dimensions beyond dense enumeration.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>

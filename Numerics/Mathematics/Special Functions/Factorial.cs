@@ -184,18 +184,37 @@ namespace Numerics.Mathematics.SpecialFunctions
         }
 
         /// <summary>
-        /// Advances a k-combination over [0, n) to its lexicographic successor, in place.
+        /// Advances a valid k-combination over [0, n) to its lexicographic successor in place.
         /// </summary>
-        /// <param name="combination">The current strictly increasing index tuple; advanced in place.</param>
-        /// <param name="n">The overall count.</param>
-        /// <returns>False when the combination was the last of its size.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when the combination is null.</exception>
+        /// <param name="combination">The current strictly increasing index tuple.</param>
+        /// <param name="n">The overall item count.</param>
+        /// <returns><see langword="false"/> when the tuple is the last combination of its size.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="combination"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="n"/> is negative.</exception>
+        /// <exception cref="ArgumentException">Thrown when the tuple is empty, too long, out of range, or not strictly increasing.</exception>
         public static bool NextCombination(int[] combination, int n)
         {
             if (combination == null) throw new ArgumentNullException(nameof(combination));
-            int k = combination.Length;
-            if (k == 0 || k > n) return false;
+            if (n < 0) throw new ArgumentOutOfRangeException(nameof(n), "The item count must be non-negative.");
+            if (combination.Length == 0 || combination.Length > n)
+                throw new ArgumentException("The combination length must be between one and the item count.", nameof(combination));
 
+            int previous = -1;
+            for (int i = 0; i < combination.Length; i++)
+            {
+                if (combination[i] <= previous || combination[i] >= n)
+                    throw new ArgumentException("Combination indexes must be strictly increasing and within [0, n).", nameof(combination));
+                previous = combination[i];
+            }
+            return NextCombinationUnchecked(combination, n);
+        }
+
+        /// <summary>
+        /// Advances a combination that has already been validated.
+        /// </summary>
+        internal static bool NextCombinationUnchecked(int[] combination, int n)
+        {
+            int k = combination.Length;
             int i = k - 1;
             while (i >= 0 && combination[i] == n - k + i) i--;
             if (i < 0) return false;
@@ -203,7 +222,6 @@ namespace Numerics.Mathematics.SpecialFunctions
             for (int j = i + 1; j < k; j++) combination[j] = combination[j - 1] + 1;
             return true;
         }
-
         /// <summary>
         /// Enumerates every non-empty subset of n items as an index tuple, in the order
         /// <see cref="AllCombinations(int)"/> lays out its rows — subset size ascending, then
@@ -230,7 +248,7 @@ namespace Numerics.Mathematics.SpecialFunctions
                 {
                     yield return combination;
                 }
-                while (NextCombination(combination, n));
+                while (NextCombinationUnchecked(combination, n));
             }
         }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
@@ -7,13 +7,7 @@ using Numerics.Sampling;
 namespace Mathematics.Integration
 {
     /// <summary>
-    /// Unit tests for the Vegas power-transform tail focus (N9): the upstream half of the
-    /// engine-level empirical audit. The transform p' = 1 − (1 − p)^γ concentrates samples in
-    /// the upper tail, and its Jacobian must fold into the weight handed to the integrand —
-    /// otherwise every consumer treating that weight as probability measure is biased even when
-    /// the returned integral is correct. A known heavy-tail integrand must integrate to the
-    /// same value at γ ∈ {1, 4, 10}, and the weights must sum to the domain volume per
-    /// evaluation batch at every γ.
+    /// Unit tests for the VEGAS probability-space power transform and its Jacobian correction.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>

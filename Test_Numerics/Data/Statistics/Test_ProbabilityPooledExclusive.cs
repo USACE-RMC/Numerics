@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
@@ -6,10 +6,8 @@ using Numerics.Data.Statistics;
 namespace Data.Statistics
 {
     /// <summary>
-    /// Unit tests for the pooled <see cref="Probability.IndependentExclusive(System.Collections.Generic.IList{double}, int[], int[,], System.Collections.Generic.List{double}, System.Collections.Generic.List{int[]}, double, double)"/>
-    /// overload (N11): output parity with the allocating overload, steady-state row-array reuse
-    /// across calls, and the truncation flag that surfaces the previously silent
-    /// inclusion-exclusion early exit.
+    /// Unit tests for pooled independent-exclusive probabilities, including agreement with the
+    /// allocating overload, output-row reuse, and early-convergence reporting.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>
@@ -30,9 +28,7 @@ namespace Data.Statistics
         private static readonly int[] ThreeEventCombinations = { 3, 3, 1 };
 
         /// <summary>
-        /// Test that the pooled overload reproduces the allocating overload exactly (the
-        /// allocating form now delegates to it), and reports no truncation on a full
-        /// enumeration.
+        /// Verifies agreement with the allocating overload for a complete enumeration.
         /// </summary>
         [TestMethod]
         public void Test_Pooled_MatchesAllocatingOverload()
@@ -51,8 +47,8 @@ namespace Data.Statistics
             Assert.HasCount(expectedIndicators.Count, pooledIndicators);
             for (int i = 0; i < expectedProbabilities.Count; i++)
             {
-                Assert.AreEqual(expectedProbabilities[i], pooledProbabilities[i], 0d, $"Row {i} probability parity.");
-                CollectionAssert.AreEqual(expectedIndicators[i], pooledIndicators[i], $"Row {i} indicator parity.");
+                Assert.AreEqual(expectedProbabilities[i], pooledProbabilities[i], 0d, $"Row {i} probability mismatch.");
+                CollectionAssert.AreEqual(expectedIndicators[i], pooledIndicators[i], $"Row {i} indicator mismatch.");
             }
         }
 
@@ -78,7 +74,7 @@ namespace Data.Statistics
             Assert.AreSame(firstCallRow6, pooledIndicators[6], "Every pooled row must be reused.");
             Assert.HasCount(7, pooledIndicators);
 
-            // Parity against a fresh allocating call on the second inputs.
+            // Compare with a fresh allocating call on the second inputs.
             Probability.IndependentExclusive(second, ThreeEventCombinations, ThreeEventIndicators,
                 out List<double> expectedProbabilities, out _);
             for (int i = 0; i < expectedProbabilities.Count; i++)
@@ -88,10 +84,7 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Test the truncation flag: many small probabilities converge the inclusion-exclusion
-        /// expansion early, so the deepest combinations are truncated behind one closing
-        /// pseudo-row — previously silent, now reported, with the allocating overload's outputs
-        /// unchanged.
+        /// Verifies that early convergence is reported and appends one closing pseudo-row.
         /// </summary>
         [TestMethod]
         public void Test_Pooled_TruncationIsReported()
@@ -111,7 +104,7 @@ namespace Data.Statistics
             Assert.IsLessThan(indicators.GetLength(0), pooledProbabilities.Count, "The deepest combinations were not enumerated.");
             Assert.HasCount(pooledProbabilities.Count, pooledIndicators);
 
-            // The allocating overload produces the same truncated outputs (it delegates).
+            // The allocating overload produces the same truncated outputs.
             Probability.IndependentExclusive(probabilities, combinations, indicators,
                 out List<double> expectedProbabilities, out _);
             Assert.HasCount(expectedProbabilities.Count, pooledProbabilities);

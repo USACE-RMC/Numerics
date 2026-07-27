@@ -1,4 +1,4 @@
-using Numerics.Distributions;
+﻿using Numerics.Distributions;
 using Numerics.Mathematics;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.Optimization;
@@ -29,18 +29,14 @@ namespace Numerics.Sampling.MCMC
     /// negative Hamiltonian.
     /// </para>
     /// <para>
-    /// During the warmup phase, the leapfrog step size is automatically adapted using dual averaging
+    /// During warmup, the leapfrog step size is automatically adapted using dual averaging
     /// to achieve a target Metropolis acceptance probability of approximately 80%. A diagonal mass matrix
     /// is estimated during warmup using Stan-style windowed adaptation (Welford's online algorithm) to
     /// precondition the Hamiltonian dynamics for multi-scale posteriors.
     /// </para>
     /// <para>
-    /// Key applications include:
-    /// <list type="bullet">
-    /// <item><description>Bayesian flood frequency analysis in RMC-BestFit where manual HMC tuning is impractical.</description></item>
-    /// <item><description>Bayesian parameter estimation for complex hydrologic models in RFA.</description></item>
-    /// <item><description>Posterior inference for mixture models and hierarchical models in TotalRisk.</description></item>
-    /// </list>
+    /// NUTS is suitable for Bayesian parameter estimation in models where manual tuning of HMC
+    /// trajectory lengths is impractical, including hierarchical and mixture models.
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -361,11 +357,8 @@ namespace Numerics.Sampling.MCMC
                 _welfordCount[i] = 0;
             }
 
-            // Compute adaptation window boundaries following Stan exactly.
-            // Stan defaults: init_buffer=75, term_buffer=50, base_window=25
-            // Phase 1 (init_buffer): step size adaptation only, identity mass matrix
-            // Phase 2 (slow adaptation): mass matrix + step size in doubling windows
-            // Phase 3 (term_buffer): final step size tuning with fixed mass matrix
+            // Use Stan's initial buffer, doubling mass-matrix windows, and terminal buffer.
+            // Default lengths are init_buffer=75, base_window=25, and term_buffer=50.
             int totalWarmup = WarmupIterations * ThinningInterval;
 
             // Stan default window sizes, scaled if warmup is too short
@@ -578,7 +571,7 @@ namespace Numerics.Sampling.MCMC
             double eps = _chainStepSizes[index];
             int D = NumberOfParameters;
 
-            // Step 1: Sample momentum from N(0, M) using per-chain mass matrix
+            // Sample momentum from N(0, M) using the per-chain mass matrix.
             var phi = new Vector(D);
             for (int i = 0; i < D; i++)
                 phi[i] = Math.Sqrt(_massMatrix[index][i]) * Normal.StandardZ(_chainPRNGs[index].NextDouble());
@@ -586,7 +579,7 @@ namespace Numerics.Sampling.MCMC
             // Compute initial Hamiltonian using per-chain inverse mass matrix
             double H0 = -state.Fitness + 0.5 * DiagonalQuadraticFormVec(phi, _inverseMassMatrix[index]);
 
-            // Step 2: Initialize tree
+            // Initialize the trajectory tree.
             var theta = new Vector(state.Values);
             var thetaMinus = theta.Clone();
             var thetaPlus = theta.Clone();
@@ -604,7 +597,7 @@ namespace Numerics.Sampling.MCMC
             int trajectoryDepth = 0;
             bool trajectoryDivergent = false;
 
-            // Step 3: Build tree by doubling until U-turn or max depth
+            // Double the trajectory tree until a U-turn or the maximum depth.
             while (depth < MaxTreeDepth)
             {
                 // Choose a random direction
@@ -656,7 +649,7 @@ namespace Numerics.Sampling.MCMC
             }
 
             double averageAcceptanceProbability = numAlpha > 0 ? sumAlpha / numAlpha : 0d;
-            // Step 4: Warmup adaptation (step size + mass matrix)
+            // Adapt the step size and mass matrix during warmup.
             if (sampleNum <= warmupSteps)
             {
                 // Always do dual averaging step size adaptation during warmup
@@ -666,7 +659,7 @@ namespace Numerics.Sampling.MCMC
                     : DELTA_TARGET;
                 DualAveragingUpdate(index, adaptationAcceptanceProbability);
 
-                // Accumulate Welford statistics during mass matrix adaptation windows (Phase 2)
+                // Accumulate Welford statistics during mass-matrix adaptation windows.
                 if (AdaptMassMatrix && sampleNum > _initBuffer && sampleNum <= warmupSteps - _termBuffer)
                 {
                     AccumulateWelfordStatistics(index, candidate.Array);

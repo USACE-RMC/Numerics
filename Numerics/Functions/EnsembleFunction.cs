@@ -1,6 +1,7 @@
-using Numerics.Mathematics.Optimization;
+﻿using Numerics.Mathematics.Optimization;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Xml.Linq;
 
 namespace Numerics.Functions
@@ -15,15 +16,10 @@ namespace Numerics.Functions
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
     /// <para>
-    /// This is how an imported fitted function (e.g., a BestFit rating curve) carries knowledge
-    /// uncertainty into a simulation engine. Both sampling surfaces are <b>pure</b>: every call
-    /// returns a brand-new clone of the template configured with the selected parameter set, so
-    /// concurrent realizations never share mutable state — the thread-safe alternative to
-    /// mutating one instance's <c>ConfidenceLevel</c>/<c>SetParameters</c> inside a
-    /// <c>Parallel.For</c> hot loop. The template is captured as an immutable serialized
-    /// snapshot at construction (each clone re-materializes through
-    /// <see cref="UnivariateFunctionFactory.CreateFromXElement(XElement)"/>), so later edits to
-    /// the original instance never leak into samples.
+    /// Every sample is a new clone of the template configured with one parameter set, so
+    /// concurrent samples do not share mutable function state. The constructor stores a
+    /// serialized template snapshot, and each sample is reconstructed through
+    /// <see cref="UnivariateFunctionFactory.CreateFromXElement(XElement)"/>.
     /// </para>
     /// <para>
     /// Percentile sampling maps u ∈ [0, 1] onto the index ladder as
@@ -48,37 +44,29 @@ namespace Numerics.Functions
             if (parameterSets == null) throw new ArgumentNullException(nameof(parameterSets));
             if (parameterSets.Count == 0) throw new ArgumentException("At least one parameter set is required.", nameof(parameterSets));
 
+            _templateXml = SerializeTemplate(template).ToString(SaveOptions.DisableFormatting);
+
             int expectedLength = template.NumberOfParameters;
             _parameterSets = new ParameterSet[parameterSets.Count];
             for (int i = 0; i < parameterSets.Count; i++)
             {
                 if (parameterSets[i].Values == null || parameterSets[i].Values.Length != expectedLength)
                     throw new ArgumentException("Parameter set " + i + " must carry exactly " + expectedLength + " values (one per template parameter).", nameof(parameterSets));
-                _parameterSets[i] = parameterSets[i];
+                for (int j = 0; j < parameterSets[i].Values.Length; j++)
+                {
+                    if (!Tools.IsFinite(parameterSets[i].Values[j]))
+                        throw new ArgumentException("Parameter set " + i + " contains a non-finite value.", nameof(parameterSets));
+                }
+
+                var validationFunction = UnivariateFunctionFactory.CreateFromXElement(XElement.Parse(_templateXml));
+                var validationError = validationFunction.ValidateParameters(parameterSets[i].Values, false);
+                if (validationError != null)
+                    throw new ArgumentException("Parameter set " + i + " is invalid for the template function.", nameof(parameterSets), validationError);
+                _parameterSets[i] = parameterSets[i].Clone();
             }
 
-            // The immutable template snapshot: parsing a private string per sample guarantees
-            // clones never share XML tree state across threads.
-            _templateXml = SerializeTemplate(template).ToString(SaveOptions.DisableFormatting);
         }
 
-        /// <summary>
-        /// Construct a new ensemble function from a serialized template element and its
-        /// posterior parameter sets (the deserialization path).
-        /// </summary>
-        /// <param name="templateElement">The template's serialized form.</param>
-        /// <param name="parameterSets">The posterior parameter sets.</param>
-        /// <exception cref="ArgumentNullException">Thrown when either argument is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when no parameter sets are supplied.</exception>
-        private EnsembleFunction(XElement templateElement, IList<ParameterSet> parameterSets)
-        {
-            if (templateElement == null) throw new ArgumentNullException(nameof(templateElement));
-            if (parameterSets == null) throw new ArgumentNullException(nameof(parameterSets));
-            if (parameterSets.Count == 0) throw new ArgumentException("At least one parameter set is required.", nameof(parameterSets));
-            _parameterSets = new ParameterSet[parameterSets.Count];
-            for (int i = 0; i < parameterSets.Count; i++) _parameterSets[i] = parameterSets[i];
-            _templateXml = templateElement.ToString(SaveOptions.DisableFormatting);
-        }
 
         private readonly string _templateXml;
         private readonly ParameterSet[] _parameterSets;
@@ -91,7 +79,15 @@ namespace Numerics.Functions
         /// <summary>
         /// The posterior parameter sets.
         /// </summary>
-        public IReadOnlyList<ParameterSet> ParameterSets => _parameterSets;
+        public IReadOnlyList<ParameterSet> ParameterSets
+        {
+            get
+            {
+                var copy = new ParameterSet[_parameterSets.Length];
+                for (int i = 0; i < copy.Length; i++) copy[i] = _parameterSets[i].Clone();
+                return Array.AsReadOnly(copy);
+            }
+        }
 
         /// <summary>
         /// Samples the posterior by index: a fresh template clone configured with the indexed
@@ -106,6 +102,8 @@ namespace Numerics.Functions
                 throw new ArgumentOutOfRangeException(nameof(index), "The posterior index must be within [0, Count).");
             var clone = UnivariateFunctionFactory.CreateFromXElement(XElement.Parse(_templateXml));
             clone.SetParameters(_parameterSets[index].Values);
+            if (!clone.ParametersValid)
+                clone.ValidateParameters(_parameterSets[index].Values, true);
             return clone;
         }
 
@@ -118,7 +116,7 @@ namespace Numerics.Functions
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="percentile"/> is outside [0, 1].</exception>
         public IUnivariateFunction Sample(double percentile)
         {
-            if (percentile < 0d || percentile > 1d)
+            if (!Tools.IsFinite(percentile) || percentile < 0d || percentile > 1d)
                 throw new ArgumentOutOfRangeException(nameof(percentile), "The percentile must be between 0 and 1.");
             int index = (int)Math.Floor(percentile * _parameterSets.Length);
             if (index > _parameterSets.Length - 1) index = _parameterSets.Length - 1;
@@ -167,12 +165,53 @@ namespace Numerics.Functions
             if (setsElement != null)
             {
                 foreach (var child in setsElement.Elements())
-                    sets.Add(new ParameterSet(child));
+                    sets.Add(ParseParameterSet(child));
             }
             if (sets.Count == 0)
                 throw new ArgumentException("The serialized ensemble function carries no parameter sets.", nameof(xElement));
 
-            return new EnsembleFunction(template, sets);
+            return new EnsembleFunction(UnivariateFunctionFactory.CreateFromXElement(template), sets);
+        }
+
+        /// <summary>
+        /// Deserializes and validates one ensemble parameter set.
+        /// </summary>
+        /// <param name="element">The serialized parameter set.</param>
+        /// <returns>The parsed parameter set.</returns>
+        /// <exception cref="ArgumentException">Thrown when a value is missing, malformed, or non-finite.</exception>
+        private static ParameterSet ParseParameterSet(XElement element)
+        {
+            if (element == null) throw new ArgumentNullException(nameof(element));
+            string? valuesText = element.Attribute(nameof(ParameterSet.Values))?.Value;
+            if (string.IsNullOrWhiteSpace(valuesText))
+                throw new ArgumentException("The serialized parameter set is missing its values.", nameof(element));
+
+            string[] tokens = valuesText!.Split('|');
+            var values = new double[tokens.Length];
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                if (!double.TryParse(tokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out values[i])
+                    || !Tools.IsFinite(values[i]))
+                {
+                    throw new ArgumentException("The serialized parameter set contains an invalid value.", nameof(element));
+                }
+            }
+
+            double fitness = 0d;
+            string? fitnessText = element.Attribute(nameof(ParameterSet.Fitness))?.Value;
+            if (fitnessText != null
+                && (!double.TryParse(fitnessText, NumberStyles.Any, CultureInfo.InvariantCulture, out fitness)
+                    || !Tools.IsFinite(fitness)))
+                throw new ArgumentException("The serialized parameter-set fitness is invalid.", nameof(element));
+
+            double weight = 0d;
+            string? weightText = element.Attribute(nameof(ParameterSet.Weight))?.Value;
+            if (weightText != null
+                && (!double.TryParse(weightText, NumberStyles.Any, CultureInfo.InvariantCulture, out weight)
+                    || !Tools.IsFinite(weight)))
+                throw new ArgumentException("The serialized parameter-set weight is invalid.", nameof(element));
+
+            return new ParameterSet(values, fitness, weight);
         }
 
         /// <summary>

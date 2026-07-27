@@ -152,22 +152,15 @@ namespace Numerics.Mathematics.Integration
         public Func<double, double> Function { get; }
 
         /// <summary>
-        /// An optional recorder invoked as (x, weight, f(x)) for every node of every ACCEPTED
-        /// interval — the intervals of the final composite rule. Null (the default) records
-        /// nothing and leaves the integration path unchanged with zero overhead.
+        /// Gets or sets a callback invoked as (x, weight, f(x)) for quadrature nodes belonging
+        /// to accepted intervals. A null callback disables recording.
         /// </summary>
         /// <remarks>
-        /// A naive per-evaluation weight hand-off double-counts under adaptivity: a rejected
-        /// interval's 21 evaluations are superseded by its children's, so their weights must
-        /// never carry measure. The recorder therefore fires only when an interval is accepted
-        /// (tolerance reached, or the depth/evaluation caps force acceptance), with each node's
-        /// Kronrod weight scaled by the interval half-length. Two identities follow: the weights
-        /// of one accepted interval sum to exactly its width, so the recorded weights sum to the
-        /// integration domain's width (any double count would overshoot it); and Σ weight·f(x)
-        /// over all recorded nodes reproduces <see cref="Integrator.Result"/> to floating-point
-        /// reassociation (the composite rule IS that sum). Recorded abscissas are strictly
-        /// interior to their interval (the G10K21 property), so adjacent intervals never repeat
-        /// a node.
+        /// Evaluations from subdivided parent intervals are omitted because their children
+        /// replace them in the composite rule. Each reported Kronrod weight includes the
+        /// interval half-length, so the weights sum to the integration-domain width and their
+        /// weighted function values reproduce <see cref="Integrator.Result"/> up to floating-point
+        /// reassociation. The callback is snapshotted when integration begins.
         /// </remarks>
         public Action<double, double, double>? Recorder { get; set; }
 
@@ -203,14 +196,15 @@ namespace Numerics.Mathematics.Integration
             StandardError = 0;
             ClearResults();
             Validate();
+            Action<double, double, double>? recorder = Recorder;
 
             try
             {
                 // Initial evaluation using Gauss-Kronrod rule on the whole interval
-                var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(a, b, 0);
+                var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(a, b, 0, recorder);
 
                 // Recursively sub-divide
-                Result = AdaptiveGK(Function, a, b, MaxDepth, kronrodResult, gaussResult, a, b, nodes, values, 0);
+                Result = AdaptiveGK(Function, a, b, MaxDepth, kronrodResult, gaussResult, a, b, nodes, values, 0, recorder);
 
                 // Standard error calculated after recursion completes
                 StandardError = Math.Sqrt(_squaredError);
@@ -241,6 +235,7 @@ namespace Numerics.Mathematics.Integration
             StandardError = 0;
             ClearResults();
             Validate();
+            Action<double, double, double>? recorder = Recorder;
 
             try
             {
@@ -250,10 +245,10 @@ namespace Numerics.Mathematics.Integration
                     // Initial evaluation using Gauss-Kronrod rule on the bin interval
                     double binA = bins[i].LowerBound;
                     double binB = bins[i].UpperBound;
-                    var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(binA, binB, 0);
+                    var (kronrodResult, gaussResult, nodes, values) = EvaluateGaussKronrod(binA, binB, 0, recorder);
 
                     // Recursively sub-divide
-                    mu += AdaptiveGK(Function, binA, binB, MaxDepth, kronrodResult, gaussResult, binA, binB, nodes, values, 0);
+                    mu += AdaptiveGK(Function, binA, binB, MaxDepth, kronrodResult, gaussResult, binA, binB, nodes, values, 0, recorder);
                 }
 
                 // Final result and standard error
@@ -280,22 +275,23 @@ namespace Numerics.Mathematics.Integration
         /// Evaluates the Gauss-Kronrod G10K21 rule over the interval [a, b]. When a
         /// <see cref="Recorder"/> is attached, the 21 node abscissas and function values are
         /// also captured (in the fixed capture order matching the static weight layout) so the
-        /// interval can flush them if it is later accepted; with no recorder the capture is
+        /// interval can report them if it is accepted; with no recorder the capture is
         /// skipped entirely and the evaluation path is unchanged.
         /// </summary>
         /// <param name="a">The lower bound of integration.</param>
         /// <param name="b">The upper bound of integration.</param>
-        /// <param name="slot">The capture-buffer slot; distinct for every interval alive at once.</param>
+        /// <param name="slot">The capture-buffer slot.</param>
+        /// <param name="recorder">The recorder snapshot for this integration.</param>
         /// <returns>A tuple containing (Kronrod estimate, Gauss estimate, captured nodes, captured values).</returns>
-        private (double kronrod, double gauss, double[]? nodes, double[]? values) EvaluateGaussKronrod(double a, double b, int slot)
+        private (double kronrod, double gauss, double[]? nodes, double[]? values) EvaluateGaussKronrod(double a, double b, int slot, Action<double, double, double>? recorder)
         {
             double center = 0.5 * (a + b);
             double halfLength = 0.5 * (b - a);
 
             double resultGauss = 0.0;
             double resultKronrod = 0.0;
-            double[]? nodes = Recorder != null ? RentCapture(ref _nodePool, slot) : null;
-            double[]? values = Recorder != null ? RentCapture(ref _valuePool, slot) : null;
+            double[]? nodes = recorder != null ? RentCapture(ref _nodePool, slot) : null;
+            double[]? values = recorder != null ? RentCapture(ref _valuePool, slot) : null;
 
             // Evaluate at center point (x = 0)
             double f0 = Function(center);
@@ -354,14 +350,16 @@ namespace Numerics.Mathematics.Integration
         /// <param name="b0">The original upper bound of the integral.</param>
         /// <param name="nodes">The interval's captured node abscissas (null when no recorder is attached).</param>
         /// <param name="values">The interval's captured function values (null when no recorder is attached).</param>
-        /// <param name="level">The recursion level, which selects this interval's children's capture slots.</param>
+        /// <param name="level">The recursion level used to select capture slots.</param>
+        /// <param name="recorder">The recorder snapshot for this integration.</param>
         /// <returns>
         /// An evaluation of the integral using adaptive Gauss-Kronrod with error less than the specified tolerance.
         /// This is accomplished by subdividing the interval until the error between the Gauss and Kronrod estimates
         /// is sufficiently small.
         /// </returns>
         private double AdaptiveGK(Func<double, double> f, double a, double b, int depth,
-            double kronrodWhole, double gaussWhole, double a0, double b0, double[]? nodes, double[]? values, int level)
+            double kronrodWhole, double gaussWhole, double a0, double b0, double[]? nodes, double[]? values, int level,
+            Action<double, double, double>? recorder)
         {
             // Error estimate: difference between Kronrod and Gauss results
             double error = Math.Abs(kronrodWhole - gaussWhole);
@@ -380,16 +378,14 @@ namespace Numerics.Mathematics.Integration
                 // Convergence is reached
                 _squaredError += error * error; // Accumulate squared errors
 
-                // The interval is ACCEPTED: it is part of the final composite rule, so its
-                // nodes carry quadrature measure — flush them to the recorder with the
-                // half-length-scaled Kronrod weights. Rejected (subdivided) intervals never
-                // reach this point, so their superseded evaluations never carry weight.
-                if (Recorder != null && nodes != null && values != null)
+                // Report only nodes that belong to the final composite rule, using weights
+                // scaled by the accepted interval's half-length.
+                if (recorder != null && nodes != null && values != null)
                 {
                     double halfLength = 0.5 * (b - a);
                     for (int j = 0; j < 21; j++)
                     {
-                        Recorder(nodes[j], wCapture[j] * halfLength, values[j]);
+                        recorder(nodes[j], wCapture[j] * halfLength, values[j]);
                     }
                 }
                 return kronrodWhole; // Return the more accurate Kronrod estimate
@@ -403,14 +399,14 @@ namespace Numerics.Mathematics.Integration
                 // Both halves are evaluated before either recurses, so they need distinct capture
                 // slots; their own children take the slots of the next level, which are free by
                 // the time each subtree runs.
-                var (kronrodLeft, gaussLeft, nodesLeft, valuesLeft) = EvaluateGaussKronrod(a, m, 2 * level + 1);
+                var (kronrodLeft, gaussLeft, nodesLeft, valuesLeft) = EvaluateGaussKronrod(a, m, 2 * level + 1, recorder);
 
                 // Evaluate Gauss-Kronrod on right half
-                var (kronrodRight, gaussRight, nodesRight, valuesRight) = EvaluateGaussKronrod(m, b, 2 * level + 2);
+                var (kronrodRight, gaussRight, nodesRight, valuesRight) = EvaluateGaussKronrod(m, b, 2 * level + 2, recorder);
 
                 // Recursively subdivide the intervals and accumulate results
-                var leftResult = AdaptiveGK(f, a, m, depth - 1, kronrodLeft, gaussLeft, a0, b0, nodesLeft, valuesLeft, level + 1);
-                var rightResult = AdaptiveGK(f, m, b, depth - 1, kronrodRight, gaussRight, a0, b0, nodesRight, valuesRight, level + 1);
+                var leftResult = AdaptiveGK(f, a, m, depth - 1, kronrodLeft, gaussLeft, a0, b0, nodesLeft, valuesLeft, level + 1, recorder);
+                var rightResult = AdaptiveGK(f, m, b, depth - 1, kronrodRight, gaussRight, a0, b0, nodesRight, valuesRight, level + 1, recorder);
 
                 return leftResult + rightResult;
             }

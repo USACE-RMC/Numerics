@@ -1,4 +1,4 @@
-using Numerics.Distributions;
+﻿using Numerics.Distributions;
 using Numerics.Mathematics.RootFinding;
 using System;
 using System.Collections.Generic;
@@ -8,7 +8,7 @@ using System.Xml.Linq;
 namespace Numerics.Functions
 {
     /// <summary>
-    /// A segmented power function in the BaRatin matrix-of-controls ADDITION mode:
+    /// A segmented power function in the BaRatin matrix-of-controls addition mode:
     /// Q(h) = Σₖ 10^(log₁₀αₖ) · (h − hₖ)^βₖ · 𝟙{h &gt; hₖ}, with a log₁₀-space Gaussian residual σ.
     /// </summary>
     /// <remarks>
@@ -17,9 +17,8 @@ namespace Numerics.Functions
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
     /// <para>
-    /// The parameter-vector layout is exactly the RMC-BestFit rating-curve layout
-    /// (<c>RMC.BestFit/Models/RatingCurve/RatingCurve.cs</c>), so a fitted posterior parameter
-    /// set applies directly through <see cref="SetParameters(IList{double})"/>:
+    /// Parameter sets apply directly through <see cref="SetParameters(IList{double})"/> using
+    /// the layout:
     /// <c>[h₁, log₁₀α₁, β₁, h₂, log₁₀α₂, β₂, …, σ]</c> with length 3·segments + 1. Under
     /// addition mode the BaRatin continuity derivation collapses each control's offset to its
     /// activation stage (b_k = κ_k), the breakpoints must be strictly ordered
@@ -28,10 +27,10 @@ namespace Numerics.Functions
     /// <see cref="PowerFunction"/> with α = 10^(log₁₀α₁), β = β₁, ξ = h₁.
     /// </para>
     /// <para>
-    /// The residual is log₁₀-space, matching the BestFit stochastic prediction: with a
+    /// The residual is Gaussian in log₁₀ space: with a
     /// confidence level u, Q(h) is multiplied by 10^(z) where z ~ N(0, σ) evaluated at u. The
     /// numeric <see cref="InverseFunction(double)"/> uses monotone bracketing with Brent's
-    /// method — the addition-mode sum is strictly increasing above h₁ for non-negative
+    /// method — the addition-mode sum is strictly increasing above h₁ for positive
     /// exponents.
     /// </para>
     /// <para>
@@ -77,7 +76,7 @@ namespace Numerics.Functions
         }
 
         /// <summary>
-        /// Construct a new segmented power function directly from a BestFit-layout parameter
+        /// Construct a new segmented power function directly from a parameter
         /// vector. The segment count is inferred from the vector length (3·segments + 1), and
         /// the function is stochastic (σ is the last entry).
         /// </summary>
@@ -92,6 +91,7 @@ namespace Numerics.Functions
             _numberOfSegments = (parameters.Count - 1) / 3;
             _parameters = new double[parameters.Count];
             IsDeterministic = false;
+            ValidateParameters(parameters, true);
             SetParameters(parameters);
         }
 
@@ -125,7 +125,18 @@ namespace Numerics.Functions
         }
 
         /// <inheritdoc/>
-        public double Maximum { get; set; } = double.MaxValue;
+        public double Maximum
+        {
+            get { return _maximum; }
+            set
+            {
+                if (!Tools.IsFinite(value) || value <= Minimum)
+                    throw new ArgumentOutOfRangeException(nameof(Maximum), "Maximum must be finite and greater than the first breakpoint.");
+                _maximum = value;
+            }
+        }
+
+        private double _maximum = double.MaxValue;
 
         /// <inheritdoc/>
         public double[] MinimumOfParameters
@@ -137,7 +148,7 @@ namespace Numerics.Functions
                 {
                     result[3 * k] = double.MinValue;
                     result[3 * k + 1] = double.MinValue;
-                    result[3 * k + 2] = 0d;
+                    result[3 * k + 2] = Tools.DoubleMachineEpsilon;
                 }
                 result[result.Length - 1] = 0d;
                 return result;
@@ -200,10 +211,11 @@ namespace Numerics.Functions
         /// <inheritdoc/>
         public void SetParameters(IList<double> parameters)
         {
-            // Validate parameters
-            _parametersValid = ValidateParameters(parameters, false) is null;
-            // Set parameters
-            for (int i = 0; i < _parameters.Length && i < parameters.Count; i++)
+            var validationError = ValidateParameters(parameters, false);
+            if (validationError != null) return;
+            _parametersValid = true;
+
+            for (int i = 0; i < _parameters.Length; i++)
                 _parameters[i] = parameters[i];
             _normal.SetParameters(0d, _parameters[_parameters.Length - 1]);
         }
@@ -228,9 +240,9 @@ namespace Numerics.Functions
             }
             for (int k = 0; k < (parameters.Count - 1) / 3; k++)
             {
-                if (parameters[3 * k + 2] < 0)
+                if (parameters[3 * k + 2] <= 0)
                 {
-                    var error = new ArgumentOutOfRangeException(nameof(parameters), "Exponents must be non-negative for a monotone rating.");
+                    var error = new ArgumentOutOfRangeException(nameof(parameters), "Exponents must be greater than zero for a strictly increasing function.");
                     if (throwException) throw error;
                     return error;
                 }
@@ -240,6 +252,12 @@ namespace Numerics.Functions
                     if (throwException) throw error;
                     return error;
                 }
+            }
+            if (parameters[0] >= Maximum)
+            {
+                var error = new ArgumentOutOfRangeException(nameof(parameters), "The first breakpoint must be less than Maximum.");
+                if (throwException) throw error;
+                return error;
             }
             if (IsDeterministic == false && parameters[parameters.Count - 1] <= 0)
             {
@@ -264,7 +282,7 @@ namespace Numerics.Functions
 
             if (IsDeterministic == true || ConfidenceLevel < 0 || ConfidenceLevel > 1)
                 return q;
-            // Log₁₀-space residual, matching the BestFit stochastic prediction.
+            // Apply the Gaussian residual in log₁₀ space.
             return q * Math.Pow(10d, _normal.InverseCDF(ConfidenceLevel));
         }
 
@@ -276,6 +294,10 @@ namespace Numerics.Functions
                 ValidateParameters(_parameters, true);
 
             // Fold the residual out first: the stochastic curve is the deterministic curve
+            if (double.IsNaN(y) || double.IsNegativeInfinity(y))
+                throw new ArgumentOutOfRangeException(nameof(y), "The inverse value must not be NaN or negative infinity.");
+            if (double.IsPositiveInfinity(y)) return Maximum;
+
             // scaled by 10^z, so the inverse divides before the monotone root find.
             if (IsDeterministic == false && ConfidenceLevel >= 0 && ConfidenceLevel <= 1)
                 y /= Math.Pow(10d, _normal.InverseCDF(ConfidenceLevel));
@@ -304,7 +326,7 @@ namespace Numerics.Functions
 
         /// <summary>
         /// Serializes the function's configuration to an XElement: the segment count, the
-        /// BestFit-layout parameter vector, the deterministic flag, and the upper support bound.
+        /// parameter vector, the deterministic flag, and the upper support bound.
         /// <see cref="Minimum"/> derives from h₁ and <see cref="ConfidenceLevel"/> is runtime
         /// sampling state — neither is serialized.
         /// </summary>
@@ -338,6 +360,8 @@ namespace Numerics.Functions
                 throw new ArgumentException("The serialized segmented power function is missing its parameter vector.", nameof(xElement));
 
             string[] tokens = text!.Split('|');
+            if (tokens.Length < 4 || (tokens.Length - 1) % 3 != 0)
+                throw new ArgumentException("The serialized parameter vector has an invalid length.", nameof(xElement));
             var parameters = new double[tokens.Length];
             for (int i = 0; i < tokens.Length; i++)
             {
@@ -345,18 +369,44 @@ namespace Numerics.Functions
                     throw new ArgumentException("The serialized segmented power function carries an unparseable parameter value.", nameof(xElement));
             }
 
-            var function = new SegmentedPowerFunction(parameters);
-            if (bool.TryParse(xElement.Attribute(nameof(IsDeterministic))?.Value, out bool isDeterministic))
-                function.IsDeterministic = isDeterministic;
-            if (double.TryParse(xElement.Attribute(nameof(Maximum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double maximum))
-                function.Maximum = maximum;
+            int inferredSegments = (parameters.Length - 1) / 3;
+            string? segmentText = xElement.Attribute(nameof(NumberOfSegments))?.Value;
+            if (segmentText != null
+                && (!int.TryParse(segmentText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int serializedSegments)
+                    || serializedSegments != inferredSegments))
+            {
+                throw new ArgumentException("The serialized segment count does not match the parameter vector.", nameof(xElement));
+            }
+
+            bool isDeterministic = false;
+            string? deterministicText = xElement.Attribute(nameof(IsDeterministic))?.Value;
+            if (deterministicText != null && !bool.TryParse(deterministicText, out isDeterministic))
+                throw new ArgumentException("The serialized deterministic flag is invalid.", nameof(xElement));
+
+            double? maximum = null;
+            string? maximumText = xElement.Attribute(nameof(Maximum))?.Value;
+            if (maximumText != null)
+            {
+                if (!double.TryParse(maximumText, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsedMaximum))
+                    throw new ArgumentException("The serialized maximum is invalid.", nameof(xElement));
+                maximum = parsedMaximum;
+            }
+
+            var function = new SegmentedPowerFunction(inferredSegments)
+            {
+                IsDeterministic = isDeterministic
+            };
+            function.SetParameters(parameters);
+            if (!function.ParametersValid)
+                function.ValidateParameters(parameters, true);
+            if (maximum.HasValue)
+                function.Maximum = maximum.Value;
             return function;
         }
 
         /// <summary>
         /// The deterministic addition-mode discharge: the sum of the active controls' power
-        /// laws, zero at and below the main-channel cease-to-flow stage h₁ (the BestFit
-        /// <c>Predict</c> body).
+        /// laws, zero at and below the main-channel cease-to-flow stage h₁.
         /// </summary>
         /// <param name="x">The stage.</param>
         /// <returns>The deterministic discharge.</returns>

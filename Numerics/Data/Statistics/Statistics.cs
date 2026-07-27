@@ -312,33 +312,31 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Computes the standard error of the statistic, using the jackknife method.
+        /// Computes the jackknife standard error of a statistic.
         /// </summary>
-        /// <param name="data">Sample of data, no sorting is assumed.</param>
-        /// <param name="statistic">The statistic for estimating standard error.</param>
-        /// <remarks>
-        /// Chunked so the sum merges in a fixed order, independent of the thread count. Each chunk
-        /// refills one leave-one-out buffer rather than copying the sample per point.
-        /// </remarks>
+        /// <param name="data">Sample data.</param>
+        /// <param name="statistic">The statistic evaluated on isolated sample arrays.</param>
+        /// <returns>The jackknife standard error.</returns>
         public static double JackKnifeStandardError(IList<double> data, Func<IList<double>, double> statistic)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
+            if (statistic == null) throw new ArgumentNullException(nameof(statistic));
             if (data.Count == 0) return double.NaN;
 
             int N = data.Count;
             if (N == 1) return 0d;
-            double theta = statistic(data);
+            double theta = statistic(data.ToArray());
 
             int chunks = Math.Min(JackKnifeChunks, N);
             var chunkSums = new double[chunks];
             Parallel.For(0, chunks, c =>
             {
-                var jackSample = new double[N - 1];
                 double sum = 0d;
                 int start = (int)((long)c * N / chunks);
                 int end = (int)((long)(c + 1) * N / chunks);
                 for (int i = start; i < end; i++)
                 {
+                    var jackSample = new double[N - 1];
                     for (int k = 0; k < i; k++) jackSample[k] = data[k];
                     for (int k = i + 1; k < N; k++) jackSample[k - 1] = data[k];
                     sum += Tools.Sqr(statistic(jackSample) - theta);
@@ -346,11 +344,10 @@ namespace Numerics.Data.Statistics
                 chunkSums[c] = sum;
             });
 
-            double I = 0d;
-            for (int c = 0; c < chunks; c++) I += chunkSums[c];
-            return Math.Sqrt((N - 1) / (double)N * I);
+            double sumOfSquares = 0d;
+            for (int c = 0; c < chunks; c++) sumOfSquares += chunkSums[c];
+            return Math.Sqrt((N - 1) / (double)N * sumOfSquares);
         }
-
         /// <summary>
         /// The number of accumulation chunks used by the jackknife reductions — fixed, so the
         /// floating-point association order does not vary with the machine or the thread count.
@@ -358,28 +355,27 @@ namespace Numerics.Data.Statistics
         private const int JackKnifeChunks = 64;
 
         /// <summary>
-        /// Returns a jackknifed sample.
+        /// Evaluates a statistic for every leave-one-out sample.
         /// </summary>
-        /// <param name="data">Sample of data, no sorting is assumed.</param>
-        /// <param name="statistic">The statistic for estimating a sample.</param>
+        /// <param name="data">Sample data.</param>
+        /// <param name="statistic">The statistic evaluated on isolated leave-one-out arrays.</param>
+        /// <returns>The statistic values, or <see langword="null"/> for an empty input sample.</returns>
         public static double[]? JackKnifeSample(IList<double> data, Func<IList<double>, double> statistic)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
+            if (statistic == null) throw new ArgumentNullException(nameof(statistic));
             if (data.Count == 0) return null;
 
             int N = data.Count;
             var thetaJack = new double[N];
-            if (N == 1) return thetaJack;
-
-            // Perform Jackknife, reusing one leave-one-out buffer per chunk.
             int chunks = Math.Min(JackKnifeChunks, N);
             Parallel.For(0, chunks, c =>
             {
-                var jackSample = new double[N - 1];
                 int start = (int)((long)c * N / chunks);
                 int end = (int)((long)(c + 1) * N / chunks);
                 for (int i = start; i < end; i++)
                 {
+                    var jackSample = new double[N - 1];
                     for (int k = 0; k < i; k++) jackSample[k] = data[k];
                     for (int k = i + 1; k < N; k++) jackSample[k - 1] = data[k];
                     thetaJack[i] = statistic(jackSample);
@@ -387,7 +383,6 @@ namespace Numerics.Data.Statistics
             });
             return thetaJack;
         }
-
         /// <summary>
         /// Estimates the kurtosis from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.

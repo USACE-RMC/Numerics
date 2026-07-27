@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics;
@@ -8,12 +8,8 @@ using Numerics.Sampling;
 namespace Mathematics.Integration
 {
     /// <summary>
-    /// Unit tests for the <see cref="AdaptiveGaussKronrod.Recorder"/> — the acceptance-aware
-    /// node ledger: recorded weights must partition the integration domain exactly (a rejected
-    /// interval's superseded evaluations never carry measure, so any double count would
-    /// overshoot the domain width), the weighted node sum must reproduce the returned integral
-    /// (the composite rule IS that sum), and an unattached recorder must leave the integration
-    /// byte-identical.
+    /// Unit tests for accepted-interval quadrature records, including domain mass, weighted
+    /// values, stratified integration, and the disabled-recorder path.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>
@@ -30,10 +26,8 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
-        /// Test that the recorded weights sum to the domain width and the weighted node sum
-        /// reproduces the returned integral under forced deep subdivision — the proof that
-        /// abandoned (subdivided) parents never surface: if a rejected parent's nodes carried
-        /// weight, the weight sum would overshoot the domain width by that parent's width.
+        /// Verifies that accepted-interval weights partition the domain and their weighted
+        /// function values reproduce the integral after adaptive subdivision.
         /// </summary>
         [TestMethod]
         public void Test_Recorder_MassAndResultIdentities()
@@ -48,9 +42,9 @@ namespace Mathematics.Integration
             gk.Integrate();
             Assert.AreEqual(IntegrationStatus.Success, gk.Status);
 
-            // The ledger arrives 21 nodes per accepted interval, and subdivision must have
+            // Records arrive as 21 nodes per accepted interval, and subdivision must have
             // happened for this peak at this tolerance.
-            Assert.AreEqual(0, records.Count % 21, "The ledger flushes whole 21-node intervals.");
+            Assert.AreEqual(0, records.Count % 21, "Records contain complete 21-node intervals.");
             int intervals = records.Count / 21;
             Assert.IsGreaterThan(1, intervals, "The sharp peak must force subdivision.");
 
@@ -74,7 +68,7 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
-        /// Test the stratified-bin form: the ledger covers the union of the bins and reproduces
+        /// Test the stratified-bin form: the records cover the union of the bins and reproduces
         /// the summed result, with per-bin acceptance.
         /// </summary>
         [TestMethod]
@@ -102,14 +96,12 @@ namespace Mathematics.Integration
                 weightSum += records[i].Weight;
                 weightedValueSum += records[i].Weight * records[i].Value;
             }
-            Assert.AreEqual(1d, weightSum, 1E-12, "The ledger covers the union of the stratification bins.");
+            Assert.AreEqual(1d, weightSum, 1E-12, "The records cover the union of the stratification bins.");
             Assert.AreEqual(gk.Result, weightedValueSum, Math.Abs(gk.Result) * 1E-12);
         }
 
         /// <summary>
-        /// Test that attaching the recorder does not perturb the integration itself, and that
-        /// leaving it unattached reproduces the original behavior bit-for-bit (the evaluation
-        /// sequence is identical; capture only observes it).
+        /// Verifies that recording does not change the result or function-evaluation count.
         /// </summary>
         [TestMethod]
         public void Test_Recorder_OffIsByteIdentical()

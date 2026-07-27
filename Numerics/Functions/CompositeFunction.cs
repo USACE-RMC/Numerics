@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 
 namespace Numerics.Functions
@@ -52,9 +53,12 @@ namespace Numerics.Functions
             _weights = new double[functions.Count];
             for (int i = 0; i < functions.Count; i++)
             {
+                if (functions[i] == null) throw new ArgumentException("Child functions cannot contain null entries.", nameof(functions));
                 _functions[i] = functions[i];
                 _weights[i] = 1d / functions.Count;
             }
+            _functionsView = Array.AsReadOnly(_functions);
+            _weightsView = Array.AsReadOnly(_weights);
         }
 
         /// <summary>
@@ -73,28 +77,52 @@ namespace Numerics.Functions
             if (functions.Count != weights.Count) throw new ArgumentException("The weight count must match the function count.", nameof(weights));
             _functions = new IUnivariateFunction[functions.Count];
             _weights = new double[functions.Count];
-            for (int i = 0; i < functions.Count; i++) _functions[i] = functions[i];
+            for (int i = 0; i < functions.Count; i++)
+            {
+                if (functions[i] == null) throw new ArgumentException("Child functions cannot contain null entries.", nameof(functions));
+                _functions[i] = functions[i];
+            }
+            _functionsView = Array.AsReadOnly(_functions);
+            _weightsView = Array.AsReadOnly(_weights);
+            ValidateParameters(weights, true);
             SetParameters(weights);
         }
 
         private bool _parametersValid = true;
         private IUnivariateFunction[] _functions;
         private double[] _weights;
+        private readonly IReadOnlyList<IUnivariateFunction> _functionsView;
+        private readonly IReadOnlyList<double> _weightsView;
+        private static readonly ConditionalWeakTable<IUnivariateFunction, object> ChildLocks = new ConditionalWeakTable<IUnivariateFunction, object>();
 
         /// <summary>
         /// The combination mode. Default = weighted average.
         /// </summary>
-        public CompositeFunctionMode Mode { get; set; } = CompositeFunctionMode.WeightedAverage;
+        private CompositeFunctionMode _mode = CompositeFunctionMode.WeightedAverage;
+
+        /// <summary>
+        /// The combination mode. Default = weighted average.
+        /// </summary>
+        public CompositeFunctionMode Mode
+        {
+            get { return _mode; }
+            set
+            {
+                if (!Enum.IsDefined(typeof(CompositeFunctionMode), value))
+                    throw new ArgumentOutOfRangeException(nameof(Mode), value, "The composite mode is not defined.");
+                _mode = value;
+            }
+        }
 
         /// <summary>
         /// The child functions.
         /// </summary>
-        public IReadOnlyList<IUnivariateFunction> Functions => _functions;
+        public IReadOnlyList<IUnivariateFunction> Functions => _functionsView;
 
         /// <summary>
         /// The child weights (non-negative, summing to one).
         /// </summary>
-        public IReadOnlyList<double> Weights => _weights;
+        public IReadOnlyList<double> Weights => _weightsView;
 
         /// <inheritdoc/>
         /// <remarks>The parameters are the child weights; children own their own parameters.</remarks>
@@ -199,10 +227,11 @@ namespace Numerics.Functions
         /// <remarks>The parameters are the child weights.</remarks>
         public void SetParameters(IList<double> parameters)
         {
-            // Validate parameters
-            _parametersValid = ValidateParameters(parameters, false) is null;
-            // Set parameters
-            for (int i = 0; i < _weights.Length && i < parameters.Count; i++)
+            var validationError = ValidateParameters(parameters, false);
+            if (validationError != null) return;
+            _parametersValid = true;
+
+            for (int i = 0; i < _weights.Length; i++)
                 _weights[i] = parameters[i];
         }
 
@@ -244,11 +273,10 @@ namespace Numerics.Functions
 
             if (IsDeterministic == true || ConfidenceLevel < 0 || ConfidenceLevel > 1)
             {
-                // The mean convention: the weighted average of the children's own mean
-                // evaluations (children left at their configured state).
+                // Evaluate each child using the shared mean convention.
                 double mean = 0d;
                 for (int i = 0; i < _functions.Length; i++)
-                    mean += _weights[i] * _functions[i].Function(x);
+                    mean += _weights[i] * EvaluateChildAt(i, -1d, x);
                 return mean;
             }
 
@@ -272,6 +300,9 @@ namespace Numerics.Functions
             if (ParametersValid == false)
                 ValidateParameters(_weights, true);
 
+            if (!Tools.IsFinite(y))
+                throw new ArgumentOutOfRangeException(nameof(y), "The inverse value must be finite.");
+
             if (Mode == CompositeFunctionMode.Mixture && IsDeterministic == false && ConfidenceLevel >= 0 && ConfidenceLevel <= 1)
             {
                 int index = SelectMixtureChild(ConfidenceLevel, out double remainder);
@@ -284,8 +315,20 @@ namespace Numerics.Functions
             double upper = Maximum;
             if (double.IsInfinity(lower) || lower == double.MinValue) lower = -1d;
             if (double.IsInfinity(upper) || upper == double.MaxValue) upper = 1d;
-            while (Function(lower) > y && Tools.IsFinite(lower)) lower = lower < 0 ? lower * 2d : (lower - 1d) * 2d;
-            while (Function(upper) < y && Tools.IsFinite(upper)) upper = upper > 0 ? upper * 2d : (upper + 1d) * 2d;
+            for (int iteration = 0; Function(lower) > y && iteration < 128; iteration++)
+            {
+                double candidate = lower < 0d ? lower * 2d : (lower - 1d) * 2d;
+                if (!Tools.IsFinite(candidate)) break;
+                lower = candidate;
+            }
+            for (int iteration = 0; Function(upper) < y && iteration < 128; iteration++)
+            {
+                double candidate = upper > 0d ? upper * 2d : (upper + 1d) * 2d;
+                if (!Tools.IsFinite(candidate)) break;
+                upper = candidate;
+            }
+            if (Function(lower) > y || Function(upper) < y)
+                throw new ArgumentOutOfRangeException(nameof(y), "The value is outside the invertible range of the composite function.");
             return Mathematics.RootFinding.Brent.Solve(h => Function(h) - y, lower, upper);
         }
 
@@ -335,7 +378,7 @@ namespace Numerics.Functions
             if (functions.Count == 0)
                 throw new ArgumentException("The serialized composite function carries no child functions.", nameof(xElement));
 
-            var composite = new CompositeFunction(functions);
+            CompositeFunction composite;
             string? weightsText = xElement.Attribute(nameof(Weights))?.Value;
             if (!string.IsNullOrEmpty(weightsText))
             {
@@ -348,10 +391,21 @@ namespace Numerics.Functions
                     if (!double.TryParse(tokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out weights[i]))
                         throw new ArgumentException("The serialized composite function carries an unparseable weight.", nameof(xElement));
                 }
-                composite.SetParameters(weights);
+                composite = new CompositeFunction(functions, weights);
             }
-            if (Enum.TryParse(xElement.Attribute(nameof(Mode))?.Value, out CompositeFunctionMode mode))
+            else
+            {
+                composite = new CompositeFunction(functions);
+            }
+
+            string? modeText = xElement.Attribute(nameof(Mode))?.Value;
+            if (modeText != null)
+            {
+                if (!Enum.TryParse(modeText, out CompositeFunctionMode mode)
+                    || !Enum.IsDefined(typeof(CompositeFunctionMode), mode))
+                    throw new ArgumentException("The serialized composite mode is invalid.", nameof(xElement));
                 composite.Mode = mode;
+            }
             return composite;
         }
 
@@ -365,21 +419,25 @@ namespace Numerics.Functions
         private int SelectMixtureChild(double u, out double remainder)
         {
             double cumulative = 0d;
+            int lastPositive = -1;
             for (int i = 0; i < _weights.Length; i++)
             {
                 if (_weights[i] <= 0d) continue;
-                if (u <= cumulative + _weights[i] || i == _weights.Length - 1)
+                lastPositive = i;
+                double next = cumulative + _weights[i];
+                if (u <= next)
                 {
                     remainder = (u - cumulative) / _weights[i];
                     if (remainder < 0d) remainder = 0d;
                     if (remainder > 1d) remainder = 1d;
                     return i;
                 }
-                cumulative += _weights[i];
+                cumulative = next;
             }
-            // All-zero weights cannot validate; fall back to the last child defensively.
-            remainder = u;
-            return _weights.Length - 1;
+            if (lastPositive < 0)
+                throw new InvalidOperationException("The composite has no positive child weight.");
+            remainder = 1d;
+            return lastPositive;
         }
 
         /// <summary>
@@ -393,11 +451,23 @@ namespace Numerics.Functions
         private double EvaluateChildAt(int index, double confidenceLevel, double x)
         {
             var child = _functions[index];
-            double restore = child.ConfidenceLevel;
-            child.ConfidenceLevel = confidenceLevel;
-            double value = child.Function(x);
-            child.ConfidenceLevel = restore;
-            return value;
+            if (child.IsDeterministic)
+                return child.Function(x);
+
+            object syncRoot = ChildLocks.GetValue(child, key => new object());
+            lock (syncRoot)
+            {
+                double restore = child.ConfidenceLevel;
+                try
+                {
+                    child.ConfidenceLevel = confidenceLevel;
+                    return child.Function(x);
+                }
+                finally
+                {
+                    child.ConfidenceLevel = restore;
+                }
+            }
         }
 
         /// <summary>
@@ -411,11 +481,23 @@ namespace Numerics.Functions
         private double InvertChildAt(int index, double confidenceLevel, double y)
         {
             var child = _functions[index];
-            double restore = child.ConfidenceLevel;
-            child.ConfidenceLevel = confidenceLevel;
-            double value = child.InverseFunction(y);
-            child.ConfidenceLevel = restore;
-            return value;
+            if (child.IsDeterministic)
+                return child.InverseFunction(y);
+
+            object syncRoot = ChildLocks.GetValue(child, key => new object());
+            lock (syncRoot)
+            {
+                double restore = child.ConfidenceLevel;
+                try
+                {
+                    child.ConfidenceLevel = confidenceLevel;
+                    return child.InverseFunction(y);
+                }
+                finally
+                {
+                    child.ConfidenceLevel = restore;
+                }
+            }
         }
 
         /// <summary>

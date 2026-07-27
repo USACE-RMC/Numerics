@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -73,10 +73,11 @@ namespace Distributions
 
 
             var kernel = new KernelDensity(new[] { -1d, 0d, 1d });
-            kernel.Bandwidth = double.NaN;
-            Assert.IsFalse(kernel.ParametersValid);
-            kernel.Bandwidth = double.PositiveInfinity;
-            Assert.IsFalse(kernel.ParametersValid);
+            double originalBandwidth = kernel.Bandwidth;
+            Assert.Throws<ArgumentOutOfRangeException>(() => kernel.Bandwidth = double.NaN);
+            Assert.AreEqual(originalBandwidth, kernel.Bandwidth, 0d);
+            Assert.Throws<ArgumentOutOfRangeException>(() => kernel.Bandwidth = double.PositiveInfinity);
+            Assert.AreEqual(originalBandwidth, kernel.Bandwidth, 0d);
             kernel.Bandwidth = 0.5d;
             Assert.IsTrue(kernel.ParametersValid);
 

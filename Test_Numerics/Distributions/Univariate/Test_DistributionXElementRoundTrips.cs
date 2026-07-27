@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 using Numerics.Distributions;
@@ -6,11 +6,8 @@ using Numerics.Distributions;
 namespace Distributions.Univariate
 {
     /// <summary>
-    /// Unit tests for the data-bearing distribution XElement round-trips: the
-    /// <see cref="EmpiricalDistribution"/> and <see cref="KernelDensity"/> overrides that fix
-    /// the base scalar-only serialization (their X/probability and sample tables were lost —
-    /// the inherited form could not even complete, because both types report parameter names
-    /// without scalar parameter values).
+    /// Unit tests for empirical and kernel-density XML round trips, including their data tables,
+    /// transforms, kernels, bandwidths, and optional sample weights.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>
@@ -49,7 +46,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(original.CDF(500d), restored.CDF(500d), 1E-12);
             Assert.AreEqual(original.InverseCDF(0.5d), restored.InverseCDF(0.5d), 1E-12);
 
-            // A missing table is loud, never a silent scalar-only form.
+            // A serialized empirical distribution requires both data tables.
             Assert.Throws<ArgumentException>(() => EmpiricalDistribution.FromXElement(new System.Xml.Linq.XElement("Distribution")));
         }
 

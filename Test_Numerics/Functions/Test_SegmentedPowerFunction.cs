@@ -1,14 +1,12 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Functions;
 
 namespace Functions
 {
     /// <summary>
-    /// Unit tests for the BaRatin addition-mode <see cref="SegmentedPowerFunction"/>: parity
-    /// with the RMC-BestFit rating-curve prediction, the single-segment degeneracy to
-    /// <see cref="PowerFunction"/>, the numeric inverse, the parameter-vector contract, and the
-    /// serialization round-trip.
+    /// Unit tests for the BaRatin addition-mode <see cref="SegmentedPowerFunction"/>, including
+    /// known values, the single-segment power-law case, inversion, parameters, and serialization.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>
@@ -18,13 +16,11 @@ namespace Functions
     public class Test_SegmentedPowerFunction
     {
         /// <summary>
-        /// Test parity with the BestFit rating-curve prediction. The reference constants were
-        /// evaluated independently from the BaRatin addition-mode closed form
-        /// Q(h) = Σₖ 10^(log₁₀αₖ)(h − hₖ)^βₖ·𝟙{h &gt; hₖ}, the exact body of
-        /// <c>RMC.BestFit RatingCurve.Predict</c> (Python evaluation, 2026-07-25).
+        /// Verifies one-, two-, and three-segment addition-mode values against the defining
+        /// closed form, including a fixed stochastic quantile.
         /// </summary>
         [TestMethod]
-        public void Test_BestFitParity()
+        public void Test_AdditionModeKnownValues()
         {
             // 1 segment: [h₁, log₁₀α₁, β₁, σ] = [1, 1.5, 2, 0.1]
             var oneSegment = new SegmentedPowerFunction(new[] { 1d, 1.5d, 2d, 0.1d }) { IsDeterministic = true };
@@ -89,7 +85,7 @@ namespace Functions
         }
 
         /// <summary>
-        /// Test the parameter-vector contract: SetParameters applies a BestFit-layout posterior
+        /// Test the parameter-vector contract: SetParameters applies a fitted posterior
         /// draw directly, and the validation guards reject malformed vectors.
         /// </summary>
         [TestMethod]

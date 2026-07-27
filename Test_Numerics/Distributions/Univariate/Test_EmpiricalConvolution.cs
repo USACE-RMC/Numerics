@@ -1,30 +1,27 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
 namespace Distributions.Univariate
 {
     /// <summary>
-    /// Unit tests for the N8 convolution upgrades: the atom-aware exact-lattice
-    /// <see cref="EmpiricalDistribution.ConvolveDiscrete"/> (point masses — e.g. the
-    /// zero-inflation atom of a defective risk curve — have no representation in the
-    /// continuous-PDF pipeline) and the opt-in log-spaced output grid.
+    /// Unit tests for lattice-based discrete convolution and logarithmic output resampling.
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </remarks>
     [TestClass]
-    public class Test_ConvolveUpgrades
+    public class Test_EmpiricalConvolution
     {
         /// <summary>
-        /// Test the discrete convolution against exact enumeration: total mass is the product
+        /// Test the discrete convolution against direct atom enumeration: total mass is the product
         /// of the input totals, the mean is the sum of the input means (the moment-preserving
         /// two-node split makes this exact), and the cumulative mass at probes between the
         /// enumerated sum atoms matches the enumerated CDF.
         /// </summary>
         [TestMethod]
-        public void Test_ConvolveDiscrete_ExactEnumeration()
+        public void Test_ConvolveDiscrete_KnownDistribution()
         {
             double[] values1 = { 0d, 10d };
             double[] masses1 = { 0.6d, 0.4d };
@@ -82,9 +79,8 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Test the log-spaced output option: false delegates to the linear-grid method
-        /// unchanged (the same instance), true re-reads the same convolved CDF on a log-spaced
-        /// ladder (agreeing at probes) and requires a strictly positive summed support.
+        /// Verifies that logarithmic output resamples the linear convolution consistently and
+        /// rejects non-positive summed support.
         /// </summary>
         [TestMethod]
         public void Test_Convolve_LogSpacedOutput()

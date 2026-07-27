@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Numerics;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
@@ -9,15 +9,10 @@ using Numerics.Sampling.MCMC;
 namespace Sampling.MCMC
 {
     /// <summary>
-    /// Characterizes the adaptive-random-walk and NUTS diagnostic findings used by
-    /// the RMC.BestFit verification program.
+    /// Unit tests for adaptive-random-walk covariance updates and NUTS diagnostics.
     /// </summary>
-    /// <remarks>
-    /// These tests intentionally pin the current public behavior before any sampler
-    /// correction. They use deterministic inline targets and do not require R or Python.
-    /// </remarks>
     [TestClass]
-    public class Test_MCMCSamplerFindings
+    public class Test_MCMCSamplerDiagnostics
     {
         /// <summary>
         /// Confirms that rejected transitions before the warmup boundary advance the

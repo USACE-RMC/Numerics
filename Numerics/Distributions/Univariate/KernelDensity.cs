@@ -92,6 +92,8 @@ namespace Numerics.Distributions
         /// </param>
         public KernelDensity(IList<double> sampleData, IList<double> weights, KernelType kernel = KernelType.Gaussian, double? bandwidthParameter = null)
         {
+            if (sampleData == null) throw new ArgumentNullException(nameof(sampleData));
+            if (weights == null) throw new ArgumentNullException(nameof(weights));
             if (weights.Count != sampleData.Count)
                 throw new ArgumentException("weights length must match sampleData length");
 
@@ -149,6 +151,9 @@ namespace Numerics.Distributions
             get { return _kernelDistribution; }
             set
             {
+                if (!Enum.IsDefined(typeof(KernelType), value))
+                    throw new ArgumentOutOfRangeException(nameof(KernelDistribution), value, "The kernel type is not defined.");
+
                 _kernelDistribution = value;
                 if (_kernelDistribution == KernelType.Epanechnikov)
                 {
@@ -166,6 +171,7 @@ namespace Numerics.Distributions
                 {
                     _kernel = new UniformKernel();
                 }
+                _cdfCreated = false;
             }
         }
 
@@ -177,8 +183,10 @@ namespace Numerics.Distributions
             get { return _bandwidth; }
             set
             {
-                _parametersValid = ValidateParameters(value, false) is null;
+                ValidateParameters(value, true);
                 _bandwidth = value;
+                _parametersValid = true;
+                _cdfCreated = false;
             }
         }
 
@@ -569,7 +577,10 @@ namespace Numerics.Distributions
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         public void SetSampleData(IList<double> sampleData)
         {
+            ValidateSampleData(sampleData);
             _sampleData = sampleData.ToArray();
+            _weights = null;
+            _sumW = 1d;
             ComputeMoments(_sampleData);
             _cdfCreated = false;
         }
@@ -581,20 +592,48 @@ namespace Numerics.Distributions
         /// <param name="weights">Weights associated with each data point.</param>
         public void SetSampleData(IList<double> sampleData, IList<double> weights)
         {
+            ValidateSampleData(sampleData);
             _sampleData = sampleData.ToArray();
+            if (weights == null) throw new ArgumentNullException(nameof(weights));
+            if (weights.Count != sampleData.Count)
+                throw new ArgumentException("The weight count must match the sample count.", nameof(weights));
+            for (int i = 0; i < weights.Count; i++)
+            {
+                if (!Tools.IsFinite(weights[i]) || weights[i] < 0d)
+                    throw new ArgumentException("Weights must be finite and non-negative.", nameof(weights));
+            }
+
             _weights = weights.ToArray();
             _sumW = _weights.Sum();
+            if (!Tools.IsFinite(_sumW) || _sumW <= 0d)
+                throw new ArgumentException("The total weight must be finite and positive.", nameof(weights));
 
-            if (_sumW <= 0) throw new ArgumentException("All weights are zero or negative.");
-
-            ComputeMoments(_sampleData, _weights);     // weighted version
+            ComputeMoments(_sampleData, _weights);
             _cdfCreated = false;
         }
 
 
+        /// <summary>
+        /// Validates sample data before it is stored by the distribution.
+        /// </summary>
+        /// <param name="sampleData">The sample values.</param>
+        private static void ValidateSampleData(IList<double> sampleData)
+        {
+            if (sampleData == null) throw new ArgumentNullException(nameof(sampleData));
+            if (sampleData.Count == 0)
+                throw new ArgumentException("The sample must contain at least one value.", nameof(sampleData));
+            for (int i = 0; i < sampleData.Count; i++)
+            {
+                if (!Tools.IsFinite(sampleData[i]))
+                    throw new ArgumentException("Sample values must be finite.", nameof(sampleData));
+            }
+
+        }
+
         /// <inheritdoc/>
         public override double PDF(double x)
         {
+
             if (_weights == null)
             {
                 double total = 0d;
@@ -664,10 +703,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Serializes the kernel density to an XElement, overriding the base scalar-only form:
-        /// the sample data (round-trip-exact "G17"), the kernel type, the bandwidth, the
-        /// optional per-sample weights, and both interpolation transforms. The base
-        /// implementation writes only scalar parameters, which lost the sample entirely.
+        /// Serializes the sample data, kernel type, bandwidth, optional sample weights,
+        /// interpolation transforms, and bounded-data setting using invariant numeric formatting.
         /// </summary>
         /// <returns>An XElement representation of the kernel density.</returns>
         public override XElement ToXElement()
@@ -701,58 +738,82 @@ namespace Numerics.Distributions
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new <see cref="KernelDensity"/>.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the element carries no parseable sample data.</exception>
+        /// <exception cref="ArgumentException">Thrown when serialized sample data or configuration is missing or invalid.</exception>
         public static KernelDensity FromXElement(XElement xElement)
         {
             if (xElement == null) throw new ArgumentNullException(nameof(xElement));
             string? sampleText = xElement.Attribute(nameof(SampleData))?.Value;
-            if (string.IsNullOrEmpty(sampleText))
+            if (string.IsNullOrWhiteSpace(sampleText))
                 throw new ArgumentException("The serialized kernel density is missing its sample data.", nameof(xElement));
 
             string[] tokens = sampleText!.Split('|');
             var samples = new double[tokens.Length];
             for (int i = 0; i < tokens.Length; i++)
             {
-                if (!double.TryParse(tokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out samples[i]))
-                    throw new ArgumentException("The serialized kernel density carries an unparseable sample value.", nameof(xElement));
+                if (!double.TryParse(tokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out samples[i])
+                    || !Tools.IsFinite(samples[i]))
+                    throw new ArgumentException("The serialized kernel density contains an invalid sample value.", nameof(xElement));
             }
 
-            var kernel = KernelType.Gaussian;
-            var kernelAttr = xElement.Attribute(nameof(KernelDistribution));
-            if (kernelAttr != null) Enum.TryParse(kernelAttr.Value, out kernel);
+            var kernelAttribute = xElement.Attribute(nameof(KernelDistribution));
+            if (kernelAttribute == null
+                || !Enum.TryParse(kernelAttribute.Value, out KernelType kernel)
+                || !Enum.IsDefined(typeof(KernelType), kernel))
+                throw new ArgumentException("The serialized kernel density has an invalid kernel type.", nameof(xElement));
 
-            double bandwidth = 0d;
-            bool hasBandwidth = double.TryParse(xElement.Attribute(nameof(Bandwidth))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out bandwidth);
+            if (!double.TryParse(xElement.Attribute(nameof(Bandwidth))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double bandwidth)
+                || !Tools.IsFinite(bandwidth)
+                || bandwidth <= 0d)
+                throw new ArgumentException("The serialized kernel density has an invalid bandwidth.", nameof(xElement));
 
             KernelDensity distribution;
             string? weightsText = xElement.Attribute("Weights")?.Value;
-            if (!string.IsNullOrEmpty(weightsText))
+            if (weightsText != null)
             {
-                string[] weightTokens = weightsText!.Split('|');
+                string[] weightTokens = weightsText.Split('|');
                 if (weightTokens.Length != samples.Length)
                     throw new ArgumentException("The serialized kernel density's weight count does not match its sample count.", nameof(xElement));
                 var weights = new double[weightTokens.Length];
                 for (int i = 0; i < weightTokens.Length; i++)
                 {
-                    if (!double.TryParse(weightTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out weights[i]))
-                        throw new ArgumentException("The serialized kernel density carries an unparseable weight value.", nameof(xElement));
+                    if (!double.TryParse(weightTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out weights[i])
+                        || !Tools.IsFinite(weights[i]))
+                        throw new ArgumentException("The serialized kernel density contains an invalid weight.", nameof(xElement));
                 }
-                distribution = hasBandwidth ? new KernelDensity(samples, weights, kernel, bandwidth) : new KernelDensity(samples, weights, kernel);
+                distribution = new KernelDensity(samples, weights, kernel, bandwidth);
             }
             else
             {
-                distribution = hasBandwidth ? new KernelDensity(samples, kernel, bandwidth) : new KernelDensity(samples, kernel);
+                distribution = new KernelDensity(samples, kernel, bandwidth);
             }
 
-            if (Enum.TryParse(xElement.Attribute(nameof(XTransform))?.Value, out Transform xTransform))
+            var xTransformAttribute = xElement.Attribute(nameof(XTransform));
+            if (xTransformAttribute != null)
+            {
+                if (!Enum.TryParse(xTransformAttribute.Value, out Transform xTransform)
+                    || !Enum.IsDefined(typeof(Transform), xTransform))
+                    throw new ArgumentException("The serialized kernel density has an invalid X transform.", nameof(xElement));
                 distribution.XTransform = xTransform;
-            if (Enum.TryParse(xElement.Attribute(nameof(ProbabilityTransform))?.Value, out Transform probabilityTransform))
+            }
+
+            var probabilityTransformAttribute = xElement.Attribute(nameof(ProbabilityTransform));
+            if (probabilityTransformAttribute != null)
+            {
+                if (!Enum.TryParse(probabilityTransformAttribute.Value, out Transform probabilityTransform)
+                    || !Enum.IsDefined(typeof(Transform), probabilityTransform))
+                    throw new ArgumentException("The serialized kernel density has an invalid probability transform.", nameof(xElement));
                 distribution.ProbabilityTransform = probabilityTransform;
-            if (bool.TryParse(xElement.Attribute(nameof(BoundedByData))?.Value, out bool bounded))
+            }
+
+            var boundedAttribute = xElement.Attribute(nameof(BoundedByData));
+            if (boundedAttribute != null)
+            {
+                if (!bool.TryParse(boundedAttribute.Value, out bool bounded))
+                    throw new ArgumentException("The serialized kernel density has an invalid bounded-data flag.", nameof(xElement));
                 distribution.BoundedByData = bounded;
+            }
             return distribution;
         }
-
         /// <summary>
         /// Create the empirical CDF.
         /// </summary>

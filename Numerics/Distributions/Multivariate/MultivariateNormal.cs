@@ -81,7 +81,7 @@ namespace Numerics.Distributions
         private bool _covSRTed = false;
 
         /// <summary>
-        /// The default <see cref="MVNUNI"/> seed. Fixed, never clock-derived — see <see cref="MVNUNI"/>.
+        /// The constant default <see cref="MVNUNI"/> seed used for reproducible evaluations.
         /// </summary>
         public const int DefaultMVNUNISeed = 12345;
 
@@ -98,7 +98,7 @@ namespace Numerics.Distributions
         public Random MVNUNI
         {
            get { return _MVNUNI; }
-           set { _MVNUNI = value; }
+           set { _MVNUNI = value ?? throw new ArgumentNullException(nameof(MVNUNI)); }
         }
 
         /// <summary>
