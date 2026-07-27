@@ -70,12 +70,16 @@ namespace Correctness
             var child = new ConfidenceProbeFunction { ConfidenceLevel = 0.5d };
             var lower = new CompositeFunction(new IUnivariateFunction[] { child }) { ConfidenceLevel = 0.2d };
             var upper = new CompositeFunction(new IUnivariateFunction[] { child }) { ConfidenceLevel = 0.8d };
+            var configured = new CompositeFunction(new IUnivariateFunction[] { child });
             int failures = 0;
 
-            Parallel.For(0, 400, i =>
+            Parallel.For(0, 600, i =>
             {
-                double expected = i % 2 == 0 ? 0.2d : 0.8d;
-                double actual = i % 2 == 0 ? lower.Function(0d) : upper.Function(0d);
+                int branch = i % 3;
+                double expected = branch == 0 ? 0.2d : branch == 1 ? 0.8d : 0.5d;
+                double actual = branch == 0 ? lower.Function(0d)
+                    : branch == 1 ? upper.Function(0d)
+                    : configured.Function(0d);
                 if (actual != expected) Interlocked.Increment(ref failures);
             });
 

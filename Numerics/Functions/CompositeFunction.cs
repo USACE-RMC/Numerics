@@ -273,10 +273,12 @@ namespace Numerics.Functions
 
             if (IsDeterministic == true || ConfidenceLevel < 0 || ConfidenceLevel > 1)
             {
-                // Evaluate each child using the shared mean convention.
+                // The parent mean sentinel preserves each child's configured realization. Locking
+                // prevents a concurrent confidence-driven composite from exposing its temporary
+                // child level to this evaluation.
                 double mean = 0d;
                 for (int i = 0; i < _functions.Length; i++)
-                    mean += _weights[i] * EvaluateChildAt(i, -1d, x);
+                    mean += _weights[i] * EvaluateConfiguredChild(i, x);
                 return mean;
             }
 
@@ -438,6 +440,25 @@ namespace Numerics.Functions
                 throw new InvalidOperationException("The composite has no positive child weight.");
             remainder = 1d;
             return lastPositive;
+        }
+
+        /// <summary>
+        /// Evaluates a child at its configured confidence level without changing that state.
+        /// </summary>
+        /// <param name="index">The child index.</param>
+        /// <param name="x">The evaluation point.</param>
+        /// <returns>The child's value at its configured realization.</returns>
+        private double EvaluateConfiguredChild(int index, double x)
+        {
+            var child = _functions[index];
+            if (child.IsDeterministic)
+                return child.Function(x);
+
+            object syncRoot = ChildLocks.GetValue(child, key => new object());
+            lock (syncRoot)
+            {
+                return child.Function(x);
+            }
         }
 
         /// <summary>

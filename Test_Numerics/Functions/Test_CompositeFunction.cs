@@ -37,6 +37,25 @@ namespace Functions
         }
 
         /// <summary>
+        /// Test that the parent mean sentinel combines independently configured child
+        /// realizations without replacing their confidence levels.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedAverage_MeanSentinelUsesConfiguredChildLevels()
+        {
+            var first = new LinearFunction(0d, 1d, 2d) { ConfidenceLevel = 0.2d };
+            var second = new LinearFunction(10d, 1d, 3d) { ConfidenceLevel = 0.8d };
+            var composite = new CompositeFunction(
+                new IUnivariateFunction[] { first, second }, new[] { 0.25d, 0.75d });
+            double expected = 0.25d * first.Function(5d) + 0.75d * second.Function(5d);
+
+            Assert.AreEqual(expected, composite.Function(5d), 1E-12);
+            Assert.AreEqual(5d, composite.InverseFunction(expected), 1E-8);
+            Assert.AreEqual(0.2d, first.ConfidenceLevel, 0d);
+            Assert.AreEqual(0.8d, second.ConfidenceLevel, 0d);
+        }
+
+        /// <summary>
         /// Test the mixture composition: one uniform selects the child by cumulative weight and
         /// re-scales the remainder as the child's own draw; the mean convention (a confidence
         /// level outside [0, 1]) is the weighted average of the child means.
