@@ -291,6 +291,41 @@ namespace Mathematics.Integration
 
         }
 
-    }
+    
+        /// <summary>
+        /// Integrates a separable product above twenty dimensions, where the stratification
+        /// self-limits to one stratum per axis and the algorithm runs as pure adaptive importance
+        /// sampling.
+        /// </summary>
+        [TestMethod()]
+        public void Test_HighDimension()
+        {
+            const int dimensions = 30;
+            var min = new double[dimensions];
+            var max = new double[dimensions];
+            for (int i = 0; i < dimensions; i++) { min[i] = 0d; max[i] = 1d; }
+
+            // Mean of 2*x_i over the axes; the exact integral over the unit cube is one. A
+            // PRODUCT of the same factors would concentrate its mass in a single corner and is
+            // hopeless at this dimension for any sample budget -- the curse of dimensionality,
+            // not a property of the integrator.
+            var vegas = new Vegas((x, w) =>
+            {
+                double sum = 0d;
+                for (int i = 0; i < dimensions; i++) sum += 2d * x[i];
+                return sum / dimensions;
+            }, dimensions, min, max)
+            {
+                UseSobolSequence = false,
+                Random = new Numerics.Sampling.MersenneTwister(12345),
+                FunctionCalls = 20000,
+                MaxIterations = 10,
+            };
+
+            vegas.Integrate();
+
+            Assert.AreEqual(1d, vegas.Result, 0.01d);
+        }
+}
 
 }

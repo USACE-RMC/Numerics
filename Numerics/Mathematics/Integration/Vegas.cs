@@ -59,7 +59,7 @@ namespace Numerics.Mathematics.Integration
             }
 
             if (dimensions > MaxDimensions)
-                throw new ArgumentOutOfRangeException(nameof(dimensions), "The maximum number of dimensions is 20.");
+                throw new ArgumentOutOfRangeException(nameof(dimensions), $"The maximum number of dimensions is {MaxDimensions}.");
 
             // Check if the minimum values are less than the maximum values
             for (int i = 0; i < min.Count; i++)
@@ -89,7 +89,17 @@ namespace Numerics.Mathematics.Integration
         private SobolSequence _sobol = null!;
 
         // Constants
-        private const int MaxDimensions = 20;
+
+        /// <summary>
+        /// The largest supported spatial dimension. A guard against runaway inputs rather than an
+        /// algorithmic bound: the importance-sampling grid is separable, so it holds
+        /// <see cref="NumberOfBins"/> × D bins rather than bins^D, and the stratification
+        /// self-limits — strata per axis are (calls/2)^(1/D), which reaches one around fifteen
+        /// dimensions, at which point the algorithm runs as pure adaptive importance sampling.
+        /// That is the same graceful degradation GSL and Lepage's reference implementation rely
+        /// on; neither imposes a dimension cap.
+        /// </summary>
+        private const int MaxDimensions = 50;
         private const double TinyValue = 1.0e-30;
 
         // Algorithm Variables
