@@ -26,6 +26,9 @@ namespace Numerics.Distributions
     [Serializable]
     public class MultivariateNormal : MultivariateDistribution
     {
+        /// <summary>
+        /// Initializes an empty instance for internal cloning and deserialization workflows.
+        /// </summary>
         private MultivariateNormal() { }
 
         /// <summary>
@@ -95,6 +98,7 @@ namespace Numerics.Distributions
         /// generator to tie results to a caller's own seed. Not thread-safe — MVNDST advances the
         /// generator, so an instance shared across threads must be cloned per thread.
         /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when the assigned generator is null.</exception>
         public Random MVNUNI
         {
            get { return _MVNUNI; }
@@ -1073,34 +1077,13 @@ namespace Numerics.Distributions
 
             return b;
         }
-        //****************************************************************************80
-
+        /// <summary>
+        /// Evaluates the standard normal cumulative distribution function.
+        /// </summary>
+        /// <param name="t">The standard normal variate.</param>
+        /// <returns>The lower-tail probability at <paramref name="t"/>.</returns>
+        /// <remarks>Adapted from the MIT-licensed normal-tail implementation by John Burkardt.</remarks>
         private static double gauss(double t)
-
-        //****************************************************************************80
-        //
-        //  Purpose:
-        //
-        //    GAUSS returns the area of the lower tail of the normal curve.
-        //
-        //  Licensing:
-        //
-        //    This code is distributed under the MIT license.
-        //
-        //  Modified:
-        //
-        //    13 April 2012
-        //
-        //  Author:
-        //
-        //    John Burkardt
-        //
-        //  Parameters:
-        //
-        //    Input, double T, the evaluation point.
-        //
-        //    Output, double GAUSS, the lower normal tail area.
-        //
         {
             double value;
 
@@ -1585,6 +1568,14 @@ namespace Numerics.Distributions
             }
         }
 
+        /// <summary>
+        /// Converts an interval's standardized limits to lower- and upper-tail probabilities.
+        /// </summary>
+        /// <param name="A">The standardized lower limit.</param>
+        /// <param name="B">The standardized upper limit.</param>
+        /// <param name="INFIN">The bound flag: 0 for lower-infinite, 1 for upper-infinite, 2 for finite bounds, or a negative value for an unbounded interval.</param>
+        /// <param name="LOWER">Receives the lower cumulative probability.</param>
+        /// <param name="UPPER">Receives the upper cumulative probability, constrained to be at least <paramref name="LOWER"/>.</param>
         private void MVNLMS(double A, double B, int INFIN, ref double LOWER, ref double UPPER)
         {
             LOWER = 0;
@@ -1988,6 +1979,20 @@ namespace Numerics.Distributions
             MINVLS = INTVLS;
         }
 
+        /// <summary>
+        /// Evaluates one randomized, antithetic lattice-rule estimate of a multidimensional integral.
+        /// </summary>
+        /// <param name="NDIM">The integration dimension.</param>
+        /// <param name="KLIM">The maximum number of lattice-generator components to randomize.</param>
+        /// <param name="SUMKRO">Receives the running lattice-rule mean.</param>
+        /// <param name="PRIME">The number of lattice points.</param>
+        /// <param name="VK">The lattice-generator vector, randomized in place.</param>
+        /// <param name="FUNCTN">The transformed integrand.</param>
+        /// <param name="X">The coordinate and random-shift workspace.</param>
+        /// <remarks>
+        /// <paramref name="VK"/> must contain at least <paramref name="NDIM"/> entries and
+        /// <paramref name="X"/> at least twice that many. Random shifts are drawn from <see cref="MVNUNI"/>.
+        /// </remarks>
         private void DKSMRC(int NDIM, int KLIM, ref double SUMKRO, int PRIME, ref double[] VK, Func<int, double[], double> FUNCTN, ref double[] X)
         {
             double sampleValue;

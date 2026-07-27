@@ -1055,7 +1055,10 @@ namespace Numerics.Data.Statistics
         /// <param name="eventIndicators">Output. A list of event indicators that correspond to the probabilities in the eventProbabilities list.</param>
         /// <param name="absoluteTolerance">The absolute tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
         /// <param name="relativeTolerance">The relative tolerance for evaluation convergence of the inclusion-exclusion algorithm. Default = 1E-4.</param>
-        /// <exception cref="ArgumentException">Thrown if the probabilities array is null, empty, or if the lengths of the probabilities and indicators arrays do not match.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when the binomial-combination metadata is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when probabilities are missing or the combination and indicator metadata is structurally inconsistent.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a probability or tolerance is outside its valid range.</exception>
+        /// <exception cref="OverflowException">Thrown when a required combination count exceeds <see cref="int.MaxValue"/>.</exception>
         /// <remarks>
         /// This method uses the inclusion-exclusion principle to compute the exclusive probability of each event combination.
         /// The result is added to a list, and convergence is monitored using the specified tolerances.
@@ -1198,6 +1201,15 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Validates the structural metadata used by the pooled exclusive-probability overload.
         /// </summary>
+        /// <param name="probabilities">The event probabilities.</param>
+        /// <param name="binomialCombinations">The expected combination count for each subset size.</param>
+        /// <param name="indicators">The materialized indicator rows.</param>
+        /// <param name="absoluteTolerance">The absolute convergence tolerance.</param>
+        /// <param name="relativeTolerance">The relative convergence tolerance.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="binomialCombinations"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the combination counts or indicator dimensions are inconsistent.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a probability or tolerance is outside its valid range.</exception>
+        /// <exception cref="OverflowException">Thrown when a required combination count exceeds <see cref="int.MaxValue"/>.</exception>
         private static void ValidatePooledExclusiveMetadata(IList<double> probabilities, int[] binomialCombinations,
             int[,] indicators, double absoluteTolerance, double relativeTolerance)
         {
@@ -1256,6 +1268,7 @@ namespace Numerics.Data.Statistics
         /// <returns>Whether the expansion completed, converged early, or hit the cap.</returns>
         /// <exception cref="ArgumentNullException">Thrown when either output list is null.</exception>
         /// <exception cref="ArgumentException">Thrown when the probabilities list is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a probability or tolerance is outside its valid range.</exception>
         /// <remarks>
         /// Emits the same rows, in the same order, with the same probabilities as the dense
         /// overload. On convergence it closes with the same half-gap pseudo-row; at the cap it

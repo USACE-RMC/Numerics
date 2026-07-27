@@ -657,6 +657,11 @@ namespace Numerics.Distributions
         /// <summary>
         /// Estimates acceleration constants from successful leave-one-out fits.
         /// </summary>
+        /// <param name="sampleData">The observed sample.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="thetaHats">The fitted population quantiles.</param>
+        /// <returns>One acceleration constant per probability.</returns>
+        /// <exception cref="AggregateException">Thrown when every leave-one-out fit fails.</exception>
         private double[] AccelerationConstants(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
         {
             int sampleCount = sampleData.Count;
@@ -819,6 +824,13 @@ namespace Numerics.Distributions
         /// <summary>
         /// Estimates quantile standard errors using successful inner bootstrap fits.
         /// </summary>
+        /// <param name="parentDist">The fitted parent distribution used to generate inner samples.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="replications">The number of inner bootstrap fits.</param>
+        /// <param name="seed">The deterministic random-number seed.</param>
+        /// <returns>One standard error per probability.</returns>
+        /// <exception cref="AggregateException">Thrown when every inner bootstrap fit fails.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when fewer than two finite fits are available for a requested probability.</exception>
         private double[] BootstrapStandardError(UnivariateDistributionBase parentDist, IList<double> probabilities, int replications = 300, int seed = 12345)
         {
             var random = new MersenneTwister(seed);
@@ -859,6 +871,11 @@ namespace Numerics.Distributions
         /// <summary>
         /// Estimates jackknife standard errors from successful leave-one-out fits.
         /// </summary>
+        /// <param name="sampleData">The observed sample.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="thetaHats">The cube-root-transformed fitted population quantiles.</param>
+        /// <returns>One jackknife standard error per probability.</returns>
+        /// <exception cref="AggregateException">Thrown when every leave-one-out fit fails.</exception>
         private double[] StandardError(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
         {
             int sampleCount = sampleData.Count;
@@ -922,6 +939,12 @@ namespace Numerics.Distributions
         /// <summary>
         /// Returns finite results from successful fits and enforces a minimum sample count.
         /// </summary>
+        /// <param name="values">The fit results, with non-finite entries representing failed fits.</param>
+        /// <param name="operation">The operation name included in failure messages.</param>
+        /// <param name="minimumCount">The minimum number of finite results required.</param>
+        /// <returns>A new array containing only finite fit results.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when fewer than <paramref name="minimumCount"/> fits succeeded.</exception>
         private static double[] FiniteValuesOrThrow(double[] values, string operation, int minimumCount = 1)
         {
             var successfulValues = values.Where(Tools.IsFinite).ToArray();
@@ -933,6 +956,8 @@ namespace Numerics.Distributions
         /// <summary>
         /// Computes the real cube root while preserving the sign of negative values.
         /// </summary>
+        /// <param name="value">The value whose real cube root is required.</param>
+        /// <returns>The sign-preserving real cube root.</returns>
         private static double CubeRoot(double value)
         {
             if (value == 0d) return value;

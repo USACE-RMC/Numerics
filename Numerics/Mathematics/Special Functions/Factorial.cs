@@ -126,7 +126,8 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <param name="buffer"> An array to store the current combination being constructed </param>
         /// <param name="done"> The index of where the next element of the combination should be placed </param>
         /// <param name="begin"> Index of where to start adding elements. Ensures each element is only included once</param>
-        /// <param name="end"> The last index (exclusive) to be inlcuded in the current combination </param>
+        /// <param name="end">The exclusive upper bound for candidate indexes.</param>
+        /// <returns>The combinations generated from the current buffer prefix.</returns>
         private static IEnumerable<int[]> FindCombosRecursive(int[] buffer, int done, int begin, int end)
         {
             for (int i = begin; i < end; i++)
@@ -146,6 +147,7 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// </summary>
         /// <param name="m">The combination size.</param>
         /// <param name="n">The overall count.</param>
+        /// <returns>All strictly increasing index combinations of size <paramref name="m"/> drawn from <paramref name="n"/> items.</returns>
         public static IEnumerable<int[]> FindCombinations(int m, int n)
         {
             return FindCombosRecursive(new int[m], 0, 0, n);
@@ -212,6 +214,10 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <summary>
         /// Advances a combination that has already been validated.
         /// </summary>
+        /// <param name="combination">The valid strictly increasing index tuple to advance in place.</param>
+        /// <param name="n">The overall item count.</param>
+        /// <returns><see langword="false"/> when the tuple is the final combination of its size; otherwise, <see langword="true"/>.</returns>
+        /// <remarks>This unchecked helper requires the caller to enforce the contract documented by <see cref="NextCombination(int[], int)"/> before iteration.</remarks>
         internal static bool NextCombinationUnchecked(int[] combination, int n)
         {
             int k = combination.Length;

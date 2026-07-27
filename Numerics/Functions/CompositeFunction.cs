@@ -44,7 +44,7 @@ namespace Numerics.Functions
         /// </summary>
         /// <param name="functions">The child functions.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="functions"/> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when no child functions are supplied.</exception>
+        /// <exception cref="ArgumentException">Thrown when no child functions are supplied or a child entry is null.</exception>
         public CompositeFunction(IList<IUnivariateFunction> functions)
         {
             if (functions == null) throw new ArgumentNullException(nameof(functions));
@@ -68,7 +68,8 @@ namespace Numerics.Functions
         /// <param name="functions">The child functions.</param>
         /// <param name="weights">The non-negative weights; must sum to one.</param>
         /// <exception cref="ArgumentNullException">Thrown when either argument is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the collections are empty or mismatched in length.</exception>
+        /// <exception cref="ArgumentException">Thrown when the collections are empty or mismatched, or a child entry is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is non-finite or negative, or the weights do not sum to one.</exception>
         public CompositeFunction(IList<IUnivariateFunction> functions, IList<double> weights)
         {
             if (functions == null) throw new ArgumentNullException(nameof(functions));
@@ -103,6 +104,7 @@ namespace Numerics.Functions
         /// <summary>
         /// The combination mode. Default = weighted average.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the assigned mode is undefined.</exception>
         public CompositeFunctionMode Mode
         {
             get { return _mode; }
@@ -418,6 +420,7 @@ namespace Numerics.Functions
         /// <param name="u">The composite's uniform draw in [0, 1].</param>
         /// <param name="remainder">The re-scaled child draw.</param>
         /// <returns>The selected child index.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when no child has positive weight.</exception>
         private int SelectMixtureChild(double u, out double remainder)
         {
             double cumulative = 0d;

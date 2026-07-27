@@ -694,6 +694,8 @@ namespace Numerics.Distributions
         /// <param name="masses">The atom masses.</param>
         /// <param name="parameterName">The reported parameter name.</param>
         /// <returns>The finite positive total mass.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> or <paramref name="masses"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the atom collections are empty, mismatched, non-finite, negative, or have no positive total mass.</exception>
         private static double ValidateAtoms(IList<double> values, IList<double> masses, string parameterName)
         {
             if (values == null || masses == null) throw new ArgumentNullException(parameterName);
@@ -712,6 +714,13 @@ namespace Numerics.Distributions
             return total;
         }
 
+        /// <summary>
+        /// Finds the smallest atom value carrying positive mass.
+        /// </summary>
+        /// <param name="values">The validated atom values.</param>
+        /// <param name="masses">The validated atom masses.</param>
+        /// <returns>The smallest value whose corresponding mass is positive.</returns>
+        /// <remarks>The atom collections must first pass <see cref="ValidateAtoms(IList{double}, IList{double}, string)"/>.</remarks>
         private static double MinimumPositiveMassValue(IList<double> values, IList<double> masses)
         {
             double minimum = double.MaxValue;
@@ -720,6 +729,13 @@ namespace Numerics.Distributions
             return minimum;
         }
 
+        /// <summary>
+        /// Finds the largest atom value carrying positive mass.
+        /// </summary>
+        /// <param name="values">The validated atom values.</param>
+        /// <param name="masses">The validated atom masses.</param>
+        /// <returns>The largest value whose corresponding mass is positive.</returns>
+        /// <remarks>The atom collections must first pass <see cref="ValidateAtoms(IList{double}, IList{double}, string)"/>.</remarks>
         private static double MaximumPositiveMassValue(IList<double> values, IList<double> masses)
         {
             double maximum = double.MinValue;
@@ -728,6 +744,12 @@ namespace Numerics.Distributions
             return maximum;
         }
 
+        /// <summary>
+        /// Finds the final lattice entry carrying positive mass.
+        /// </summary>
+        /// <param name="masses">The lattice masses.</param>
+        /// <returns>The index of the final positive mass.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the lattice has no positive mass.</exception>
         private static int LastPositiveIndex(IList<double> masses)
         {
             for (int i = masses.Count - 1; i >= 0; i--)

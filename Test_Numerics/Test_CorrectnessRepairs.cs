@@ -137,19 +137,42 @@ namespace Correctness
             Assert.Throws<ArgumentException>(() => EnsembleFunction.FromXElement(invalidFitness));
         }
 
+        /// <summary>
+        /// Test function that exposes confidence-state changes and controlled evaluation failures.
+        /// </summary>
         private sealed class ConfidenceProbeFunction : IUnivariateFunction
         {
+            /// <summary>The configured confidence level.</summary>
             private double _confidenceLevel = -1d;
 
+            /// <summary>Gets or sets whether evaluations throw a controlled exception.</summary>
             public bool ThrowOnEvaluation { get; set; }
+
+            /// <summary>Gets or sets whether confidence-level assignments throw a controlled exception.</summary>
             public bool ThrowOnConfidenceAssignment { get; set; }
+
+            /// <inheritdoc/>
             public int NumberOfParameters => 0;
+
+            /// <inheritdoc/>
             public bool ParametersValid => true;
+
+            /// <inheritdoc/>
             public double Minimum { get; set; } = double.MinValue;
+
+            /// <inheritdoc/>
             public double Maximum { get; set; } = double.MaxValue;
+
+            /// <inheritdoc/>
             public double[] MinimumOfParameters => Array.Empty<double>();
+
+            /// <inheritdoc/>
             public double[] MaximumOfParameters => Array.Empty<double>();
+
+            /// <inheritdoc/>
             public bool IsDeterministic { get; set; }
+
+            /// <inheritdoc/>
             public double ConfidenceLevel
             {
                 get { return _confidenceLevel; }
@@ -160,17 +183,35 @@ namespace Correctness
                 }
             }
 
+            /// <summary>
+            /// Validates that no parameters are supplied to this parameterless test function.
+            /// </summary>
+            /// <param name="parameters">The parameter collection, which must be empty.</param>
+            /// <exception cref="ArgumentNullException">Thrown when <paramref name="parameters"/> is null.</exception>
+            /// <exception cref="ArgumentException">Thrown when <paramref name="parameters"/> is not empty.</exception>
             public void SetParameters(IList<double> parameters)
             {
                 if (parameters == null) throw new ArgumentNullException(nameof(parameters));
                 if (parameters.Count != 0) throw new ArgumentException("This test function has no parameters.", nameof(parameters));
             }
 
+            /// <summary>
+            /// Reports that the parameterless test function has no range-validation error.
+            /// </summary>
+            /// <param name="parameters">The parameter collection.</param>
+            /// <param name="throwException">Ignored because this test function has no parameters.</param>
+            /// <returns><see langword="null"/>.</returns>
             public ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
             {
                 return null;
             }
 
+            /// <summary>
+            /// Returns the configured confidence level after checking for concurrent state changes.
+            /// </summary>
+            /// <param name="x">The unused evaluation point.</param>
+            /// <returns>The configured confidence level.</returns>
+            /// <exception cref="InvalidOperationException">Thrown when controlled failure is enabled or confidence state changes during evaluation.</exception>
             public double Function(double x)
             {
                 if (ThrowOnEvaluation) throw new InvalidOperationException("Test evaluation failure.");
@@ -180,6 +221,12 @@ namespace Correctness
                 return ConfidenceLevel;
             }
 
+            /// <summary>
+            /// Returns the configured confidence level as the inverse result.
+            /// </summary>
+            /// <param name="y">The unused value to invert.</param>
+            /// <returns>The configured confidence level.</returns>
+            /// <exception cref="InvalidOperationException">Thrown when controlled failure is enabled.</exception>
             public double InverseFunction(double y)
             {
                 if (ThrowOnEvaluation) throw new InvalidOperationException("Test inverse failure.");

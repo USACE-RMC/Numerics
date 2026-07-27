@@ -49,6 +49,9 @@ namespace Numerics.Distributions
         /// Constructs a Gaussian Kernel Density distribution from a sample of data using the default bandwidth.
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the sample produces a non-positive or non-finite default bandwidth.</exception>
         public KernelDensity(IList<double> sampleData)
         {
             SetSampleData(sampleData);
@@ -61,6 +64,9 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         /// <param name="kernel">The kernel distribution type.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="kernel"/> is undefined or the sample produces an invalid default bandwidth.</exception>
         public KernelDensity(IList<double> sampleData, KernelType kernel)
         {
             SetSampleData(sampleData);
@@ -74,6 +80,9 @@ namespace Numerics.Distributions
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         /// <param name="kernel">The kernel distribution type.</param>
         /// <param name="bandwidthParameter">The bandwidth parameter.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="kernel"/> is undefined or <paramref name="bandwidthParameter"/> is not finite and strictly positive.</exception>
         public KernelDensity(IList<double> sampleData, KernelType kernel, double bandwidthParameter)
         {
             SetSampleData(sampleData);
@@ -88,8 +97,11 @@ namespace Numerics.Distributions
         /// <param name="weights">Positive weights wᵢ (length must match sampleData).</param>
         /// <param name="kernel">Kernel type (default Gaussian).</param>
         /// <param name="bandwidthParameter">
-        /// Optional bandwidth.  If null we use Silverman’s rule with the weighted σ.
+        /// Optional bandwidth. If null, Silverman’s rule is applied using the weighted standard deviation.
         /// </param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> or <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample and weights are empty, mismatched, non-finite, negative, or have no positive total weight.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="kernel"/> is undefined or the selected bandwidth is not finite and strictly positive.</exception>
         public KernelDensity(IList<double> sampleData, IList<double> weights, KernelType kernel = KernelType.Gaussian, double? bandwidthParameter = null)
         {
             if (sampleData == null) throw new ArgumentNullException(nameof(sampleData));
@@ -146,6 +158,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the kernel distribution type.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the assigned kernel type is undefined.</exception>
         public KernelType KernelDistribution
         {
             get { return _kernelDistribution; }
@@ -178,6 +191,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the bandwidth parameter used in the kernel density estimation.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the assigned bandwidth is not finite and strictly positive.</exception>
         public double Bandwidth
         {
             get { return _bandwidth; }
@@ -558,8 +572,12 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Validate the bandwidth parameter.
+        /// Validates a bandwidth parameter.
         /// </summary>
+        /// <param name="value">The bandwidth to validate.</param>
+        /// <param name="throwException">Whether to throw the validation error immediately.</param>
+        /// <returns>An error for an invalid bandwidth; otherwise, <see langword="null"/>.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="value"/> is invalid and <paramref name="throwException"/> is <see langword="true"/>.</exception>
         private ArgumentOutOfRangeException? ValidateParameters(double value, bool throwException)
         {
             if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0d)
@@ -575,6 +593,8 @@ namespace Numerics.Distributions
         /// Set the sample data for the distribution.
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
         public void SetSampleData(IList<double> sampleData)
         {
             ValidateSampleData(sampleData);
@@ -590,6 +610,8 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         /// <param name="weights">Weights associated with each data point.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> or <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample and weights are empty, mismatched, non-finite, negative, or have no positive total weight.</exception>
         public void SetSampleData(IList<double> sampleData, IList<double> weights)
         {
             ValidateSampleData(sampleData);
@@ -617,6 +639,8 @@ namespace Numerics.Distributions
         /// Validates sample data before it is stored by the distribution.
         /// </summary>
         /// <param name="sampleData">The sample values.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
         private static void ValidateSampleData(IList<double> sampleData)
         {
             if (sampleData == null) throw new ArgumentNullException(nameof(sampleData));

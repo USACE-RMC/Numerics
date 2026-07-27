@@ -259,6 +259,8 @@ namespace Numerics.Mathematics.Integration
         /// p' = 1 - (1-p)^γ concentrates samples in upper tail when γ > 1.
         /// When γ = 1, the transform is the identity.
         /// </summary>
+        /// <param name="p">The unit-interval probability to transform.</param>
+        /// <returns>The tail-focused probability.</returns>
         private double ApplyPowerTransform(double p)
         {
             double gamma = TailFocusParameter;
@@ -278,6 +280,8 @@ namespace Numerics.Mathematics.Integration
         /// This weight correction ensures unbiased integration.
         /// When γ = 1, returns 1.0 (identity Jacobian).
         /// </summary>
+        /// <param name="p">The untransformed unit-interval probability.</param>
+        /// <returns>The derivative of the power transform at <paramref name="p"/>.</returns>
         private double PowerTransformJacobian(double p)
         {
             double gamma = TailFocusParameter;

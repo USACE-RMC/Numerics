@@ -178,6 +178,7 @@ namespace Numerics.Functions
         /// </summary>
         /// <param name="element">The serialized parameter set.</param>
         /// <returns>The parsed parameter set.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="element"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when a value is missing, malformed, or non-finite.</exception>
         private static ParameterSet ParseParameterSet(XElement element)
         {

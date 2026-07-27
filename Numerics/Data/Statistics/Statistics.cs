@@ -317,6 +317,8 @@ namespace Numerics.Data.Statistics
         /// <param name="data">Sample data.</param>
         /// <param name="statistic">The statistic evaluated on isolated sample arrays.</param>
         /// <returns>The jackknife standard error.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> or <paramref name="statistic"/> is null.</exception>
+        /// <remarks>A single-element sample returns zero without invoking <paramref name="statistic"/>. Parallel callbacks receive independent arrays.</remarks>
         public static double JackKnifeStandardError(IList<double> data, Func<IList<double>, double> statistic)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -360,6 +362,8 @@ namespace Numerics.Data.Statistics
         /// <param name="data">Sample data.</param>
         /// <param name="statistic">The statistic evaluated on isolated leave-one-out arrays.</param>
         /// <returns>The statistic values, or <see langword="null"/> for an empty input sample.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> or <paramref name="statistic"/> is null.</exception>
+        /// <remarks>Each callback receives an independent leave-one-out array; a single-element sample therefore supplies one empty array.</remarks>
         public static double[]? JackKnifeSample(IList<double> data, Func<IList<double>, double> statistic)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));

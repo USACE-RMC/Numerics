@@ -125,6 +125,7 @@ namespace Numerics.Functions
         }
 
         /// <inheritdoc/>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the assigned maximum is not finite or is not greater than <see cref="Minimum"/>.</exception>
         public double Maximum
         {
             get { return _maximum; }
@@ -351,7 +352,8 @@ namespace Numerics.Functions
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new <see cref="SegmentedPowerFunction"/>.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the element carries no parseable parameter vector.</exception>
+        /// <exception cref="ArgumentException">Thrown when the serialized parameter vector is missing or malformed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the serialized parameters or support are outside the function's valid range.</exception>
         public static SegmentedPowerFunction FromXElement(XElement xElement)
         {
             if (xElement == null) throw new ArgumentNullException(nameof(xElement));
