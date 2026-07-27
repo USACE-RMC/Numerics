@@ -131,6 +131,20 @@ namespace Numerics.Sampling.MCMC
         private double[] _chainMu = null!;
         private int[] _chainAdaptStep = null!;
 
+        // Per-chain post-warmup diagnostics. These are streaming accumulators so
+        // diagnostic collection adds no target/gradient evaluations or draw storage.
+        private double[] _hamiltonianAcceptanceSums = null!;
+        private int[] _diagnosticSampleCounts = null!;
+        private int[] _divergenceCounts = null!;
+        private int[] _maxTreeDepthHitCounts = null!;
+        private double[] _treeDepthSums = null!;
+        private double[] _leapfrogStepSums = null!;
+        private double[] _energyMeans = null!;
+        private double[] _energyM2 = null!;
+        private double[] _energySquaredDifferenceSums = null!;
+        private double[] _previousEnergy = null!;
+        private bool[] _hasPreviousEnergy = null!;
+
         // Dual averaging hyperparameters (Hoffman & Gelman 2014, Section 3.2)
         private const double DELTA_TARGET = 0.80;
         private const double GAMMA = 0.05;
@@ -173,6 +187,116 @@ namespace Numerics.Sampling.MCMC
         public double TargetAcceptanceRate => DELTA_TARGET;
 
         /// <summary>
+        /// Gets the mean post-warmup Hamiltonian acceptance probability for each chain.
+        /// </summary>
+        /// <remarks>
+        /// This is the mean tree acceptance statistic used by dual averaging, not the
+        /// fraction of NUTS iterations that returned a retained state.
+        /// </remarks>
+        public double[] HamiltonianAcceptanceRates
+        {
+            get
+            {
+                var values = new double[NumberOfChains];
+                for (int i = 0; i < NumberOfChains; i++)
+                {
+                    values[i] = _diagnosticSampleCounts == null || _diagnosticSampleCounts[i] == 0
+                        ? 0d
+                        : _hamiltonianAcceptanceSums[i] / _diagnosticSampleCounts[i];
+                }
+                return values;
+            }
+        }
+
+        /// <summary>
+        /// Gets the number of post-warmup transitions contributing diagnostics per chain.
+        /// </summary>
+        public int[] DiagnosticSampleCounts => _diagnosticSampleCounts == null
+            ? new int[NumberOfChains]
+            : (int[])_diagnosticSampleCounts.Clone();
+
+        /// <summary>
+        /// Gets the number of divergent post-warmup transitions per chain.
+        /// </summary>
+        public int[] DivergenceCounts => _divergenceCounts == null
+            ? new int[NumberOfChains]
+            : (int[])_divergenceCounts.Clone();
+
+        /// <summary>
+        /// Gets the number of post-warmup transitions that exhausted <see cref="MaxTreeDepth"/> per chain.
+        /// </summary>
+        public int[] MaxTreeDepthHitCounts => _maxTreeDepthHitCounts == null
+            ? new int[NumberOfChains]
+            : (int[])_maxTreeDepthHitCounts.Clone();
+
+        /// <summary>
+        /// Gets the mean post-warmup tree depth for each chain.
+        /// </summary>
+        public double[] MeanTreeDepths => ComputeDiagnosticMeans(_treeDepthSums);
+
+        /// <summary>
+        /// Gets the mean number of post-warmup leapfrog steps per transition for each chain.
+        /// </summary>
+        public double[] MeanLeapfrogSteps => ComputeDiagnosticMeans(_leapfrogStepSums);
+
+        /// <summary>
+        /// Gets the current adapted leapfrog step size for each chain.
+        /// </summary>
+        public double[] StepSizes => _chainStepSizes == null
+            ? new double[NumberOfChains]
+            : (double[])_chainStepSizes.Clone();
+
+        /// <summary>
+        /// Gets the post-warmup energy Bayesian fraction of missing information for each chain.
+        /// </summary>
+        /// <remarks>
+        /// E-BFMI is the mean squared successive Hamiltonian difference divided by
+        /// sample variance of the Hamiltonian, matching the Stan diagnostic definition.
+        /// </remarks>
+        public double[] EnergyBayesianFractionOfMissingInformation
+        {
+            get
+            {
+                var values = new double[NumberOfChains];
+                for (int i = 0; i < NumberOfChains; i++)
+                {
+                    values[i] = ComputeEnergyBayesianFractionOfMissingInformation(
+                        _diagnosticSampleCounts == null ? 0 : _diagnosticSampleCounts[i],
+                        _energyM2 == null ? 0d : _energyM2[i],
+                        _energySquaredDifferenceSums == null ? 0d : _energySquaredDifferenceSums[i]);
+                }
+                return values;
+            }
+        }
+
+        /// <inheritdoc/>
+        protected override double[] ComputeAcceptanceRates()
+        {
+            if (_diagnosticSampleCounts == null || _diagnosticSampleCounts.Length != NumberOfChains)
+                return base.ComputeAcceptanceRates();
+            return HamiltonianAcceptanceRates;
+        }
+
+        /// <summary>
+        /// Computes per-chain diagnostic means from streaming sums.
+        /// </summary>
+        /// <param name="sums">Per-chain diagnostic sums.</param>
+        /// <returns>The corresponding per-chain means.</returns>
+        private double[] ComputeDiagnosticMeans(double[] sums)
+        {
+            var values = new double[NumberOfChains];
+            if (sums == null || _diagnosticSampleCounts == null)
+                return values;
+
+            for (int i = 0; i < NumberOfChains; i++)
+            {
+                if (_diagnosticSampleCounts[i] > 0)
+                    values[i] = sums[i] / _diagnosticSampleCounts[i];
+            }
+            return values;
+        }
+
+        /// <summary>
         /// Gets or sets whether to adapt the diagonal mass matrix during warmup.
         /// When enabled, uses Stan-style windowed adaptation with Welford's online algorithm
         /// to estimate the posterior variance per parameter and precondition the Hamiltonian dynamics.
@@ -200,6 +324,19 @@ namespace Numerics.Sampling.MCMC
             _chainHBar = new double[N];
             _chainMu = new double[N];
             _chainAdaptStep = new int[N];
+
+            // Initialize post-warmup diagnostic accumulators.
+            _hamiltonianAcceptanceSums = new double[N];
+            _diagnosticSampleCounts = new int[N];
+            _divergenceCounts = new int[N];
+            _maxTreeDepthHitCounts = new int[N];
+            _treeDepthSums = new double[N];
+            _leapfrogStepSums = new double[N];
+            _energyMeans = new double[N];
+            _energyM2 = new double[N];
+            _energySquaredDifferenceSums = new double[N];
+            _previousEnergy = new double[N];
+            _hasPreviousEnergy = new bool[N];
 
             // Initialize diagonal mass matrix and Welford accumulators
             _welfordMean = new double[N][];
@@ -435,6 +572,8 @@ namespace Numerics.Sampling.MCMC
         {
             // Update the sample count
             SampleCount[index] += 1;
+            int sampleNum = SampleCount[index];
+            int warmupSteps = WarmupIterations * ThinningInterval;
 
             double eps = _chainStepSizes[index];
             int D = NumberOfParameters;
@@ -461,6 +600,9 @@ namespace Numerics.Sampling.MCMC
             int depth = 0;
             double sumAlpha = 0;
             int numAlpha = 0;
+            int leapfrogSteps = 0;
+            int trajectoryDepth = 0;
+            bool trajectoryDivergent = false;
 
             // Step 3: Build tree by doubling until U-turn or max depth
             while (depth < MaxTreeDepth)
@@ -495,6 +637,9 @@ namespace Numerics.Sampling.MCMC
                     logSumWeight = logSumWeightNew;
                 }
 
+                leapfrogSteps += subtree.LeafCount;
+                trajectoryDepth = depth + 1;
+                trajectoryDivergent |= subtree.Divergent;
                 // Accumulate adaptation statistics
                 sumAlpha += subtree.SumAlpha;
                 numAlpha += subtree.NumAlpha;
@@ -510,15 +655,16 @@ namespace Numerics.Sampling.MCMC
                 depth++;
             }
 
+            double averageAcceptanceProbability = numAlpha > 0 ? sumAlpha / numAlpha : 0d;
             // Step 4: Warmup adaptation (step size + mass matrix)
-            int warmupSteps = WarmupIterations * ThinningInterval;
-            int sampleNum = SampleCount[index];
-
             if (sampleNum <= warmupSteps)
             {
                 // Always do dual averaging step size adaptation during warmup
-                double avgAlpha = numAlpha > 0 ? sumAlpha / numAlpha : DELTA_TARGET;
-                DualAveragingUpdate(index, avgAlpha);
+                // Preserve the original neutral fallback when no subtree contributed.
+                double adaptationAcceptanceProbability = numAlpha > 0
+                    ? averageAcceptanceProbability
+                    : DELTA_TARGET;
+                DualAveragingUpdate(index, adaptationAcceptanceProbability);
 
                 // Accumulate Welford statistics during mass matrix adaptation windows (Phase 2)
                 if (AdaptMassMatrix && sampleNum > _initBuffer && sampleNum <= warmupSteps - _termBuffer)
@@ -539,9 +685,81 @@ namespace Numerics.Sampling.MCMC
                 _chainStepSizes[index] = Math.Exp(_chainLogEpsBar[index]);
             }
 
+            if (sampleNum > warmupSteps)
+            {
+                RecordDiagnostics(
+                    index,
+                    averageAcceptanceProbability,
+                    trajectoryDivergent,
+                    depth >= MaxTreeDepth,
+                    trajectoryDepth,
+                    leapfrogSteps,
+                    H0);
+            }
+
             // NUTS always accepts
             AcceptCount[index] += 1;
             return new ParameterSet(candidate.Array, candidateLogLH);
+        }
+
+        /// <summary>
+        /// Records one post-warmup NUTS transition using constant-memory accumulators.
+        /// </summary>
+        /// <param name="chainIndex">Zero-based chain index.</param>
+        /// <param name="acceptanceProbability">Mean tree acceptance probability.</param>
+        /// <param name="divergent">Whether the trajectory contained a divergence.</param>
+        /// <param name="hitMaximumDepth">Whether tree construction exhausted the configured maximum depth.</param>
+        /// <param name="treeDepth">Tree depth attempted by the transition.</param>
+        /// <param name="leapfrogSteps">Number of leapfrog steps built by the transition.</param>
+        /// <param name="energy">Initial Hamiltonian after momentum resampling.</param>
+        private void RecordDiagnostics(int chainIndex, double acceptanceProbability, bool divergent,
+            bool hitMaximumDepth, int treeDepth, int leapfrogSteps, double energy)
+        {
+            int newCount = ++_diagnosticSampleCounts[chainIndex];
+            _hamiltonianAcceptanceSums[chainIndex] += acceptanceProbability;
+            if (divergent)
+                _divergenceCounts[chainIndex]++;
+            if (hitMaximumDepth)
+                _maxTreeDepthHitCounts[chainIndex]++;
+            _treeDepthSums[chainIndex] += treeDepth;
+            _leapfrogStepSums[chainIndex] += leapfrogSteps;
+
+            if (_hasPreviousEnergy[chainIndex])
+            {
+                double energyDifference = energy - _previousEnergy[chainIndex];
+                _energySquaredDifferenceSums[chainIndex] += energyDifference * energyDifference;
+            }
+            _previousEnergy[chainIndex] = energy;
+            _hasPreviousEnergy[chainIndex] = true;
+
+            double delta = energy - _energyMeans[chainIndex];
+            _energyMeans[chainIndex] += delta / newCount;
+            double centeredEnergy = energy - _energyMeans[chainIndex];
+            _energyM2[chainIndex] += delta * centeredEnergy;
+        }
+
+        /// <summary>
+        /// Computes E-BFMI from streaming energy accumulators.
+        /// </summary>
+        /// <param name="sampleCount">Number of energy observations.</param>
+        /// <param name="energyM2">Sum of squared deviations from the running mean.</param>
+        /// <param name="squaredDifferenceSum">Sum of squared successive energy differences.</param>
+        /// <returns>E-BFMI, or <see cref="double.NaN"/> when fewer than two energies or zero energy variance are available.</returns>
+        /// <remarks>
+        /// The formula is <c>mean(diff(E)^2) / var(E)</c>, with the same sample-variance
+        /// convention used by Stan interfaces.
+        /// </remarks>
+        internal static double ComputeEnergyBayesianFractionOfMissingInformation(
+            int sampleCount,
+            double energyM2,
+            double squaredDifferenceSum)
+        {
+            if (sampleCount < 2 || !(energyM2 > 0d))
+                return double.NaN;
+
+            double meanSquaredDifference = squaredDifferenceSum / sampleCount;
+            double sampleVariance = energyM2 / (sampleCount - 1d);
+            return meanSquaredDifference / sampleVariance;
         }
 
         /// <summary>
@@ -677,6 +895,7 @@ namespace Numerics.Sampling.MCMC
                     LogLikelihoodPrime = logLH,
                     LeafCount = 1,
                     Valid = !divergent,
+                    Divergent = divergent,
                     SumAlpha = alpha,
                     NumAlpha = 1
                 };
@@ -713,6 +932,7 @@ namespace Numerics.Sampling.MCMC
 
                 tree.LogSumWeight = logSumWeightNew;
                 tree.LeafCount += tree2.LeafCount;
+                tree.Divergent |= tree2.Divergent;
                 tree.SumAlpha += tree2.SumAlpha;
                 tree.NumAlpha += tree2.NumAlpha;
 
@@ -745,6 +965,7 @@ namespace Numerics.Sampling.MCMC
                 LogLikelihoodPrime = double.NegativeInfinity,
                 LeafCount = 1,
                 Valid = false,
+                Divergent = true,
                 SumAlpha = 0d,
                 NumAlpha = 1
             };
@@ -884,6 +1105,8 @@ namespace Numerics.Sampling.MCMC
             public int LeafCount;
             /// <summary>Whether the subtree is valid (no divergence, no U-turn).</summary>
             public bool Valid;
+            /// <summary>Whether the subtree contains a divergent or non-finite trajectory.</summary>
+            public bool Divergent;
             /// <summary>Sum of per-leaf Metropolis acceptance probabilities (for dual averaging).</summary>
             public double SumAlpha;
             /// <summary>Number of leaves contributing to SumAlpha.</summary>

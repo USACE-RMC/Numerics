@@ -133,44 +133,34 @@ namespace Numerics.Sampling.MCMC
             // Get proposal vector
             var xp = mvn[index].InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
 
-            // Check if the parameter is feasible (within the constraints)
+            // Determine whether the proposal is feasible before evaluating the target.
+            bool isFeasible = true;
             for (int i = 0; i < NumberOfParameters; i++)
             {
                 if (xp[i] < PriorDistributions[i].Minimum || xp[i] > PriorDistributions[i].Maximum)
                 {
-                    // The proposed parameter vector was infeasible, so leave xi unchanged.
-                    // Adapt Covariance Matrix after warmup
-                    if (SampleCount[index] > ThinningInterval * WarmupIterations)
-                        sigma[index].Push(state.Values);
-                    return state;
+                    isFeasible = false;
+                    break;
                 }
             }
 
-            // Evaluate fitness
-            var logLHp = LogLikelihoodFunction(xp);
-            var logLHi = state.Fitness;
-
-            // Calculate the Metropolis ratio
-            var logRatio = logLHp - logLHi;
-
-            // Accept the proposal with probability min(1,r)
-            // otherwise leave xi unchanged
-            var logU = Math.Log(_chainPRNGs[index].NextDouble());
-            if (logU <= logRatio)
+            ParameterSet retainedState = state;
+            if (isFeasible)
             {
-                // The proposal is accepted
-                AcceptCount[index] += 1;
-                // Adapt Covariance Matrix
-                sigma[index].Push(xp);
-                return new ParameterSet(xp, logLHp);
+                double proposedLogLikelihood = LogLikelihoodFunction(xp);
+                double logRatio = proposedLogLikelihood - state.Fitness;
+                double logUniform = Math.Log(_chainPRNGs[index].NextDouble());
+                if (logUniform <= logRatio)
+                {
+                    AcceptCount[index] += 1;
+                    retainedState = new ParameterSet(xp, proposedLogLikelihood);
+                }
             }
-            else
-            {
-                // Adapt Covariance Matrix after warmup
-                if (SampleCount[index] > ThinningInterval * WarmupIterations)
-                    sigma[index].Push(state.Values);
-                return state;
-            }
+
+            // Adaptive Metropolis covariance is based on the realized chain. Rejected
+            // and infeasible proposals therefore contribute the repeated retained state.
+            sigma[index].Push(retainedState.Values);
+            return retainedState;
         }
 
     }

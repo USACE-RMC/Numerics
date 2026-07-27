@@ -41,6 +41,17 @@ namespace Numerics.Sampling.MCMC
                 Output.AddRange(sampler.Output[i].ToList());
             }
             AcceptanceRates = sampler.AcceptanceRates.ToArray();
+            if (sampler is NUTS nuts)
+            {
+                NUTSDiagnosticSampleCounts = nuts.DiagnosticSampleCounts;
+                NUTSDivergenceCounts = nuts.DivergenceCounts;
+                NUTSMaxTreeDepthHitCounts = nuts.MaxTreeDepthHitCounts;
+                NUTSMeanTreeDepths = nuts.MeanTreeDepths;
+                NUTSMeanLeapfrogSteps = nuts.MeanLeapfrogSteps;
+                NUTSStepSizes = nuts.StepSizes;
+                NUTSEnergyBayesianFractionOfMissingInformation =
+                    nuts.EnergyBayesianFractionOfMissingInformation;
+            }
             MeanLogLikelihood = sampler.MeanLogLikelihood.ToList();
             MAP = sampler.MAP.Clone();
             ProcessParameterResults(sampler, alpha);
@@ -83,6 +94,48 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         [JsonInclude]
         public double[] AcceptanceRates { get; private set; } = null!;
+
+        /// <summary>
+        /// Gets the number of post-warmup NUTS transitions contributing diagnostics per chain.
+        /// </summary>
+        [JsonInclude]
+        public int[]? NUTSDiagnosticSampleCounts { get; private set; }
+
+        /// <summary>
+        /// Gets the number of divergent post-warmup NUTS transitions per chain.
+        /// </summary>
+        [JsonInclude]
+        public int[]? NUTSDivergenceCounts { get; private set; }
+
+        /// <summary>
+        /// Gets the number of post-warmup NUTS transitions that exhausted maximum tree depth per chain.
+        /// </summary>
+        [JsonInclude]
+        public int[]? NUTSMaxTreeDepthHitCounts { get; private set; }
+
+        /// <summary>
+        /// Gets the mean post-warmup NUTS tree depth per chain.
+        /// </summary>
+        [JsonInclude]
+        public double[]? NUTSMeanTreeDepths { get; private set; }
+
+        /// <summary>
+        /// Gets the mean post-warmup NUTS leapfrog-step count per transition and chain.
+        /// </summary>
+        [JsonInclude]
+        public double[]? NUTSMeanLeapfrogSteps { get; private set; }
+
+        /// <summary>
+        /// Gets the final adapted NUTS leapfrog step size per chain.
+        /// </summary>
+        [JsonInclude]
+        public double[]? NUTSStepSizes { get; private set; }
+
+        /// <summary>
+        /// Gets the post-warmup NUTS energy Bayesian fraction of missing information per chain.
+        /// </summary>
+        [JsonInclude]
+        public double[]? NUTSEnergyBayesianFractionOfMissingInformation { get; private set; }
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.
@@ -153,7 +206,8 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Recompute parameter summary statistics at a new credible-interval level
         /// (alpha) without rerunning the chain. Preserves Rhat, ESS, autocorrelation,
-        /// MarkovChains, AcceptanceRates, MeanLogLikelihood, MAP, and Output.
+        /// MarkovChains, acceptance and sampler diagnostics, MeanLogLikelihood, MAP,
+        /// and Output.
         /// </summary>
         /// <param name="alpha">
         /// The new significance level (e.g., 0.05 for 95% credible intervals,
