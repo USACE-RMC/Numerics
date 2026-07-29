@@ -532,6 +532,13 @@ namespace Numerics.Distributions
         /// <param name="alpha">The excluded two-sided probability.</param>
         /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
         /// <returns>The lower and upper confidence limits for each probability.</returns>
+        /// <remarks>
+        /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
+        /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
+        /// below one when every replicate falls at or below the estimate. When every replicate exceeds
+        /// the estimate the proportion is zero, the bias correction is −∞, and the adjusted limits
+        /// collapse to the smallest replicate.
+        /// </remarks>
         public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
         {
             var populationValues = new double[probabilities.Count];
@@ -556,7 +563,7 @@ namespace Numerics.Distributions
                 for (int index = 0; index < successfulValues.Length; index++)
                     if (successfulValues[index] <= populationValues[i]) lessOrEqual++;
 
-                double proportion = (lessOrEqual + 1d) / (successfulValues.Length + 1d);
+                double proportion = lessOrEqual / (successfulValues.Length + 1d);
                 Array.Sort(successfulValues);
                 double bias = Normal.StandardZ(proportion);
                 for (int j = 0; j < confidenceProbabilities.Length; j++)
@@ -613,6 +620,13 @@ namespace Numerics.Distributions
         /// <param name="probabilities">The non-exceedance probabilities.</param>
         /// <param name="alpha">The excluded two-sided probability.</param>
         /// <returns>The lower and upper confidence limits for each probability.</returns>
+        /// <remarks>
+        /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
+        /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
+        /// below one when every replicate falls at or below the estimate. When every replicate exceeds
+        /// the estimate the proportion is zero and the bias correction is −∞; the adjusted limits then
+        /// collapse to the smallest replicate, or are undefined when the acceleration is nonzero.
+        /// </remarks>
         public double[,] BCaQuantileCI(IList<double> sampleData, IList<double> probabilities, double alpha = 0.1)
         {
             var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
@@ -641,7 +655,7 @@ namespace Numerics.Distributions
                 for (int index = 0; index < successfulValues.Length; index++)
                     if (successfulValues[index] <= populationValues[i]) lessOrEqual++;
 
-                double proportion = (lessOrEqual + 1d) / (successfulValues.Length + 1d);
+                double proportion = lessOrEqual / (successfulValues.Length + 1d);
                 double bias = Normal.StandardZ(proportion);
                 Array.Sort(successfulValues);
                 for (int j = 0; j < confidenceProbabilities.Length; j++)

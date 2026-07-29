@@ -251,6 +251,54 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Pins the bias-correction proportion count(θ* ≤ θ̂) / (B + 1). With the estimate at the
+        /// bootstrap median of nine replicates the proportion is 5/10, the bias correction is zero,
+        /// and the bias-corrected limits equal the unadjusted percentile limits — any shift of the
+        /// count numerator breaks this identity.
+        /// </summary>
+        [TestMethod]
+        public void Test_BiasCorrected_ZeroBias_MatchesPercentileLimits()
+        {
+            var parent = new Normal(5d, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 100);
+            var values = new double[] { 1d, 2d, 3d, 4d, 4.5, 6d, 7d, 8d, 9d };
+            var replicates = new IUnivariateDistribution[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                replicates[i] = new Deterministic(values[i]);
+
+            double alpha = 0.1;
+            var ci = boot.BiasCorrectedQuantileCI(new double[] { 0.5 }, alpha, replicates);
+
+            Assert.AreEqual(Statistics.Percentile(values, alpha / 2d, true), ci[0, 0], 1E-12);
+            Assert.AreEqual(Statistics.Percentile(values, 1d - alpha / 2d, true), ci[0, 1], 1E-12);
+        }
+
+        /// <summary>
+        /// Pins the full bias-corrected limit formula at an asymmetric proportion: two of nine
+        /// replicates at or below the estimate give proportion 2/10, and the limits follow
+        /// Φ(2·Φ⁻¹(0.2) + z) exactly. A shifted numerator (3/10) or a B denominator (2/9) breaks it.
+        /// </summary>
+        [TestMethod]
+        public void Test_BiasCorrected_AsymmetricProportion_MatchesFormula()
+        {
+            var parent = new Normal(2.5, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 100);
+            var values = new double[] { 1d, 2d, 3d, 4d, 4.5, 6d, 7d, 8d, 9d };
+            var replicates = new IUnivariateDistribution[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                replicates[i] = new Deterministic(values[i]);
+
+            double alpha = 0.1;
+            var ci = boot.BiasCorrectedQuantileCI(new double[] { 0.5 }, alpha, replicates);
+
+            double bias = Normal.StandardZ(2d / 10d);
+            double lower = Statistics.Percentile(values, Normal.StandardCDF(2d * bias + Normal.StandardZ(alpha / 2d)), true);
+            double upper = Statistics.Percentile(values, Normal.StandardCDF(2d * bias + Normal.StandardZ(1d - alpha / 2d)), true);
+            Assert.AreEqual(lower, ci[0, 0], 1E-12);
+            Assert.AreEqual(upper, ci[0, 1], 1E-12);
+        }
+
+        /// <summary>
         /// A sampled distribution that failed to fit contributes a NaN parameter set rather than a
         /// null entry, matching BootstrapAnalysis.ParameterSets. Consumers index the array directly.
         /// </summary>
