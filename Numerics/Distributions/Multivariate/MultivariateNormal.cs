@@ -84,9 +84,16 @@ namespace Numerics.Distributions
         private bool _covSRTed = false;
 
         /// <summary>
-        /// The constant default <see cref="MVNUNI"/> seed used for reproducible evaluations.
+        /// The default <see cref="MVNUNI"/> seed used for reproducible evaluations.
         /// </summary>
-        public const int DefaultMVNUNISeed = 12345;
+        /// <remarks>
+        /// Every instance left at the default replays the identical lattice shifts, so the small
+        /// quadrature errors of separate instances are correlated rather than independent — they do
+        /// not average out when many CDF evaluations are aggregated. Callers aggregating across many
+        /// instances should derive per-instance seeds (for example, from model content) through
+        /// <see cref="MVNUNI"/> or a consumer-level seed property.
+        /// </remarks>
+        public static readonly int DefaultMVNUNISeed = 12345;
 
         /// <summary>
         /// The uniform(0,1) random number generator required to compute the multivariate CDF for dimensions greater than 2.
@@ -95,8 +102,9 @@ namespace Numerics.Distributions
         /// MVNDST is a randomized lattice rule and draws from this generator, so the CDF above two
         /// dimensions carries a small stochastic error and only reproduces when the generator is
         /// seeded. The default is the fixed <see cref="DefaultMVNUNISeed"/>; assign a seeded
-        /// generator to tie results to a caller's own seed. Not thread-safe — MVNDST advances the
-        /// generator, so an instance shared across threads must be cloned per thread.
+        /// generator to tie results to a caller's own seed and to decorrelate the quadrature error
+        /// across instances. Not thread-safe — MVNDST advances the generator, so an instance shared
+        /// across threads must be cloned per thread.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the assigned generator is null.</exception>
         public Random MVNUNI

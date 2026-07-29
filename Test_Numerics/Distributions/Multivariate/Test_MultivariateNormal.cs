@@ -232,6 +232,43 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
+        /// Verifies that two identically constructed instances left at the default generator produce
+        /// bit-identical CDF values above two dimensions, and that the default equals explicit
+        /// seeding with the published default seed. Three dimensions are required: two dimensions
+        /// use a closed bivariate form that cannot detect a seeding regression.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_DefaultSeed_IsBitReproducibleAcrossInstances()
+        {
+            Assert.AreEqual(12345, MultivariateNormal.DefaultMVNUNISeed);
+
+            var mean = new[] { 0d, 0d, 0d };
+            var covariance = new[,]
+            {
+                { 1.0, 0.5, 0.3 },
+                { 0.5, 1.0, 0.4 },
+                { 0.3, 0.4, 1.0 }
+            };
+            var point = new[] { 0.5, 0.2, -0.3 };
+
+            // MVNDST advances the generator on every evaluation, so each instance is evaluated
+            // exactly once and the captured values are compared.
+            double firstValue = new MultivariateNormal(mean, covariance).CDF(point);
+            double secondValue = new MultivariateNormal(mean, covariance).CDF(point);
+            Assert.AreEqual(
+                BitConverter.DoubleToInt64Bits(firstValue),
+                BitConverter.DoubleToInt64Bits(secondValue));
+
+            var explicitlySeeded = new MultivariateNormal(mean, covariance)
+            {
+                MVNUNI = new MersenneTwister(MultivariateNormal.DefaultMVNUNISeed)
+            };
+            Assert.AreEqual(
+                BitConverter.DoubleToInt64Bits(firstValue),
+                BitConverter.DoubleToInt64Bits(explicitlySeeded.CDF(point)));
+        }
+
+        /// <summary>
         /// Verifies the documented invalid-dimension termination status without entering MVNDNT initialization.
         /// </summary>
         [TestMethod]

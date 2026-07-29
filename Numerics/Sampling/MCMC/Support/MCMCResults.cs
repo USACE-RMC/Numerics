@@ -81,7 +81,9 @@ namespace Numerics.Sampling.MCMC
         public List<double>? MeanLogLikelihood { get; private set; }
 
         /// <summary>
-        /// The acceptance rate for each chain.
+        /// The acceptance rate for each chain. For NUTS samplers this is the mean Hamiltonian
+        /// acceptance statistic (the quantity step-size adaptation targets); for every other
+        /// sampler it is the fraction of iterations whose proposal was accepted.
         /// </summary>
         [JsonInclude]
         public double[] AcceptanceRates { get; private set; } = null!;
