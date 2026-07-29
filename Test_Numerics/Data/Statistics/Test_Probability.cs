@@ -205,7 +205,7 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Test joint probability of ABCD assuming perfect negative dependence. 
+        /// Test joint probability of ABCD assuming perfect negative dependence.
         /// </summary>
         [TestMethod]
         public void Test_JointABCD_NegativelyDependent()
@@ -216,6 +216,62 @@ namespace Data.Statistics
             double D = 0.5;
             var joint = Probability.NegativeJointProbability(new double[] { A, B, C, D });
             Assert.AreEqual(0.0, joint, 1E-6);
+        }
+
+        /// <summary>
+        /// Test the Fréchet–Hoeffding lower bound when the probabilities sum past one: two events at
+        /// 0.8 and 0.9 must overlap by at least 0.7 under perfect negative dependence.
+        /// </summary>
+        [TestMethod]
+        public void Test_TwoEvents_NegativelyDependent_FrechetLowerBound()
+        {
+            var joint = Probability.NegativeJointProbability(new double[] { 0.8, 0.9 });
+            Assert.AreEqual(0.7, joint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test the Fréchet–Hoeffding lower bound for more than two events: max(0, Σp − (n − 1)).
+        /// </summary>
+        [TestMethod]
+        public void Test_FourEvents_NegativelyDependent_FrechetLowerBound()
+        {
+            var joint = Probability.NegativeJointProbability(new double[] { 0.9, 0.9, 0.9, 0.8 });
+            Assert.AreEqual(0.5, joint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test that a single event's negatively dependent joint probability is the event probability itself.
+        /// </summary>
+        [TestMethod]
+        public void Test_SingleEvent_NegativelyDependent_IsIdentity()
+        {
+            var joint = Probability.NegativeJointProbability(new double[] { 0.6 });
+            Assert.AreEqual(0.6, joint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test the indicator overload: only the indicated events participate, with the bound
+        /// max(0, Σp − (k − 1)) over the k indicated events.
+        /// </summary>
+        [TestMethod]
+        public void Test_NegativelyDependent_IndicatorSubset()
+        {
+            var probabilities = new double[] { 0.8, 0.9, 0.5 };
+            var joint = Probability.NegativeJointProbability(probabilities, new int[] { 1, 1, 0 });
+            Assert.AreEqual(0.7, joint, 1E-12);
+
+            var disjoint = Probability.NegativeJointProbability(probabilities, new int[] { 1, 0, 1 });
+            Assert.AreEqual(0.3, disjoint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test that the perfectly negative dependency type routes through the Fréchet–Hoeffding lower bound.
+        /// </summary>
+        [TestMethod]
+        public void Test_JointProbability_PerfectlyNegative_RoutesToFrechetBound()
+        {
+            var joint = Probability.JointProbability(new double[] { 0.8, 0.9 }, Probability.DependencyType.PerfectlyNegative);
+            Assert.AreEqual(0.7, joint, 1E-12);
         }
 
         /// <summary>

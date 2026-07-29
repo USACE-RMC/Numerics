@@ -241,22 +241,34 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns the joint probability assuming perfect negative dependence. 
+        /// Returns the joint probability assuming perfect negative dependence.
         /// </summary>
         /// <param name="probabilities">List of probabilities.</param>
+        /// <returns>The Fréchet–Hoeffding lower bound max(0, Σpᵢ − (n − 1)), where n is the number of events.</returns>
+        /// <remarks>
+        /// For two events with probabilities 0.8 and 0.9 the joint probability is 0.7: under perfect
+        /// negative dependence the events overlap only by the amount their total probability exceeds one.
+        /// When the probabilities sum to one or less, perfectly negatively dependent events are disjoint
+        /// and the joint probability is zero.
+        /// </remarks>
         public static double NegativeJointProbability(IList<double> probabilities)
         {
             // Validation Checks
             if (probabilities == null || probabilities.Count == 0)
                 throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
-            return Tools.Clamp(Math.Min(1d, Tools.Sum(probabilities)) - 1d, 0d, 1d);
+            return Tools.Clamp(Tools.Sum(probabilities) - (probabilities.Count - 1d), 0d, 1d);
         }
 
         /// <summary>
-        /// Returns the joint probability assuming perfect negative dependence. 
+        /// Returns the joint probability assuming perfect negative dependence.
         /// </summary>
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <param name="indicators">An array of indicators, 0 means the event did not occur, 1 means the event did occur.</param>
+        /// <returns>The Fréchet–Hoeffding lower bound max(0, Σpᵢ − (k − 1)) over the indicated events, where k is the number of indicated events.</returns>
+        /// <remarks>
+        /// Only the events whose indicator is 1 participate, matching the other joint-probability
+        /// overloads. With no indicated events the joint probability of the empty intersection is one.
+        /// </remarks>
         public static double NegativeJointProbability(IList<double> probabilities, int[] indicators)
         {
             // Validation Checks
@@ -266,7 +278,10 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The indicators array must have at least one row.", nameof(indicators));
             if (probabilities.Count != indicators.Length)
                 throw new ArgumentException("The probabilities and indicators arrays must have the same length.", nameof(probabilities));
-            return Tools.Clamp(Math.Min(1d, Tools.Sum(probabilities, indicators)) - 1d, 0d, 1d);
+            int indicated = 0;
+            for (int i = 0; i < indicators.Length; i++)
+                if (indicators[i] == 1) indicated++;
+            return Tools.Clamp(Tools.Sum(probabilities, indicators) - (indicated - 1d), 0d, 1d);
         }
 
         /// <summary>
