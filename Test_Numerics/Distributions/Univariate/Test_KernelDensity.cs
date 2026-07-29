@@ -75,65 +75,68 @@ namespace Distributions.Univariate
 
         }
         /// <summary>
-        /// Verifies that automatic bandwidth selection supports a constant nonzero sample.
+        /// Verifies that a constant nonzero sample yields a near-point-mass bandwidth proportional
+        /// to the constant's magnitude rather than a fabricated spread.
         /// </summary>
         [TestMethod]
-        public void ConstantNonzeroSample_UsesPositiveScaleAwareBandwidth()
+        public void ConstantNonzeroSample_UsesNearPointMassBandwidth()
         {
             double[] constantSample = { 5d, 5d, 5d, 5d };
-            double expected = 5d * Math.Pow(4d / (3d * constantSample.Length), 0.2d);
+            double expected = 5d * KernelDensity.DegenerateRelativeBandwidth;
 
             var distribution = new KernelDensity(constantSample);
 
-            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.AreEqual(expected, distribution.Bandwidth, 0d);
             Assert.IsTrue(Tools.IsFinite(distribution.PDF(5d)));
             Assert.IsGreaterThan(0d, distribution.PDF(5d));
         }
         /// <summary>
-        /// Verifies that automatic bandwidth selection supports a single finite observation.
+        /// Verifies that a single finite observation yields a near-point-mass bandwidth at the
+        /// observed value: a one-point sample supports no dispersion estimate.
         /// </summary>
         [TestMethod]
-        public void SingleObservation_UsesPositiveScaleAwareBandwidth()
+        public void SingleObservation_UsesNearPointMassBandwidth()
         {
             double[] sample = { 7d };
-            double expected = 7d * Math.Pow(4d / 3d, 0.2d);
+            double expected = 7d * KernelDensity.DegenerateRelativeBandwidth;
 
             var distribution = new KernelDensity(sample);
 
-            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.AreEqual(expected, distribution.Bandwidth, 0d);
             Assert.IsTrue(Tools.IsFinite(distribution.PDF(7d)));
             Assert.IsGreaterThan(0d, distribution.PDF(7d));
         }
 
         /// <summary>
-        /// Verifies that automatic bandwidth selection supplies a positive unit-scale fallback for an all-zero sample.
+        /// Verifies that an all-zero sample yields the absolute degenerate bandwidth: the constant
+        /// supplies no magnitude, and no spread is invented for it.
         /// </summary>
         [TestMethod]
-        public void ConstantZeroSample_UsesPositiveUnitScaleBandwidth()
+        public void ConstantZeroSample_UsesAbsoluteDegenerateBandwidth()
         {
             double[] constantSample = { 0d, 0d, 0d, 0d };
-            double expected = Math.Pow(4d / (3d * constantSample.Length), 0.2d);
 
             var distribution = new KernelDensity(constantSample);
 
-            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.AreEqual(KernelDensity.DegenerateAbsoluteBandwidth, distribution.Bandwidth, 0d);
             Assert.IsTrue(Tools.IsFinite(distribution.PDF(0d)));
             Assert.IsGreaterThan(0d, distribution.PDF(0d));
         }
 
         /// <summary>
-        /// Verifies that weighted automatic bandwidth selection supports a constant sample.
+        /// Verifies that a weighted constant sample yields the near-point-mass bandwidth from the
+        /// constant's magnitude, independent of the weights.
         /// </summary>
         [TestMethod]
-        public void WeightedConstantSample_UsesPositiveScaleAwareBandwidth()
+        public void WeightedConstantSample_UsesNearPointMassBandwidth()
         {
             double[] constantSample = { -3d, -3d, -3d, -3d };
             double[] weights = { 1d, 2d, 3d, 4d };
-            double expected = 3d * Math.Pow(4d / (3d * constantSample.Length), 0.2d);
+            double expected = 3d * KernelDensity.DegenerateRelativeBandwidth;
 
             var distribution = new KernelDensity(constantSample, weights);
 
-            Assert.AreEqual(expected, distribution.Bandwidth, 1E-12);
+            Assert.AreEqual(expected, distribution.Bandwidth, 0d);
             Assert.IsTrue(Tools.IsFinite(distribution.PDF(-3d)));
             Assert.IsGreaterThan(0d, distribution.PDF(-3d));
         }

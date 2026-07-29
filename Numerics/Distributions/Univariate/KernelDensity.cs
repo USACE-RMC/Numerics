@@ -554,6 +554,18 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// The relative bandwidth assigned to a zero-dispersion (constant) sample, applied to the
+        /// constant's magnitude so the density represents a near-point mass.
+        /// </summary>
+        public const double DegenerateRelativeBandwidth = 1E-9;
+
+        /// <summary>
+        /// The absolute bandwidth assigned when a zero-dispersion sample supplies no usable
+        /// magnitude (an all-zero or subnormal constant).
+        /// </summary>
+        public const double DegenerateAbsoluteBandwidth = 1E-9;
+
+        /// <summary>
         /// Produces a finite, strictly positive automatic bandwidth when the sample dispersion is zero or non-finite.
         /// </summary>
         /// <param name="dispersion">The sample dispersion used by the bandwidth rule.</param>
@@ -561,14 +573,39 @@ namespace Numerics.Distributions
         /// <param name="sample">The finite, nonempty sample used to obtain a fallback scale.</param>
         /// <returns>A finite, strictly positive bandwidth.</returns>
         /// <remarks>
-        /// A constant sample has zero dispersion but remains a valid empirical sample. In that case, the
-        /// largest absolute observation supplies a scale; an all-zero sample uses unit scale. The lower
-        /// bound prevents underflow for subnormal sample values, while the upper guard prevents overflow.
+        /// A constant sample — including a single observation, whose sample dispersion is undefined —
+        /// supports no spread estimate, so the density must not invent one from the constant's
+        /// magnitude: the bandwidth is the magnitude times <see cref="DegenerateRelativeBandwidth"/>,
+        /// a near-point mass at the observed value, falling back to
+        /// <see cref="DegenerateAbsoluteBandwidth"/> when the constant is zero or so small the product
+        /// underflows. A non-finite dispersion on a genuinely spread sample arises only from variance
+        /// overflow; the largest absolute observation then supplies the scale for the standard
+        /// bandwidth rule, with guards against overflow and underflow.
         /// </remarks>
         private static double EnsurePositiveBandwidth(double dispersion, double factor, IList<double> sample)
         {
+            if (!Tools.IsFinite(dispersion) || dispersion <= 0d)
+            {
+                bool constant = true;
+                for (int i = 1; i < sample.Count; i++)
+                {
+                    if (sample[i] != sample[0])
+                    {
+                        constant = false;
+                        break;
+                    }
+                }
+
+                if (constant)
+                {
+                    double magnitude = Math.Abs(sample[0]);
+                    double degenerate = magnitude * DegenerateRelativeBandwidth;
+                    return degenerate > 0d && Tools.IsFinite(degenerate) ? degenerate : DegenerateAbsoluteBandwidth;
+                }
+            }
+
             double scale = dispersion;
-            if (!Tools.IsFinite(scale) || scale <= 0d)
+            if (!Tools.IsFinite(scale))
             {
                 scale = 0d;
                 for (int i = 0; i < sample.Count; i++)
