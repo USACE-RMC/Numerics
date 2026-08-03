@@ -186,9 +186,27 @@ namespace Numerics.Mathematics.Optimization
             var next = new int[nNodes];
             var edgeIndexes = new int[nNodes];
             var dist = new float[nNodes];
-            var state = new int[nNodes];
-            var heap = new IndexedMinHeap(nNodes);
+            SolveNearestCore(adjacency, null, destinationIndices, next, edgeIndexes, dist, new int[nNodes], new IndexedMinHeap(nNodes));
+            return WriteTable(next, edgeIndexes, dist);
+        }
 
+        /// <summary>
+        /// Runs the single-pass multi-source solve: every destination seeds at cost zero (in
+        /// array order, duplicates skipped) and one heap drain routes every node to its nearest
+        /// destination. Buffers are fully re-initialized, so they can be reused across calls.
+        /// </summary>
+        /// <param name="adjacency">The incoming-edge compact adjacency.</param>
+        /// <param name="weightOverride">Optional positional weight overlay; null uses the adjacency weights.</param>
+        /// <param name="destinationIndices">The destination nodes.</param>
+        /// <param name="next">Receives the next node toward the nearest destination per node; -1 when unreachable.</param>
+        /// <param name="edgeIndexes">Receives the edge index to take per node; -1 when unreachable.</param>
+        /// <param name="dist">Receives the cumulative cost per node; positive infinity when unreachable.</param>
+        /// <param name="state">Scratch node states.</param>
+        /// <param name="heap">The scratch heap, sized at the node count.</param>
+        internal static void SolveNearestCore(in CompactAdjacency adjacency, float[]? weightOverride, int[] destinationIndices,
+            int[] next, int[] edgeIndexes, float[] dist, int[] state, IndexedMinHeap heap)
+        {
+            int nNodes = adjacency.NodeCount;
             for (int i = 0; i < nNodes; i++)
             {
                 next[i] = -1;
@@ -209,8 +227,7 @@ namespace Numerics.Mathematics.Optimization
                 state[destination] = 2;
             }
 
-            RunToExhaustion(adjacency, null, next, edgeIndexes, dist, state, heap);
-            return WriteTable(next, edgeIndexes, dist);
+            RunToExhaustion(adjacency, weightOverride, next, edgeIndexes, dist, state, heap);
         }
 
         /// <summary>
@@ -243,12 +260,37 @@ namespace Numerics.Mathematics.Optimization
             }
 
             CompactAdjacency adjacency = BuildIncomingAdjacency(edges, nNodes, edgesFromNodes);
-
-            // Accumulators start all-unreachable; each destination's solve merges in by
-            // strictly smaller cost, preserving the earlier-destination-wins tie rule.
             var bestNext = new int[nNodes];
             var bestEdge = new int[nNodes];
             var bestDist = new float[nNodes];
+            SolveMergedCore(adjacency, null, destinationIndices,
+                new int[nNodes], new int[nNodes], new float[nNodes], new int[nNodes], new IndexedMinHeap(nNodes),
+                bestNext, bestEdge, bestDist);
+            return WriteTable(bestNext, bestEdge, bestDist);
+        }
+
+        /// <summary>
+        /// Runs one destination-rooted solve per destination in array order and merges the
+        /// results per node by strictly smaller cost — the multi-destination semantics: on an
+        /// exact cost tie the earlier destination wins. The accumulators start all-unreachable
+        /// and the scratch buffers are reused across destinations.
+        /// </summary>
+        /// <param name="adjacency">The incoming-edge compact adjacency.</param>
+        /// <param name="weightOverride">Optional positional weight overlay; null uses the adjacency weights.</param>
+        /// <param name="destinationIndices">The destination nodes, in merge order.</param>
+        /// <param name="next">Scratch per-node next-node buffer.</param>
+        /// <param name="edgeIndexes">Scratch per-node edge-index buffer.</param>
+        /// <param name="dist">Scratch per-node cost buffer.</param>
+        /// <param name="state">Scratch per-node state buffer.</param>
+        /// <param name="heap">The scratch heap, sized at the node count.</param>
+        /// <param name="bestNext">Receives the merged next node per node.</param>
+        /// <param name="bestEdge">Receives the merged edge index per node.</param>
+        /// <param name="bestDist">Receives the merged cost per node.</param>
+        internal static void SolveMergedCore(in CompactAdjacency adjacency, float[]? weightOverride, int[] destinationIndices,
+            int[] next, int[] edgeIndexes, float[] dist, int[] state, IndexedMinHeap heap,
+            int[] bestNext, int[] bestEdge, float[] bestDist)
+        {
+            int nNodes = adjacency.NodeCount;
             for (int i = 0; i < nNodes; i++)
             {
                 bestNext[i] = -1;
@@ -256,16 +298,9 @@ namespace Numerics.Mathematics.Optimization
                 bestDist[i] = float.PositiveInfinity;
             }
 
-            // One scratch set reused across destinations.
-            var next = new int[nNodes];
-            var edgeIndexes = new int[nNodes];
-            var dist = new float[nNodes];
-            var state = new int[nNodes];
-            var heap = new IndexedMinHeap(nNodes);
-
             for (int d = 0; d < destinationIndices.Length; d++)
             {
-                SolveCore(adjacency, null, destinationIndices[d], next, edgeIndexes, dist, state, heap);
+                SolveCore(adjacency, weightOverride, destinationIndices[d], next, edgeIndexes, dist, state, heap);
                 for (int j = 0; j < nNodes; j++)
                 {
                     if (dist[j] < bestDist[j])
@@ -276,7 +311,6 @@ namespace Numerics.Mathematics.Optimization
                     }
                 }
             }
-            return WriteTable(bestNext, bestEdge, bestDist);
         }
 
         /// <summary>
@@ -462,15 +496,27 @@ namespace Numerics.Mathematics.Optimization
         /// <returns>The result table.</returns>
         internal static float[,] WriteTable(int[] next, int[] edgeIndexes, float[] dist)
         {
+            var resultTable = new float[next.Length, 3];
+            WriteTable(next, edgeIndexes, dist, resultTable);
+            return resultTable;
+        }
+
+        /// <summary>
+        /// Writes the flat solve buffers into a caller-supplied three-column result table.
+        /// </summary>
+        /// <param name="next">The per-node next-node buffer.</param>
+        /// <param name="edgeIndexes">The per-node edge-index buffer.</param>
+        /// <param name="dist">The per-node cumulative-cost buffer.</param>
+        /// <param name="resultTable">The table to fill; its row count must equal the buffer length.</param>
+        internal static void WriteTable(int[] next, int[] edgeIndexes, float[] dist, float[,] resultTable)
+        {
             int nNodes = next.Length;
-            var resultTable = new float[nNodes, 3];
             for (int i = 0; i < nNodes; i++)
             {
                 resultTable[i, NEXT_NODE] = next[i];
                 resultTable[i, EDGE_INDEX] = edgeIndexes[i];
                 resultTable[i, COST] = dist[i];
             }
-            return resultTable;
         }
     }
 }
