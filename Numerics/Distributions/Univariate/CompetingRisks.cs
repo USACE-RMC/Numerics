@@ -1,6 +1,7 @@
 ﻿using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
+using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.Optimization;
 using Numerics.Mathematics.RootFinding;
 using Numerics.Sampling;
@@ -1065,6 +1066,52 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Validates the user-supplied correlation matrix used by the Gaussian copula.
+        /// </summary>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the matrix is missing, has the wrong dimensions, contains invalid
+        /// entries, is not symmetric with unit diagonal, or is not positive definite.
+        /// </exception>
+        private void ValidateCorrelationMatrix()
+        {
+            int dimension = Distributions.Count;
+            if (CorrelationMatrix == null)
+                throw new ArgumentException("A correlation-matrix dependency requires a correlation matrix.", nameof(CorrelationMatrix));
+            if (CorrelationMatrix.GetLength(0) != dimension || CorrelationMatrix.GetLength(1) != dimension)
+                throw new ArgumentException("The correlation matrix dimensions must match the number of distributions.", nameof(CorrelationMatrix));
+
+            for (int i = 0; i < dimension; i++)
+            {
+                if (Math.Abs(CorrelationMatrix[i, i] - 1d) > 1E-12)
+                    throw new ArgumentException("The correlation matrix must have unit diagonal entries.", nameof(CorrelationMatrix));
+
+                for (int j = 0; j < dimension; j++)
+                {
+                    double value = CorrelationMatrix[i, j];
+                    if (!Tools.IsFinite(value) || value < -1d || value > 1d)
+                        throw new ArgumentException("The correlation matrix must contain finite values between -1 and 1.", nameof(CorrelationMatrix));
+                    if (j > i && Math.Abs(value - CorrelationMatrix[j, i]) > 1E-12)
+                        throw new ArgumentException("The correlation matrix must be symmetric.", nameof(CorrelationMatrix));
+                }
+            }
+
+            try
+            {
+                var cholesky = new CholeskyDecomposition(new Matrix(CorrelationMatrix));
+                if (!cholesky.IsPositiveDefinite)
+                    throw new ArgumentException("The correlation matrix must be positive definite.", nameof(CorrelationMatrix));
+            }
+            catch (ArgumentException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new ArgumentException("The correlation matrix must be positive definite.", nameof(CorrelationMatrix), exception);
+            }
+        }
+
+        /// <summary>
         /// Create a Multivariate Normal distribution used for modeling dependency between the marginal distributions.
         /// </summary>
         private void CreateMultivariateNormal()
@@ -1084,6 +1131,7 @@ namespace Numerics.Distributions
             }
             else
             {
+                ValidateCorrelationMatrix();
                 for (int i = 0; i < D; i++)
                 {
                     mu[i] = 0d;
@@ -1145,29 +1193,11 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] GenerateRandomValues(int sampleSize, int seed = -1)
         {
-            // Create PRNG for generating random numbers
-            var rnd = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
-            var sample = new double[sampleSize];
-            // Generate values
-            for (int i = 0; i < sampleSize; i++)
-            {
-                double xMin = double.MaxValue;
-                double xMax = double.MinValue;
-                for (int j = 0; j < Distributions.Count; j++)
-                {
-                    var x = Distributions[j].InverseCDF(rnd.NextDouble());
-                    if (x < xMin) xMin = x;
-                    if (x > xMax) xMax = x;
-                }
-                sample[i] = MinimumOfRandomVariables == true ? xMin : xMax;            
-            }
-            // Return array of random values
-            return sample;
+            return GenerateRandomValuesWithDependency(sampleSize, seed);
         }
 
         /// <summary>
         /// Generates random values accounting for dependency structure.
-        /// The original implementation only handles independent case correctly.
         /// </summary>
         /// <param name="sampleSize"> Size of random sample to generate. </param>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>

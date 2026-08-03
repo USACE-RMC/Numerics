@@ -489,6 +489,90 @@ namespace Distributions.Univariate
             Assert.IsGreaterThan(0.1d, perfectlyNegative - correlated);
         }
 
+        /// <summary>
+        /// Verifies that the independent simulation path preserves its established seeded sequence.
+        /// </summary>
+        [TestMethod]
+        public void Test_GenerateRandomValues_IndependentPreservesSeededSequence()
+        {
+            var risks = new CompetingRisks(new IUnivariateDistribution[]
+            {
+                new Normal(10d, 2d),
+                new Normal(20d, 3d)
+            })
+            {
+                Dependency = Probability.DependencyType.Independent,
+                MinimumOfRandomVariables = false
+            };
+            double[] expected =
+            {
+                23.68205396527114d,
+                16.630838190679725d,
+                14.73954851356168d,
+                22.820525389355137d,
+                20.241482757909623d,
+                25.128148621977083d,
+                19.713254203467052d,
+                24.292021772366837d,
+                19.035542927284475d,
+                16.953998432897098d
+            };
+
+            CollectionAssert.AreEqual(expected, risks.GenerateRandomValues(expected.Length, 12345));
+        }
+
+        /// <summary>
+        /// Verifies that the public override honors every dependency mode by matching the
+        /// explicit dependency-aware simulation entry point.
+        /// </summary>
+        /// <param name="dependency">The dependency mode to exercise.</param>
+        [TestMethod]
+        [DataRow(Probability.DependencyType.Independent)]
+        [DataRow(Probability.DependencyType.PerfectlyPositive)]
+        [DataRow(Probability.DependencyType.PerfectlyNegative)]
+        [DataRow(Probability.DependencyType.CorrelationMatrix)]
+        public void Test_GenerateRandomValues_MatchesDependencyAwarePath(Probability.DependencyType dependency)
+        {
+            var risks = new CompetingRisks(new IUnivariateDistribution[]
+            {
+                new Normal(10d, 2d),
+                new Normal(20d, 3d)
+            })
+            {
+                CorrelationMatrix = new[,] { { 1d, 0.6d }, { 0.6d, 1d } },
+                Dependency = dependency,
+                MinimumOfRandomVariables = false
+            };
+
+            double[] expected = risks.GenerateRandomValuesWithDependency(128, 24680);
+            double[] actual = risks.GenerateRandomValues(128, 24680);
+
+            CollectionAssert.AreEqual(expected, actual);
+        }
+
+        /// <summary>
+        /// Verifies that correlation-matrix simulation rejects a matrix that is not
+        /// positive definite before attempting Gaussian-copula sampling.
+        /// </summary>
+        [TestMethod]
+        public void Test_GenerateRandomValues_CorrelationMatrixRejectsNonPositiveDefiniteMatrix()
+        {
+            var risks = new CompetingRisks(new IUnivariateDistribution[]
+            {
+                new Normal(),
+                new Normal()
+            })
+            {
+                CorrelationMatrix = new[,] { { 1d, 1d }, { 1d, 1d } },
+                Dependency = Probability.DependencyType.CorrelationMatrix
+            };
+
+            ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+                () => risks.GenerateRandomValues(10, 12345));
+
+            StringAssert.Contains(exception.Message, "positive definite");
+        }
+
         // Tolerances - competing risks MLE is harder than single distribution MLE
         private const double SHAPE_TOLERANCE_PERCENT = 0.25;  // 25% relative error
         private const double SCALE_TOLERANCE_PERCENT = 0.30;  // 30% relative error
