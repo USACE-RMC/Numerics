@@ -310,5 +310,25 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.NegativeInfinity, mix.LogPDF(-1.0));
         }
 
+        /// <summary>
+        /// Test that the empirical CDF spans unbounded-below components with finite tail quantiles.
+        /// The stratification grid must open at a finite lower tail quantile of the components
+        /// rather than the distribution minimum of negative infinity, so quantile lookups on the
+        /// interpolated table return finite values.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_CreateEmpiricalCDF_FiniteQuantilesForUnboundedComponents()
+        {
+            var mix = new Mixture(new[] { 0.45, 0.55 }, new UnivariateDistributionBase[] { new Normal(100, 20), new Normal(60, 15) });
+            mix.CreateEmpiricalCDF();
+
+            double median = mix.InverseCDF(0.5);
+            Assert.IsTrue(Tools.IsFinite(median));
+            // The exact median lies strictly inside (60, 100): CDF(60) ≈ 0.285 and CDF(100) ≈ 0.773.
+            Assert.IsTrue(median > 60.0 && median < 100.0);
+            Assert.IsTrue(Tools.IsFinite(mix.InverseCDF(0.001)));
+            Assert.IsTrue(Tools.IsFinite(mix.InverseCDF(0.999)));
+        }
+
     }
 }

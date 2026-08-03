@@ -1180,8 +1180,9 @@ namespace Numerics.Distributions
         public void CreateEmpiricalCDF()
         {
             // Get min & max
+            double minP = 1E-16;
             double maxP = 1 - 1E-16;
-            double minX = Minimum;
+            double minX = Distributions.Min(d => d.InverseCDF(minP));
             double maxX = IsZeroInflated
                 ? Distributions.Select((distribution, index) =>
                 {
