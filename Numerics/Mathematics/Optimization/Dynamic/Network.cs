@@ -350,498 +350,157 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Finds an alternative path avoiding the specified edges.
         /// </summary>
-        /// <param name="edgesToRemove">Edge indices to exclude from the path.</param>
+        /// <param name="edgesToRemove">Edge indices to exclude from the path. The array is not modified; every edge bearing a listed index is excluded.</param>
         /// <param name="startNodeIndex">The starting node index.</param>
-        /// <returns>A list of edge indices forming the alternative path, or null if no path exists.</returns>
+        /// <returns>
+        /// The ordered edge indices from the start node to its nearest network destination
+        /// avoiding the excluded edges; an empty list when the start node is itself a
+        /// destination; null if no path exists.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when the edge indices are null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
         public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex)
         {
-            int[] nodeState = new int[_nodeCount];
-            float[] nodeWeightToDestination = new float[_nodeCount];
-            BinaryHeap<Edge> heap = new BinaryHeap<Edge>(100000);
+            if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
+            if (startNodeIndex < 0 || startNodeIndex >= _nodeCount)
+                throw new ArgumentOutOfRangeException(nameof(startNodeIndex), $"The start node index must be within [0, {_nodeCount}).");
 
-            //backwards Dijkstra
-            float[,] resultTable = new float[_nodeCount, 3];
-            resultTable[startNodeIndex, 0] = startNodeIndex;
-            resultTable[startNodeIndex, 1] = 0;
-            resultTable[startNodeIndex, 2] = 0;
-            nodeState[startNodeIndex] = 1;
+            var removed = new HashSet<int>();
+            for (int i = 0; i < edgesToRemove.Length; i++) removed.Add(edgesToRemove[i]);
 
-            int previousValue = startNodeIndex;
-            int nodeIndex;
-            bool foundPath = false;
-
-            Array.Sort(edgesToRemove);
-
-            // Loading up the heap starting from destination
-            if (_incomingEdges[previousValue] != null)
-            {
-                foreach (Edge edge in _incomingEdges[previousValue])
-                {
-                    if (Array.BinarySearch(edgesToRemove, edge) < 0)
-                    {
-                        if (previousValue == edge.FromIndex)
-                        {
-                            nodeIndex = edge.ToIndex;
-                        }
-                        else
-                        {
-                            nodeIndex = edge.FromIndex;
-                        }
-                        switch (nodeState[nodeIndex])
-                        {
-                            case 0: //it has not been scanned yet
-                                BinaryHeap<Edge>.Node inputNode = new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge);
-                                heap.Add(inputNode);
-                                nodeState[nodeIndex] = 2;
-                                nodeWeightToDestination[nodeIndex] = inputNode.Weight;
-                                break;
-                            case 1: //do nothing it has already been solved for
-                                break;
-                            case 2: //it has been scanned but not solved
-                                if (nodeWeightToDestination[nodeIndex] > edge.Weight)
-                                {
-                                    BinaryHeap<Edge>.Node inputNode2 = new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge);
-                                    nodeWeightToDestination[nodeIndex] = inputNode2.Weight;
-                                    heap.Replace(inputNode2);
-                                }
-                                break;
-                        }
-                    }
-                }
-            }
-            // if n = 0, then no roads to escape to
-            if (heap.Count == 0) return null!;
-
-            float tempWeight;
-            int tempIndex;
-            float FoundDistance = 99999999;
-            int PotentialToIndex = 0;
-
-            BinaryHeap<Edge>.Node resultNode;
-            float cumulativeWeight = 0;
-
-            do
-            {
-                resultNode = heap.RemoveMin();
-
-                if (Solve(startNodeIndex)[resultNode.Index, 0] == 0) continue;
-
-                if (resultNode.Weight + Solve(startNodeIndex)[resultNode.Index, 2] < FoundDistance)
-                {
-                    previousValue = resultNode.Index;
-                    nodeState[resultNode.Index] = 1;
-                    nodeWeightToDestination[resultNode.Index] = resultNode.Weight;
-
-                    foreach (Edge edge in _incomingEdges[previousValue])
-                    {
-                        if (edge.ToIndex == resultNode.Index) resultTable[resultNode.Index, 0] = edge.FromIndex;
-                        else resultTable[resultNode.Index, 0] = edge.ToIndex;
-
-                        resultTable[resultNode.Index, 1] = edge.Index;
-                        resultTable[resultNode.Index, 2] = resultNode.Weight;
-
-                        if (Solve(startNodeIndex)[edge.ToIndex, 0] == edge.FromIndex)
-                        {
-                            if (_incomingEdges[previousValue] != null)
-                            {
-                                if (Array.BinarySearch(edgesToRemove, edge) < 0)
-                                {
-                                    if (previousValue == edge.FromIndex) nodeIndex = edge.ToIndex;
-                                    else nodeIndex = edge.FromIndex;
-
-                                    switch (nodeState[nodeIndex])
-                                    {
-                                        case 0: //has not been scanned yet
-                                            cumulativeWeight = edge.Weight + resultNode.Weight;
-                                            heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            nodeState[nodeIndex] = 2;
-                                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                            break;
-                                        case 1: break;
-                                        case 2:
-                                            if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                                            {
-                                                nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            }
-                                            break;
-                                    }
-                                }
-                            }
-                        }
-                        else if (edge.FromIndex != startNodeIndex && Solve(startNodeIndex)[edge.FromIndex, 0] == resultNode.Index)
-                        {
-                            //Already on the lookup table going forwards
-                            if (_incomingEdges[previousValue] != null)
-                            {
-                                foreach (Edge edge2 in _incomingEdges[previousValue])
-                                {
-                                    if (Array.BinarySearch(edgesToRemove, edge2) < 0)
-                                    {
-                                        if (previousValue == edge2.FromIndex) nodeIndex = edge2.ToIndex;
-                                        else nodeIndex = edge2.FromIndex;
-
-                                        switch (nodeState[nodeIndex])
-                                        {
-                                            case 0:
-                                                heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                                nodeState[nodeIndex] = 2;
-                                                nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                break;
-                                            case 1: break;
-                                            case 2:
-                                                if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                                                {
-                                                    nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                    heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                                }
-                                                break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            //Potential new path, check path viability
-                            tempWeight = Solve(startNodeIndex)[resultNode.Index, 2];
-                            tempIndex = resultNode.Index;
-
-                            do
-                            {
-                                if (Array.BinarySearch(edgesToRemove, (int)Solve(startNodeIndex)[tempIndex, 1]) >= 0)
-                                {
-                                    if (_incomingEdges[previousValue] != null)
-                                    {
-                                        foreach (Edge edge3 in _incomingEdges[previousValue])
-                                        {
-                                            if (Array.BinarySearch(edgesToRemove, edge3) < 0)
-                                            {
-                                                if (previousValue == edge3.FromIndex) nodeIndex = edge3.ToIndex;
-                                                else nodeIndex = edge3.FromIndex;
-
-                                                switch (nodeState[nodeIndex])
-                                                {
-                                                    case 0:
-                                                        heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                                        nodeState[nodeIndex] = 2;
-                                                        nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                        break;
-                                                    case 1: break;
-                                                    case 2:
-                                                        if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                                                        {
-                                                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                            heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                                        }
-                                                        break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
-                                tempWeight = Solve(startNodeIndex)[tempIndex, 2];
-                                tempIndex = (int)Solve(startNodeIndex)[tempIndex, 0];
-                            } while (tempWeight == 0);
-
-                            if (tempWeight == 0)
-                            {
-                                FoundDistance = resultNode.Weight + Solve(startNodeIndex)[resultNode.Index, 2];
-                                PotentialToIndex = resultNode.Index;
-                                foundPath = true;
-                            }
-                        }
-                    }
-
-                }
-            } while (heap.Count == 0);
-
-            // Check to see if a destination was reached, if so then create a path to the nearest destination
-            if (foundPath)
-            {
-                List<int> UpdatedPath = new List<int>();
-                float tempLen = resultTable[PotentialToIndex, 2];
-                int tempEdge = (int)resultTable[PotentialToIndex, 1];
-                int tempNode = PotentialToIndex;
-
-                while (tempLen == 0)
-                {
-                    UpdatedPath.Add(tempEdge);
-                    tempNode = (int)resultTable[tempNode, 0];
-                    tempEdge = (int)resultTable[tempNode, 1];
-                    tempLen = resultTable[tempNode, 2];
-                }
-
-                UpdatedPath.Reverse();
-
-                tempLen = Solve(startNodeIndex)[PotentialToIndex, 2];
-                tempEdge = (int)Solve(startNodeIndex)[PotentialToIndex, 1];
-                tempNode = PotentialToIndex;
-
-                while (tempLen == 0)
-                {
-                    UpdatedPath.Add(tempEdge);
-                    tempNode = (int)Solve(startNodeIndex)[tempNode, 0];
-                    tempEdge = (int)Solve(startNodeIndex)[tempNode, 1];
-                    tempLen = Solve(startNodeIndex)[tempNode, 2];
-                }
-
-                return UpdatedPath;
-            }
-            else return null!;
+            return FindDetourPath(removed, startNodeIndex);
         }
 
         /// <summary>
-        /// Finds an alternative path avoiding the specified edges, using a pre-computed results table.
+        /// Finds an alternative path avoiding the specified edges, using a pre-computed results
+        /// table to skip the solve when the recorded route is unaffected.
         /// </summary>
-        /// <param name="edgesToRemove">Edge indices to exclude from the path.</param>
+        /// <param name="edgesToRemove">Edge indices to exclude from the path. The array is not modified; every edge bearing a listed index is excluded.</param>
         /// <param name="startNodeIndex">The starting node index.</param>
-        /// <param name="existingResultsTable">A pre-computed shortest path results table.</param>
-        /// <returns>A list of edge indices forming the alternative path, or an empty list if no path exists.</returns>
+        /// <param name="existingResultsTable">A result table previously solved on this network toward its destinations, without exclusions.</param>
+        /// <returns>
+        /// The ordered edge indices from the start node to its nearest network destination
+        /// avoiding the excluded edges; an empty list when the start node is itself a
+        /// destination or when no path exists.
+        /// </returns>
+        /// <remarks>
+        /// When the table's recorded route from the start node avoids every excluded edge it is
+        /// returned directly — exclusions only remove paths, so a surviving unexcluded optimum
+        /// stays optimal. Otherwise the path is re-solved with the exclusions applied.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when the edge indices or table are null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the table dimensions are not [<see cref="NodeCount"/>, 3].</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
         public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
         {
-            int[] nodeState = new int[_nodeCount];
-            float[] nodeWeightToDestination = new float[_nodeCount];
-            BinaryHeap<Edge> heap = new BinaryHeap<Edge>(100000);
-            int nodeIndex;
+            if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
+            ValidateResultTable(existingResultsTable);
+            if (startNodeIndex < 0 || startNodeIndex >= _nodeCount)
+                throw new ArgumentOutOfRangeException(nameof(startNodeIndex), $"The start node index must be within [0, {_nodeCount}).");
 
+            // Exclusions only shrink reachability: unreachable without them means unreachable with them.
+            if (float.IsPositiveInfinity(existingResultsTable[startNodeIndex, 2])) return new List<int>();
 
-            //backwards Dijkstra
-            float[,] resultTable = new float[_nodeCount, 3];
-            resultTable[startNodeIndex, 0] = startNodeIndex;
-            resultTable[startNodeIndex, 1] = 0;
-            resultTable[startNodeIndex, 2] = 0;
-            nodeState[startNodeIndex] = 1;
+            var removed = new HashSet<int>();
+            for (int i = 0; i < edgesToRemove.Length; i++) removed.Add(edgesToRemove[i]);
 
-            int previousValue = startNodeIndex;
-            bool foundPath = false;
-
-            Array.Sort(edgesToRemove);
-
-            // Loading up the heap starting from destination
-            if (_incomingEdges[previousValue] != null)
+            List<int>? recorded = Dijkstra.GetPath(existingResultsTable, startNodeIndex);
+            if (recorded != null)
             {
-                foreach (Edge edge in _incomingEdges[previousValue])
+                bool blocked = false;
+                for (int i = 0; i < recorded.Count; i++)
                 {
-                    if (Array.BinarySearch(edgesToRemove, edge) < 0)
+                    if (removed.Contains(recorded[i]))
                     {
-                        if (previousValue == edge.FromIndex)
+                        blocked = true;
+                        break;
+                    }
+                }
+                if (!blocked) return recorded;
+            }
+
+            return FindDetourPath(removed, startNodeIndex) ?? new List<int>();
+        }
+
+        /// <summary>
+        /// Runs a forward Dijkstra search from the start node over the outgoing adjacency,
+        /// skipping excluded edges, stopping at the first settled destination (the nearest one),
+        /// and reconstructing the edge-index path.
+        /// </summary>
+        /// <param name="removed">The excluded edge indices.</param>
+        /// <param name="startNodeIndex">The starting node index.</param>
+        /// <returns>The ordered edge indices to the nearest destination; an empty list when the start node is a destination; null when every destination is unreachable.</returns>
+        private List<int>? FindDetourPath(HashSet<int> removed, int startNodeIndex)
+        {
+            if (_isDestination[startNodeIndex]) return new List<int>();
+
+            var dist = new float[_nodeCount];
+            var state = new int[_nodeCount];
+            var previousSlot = new int[_nodeCount];
+            for (int i = 0; i < _nodeCount; i++)
+            {
+                dist[i] = float.PositiveInfinity;
+                state[i] = 0;
+                previousSlot[i] = -1;
+            }
+            var heap = new IndexedMinHeap(_nodeCount);
+
+            dist[startNodeIndex] = 0f;
+            heap.Add(startNodeIndex, 0f);
+            state[startNodeIndex] = 2;
+
+            int[] rowStart = _outgoingAdjacency.RowStart;
+            int[] toNodes = _outgoingAdjacency.ToNode;
+            float[] weights = _outgoingAdjacency.Weight;
+            int[] edgeIndexes = _outgoingAdjacency.EdgeIndex;
+
+            int reachedDestination = -1;
+            while (heap.Count > 0)
+            {
+                heap.RemoveMin(out int current, out float cost);
+                if (state[current] == 1) continue;
+                state[current] = 1;
+
+                if (_isDestination[current])
+                {
+                    reachedDestination = current;
+                    break;
+                }
+
+                int rowEnd = rowStart[current + 1];
+                for (int k = rowStart[current]; k < rowEnd; k++)
+                {
+                    if (removed.Contains(edgeIndexes[k])) continue;
+                    int to = toNodes[k];
+                    float newCost = cost + weights[k];
+                    if (newCost < dist[to])
+                    {
+                        dist[to] = newCost;
+                        if (state[to] != 2)
                         {
-                            nodeIndex = edge.ToIndex;
+                            heap.Add(to, newCost);
+                            state[to] = 2;
                         }
                         else
                         {
-                            nodeIndex = edge.FromIndex;
+                            heap.DecreaseKey(to, newCost);
                         }
-                        switch (nodeState[nodeIndex])
-                        {
-                            case 0: //it has not been scanned yet
-                                BinaryHeap<Edge>.Node inputNode = new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge);
-                                heap.Add(inputNode);
-                                nodeState[nodeIndex] = 2;
-                                nodeWeightToDestination[nodeIndex] = inputNode.Weight;
-                                break;
-                            case 1: //do nothing it has already been solved for
-                                break;
-                            case 2: //it has been scanned but not solved
-                                if (nodeWeightToDestination[nodeIndex] > edge.Weight)
-                                {
-                                    BinaryHeap<Edge>.Node inputNode2 = new BinaryHeap<Edge>.Node(edge.Weight, nodeIndex, edge);
-                                    nodeWeightToDestination[nodeIndex] = inputNode2.Weight;
-                                    heap.Replace(inputNode2);
-                                }
-                                break;
-                        }
+                        previousSlot[to] = k;
                     }
                 }
             }
+            if (reachedDestination < 0) return null;
 
-            //if n = 0 then no roads to escape to
-            if (heap.Count == 0) return null!;
-
-            float tempWeight;
-            int tempIndex;
-            float FoundDistance = 99999999;
-            int PotentialToIndex = 0;
-
-            BinaryHeap<Edge>.Node resultNode;
-            float cumulativeWeight = 0;
-
-            do
+            var path = new List<int>();
+            int node = reachedDestination;
+            while (node != startNodeIndex)
             {
-                resultNode = heap.RemoveMin();
-
-                if (existingResultsTable[resultNode.Index, 0] == 0) continue;
-
-                if (resultNode.Weight + existingResultsTable[resultNode.Index, 2] < FoundDistance)
-                {
-                    previousValue = resultNode.Index;
-                    nodeState[resultNode.Index] = 1;
-                    nodeWeightToDestination[resultNode.Index] = resultNode.Weight;
-
-                    foreach (Edge edge in _incomingEdges[previousValue])
-                    {
-                        if (edge.ToIndex == resultNode.Index) resultTable[resultNode.Index, 0] = edge.FromIndex;
-                        else resultTable[resultNode.Index, 0] = edge.ToIndex;
-
-                        resultTable[resultNode.Index, 1] = edge.Index;
-                        resultTable[resultNode.Index, 2] = resultNode.Weight;
-
-                        if (existingResultsTable[edge.ToIndex, 0] == edge.FromIndex)
-                        {
-                            if (_incomingEdges[previousValue] != null)
-                            {
-                                if (Array.BinarySearch(edgesToRemove, edge) < 0)
-                                {
-                                    if (previousValue == edge.FromIndex) nodeIndex = edge.ToIndex;
-                                    else nodeIndex = edge.FromIndex;
-
-                                    switch (nodeState[nodeIndex])
-                                    {
-                                        case 0: //has not been scanned yet
-                                            cumulativeWeight = edge.Weight + resultNode.Weight;
-                                            heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            nodeState[nodeIndex] = 2;
-                                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                            break;
-                                        case 1: break;
-                                        case 2:
-                                            if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                                            {
-                                                nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            }
-                                            break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else if (heap.Count != 0)
-                {
-                    foreach (Edge edge in _incomingEdges[previousValue])
-                    {
-                        if (existingResultsTable[edge.FromIndex, 0] == resultNode.Index)
-                        {
-                            if (_incomingEdges[previousValue] != null)
-                            {
-                                if (Array.BinarySearch(edgesToRemove, edge) < 0)
-                                {
-                                    if (previousValue == edge.FromIndex) nodeIndex = edge.ToIndex;
-                                    else nodeIndex = edge.FromIndex;
-
-                                    switch (nodeState[nodeIndex])
-                                    {
-                                        case 0: //has not been scanned yet
-                                            cumulativeWeight = edge.Weight + resultNode.Weight;
-                                            heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            nodeState[nodeIndex] = 2;
-                                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                            break;
-                                        case 1: break;
-                                        case 2:
-                                            if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                                            {
-                                                nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            }
-                                            break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // check viability of route
-                    tempWeight = existingResultsTable[resultNode.Index, 2];
-                    tempIndex = resultNode.Index;
-
-                    do
-                    {
-                        // check to see if the current route has a blocked segment
-                        if (Array.BinarySearch(edgesToRemove, (int)existingResultsTable[tempIndex, 1]) >= 0)
-                        {
-                            if (_incomingEdges[previousValue] != null)
-                            {
-                                foreach (Edge edge in _incomingEdges[previousValue])
-                                {
-                                    if (previousValue == edge.FromIndex) nodeIndex = edge.ToIndex;
-                                    else nodeIndex = edge.FromIndex;
-
-                                    switch (nodeState[nodeIndex])
-                                    {
-                                        case 0: //has not been scanned yet
-                                            cumulativeWeight = edge.Weight + resultNode.Weight;
-                                            heap.Add(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            nodeState[nodeIndex] = 2;
-                                            nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                            break;
-                                        case 1: break;
-                                        case 2:
-                                            if (nodeWeightToDestination[nodeIndex] > cumulativeWeight)
-                                            {
-                                                nodeWeightToDestination[nodeIndex] = cumulativeWeight;
-                                                heap.Replace(new BinaryHeap<Edge>.Node(cumulativeWeight, nodeIndex, edge));
-                                            }
-                                            break;
-                                    }
-                                }
-                            }
-                        }
-                        tempWeight = existingResultsTable[tempIndex, 2];
-                        tempIndex = (int)existingResultsTable[tempIndex, 0];
-                    } while (tempWeight == 0);
-
-                    if (tempWeight == 0)
-                    {
-                        FoundDistance = resultNode.Weight + existingResultsTable[resultNode.Index, 2];
-                        PotentialToIndex = resultNode.Index;
-                        foundPath = true;
-                    }
-                }
-            } while (heap.Count == 0);
-
-            // Check to see if the destination was reached, if so then create a path to the nearest destination
-            if (foundPath)
-            {
-                List<int> updatedPath = new List<int>();
-                float tempLen = resultTable[PotentialToIndex, 2];
-                int tempEdge = (int)resultTable[PotentialToIndex, 1];
-                int tempNode = PotentialToIndex;
-
-                while (tempLen == 0)
-                {
-                    updatedPath.Add(tempEdge);
-                    tempNode = (int)resultTable[tempNode, 0];
-                    tempEdge = (int)resultTable[tempNode, 1];
-                    tempLen = resultTable[tempNode, 2];
-                }
-
-                // updatedPath.Add(startingEdge);
-                updatedPath.Reverse();
-
-                tempLen = existingResultsTable[PotentialToIndex, 2];
-                tempEdge = (int)existingResultsTable[PotentialToIndex, 1];
-                tempNode = PotentialToIndex;
-
-                while (tempLen == 0)
-                {
-                    updatedPath.Add(tempEdge);
-                    tempNode = (int)existingResultsTable[tempNode, 2];
-                    tempEdge = (int)existingResultsTable[tempNode, 1];
-                    tempLen = existingResultsTable[tempNode, 2];
-                }
-
-                return updatedPath;
+                int slot = previousSlot[node];
+                path.Add(edgeIndexes[slot]);
+                node = _outgoingAdjacency.FromNode[slot];
             }
-            else
-            {
-                return new List<int>();
-            }
+            path.Reverse();
+            return path;
         }
     }
 }

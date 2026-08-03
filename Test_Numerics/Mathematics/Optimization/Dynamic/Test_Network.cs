@@ -229,6 +229,203 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// With nothing removed, GetPath returns the exact unblocked edge sequence to the
+        /// nearest destination through both overloads.
+        /// </summary>
+        [TestMethod]
+        public void GetPathHappyPath()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+
+            var direct = network.GetPath(new int[0], 0);
+            Assert.IsNotNull(direct);
+            CollectionAssert.AreEqual(new List<int> { 0, 1, 4 }, direct);
+
+            var table = network.Solve(destinations);
+            var viaTable = network.GetPath(new int[0], 0, table);
+            Assert.IsNotNull(viaTable);
+            CollectionAssert.AreEqual(new List<int> { 0, 1, 4 }, viaTable);
+        }
+
+        /// <summary>
+        /// Removing an edge index on the recorded route forces the detour over the bypass, and
+        /// every edge bearing the removed index is excluded.
+        /// </summary>
+        [TestMethod]
+        public void GetPathDetoursAroundRemovedEdges()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+
+            var detour = network.GetPath(new[] { 1 }, 0);
+            Assert.IsNotNull(detour);
+            CollectionAssert.AreEqual(new List<int> { 2, 3, 4 }, detour);
+
+            var table = network.Solve(destinations);
+            var detourViaTable = network.GetPath(new[] { 1 }, 0, table);
+            Assert.IsNotNull(detourViaTable);
+            CollectionAssert.AreEqual(new List<int> { 2, 3, 4 }, detourViaTable);
+        }
+
+        /// <summary>
+        /// When every route is severed, the first overload returns null and the second returns
+        /// an empty list, per their respective contracts.
+        /// </summary>
+        [TestMethod]
+        public void GetPathReturnsNullOrEmptyWhenSevered()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+
+            Assert.IsNull(network.GetPath(new[] { 1, 3 }, 0));
+
+            var table = network.Solve(destinations);
+            var severed = network.GetPath(new[] { 1, 3 }, 0, table);
+            Assert.IsNotNull(severed);
+            Assert.AreEqual(0, severed!.Count);
+        }
+
+        /// <summary>
+        /// Starting at a destination returns an empty path through both overloads.
+        /// </summary>
+        [TestMethod]
+        public void GetPathStartIsDestinationReturnsEmpty()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+
+            var direct = network.GetPath(new[] { 1 }, 4);
+            Assert.IsNotNull(direct);
+            Assert.AreEqual(0, direct!.Count);
+
+            var table = network.Solve(destinations);
+            var viaTable = network.GetPath(new[] { 1 }, 4, table);
+            Assert.IsNotNull(viaTable);
+            Assert.AreEqual(0, viaTable!.Count);
+        }
+
+        /// <summary>
+        /// The caller's removal array is never sorted or otherwise mutated.
+        /// </summary>
+        [TestMethod]
+        public void GetPathDoesNotMutateEdgesToRemove()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+
+            var removals = new[] { 4, 1, 3 };
+            network.GetPath(removals, 0);
+            CollectionAssert.AreEqual(new[] { 4, 1, 3 }, removals);
+        }
+
+        /// <summary>
+        /// A valid route passing through node zero is returned — zero is a real node index,
+        /// not an unreachable sentinel.
+        /// </summary>
+        [TestMethod]
+        public void GetPathThroughNodeZero()
+        {
+            var edges = new[]
+            {
+                new Edge(1, 0, 1, 0),
+                new Edge(0, 2, 1, 1),
+            };
+            var network = new Network(edges, new[] { 2 });
+
+            var path = network.GetPath(new int[0], 1);
+            Assert.IsNotNull(path);
+            CollectionAssert.AreEqual(new List<int> { 0, 1 }, path);
+        }
+
+        /// <summary>
+        /// With several destinations, GetPath routes to the nearest one, and an exact tie
+        /// resolves deterministically across repeated calls.
+        /// </summary>
+        [TestMethod]
+        public void GetPathPicksNearestDestination()
+        {
+            // Chain 0-1-2-3 with destinations 0 and 3: node 1 is nearer to 0.
+            var edges = new[]
+            {
+                new Edge(1, 0, 1, 0),
+                new Edge(0, 1, 1, 0),
+                new Edge(1, 2, 1, 1),
+                new Edge(2, 1, 1, 1),
+                new Edge(2, 3, 1, 2),
+                new Edge(3, 2, 1, 2),
+            };
+            var network = new Network(edges, new[] { 0, 3 });
+
+            var fromOne = network.GetPath(new int[0], 1);
+            Assert.IsNotNull(fromOne);
+            CollectionAssert.AreEqual(new List<int> { 0 }, fromOne);
+
+            // The middle of an even chain ties exactly; the choice must repeat.
+            var tieNetwork = new Network(new[]
+            {
+                new Edge(1, 0, 1, 0),
+                new Edge(1, 2, 1, 1),
+            }, new[] { 0, 2 });
+            var first = tieNetwork.GetPath(new int[0], 1);
+            var second = tieNetwork.GetPath(new int[0], 1);
+            Assert.IsNotNull(first);
+            Assert.AreEqual(1, first!.Count);
+            CollectionAssert.AreEqual(first, second);
+        }
+
+        /// <summary>
+        /// Removing the only edge index into the destination severs the route even though two
+        /// directed edges bear that index.
+        /// </summary>
+        [TestMethod]
+        public void GetPathHandlesDuplicateEdgeIndices()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+
+            Assert.IsNull(network.GetPath(new[] { 4 }, 0));
+        }
+
+        /// <summary>
+        /// The table fast path returns the identical route to the full solve when the removals
+        /// miss the recorded route.
+        /// </summary>
+        [TestMethod]
+        public void GetPathFastPathMatchesFullSolve()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+            var table = network.Solve(destinations);
+
+            // Removing the bypass leaves the recorded route 0-1-2-4 untouched.
+            var viaTable = network.GetPath(new[] { 3 }, 0, table);
+            var direct = network.GetPath(new[] { 3 }, 0);
+            Assert.IsNotNull(viaTable);
+            Assert.IsNotNull(direct);
+            CollectionAssert.AreEqual(direct, viaTable);
+        }
+
+        /// <summary>
+        /// GetPath rejects null inputs, out-of-range start nodes, and wrong table dimensions
+        /// with clear argument exceptions.
+        /// </summary>
+        [TestMethod]
+        public void GetPathValidationThrows()
+        {
+            var (edges, destinations) = BuildFixture();
+            var network = new Network(edges, destinations);
+            var table = network.Solve(destinations);
+
+            Assert.Throws<ArgumentNullException>(() => network.GetPath(null!, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => network.GetPath(new int[0], 9));
+            Assert.Throws<ArgumentNullException>(() => network.GetPath(null!, 0, table));
+            Assert.Throws<ArgumentNullException>(() => network.GetPath(new int[0], 0, null!));
+            Assert.Throws<ArgumentException>(() => network.GetPath(new int[0], 0, new float[2, 3]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => network.GetPath(new int[0], 9, table));
+        }
+
+        /// <summary>
         /// Performance smoke: one thousand custom-weight re-solves through the table-reuse
         /// overload on a 100 by 100 grid.
         /// </summary>
