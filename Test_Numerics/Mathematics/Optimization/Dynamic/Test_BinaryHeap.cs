@@ -197,6 +197,128 @@ namespace Mathematics.Optimization
             Assert.AreEqual("C", heap.RemoveMin().Value);
         }
 
+        /// <summary>
+        /// Replacing the minimum node with a heavier weight must sift it down, not leave it at
+        /// the root: the drain returns every node in weight order.
+        /// </summary>
+        [TestMethod]
+        public void ReplaceWithHigherWeightReordersHeap()
+        {
+            var heap = new BinaryHeap<string>(10);
+            heap.Add(new BinaryHeap<string>.Node(1f, 1, "A"));
+            heap.Add(new BinaryHeap<string>.Node(2f, 2, "B"));
+            heap.Add(new BinaryHeap<string>.Node(3f, 3, "C"));
+            heap.Add(new BinaryHeap<string>.Node(4f, 4, "D"));
+
+            heap.Replace(new BinaryHeap<string>.Node(10f, 1, "A")); // the minimum becomes the maximum
+
+            Assert.AreEqual("B", heap.RemoveMin().Value);
+            Assert.AreEqual("C", heap.RemoveMin().Value);
+            Assert.AreEqual("D", heap.RemoveMin().Value);
+            var last = heap.RemoveMin();
+            Assert.AreEqual("A", last.Value);
+            Assert.AreEqual(10f, last.Weight);
+        }
+
+        /// <summary>
+        /// Replacing an index that is not in the heap is a silent no-op.
+        /// </summary>
+        [TestMethod]
+        public void ReplaceUnknownIndexIsNoOp()
+        {
+            var heap = new BinaryHeap<int>(5);
+            heap.Add(new BinaryHeap<int>.Node(5f, 1, 1));
+
+            heap.Replace(new BinaryHeap<int>.Node(1f, 99, 99));
+
+            Assert.AreEqual(1, heap.Count);
+            var node = heap.RemoveMin();
+            Assert.AreEqual(1, node.Index);
+            Assert.AreEqual(5f, node.Weight);
+        }
+
+        /// <summary>
+        /// Decreasing the key of an index that is not in the heap adds the node.
+        /// </summary>
+        [TestMethod]
+        public void DecreaseKeyUnknownIndexAdds()
+        {
+            var heap = new BinaryHeap<int>(5);
+            heap.Add(new BinaryHeap<int>.Node(5f, 1, 1));
+
+            heap.DecreaseKey(new BinaryHeap<int>.Node(2f, 7, 7));
+
+            Assert.AreEqual(2, heap.Count);
+            Assert.AreEqual(7, heap.RemoveMin().Index);
+        }
+
+        /// <summary>
+        /// Fixed-seed fuzz of Add, RemoveMin, DecreaseKey, and Replace (including weight
+        /// increases and unknown indices) against a linear-scan reference model, with a full
+        /// ordered drain at the end.
+        /// </summary>
+        [TestMethod]
+        public void HeapFuzzMatchesReferenceModel()
+        {
+            var randy = new MersenneTwister(12345);
+            var heap = new BinaryHeap<double>(64);
+            var model = new Dictionary<int, float>();
+
+            for (int op = 0; op < 2000; op++)
+            {
+                int index = randy.Next(0, 64);
+                double action = randy.NextDouble();
+                float weight = (float)randy.NextDouble();
+
+                if (action < 0.4)
+                {
+                    if (!model.ContainsKey(index))
+                    {
+                        heap.Add(new BinaryHeap<double>.Node(weight, index, index));
+                        model[index] = weight;
+                    }
+                }
+                else if (action < 0.6)
+                {
+                    if (model.Count == 0) continue;
+                    var popped = heap.RemoveMin();
+                    float modelMin = float.MaxValue;
+                    foreach (var entry in model)
+                    {
+                        if (entry.Value < modelMin) modelMin = entry.Value;
+                    }
+                    Assert.AreEqual(modelMin, popped.Weight, 0f);
+                    Assert.AreEqual(modelMin, model[popped.Index], 0f);
+                    model.Remove(popped.Index);
+                }
+                else if (action < 0.8)
+                {
+                    heap.DecreaseKey(new BinaryHeap<double>.Node(weight, index, index));
+                    if (!model.ContainsKey(index) || weight < model[index]) model[index] = weight;
+                }
+                else
+                {
+                    heap.Replace(new BinaryHeap<double>.Node(weight, index, index));
+                    if (model.ContainsKey(index)) model[index] = weight;
+                }
+
+                Assert.AreEqual(model.Count, heap.Count);
+            }
+
+            while (model.Count > 0)
+            {
+                var popped = heap.RemoveMin();
+                float modelMin = float.MaxValue;
+                foreach (var entry in model)
+                {
+                    if (entry.Value < modelMin) modelMin = entry.Value;
+                }
+                Assert.AreEqual(modelMin, popped.Weight, 0f);
+                Assert.AreEqual(modelMin, model[popped.Index], 0f);
+                model.Remove(popped.Index);
+            }
+            Assert.AreEqual(0, heap.Count);
+        }
 
     }
 }
