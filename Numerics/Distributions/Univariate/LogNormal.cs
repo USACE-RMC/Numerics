@@ -590,7 +590,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new LogNormal(Mu, Sigma);
+            return new LogNormal(Mu, Sigma) { Base = Base };
         }
 
         /// <inheritdoc/>

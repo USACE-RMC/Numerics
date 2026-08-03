@@ -164,6 +164,23 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies cloning preserves the configured logarithm base and resulting distribution.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_PreservesBase()
+        {
+            var source = new LogNormal(4.2d, 0.4d) { Base = Math.E };
+
+            var clone = (LogNormal)source.Clone();
+
+            Assert.AreNotSame(source, clone);
+            Assert.AreEqual(source.Mu, clone.Mu, 0d);
+            Assert.AreEqual(source.Sigma, clone.Sigma, 0d);
+            Assert.AreEqual(source.Base, clone.Base, 0d);
+            Assert.AreEqual(source.CDF(75d), clone.CDF(75d), 0d);
+        }
+
+        /// <summary>
         /// Testing Log-Normal with bad parameters.
         /// </summary>
         [TestMethod()]
