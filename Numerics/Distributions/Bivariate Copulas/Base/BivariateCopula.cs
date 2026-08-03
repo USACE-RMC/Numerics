@@ -1,6 +1,8 @@
 ﻿using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Xml.Linq;
 
 namespace Numerics.Distributions.Copulas
 {
@@ -302,6 +304,34 @@ namespace Numerics.Distributions.Copulas
             return LogLH;
         }
 
+        /// <summary>
+        /// Returns an XElement of the copula's type and parameters, which can be used for
+        /// serialization.
+        /// </summary>
+        /// <returns>
+        /// An XElement named "Copula" carrying the <see cref="Type"/> by enumeration name and
+        /// the copula parameters in a "Parameters" attribute as a pipe-delimited,
+        /// invariant-culture, round-trip ("G17") string in <see cref="SetCopulaParameters"/>
+        /// order. A zero-parameter copula writes an empty "Parameters" attribute.
+        /// </returns>
+        /// <remarks>
+        /// Marginal distributions are deliberately not serialized: consumers own their
+        /// marginals and attach them separately, so the element captures the dependence
+        /// structure alone. Serializing the type by name (never by numeric value) keeps the
+        /// payload valid as long as <see cref="CopulaType"/> members are only ever appended.
+        /// <see cref="CopulaFactory.CreateCopula(XElement)"/> reconstructs the copula.
+        /// </remarks>
+        public virtual XElement ToXElement()
+        {
+            var result = new XElement("Copula");
+            result.SetAttributeValue(nameof(Type), Type.ToString());
+            var parameters = GetCopulaParameters;
+            var values = new string[parameters.Length];
+            for (int i = 0; i < parameters.Length; i++)
+                values[i] = parameters[i].ToString("G17", CultureInfo.InvariantCulture);
+            result.SetAttributeValue("Parameters", string.Join("|", values));
+            return result;
+        }
 
         #endregion
     }
