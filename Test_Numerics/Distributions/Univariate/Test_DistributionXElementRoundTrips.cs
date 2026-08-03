@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 using Numerics.Distributions;
@@ -100,7 +101,38 @@ namespace Distributions.Univariate
             Assert.AreEqual(weighted.PDF(3d), weightedRestored.PDF(3d), 1E-12, "Weighted kernel evaluation must survive the round-trip.");
             Assert.AreEqual(weighted.Mean, weightedRestored.Mean, 1E-12);
 
-            Assert.Throws<ArgumentException>(() => KernelDensity.FromXElement(new System.Xml.Linq.XElement("Distribution")));
+            Assert.Throws<ArgumentException>(() => KernelDensity.FromXElement(new XElement("Distribution")));
+        }
+
+        /// <summary>
+        /// Test that malformed serialized payloads are rejected: undefined enum ordinals on the
+        /// empirical table, zero-sum kernel weights, non-finite bandwidths, and a missing
+        /// distribution type discriminator.
+        /// </summary>
+        [TestMethod]
+        public void Test_MalformedXElements_AreRejected()
+        {
+            var empirical = new EmpiricalDistribution(new[] { 1d, 2d }, new[] { 0d, 1d });
+            XElement invalidOrder = empirical.ToXElement();
+            invalidOrder.SetAttributeValue("ProbabilityOrder", "999");
+            Assert.Throws<ArgumentException>(() => UnivariateDistributionFactory.CreateDistribution(invalidOrder));
+
+            XElement invalidTransform = empirical.ToXElement();
+            invalidTransform.SetAttributeValue(nameof(EmpiricalDistribution.XTransform), "999");
+            Assert.Throws<ArgumentException>(() => EmpiricalDistribution.FromXElement(invalidTransform));
+
+            var kernel = new KernelDensity(new[] { 1d, 2d, 3d }, new[] { 1d, 1d, 1d }, KernelDensity.KernelType.Gaussian, 0.5d);
+            XElement zeroWeights = kernel.ToXElement();
+            zeroWeights.SetAttributeValue("Weights", "0|0|0");
+            Assert.Throws<ArgumentException>(() => KernelDensity.FromXElement(zeroWeights));
+
+            XElement invalidBandwidth = kernel.ToXElement();
+            invalidBandwidth.SetAttributeValue(nameof(KernelDensity.Bandwidth), "NaN");
+            Assert.Throws<ArgumentException>(() => KernelDensity.FromXElement(invalidBandwidth));
+
+            XElement missingType = new Normal().ToXElement();
+            missingType.Attribute(nameof(UnivariateDistributionBase.Type))!.Remove();
+            Assert.Throws<ArgumentException>(() => UnivariateDistributionFactory.CreateDistribution(missingType));
         }
     }
 }

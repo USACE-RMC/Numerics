@@ -5,6 +5,8 @@ using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
 using Numerics.Mathematics.SpecialFunctions;
 using System;
+using System.Reflection;
+using System.Xml.Linq;
 
 namespace Distributions.Univariate
 {
@@ -1113,6 +1115,42 @@ namespace Distributions.Univariate
             double ksStatistic = ComputeKSStatistic(sample, fitCR);
             Console.WriteLine($"KS statistic: {ksStatistic:F4}");
             Assert.IsLessThan(0.06, ksStatistic, "KS statistic should indicate reasonable fit");
+        }
+
+        #endregion
+
+        #region Seed and Serialization
+
+        /// <summary>
+        /// Test that reseeding invalidates the lazily built multivariate-normal and
+        /// empirical-CDF caches, that the seed survives cloning and the XML round-trip, and
+        /// that undefined dependency ordinals are rejected on deserialization.
+        /// </summary>
+        [TestMethod]
+        public void Test_PRNGSeed_InvalidatesCachesAndRoundTrips()
+        {
+            var distribution = new CompetingRisks(new UnivariateDistributionBase[]
+            {
+                new Normal(0d, 1d),
+                new Exponential(2d),
+            }) { PRNGSeed = 2468 };
+
+            FieldInfo mvnCreated = typeof(CompetingRisks).GetField("_mvnCreated", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            FieldInfo empiricalCreated = typeof(CompetingRisks).GetField("_empiricalCDFCreated", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            mvnCreated.SetValue(distribution, true);
+            empiricalCreated.SetValue(distribution, true);
+            distribution.PRNGSeed = 1357;
+            Assert.IsFalse((bool)mvnCreated.GetValue(distribution)!);
+            Assert.IsFalse((bool)empiricalCreated.GetValue(distribution)!);
+
+            var clone = (CompetingRisks)distribution.Clone();
+            Assert.AreEqual(1357, clone.PRNGSeed);
+            var restored = (CompetingRisks)UnivariateDistributionFactory.CreateDistribution(distribution.ToXElement());
+            Assert.AreEqual(1357, restored.PRNGSeed);
+
+            XElement malformed = distribution.ToXElement();
+            malformed.SetAttributeValue(nameof(CompetingRisks.Dependency), "999");
+            Assert.Throws<ArgumentException>(() => CompetingRisks.FromXElement(malformed));
         }
 
         #endregion

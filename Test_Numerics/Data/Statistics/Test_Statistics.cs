@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -491,6 +493,46 @@ namespace Data.Statistics
             // Data with zero should return NaN (not 0 or Infinity)
             var data2 = new double[] { 1, 2, 0, 4 };
             Assert.AreEqual(double.NaN, Numerics.Data.Statistics.Statistics.HarmonicMean(data2));
+        }
+
+        /// <summary>
+        /// Test the jackknife edge contracts: a single-element sample returns a zero standard
+        /// error without evaluating an empty sample, and each resampling callback receives its
+        /// own isolated sample copy so the source data is never mutated.
+        /// </summary>
+        [TestMethod]
+        public void Test_JackKnife_SingleElementAndCallbackIsolation()
+        {
+            int calls = 0;
+            double standardError = Numerics.Data.Statistics.Statistics.JackKnifeStandardError(new[] { 5d }, sample =>
+            {
+                Interlocked.Increment(ref calls);
+                return sample.Count;
+            });
+            Assert.AreEqual(0d, standardError, 0d);
+            Assert.AreEqual(0, calls, "The single-element standard error does not evaluate an empty sample.");
+
+            double[] single = Numerics.Data.Statistics.Statistics.JackKnifeSample(new[] { 5d }, sample =>
+            {
+                Interlocked.Increment(ref calls);
+                return sample.Count;
+            });
+            Assert.IsNotNull(single);
+            Assert.AreEqual(0d, single[0], 0d);
+            Assert.AreEqual(1, calls);
+
+            double[] original = { 1d, 2d, 3d, 4d };
+            var callbackSamples = new List<IList<double>>();
+            object sync = new object();
+            Numerics.Data.Statistics.Statistics.JackKnifeSample(original, sample =>
+            {
+                lock (sync) callbackSamples.Add(sample);
+                if (sample.Count > 0) sample[0] = -100d;
+                return sample.Count;
+            });
+            CollectionAssert.AreEqual(new[] { 1d, 2d, 3d, 4d }, original);
+            Assert.HasCount(original.Length, callbackSamples);
+            Assert.AreEqual(original.Length, callbackSamples.Distinct().Count());
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Functions;
 
@@ -144,6 +145,37 @@ namespace Functions
 
             Assert.AreEqual(UnivariateFunctionType.SegmentedPower, UnivariateFunctionFactory.GetFunctionType(original));
             Assert.IsInstanceOfType(UnivariateFunctionFactory.CreateFunction(UnivariateFunctionType.SegmentedPower), typeof(SegmentedPowerFunction));
+        }
+
+        /// <summary>
+        /// Test that a deterministic function restores through the factory with its Maximum,
+        /// that a rejected parameter update leaves the prior state valid and unchanged, and
+        /// that the Maximum setter and malformed serialized payloads are rejected.
+        /// </summary>
+        [TestMethod]
+        public void Test_DeterministicRestore_AndAtomicValidation()
+        {
+            var function = new SegmentedPowerFunction(1) { IsDeterministic = true, Maximum = 20d };
+            function.SetParameters(new[] { 1d, 0.5d, 2d, 0d });
+            Assert.IsTrue(function.ParametersValid);
+
+            var restored = (SegmentedPowerFunction)UnivariateFunctionFactory.CreateFromXElement(function.ToXElement());
+            Assert.IsTrue(restored.IsDeterministic);
+            Assert.AreEqual(20d, restored.Maximum, 0d);
+            Assert.AreEqual(function.Function(4d), restored.Function(4d), 0d);
+
+            double originalBeta = function.GetBeta(1);
+            function.SetParameters(new[] { 1d, 0.5d, 0d, 0d });
+            Assert.IsTrue(function.ParametersValid, "A rejected update must leave the prior state valid.");
+            Assert.AreEqual(originalBeta, function.GetBeta(1), 0d);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => function.Maximum = function.Minimum);
+            Assert.AreEqual(20d, function.Maximum, 0d);
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SegmentedPowerFunction(new[] { 1d, 0.5d, 0d, 0.1d }));
+
+            XElement malformed = function.ToXElement();
+            malformed.SetAttributeValue(nameof(SegmentedPowerFunction.Maximum), "0");
+            Assert.Throws<ArgumentOutOfRangeException>(() => SegmentedPowerFunction.FromXElement(malformed));
         }
     }
 }

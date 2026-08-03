@@ -306,5 +306,19 @@ namespace Mathematics.SpecialFunctions
             double actual = Evaluate.PolynomialRev_1(coeffs, x);
             Assert.AreEqual(valid, actual);
         }
+
+        /// <summary>
+        /// Test that NextCombination rejects null, empty, duplicated, out-of-range, and
+        /// negative-count tuples.
+        /// </summary>
+        [TestMethod]
+        public void Test_NextCombination_RejectsInvalidTuples()
+        {
+            Assert.Throws<ArgumentNullException>(() => Factorial.NextCombination(null!, 3));
+            Assert.Throws<ArgumentException>(() => Factorial.NextCombination(Array.Empty<int>(), 3));
+            Assert.Throws<ArgumentException>(() => Factorial.NextCombination(new[] { 0, 0 }, 3));
+            Assert.Throws<ArgumentException>(() => Factorial.NextCombination(new[] { 0, 3 }, 3));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Factorial.NextCombination(new[] { 0 }, -1));
+        }
     }
 }

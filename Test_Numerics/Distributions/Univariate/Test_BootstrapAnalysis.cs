@@ -2,13 +2,13 @@
 using Numerics;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Mathematics.Optimization;
 using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
-using static System.Reflection.Metadata.BlobBuilder;
 
 namespace Distributions.Univariate
 {
@@ -327,6 +327,78 @@ namespace Distributions.Univariate
                 }
             }
             Assert.IsTrue(double.IsNaN(results.ParameterSets[7].Values[0]));
+        }
+
+        /// <summary>
+        /// Test that summary probabilities average only the successful fits, and that a
+        /// replication set with no successful fit is rejected loudly — as a single error for
+        /// the all-null expected-probability path and as an aggregate of the per-set failures
+        /// for the distribution builder.
+        /// </summary>
+        [TestMethod]
+        public void Test_UsesOnlySuccessfulFits_AndRejectsAllFailures()
+        {
+            var parent = new Normal(0d, 1d);
+            var analysis = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 1234);
+            IUnivariateDistribution[] mixed = { new Normal(0d, 1d), null!, new Normal(1d, 1d) };
+
+            double[] mean = analysis.ExpectedProbabilities(new[] { 0d }, mixed);
+            double expected = 0.5d * (new Normal(0d, 1d).CDF(0d) + new Normal(1d, 1d).CDF(0d));
+            Assert.AreEqual(expected, mean[0], 1E-14);
+            Assert.Throws<InvalidOperationException>(() =>
+                analysis.ExpectedProbabilities(new[] { 0d }, new IUnivariateDistribution[] { null!, null! }));
+
+            var aggregate = Assert.Throws<AggregateException>(() => analysis.Distributions(new[]
+            {
+                new ParameterSet(new[] { 0d, -1d }, 0d),
+                new ParameterSet(new[] { double.NaN, 1d }, 0d),
+            }));
+            Assert.HasCount(2, aggregate.InnerExceptions);
+        }
+
+        /// <summary>
+        /// Test that the normal-approximation quantile interval preserves the sign of negative
+        /// quantiles: the transform applied around the point estimate must remain finite and
+        /// keep both interval endpoints on the data's side of zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_NormalQuantileCI_PreservesNegativeQuantiles()
+        {
+            var parent = new Normal(-10d, 1d);
+            var analysis = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 1234);
+            IUnivariateDistribution[] fits =
+            {
+                new Normal(-9.5d, 1d),
+                new Normal(-10d, 1.1d),
+                null!,
+                new Normal(-10.5d, 0.9d),
+            };
+
+            double[,] interval = analysis.NormalQuantileCI(new[] { 0.5d }, 0.1d, fits);
+            Assert.IsTrue(Tools.IsFinite(interval[0, 0]));
+            Assert.IsTrue(Tools.IsFinite(interval[0, 1]));
+            Assert.IsLessThan(0d, interval[0, 0]);
+            Assert.IsLessThan(0d, interval[0, 1]);
+        }
+
+        /// <summary>
+        /// Test that expected probabilities pair each quantile with its own probability after
+        /// the internal sort: unsorted input ordinates produce exactly the same value array as
+        /// the pre-sorted equivalent.
+        /// </summary>
+        [TestMethod]
+        public void Test_ExpectedProbabilities_InterpolationKeepsPairsSorted()
+        {
+            var parent = new Normal(0d, 1d);
+            var analysis = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 1234);
+            IUnivariateDistribution[] fits = { new Normal(0d, 1d), new Normal(1d, 2d) };
+            double[] sorted = { -3d, -1d, 0d, 2d, 5d };
+            double[] unsorted = { 2d, -3d, 5d, 0d, -1d };
+            double[] probabilities = { 0.1d, 0.5d, 0.9d };
+
+            double[] expected = analysis.ExpectedProbabilities(sorted, probabilities, fits);
+            double[] actual = analysis.ExpectedProbabilities(unsorted, probabilities, fits);
+            CollectionAssert.AreEqual(expected, actual);
         }
 
     }

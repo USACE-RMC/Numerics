@@ -614,5 +614,14 @@ namespace Distributions.Multivariate
             return value;
         }
 
-}
+        /// <summary>
+        /// Test that the lattice-rule uniform generator cannot be assigned null.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNUNI_RejectsNull()
+        {
+            var multivariate = new MultivariateNormal(2);
+            Assert.Throws<ArgumentNullException>(() => multivariate.MVNUNI = null!);
+        }
     }
+}

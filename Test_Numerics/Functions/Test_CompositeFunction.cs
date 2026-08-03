@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Functions;
 
@@ -7,7 +11,8 @@ namespace Functions
     /// <summary>
     /// Unit tests for <see cref="CompositeFunction"/>: the weighted-average and mixture modes,
     /// the single-uniform mixture composition, the deterministic semantics, weight validation,
-    /// the numeric inverse, and the serialization round-trip (including nesting).
+    /// the numeric inverse, exception-safe child state restoration, stateful-child
+    /// synchronization, and the serialization round-trip (including nesting).
     /// </summary>
     /// <remarks>
     ///      <b> Authors: </b>
@@ -172,6 +177,172 @@ namespace Functions
 
             Assert.AreEqual(UnivariateFunctionType.Composite, UnivariateFunctionFactory.GetFunctionType(original));
             Assert.Throws<NotSupportedException>(() => UnivariateFunctionFactory.CreateFunction(UnivariateFunctionType.Composite));
+        }
+
+        /// <summary>
+        /// Test that evaluation restores a child's configured confidence level when the child
+        /// throws, on both the forward and inverse paths.
+        /// </summary>
+        [TestMethod]
+        public void Test_ChildStateRestored_AfterExceptions()
+        {
+            var child = new ConfidenceProbeFunction { ConfidenceLevel = 0.35d, ThrowOnEvaluation = true };
+            var composite = new CompositeFunction(new IUnivariateFunction[] { child }) { ConfidenceLevel = 0.8d };
+
+            Assert.Throws<InvalidOperationException>(() => composite.Function(1d));
+            Assert.AreEqual(0.35d, child.ConfidenceLevel, 0d);
+            Assert.Throws<InvalidOperationException>(() => composite.InverseFunction(1d));
+            Assert.AreEqual(0.35d, child.ConfidenceLevel, 0d);
+        }
+
+        /// <summary>
+        /// Test that concurrent evaluation over a shared stateful child never interleaves
+        /// confidence assignments, and that a deterministic child evaluates through the
+        /// lock-free path without any confidence mutation.
+        /// </summary>
+        [TestMethod]
+        public void Test_SynchronizesOnlyStatefulChildren()
+        {
+            var child = new ConfidenceProbeFunction { ConfidenceLevel = 0.5d };
+            var lower = new CompositeFunction(new IUnivariateFunction[] { child }) { ConfidenceLevel = 0.2d };
+            var upper = new CompositeFunction(new IUnivariateFunction[] { child }) { ConfidenceLevel = 0.8d };
+            var configured = new CompositeFunction(new IUnivariateFunction[] { child });
+            int failures = 0;
+
+            Parallel.For(0, 600, i =>
+            {
+                int branch = i % 3;
+                double expected = branch == 0 ? 0.2d : branch == 1 ? 0.8d : 0.5d;
+                double actual = branch == 0 ? lower.Function(0d)
+                    : branch == 1 ? upper.Function(0d)
+                    : configured.Function(0d);
+                if (actual != expected) Interlocked.Increment(ref failures);
+            });
+
+            Assert.AreEqual(0, failures);
+            Assert.AreEqual(0.5d, child.ConfidenceLevel, 0d);
+
+            child.IsDeterministic = true;
+            child.ThrowOnConfidenceAssignment = true;
+            Assert.AreEqual(0.5d, lower.Function(0d), 0d,
+                "Deterministic child evaluation must not mutate confidence state.");
+        }
+
+        /// <summary>
+        /// Test that a rejected weight update leaves the prior weights intact, and that
+        /// undefined mode values are rejected at the setter and on deserialization.
+        /// </summary>
+        [TestMethod]
+        public void Test_RejectsInvalidStateAtomically()
+        {
+            var composite = new CompositeFunction(
+                new IUnivariateFunction[] { new LinearFunction(), new LinearFunction(1d, 2d) },
+                new[] { 0.25d, 0.75d });
+            composite.SetParameters(new[] { double.NaN, 0.75d });
+            Assert.IsTrue(composite.ParametersValid);
+            Assert.AreEqual(0.25d, composite.Weights[0], 0d);
+            Assert.Throws<ArgumentOutOfRangeException>(() => composite.Mode = (CompositeFunctionMode)999);
+
+            XElement malformed = composite.ToXElement();
+            malformed.SetAttributeValue(nameof(CompositeFunction.Mode), "999");
+            Assert.Throws<ArgumentException>(() => CompositeFunction.FromXElement(malformed));
+        }
+
+        /// <summary>
+        /// Test function that exposes confidence-state changes and controlled evaluation failures.
+        /// </summary>
+        private sealed class ConfidenceProbeFunction : IUnivariateFunction
+        {
+            /// <summary>The configured confidence level.</summary>
+            private double _confidenceLevel = -1d;
+
+            /// <summary>Gets or sets whether evaluations throw a controlled exception.</summary>
+            public bool ThrowOnEvaluation { get; set; }
+
+            /// <summary>Gets or sets whether confidence-level assignments throw a controlled exception.</summary>
+            public bool ThrowOnConfidenceAssignment { get; set; }
+
+            /// <inheritdoc/>
+            public int NumberOfParameters => 0;
+
+            /// <inheritdoc/>
+            public bool ParametersValid => true;
+
+            /// <inheritdoc/>
+            public double Minimum { get; set; } = double.MinValue;
+
+            /// <inheritdoc/>
+            public double Maximum { get; set; } = double.MaxValue;
+
+            /// <inheritdoc/>
+            public double[] MinimumOfParameters => Array.Empty<double>();
+
+            /// <inheritdoc/>
+            public double[] MaximumOfParameters => Array.Empty<double>();
+
+            /// <inheritdoc/>
+            public bool IsDeterministic { get; set; }
+
+            /// <inheritdoc/>
+            public double ConfidenceLevel
+            {
+                get { return _confidenceLevel; }
+                set
+                {
+                    if (ThrowOnConfidenceAssignment) throw new InvalidOperationException("Confidence assignment was not expected.");
+                    _confidenceLevel = value;
+                }
+            }
+
+            /// <summary>
+            /// Validates that no parameters are supplied to this parameterless test function.
+            /// </summary>
+            /// <param name="parameters">The parameter collection, which must be empty.</param>
+            /// <exception cref="ArgumentNullException">Thrown when <paramref name="parameters"/> is null.</exception>
+            /// <exception cref="ArgumentException">Thrown when <paramref name="parameters"/> is not empty.</exception>
+            public void SetParameters(IList<double> parameters)
+            {
+                if (parameters == null) throw new ArgumentNullException(nameof(parameters));
+                if (parameters.Count != 0) throw new ArgumentException("This test function has no parameters.", nameof(parameters));
+            }
+
+            /// <summary>
+            /// Reports that the parameterless test function has no range-validation error.
+            /// </summary>
+            /// <param name="parameters">The parameter collection.</param>
+            /// <param name="throwException">Ignored because this test function has no parameters.</param>
+            /// <returns><see langword="null"/>.</returns>
+            public ArgumentOutOfRangeException ValidateParameters(IList<double> parameters, bool throwException)
+            {
+                return null;
+            }
+
+            /// <summary>
+            /// Returns the configured confidence level after checking for concurrent state changes.
+            /// </summary>
+            /// <param name="x">The unused evaluation point.</param>
+            /// <returns>The configured confidence level.</returns>
+            /// <exception cref="InvalidOperationException">Thrown when controlled failure is enabled or confidence state changes during evaluation.</exception>
+            public double Function(double x)
+            {
+                if (ThrowOnEvaluation) throw new InvalidOperationException("Test evaluation failure.");
+                double first = ConfidenceLevel;
+                Thread.SpinWait(10000);
+                if (first != ConfidenceLevel) throw new InvalidOperationException("Confidence state changed during evaluation.");
+                return ConfidenceLevel;
+            }
+
+            /// <summary>
+            /// Returns the configured confidence level as the inverse result.
+            /// </summary>
+            /// <param name="y">The unused value to invert.</param>
+            /// <returns>The configured confidence level.</returns>
+            /// <exception cref="InvalidOperationException">Thrown when controlled failure is enabled.</exception>
+            public double InverseFunction(double y)
+            {
+                if (ThrowOnEvaluation) throw new InvalidOperationException("Test inverse failure.");
+                return ConfidenceLevel;
+            }
         }
     }
 }

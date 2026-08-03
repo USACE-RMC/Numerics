@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
@@ -120,6 +121,31 @@ namespace Mathematics.Integration
                 "Recording must not perturb the integration result.");
             Assert.AreEqual(plain.FunctionEvaluations, recorded.FunctionEvaluations,
                 "Recording must not change the evaluation count.");
+        }
+
+        /// <summary>
+        /// Test that clearing the recorder from inside a callback does not affect the active
+        /// integration: the snapshot taken at the start of the run remains in effect until the
+        /// integration completes.
+        /// </summary>
+        [TestMethod]
+        public void Test_Recorder_IsSnapshotForTheIntegration()
+        {
+            int calls = 0;
+            AdaptiveGaussKronrod integration = null;
+            integration = new AdaptiveGaussKronrod(x => x * x, 0d, 1d)
+            {
+                MinDepth = 2,
+                Recorder = (x, weight, value) =>
+                {
+                    Interlocked.Increment(ref calls);
+                    integration!.Recorder = null;
+                },
+            };
+
+            integration.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, integration.Status);
+            Assert.IsGreaterThan(1, calls, "The recorder snapshot remains active until the integration completes.");
         }
     }
 }

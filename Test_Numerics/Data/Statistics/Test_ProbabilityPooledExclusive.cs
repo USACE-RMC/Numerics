@@ -115,6 +115,27 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Test that structurally inconsistent combination metadata and non-finite tolerances
+        /// are rejected: the per-size counts must sum to the indicator row count, match the
+        /// indicator layout, and the tolerance must be a finite number.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pooled_RejectsMalformedMetadata()
+        {
+            double[] probabilities = { 0.2d, 0.3d };
+            var output = new List<double>();
+            var indicators = new List<int[]>();
+            int[,] rows = { { 1, 0 }, { 0, 1 }, { 1, 1 } };
+
+            Assert.Throws<ArgumentException>(() => Probability.IndependentExclusive(
+                probabilities, new[] { 2 }, rows, output, indicators));
+            Assert.Throws<ArgumentException>(() => Probability.IndependentExclusive(
+                probabilities, new[] { 1, 2 }, rows, output, indicators));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.IndependentExclusive(
+                probabilities, new[] { 2, 1 }, rows, output, indicators, double.NaN));
+        }
+
+        /// <summary>
         /// Builds the full combination enumeration (sizes 1..n in combination order) for n
         /// events.
         /// </summary>

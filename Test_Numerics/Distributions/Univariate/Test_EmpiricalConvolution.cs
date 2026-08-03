@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -101,6 +102,46 @@ namespace Distributions.Univariate
             // A non-positive summed support cannot be log-spaced.
             var negative = new EmpiricalDistribution(new[] { -5d, 0d, 10d }, new[] { 0.1d, 0.5d, 0.9d });
             Assert.Throws<ArgumentException>(() => EmpiricalDistribution.Convolve(negative, dist2, 1024, logSpacedOutput: true));
+        }
+
+        /// <summary>
+        /// Test that the lattice spans only the occupied support (atoms with zero mass do not
+        /// stretch it), the masses sum to one, the mean is exact, and zero-total-mass inputs
+        /// are rejected.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConvolveDiscrete_UsesOccupiedSupportAndPositiveMass()
+        {
+            EmpiricalDistribution.ConvolveDiscrete(
+                new[] { -100d, 2d, 5d }, new[] { 0d, 0.25d, 0.75d },
+                new[] { 3d, 7d, 100d }, new[] { 0.5d, 0.5d, 0d },
+                256, out double[] values, out double[] masses);
+
+            Assert.AreEqual(5d, values[0], 1E-12);
+            double step = values[1] - values[0];
+            Assert.IsGreaterThanOrEqualTo(12d, values[values.Length - 1]);
+            Assert.IsLessThanOrEqualTo(step + 1E-12, values[values.Length - 1] - 12d,
+                "The occupied lattice may extend at most one node beyond the exact support.");
+            Assert.AreEqual(1d, masses.Sum(), 1E-12);
+            double mean = values.Zip(masses, (value, mass) => value * mass).Sum();
+            Assert.AreEqual(9.25d, mean, 1E-10);
+
+            Assert.Throws<ArgumentException>(() => EmpiricalDistribution.ConvolveDiscrete(
+                new[] { 1d, 2d }, new[] { 0d, 0d }, new[] { 1d }, new[] { 1d },
+                256, out _, out _));
+        }
+
+        /// <summary>
+        /// Test that a degenerate logarithmic output support is rejected before the transform
+        /// reaches the FFT.
+        /// </summary>
+        [TestMethod]
+        public void Test_Convolve_LogSpaced_RejectsDegenerateSupport()
+        {
+            var point1 = new EmpiricalDistribution(new[] { 2d, 2d }, new[] { 0d, 1d });
+            var point2 = new EmpiricalDistribution(new[] { 3d, 3d }, new[] { 0d, 1d });
+            Assert.Throws<ArgumentException>(() =>
+                EmpiricalDistribution.Convolve(point1, point2, 128, logSpacedOutput: true));
         }
 
         /// <summary>

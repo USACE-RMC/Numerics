@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Functions;
 using Numerics.Mathematics.Optimization;
@@ -128,7 +129,39 @@ namespace Functions
                 Assert.AreEqual(a.Function(5d), b.Function(5d), 1E-12, $"Draw {i} must evaluate identically after the round-trip.");
             }
 
-            Assert.Throws<ArgumentException>(() => EnsembleFunction.FromXElement(new System.Xml.Linq.XElement(nameof(EnsembleFunction))));
+            Assert.Throws<ArgumentException>(() => EnsembleFunction.FromXElement(new XElement(nameof(EnsembleFunction))));
+        }
+
+        /// <summary>
+        /// Test that construction deep-copies the template and every parameter set, so
+        /// caller-owned arrays and exposed sets cannot mutate later draws, and that serialized
+        /// sets with malformed values or fitness are rejected.
+        /// </summary>
+        [TestMethod]
+        public void Test_OwnsDeepCopies_AndValidatesXmlSets()
+        {
+            var values = new[] { 1d, 0.5d, 2d, 0.1d };
+            var ensemble = new EnsembleFunction(
+                new SegmentedPowerFunction(values),
+                new[] { new ParameterSet(values, 1d, 0.5d) });
+
+            values[0] = 99d;
+            Assert.AreEqual(1d, ((SegmentedPowerFunction)ensemble.Sample(0)).GetBreakpoint(1), 0d);
+
+            ParameterSet exposed = ensemble.ParameterSets[0];
+            exposed.Values[0] = 88d;
+            Assert.AreEqual(1d, ((SegmentedPowerFunction)ensemble.Sample(0)).GetBreakpoint(1), 0d);
+            Assert.Throws<ArgumentOutOfRangeException>(() => ensemble.Sample(double.NaN));
+
+            XElement invalidValues = ensemble.ToXElement();
+            invalidValues.Element("ParameterSets")!.Element(nameof(ParameterSet))!
+                .SetAttributeValue(nameof(ParameterSet.Values), "1|0.5|0|0.1");
+            Assert.Throws<ArgumentException>(() => EnsembleFunction.FromXElement(invalidValues));
+
+            XElement invalidFitness = ensemble.ToXElement();
+            invalidFitness.Element("ParameterSets")!.Element(nameof(ParameterSet))!
+                .SetAttributeValue(nameof(ParameterSet.Fitness), "NaN");
+            Assert.Throws<ArgumentException>(() => EnsembleFunction.FromXElement(invalidFitness));
         }
     }
 }

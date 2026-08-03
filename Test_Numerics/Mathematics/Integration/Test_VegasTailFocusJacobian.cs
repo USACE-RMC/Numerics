@@ -77,5 +77,22 @@ namespace Mathematics.Integration
                     $"γ = {gamma}: the weights must sum to the domain volume per evaluation batch (Jacobian folded into the weight).");
             }
         }
+
+        /// <summary>
+        /// Test that the tail-focus parameter and the rare-event configuration reject
+        /// non-finite or non-positive values, leaving the configured state unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_TailFocus_RejectsInvalidParametersAtomically()
+        {
+            var vegas = new Vegas((point, weight) => point[0] * weight, 1, new[] { 0d }, new[] { 1d });
+            Assert.Throws<ArgumentOutOfRangeException>(() => vegas.TailFocusParameter = 0d);
+            Assert.Throws<ArgumentOutOfRangeException>(() => vegas.TailFocusParameter = double.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => vegas.TailFocusParameter = double.PositiveInfinity);
+            Assert.AreEqual(1d, vegas.TailFocusParameter, 0d);
+            Assert.Throws<ArgumentOutOfRangeException>(() => vegas.ConfigureForRareEvents(0d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => vegas.ConfigureForRareEvents(1d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => vegas.ConfigureForRareEvents(double.NaN));
+        }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics.SpecialFunctions;
@@ -422,6 +423,28 @@ namespace Data.Statistics
             double nan = Probability.IndependentExclusive(
                 new[] { double.NaN, 0.5d }, new[] { 1, 0 });
             Assert.IsTrue(double.IsNaN(nan), "Tools.Clamp must preserve the established NaN signal.");
+        }
+
+        /// <summary>
+        /// Test that a capped enumeration without the no-event row still closes on the exact
+        /// union mass: the emitted rows plus the closing pseudo-row sum to one minus the
+        /// no-event probability.
+        /// </summary>
+        [TestMethod]
+        public void Test_LazyExclusive_CappedWithoutNoEventRow_PreservesUnionMass()
+        {
+            double[] probabilities = { 0.4d, 0.35d, 0.3d, 0.25d, 0.2d, 0.15d };
+            var output = new List<double>();
+            var indicators = new List<int[]>();
+
+            var status = Probability.IndependentExclusiveLazy(probabilities, output, indicators,
+                includeNoEventRow: false, maxEmittedCombinations: 10,
+                absoluteTolerance: 0d, relativeTolerance: 0d);
+
+            Assert.AreEqual(Probability.ExclusiveEnumerationStatus.Capped, status);
+            double noEventMass = probabilities.Aggregate(1d, (mass, probability) => mass * (1d - probability));
+            Assert.AreEqual(1d - noEventMass, output.Sum(), 1E-12);
+            Assert.HasCount(11, output);
         }
     }
 }
