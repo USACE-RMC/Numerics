@@ -1,8 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Numerics.Mathematics.Optimization
 {
@@ -27,7 +24,7 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public int ToIndex = toNodeIndex;
         /// <summary>
-        /// Weight (or Cost) of transversing the edge. 
+        /// Weight (or Cost) of transversing the edge.
         /// </summary>
         public float Weight = edgeWeight;
         /// <summary>
@@ -39,73 +36,125 @@ namespace Numerics.Mathematics.Optimization
     /// <summary>
     /// Dijkstra dynamic programming implementation for shortest path optimization.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    ///     <b> Authors: </b>
+    ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
+    /// </para>
+    /// <para>
+    /// <b> Description: </b>
+    /// The solvers run Dijkstra's algorithm rooted at the destination, following edges backward,
+    /// and return a routing table for every node: column 0 is the next node toward the
+    /// destination, column 1 is the index of the edge to take, and column 2 is the cumulative
+    /// cost to the destination. The destination row is (itself, -1, 0); an unreachable node's
+    /// row is (-1, -1, positive infinity). Dijkstra's algorithm assumes non-negative edge
+    /// weights; negative weights are not rejected, but routes computed from them are undefined.
+    /// A weight of positive infinity makes an edge impassable, and a NaN weight never relaxes,
+    /// severing its edge.
+    /// </para>
+    /// <b> References: </b>
+    /// <list type="bullet">
+    /// <item><description>
+    /// Dijkstra, E. W. (1959). A note on two problems in connexion with graphs. Numerische Mathematik, 1, 269-271.
+    /// </description></item>
+    /// <item><description>
+    /// <see href="https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm"/>
+    /// </description></item>
+    /// </list>
+    /// </remarks>
     public static class Dijkstra
     {
+        /// <summary>The result-table column holding the next node toward the destination.</summary>
         private const int NEXT_NODE = 0;
+
+        /// <summary>The result-table column holding the index of the edge to take.</summary>
         private const int EDGE_INDEX = 1;
+
+        /// <summary>The result-table column holding the cumulative cost to the destination.</summary>
         private const int COST = 2;
 
         /// <summary>
-        /// May be a useful call in LifeSim -> GetPath().
-        /// Follows the logic that is implemented in the Solve method.
+        /// Reports whether the result table records a finite-cost route from the specified node
+        /// to the solved destination.
         /// </summary>
-        /// <param name="resultTable"></param>
-        /// <param name="nodeIndex"></param>
-        /// <returns></returns>
+        /// <param name="resultTable">A result table produced by one of the solvers.</param>
+        /// <param name="nodeIndex">The node to query.</param>
+        /// <returns>True when the node can reach the destination; false when its cost is positive infinity.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when the result table is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the result table does not have three columns.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the node index is outside the table.</exception>
         public static bool PathExists(float[,] resultTable, int nodeIndex)
         {
+            if (resultTable == null) throw new ArgumentNullException(nameof(resultTable));
+            if (resultTable.GetLength(1) != 3) throw new ArgumentException("The result table must have three columns.", nameof(resultTable));
+            if (nodeIndex < 0 || nodeIndex >= resultTable.GetLength(0)) throw new ArgumentOutOfRangeException(nameof(nodeIndex), $"The node index must be within [0, {resultTable.GetLength(0)}).");
             return !float.IsPositiveInfinity(resultTable[nodeIndex, COST]);
         }
+
         /// <summary>
-        /// Solves the shortest path from every node in the network of edges to a given destination.
+        /// Solves the shortest path from every node in the network of edges to the nearest of
+        /// the given destinations.
         /// </summary>
         /// <param name="edges">Edges, or segments, that make up the network.</param>
         /// <param name="destinationIndices">Indices of the destination nodes.</param>
         /// <param name="nodeCount">Optional number of nodes in the network. If not provided it will be calculated internally.</param>
-        /// <param name="edgesFromNodes">Optional list of incoming edges from each node in the network. If not provided or mismatched with edges it will be calculated internally.</param>
+        /// <param name="edgesFromNodes">Optional list of incoming edges for each node in the network. If not provided or mismatched with the node count it will be calculated internally.</param>
         /// <returns>Lookup table of shortest paths from any given node.</returns>
+        /// <remarks>
+        /// Each destination is solved independently and the tables merge per node by strictly
+        /// smaller cost in destination order, so on an exact cost tie the earlier destination in
+        /// the array wins. An empty destination array returns an all-unreachable table.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when the edges or destination indices are null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the node count cannot be derived, or an edge references a node outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the node count is not positive, or a destination index is outside the network.</exception>
         public static float[,] Solve(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1, List<Edge>[]? edgesFromNodes = null)
         {
-            // Set optional parameters if required.
-            int nNodes = (nodeCount == -1) ? (edges.Max(o => Math.Max(o.FromIndex,o.ToIndex)) + 1) : nodeCount;
+            if (edges == null) throw new ArgumentNullException(nameof(edges));
+            if (destinationIndices == null) throw new ArgumentNullException(nameof(destinationIndices));
 
-            if (edgesFromNodes == null || edgesFromNodes.Length != nNodes)
-            {
-                edgesFromNodes = new List<Edge>[nNodes];
-                //
-                foreach(var edge in edges)
-                {
-                    edgesFromNodes[edge.ToIndex] ??= new List<Edge>();
-                    edgesFromNodes[edge.ToIndex].Add(edge);
-                }
-            }
-
-
-            float[,] resultTable = new float[nNodes, 3];
-            for(int i = 0; i < nNodes; i++)
-            {
-                resultTable[i, NEXT_NODE] = -1;
-                resultTable[i, EDGE_INDEX] = -1;
-                resultTable[i, COST] = float.PositiveInfinity;
-            }
-
+            int nNodes = ResolveNodeCount(edges, nodeCount);
             for (int i = 0; i < destinationIndices.Length; i++)
             {
-                int destinationIndex = destinationIndices[i];
-                var partialResult = Solve(edges, destinationIndex, nNodes, edgesFromNodes);
-                for(int j = 0; j < nNodes; j++)
+                if (destinationIndices[i] < 0 || destinationIndices[i] >= nNodes)
+                    throw new ArgumentOutOfRangeException(nameof(destinationIndices), $"The destination index {destinationIndices[i]} must be within [0, {nNodes}).");
+            }
+
+            CompactAdjacency adjacency = BuildIncomingAdjacency(edges, nNodes, edgesFromNodes);
+
+            // Accumulators start all-unreachable; each destination's solve merges in by
+            // strictly smaller cost, preserving the earlier-destination-wins tie rule.
+            var bestNext = new int[nNodes];
+            var bestEdge = new int[nNodes];
+            var bestDist = new float[nNodes];
+            for (int i = 0; i < nNodes; i++)
+            {
+                bestNext[i] = -1;
+                bestEdge[i] = -1;
+                bestDist[i] = float.PositiveInfinity;
+            }
+
+            // One scratch set reused across destinations.
+            var next = new int[nNodes];
+            var edgeIndexes = new int[nNodes];
+            var dist = new float[nNodes];
+            var state = new int[nNodes];
+            var heap = new IndexedMinHeap(nNodes);
+
+            for (int d = 0; d < destinationIndices.Length; d++)
+            {
+                SolveCore(adjacency, null, destinationIndices[d], next, edgeIndexes, dist, state, heap);
+                for (int j = 0; j < nNodes; j++)
                 {
-                    // Keep better path
-                    if (partialResult[j, COST] < resultTable[j, COST])
+                    if (dist[j] < bestDist[j])
                     {
-                        resultTable[j, NEXT_NODE] = partialResult[j, NEXT_NODE];
-                        resultTable[j, EDGE_INDEX] = partialResult[j, EDGE_INDEX];
-                        resultTable[j,COST] = partialResult[j,COST];
+                        bestNext[j] = next[j];
+                        bestEdge[j] = edgeIndexes[j];
+                        bestDist[j] = dist[j];
                     }
                 }
             }
-            return resultTable;
-           
+            return WriteTable(bestNext, bestEdge, bestDist);
         }
 
         /// <summary>
@@ -114,93 +163,192 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="edges">Edges, or segments, that make up the network.</param>
         /// <param name="destinationIndex">Index of the destination node.</param>
         /// <param name="nodeCount">Optional number of nodes in the network. If not provided it will be calculated internally.</param>
-        /// <param name="edgesToNodes">Optional list of incoming edges from each node in the network. If not provided or mismatched with edges it will be calculated internally.</param>
+        /// <param name="edgesToNodes">Optional list of incoming edges for each node in the network. If not provided or mismatched with the node count it will be calculated internally.</param>
         /// <returns>Lookup table of shortest paths from any given node.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when the edges are null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the node count cannot be derived, or an edge references a node outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the node count is not positive, or the destination index is outside the network.</exception>
         public static float[,] Solve(IList<Edge> edges, int destinationIndex, int nodeCount = -1, List<Edge>[]? edgesToNodes = null)
         {
-            // Set optional parameters if required.
-            int nNodes = (nodeCount == -1) ? (edges.Max(o => Math.Max(o.FromIndex, o.ToIndex)) + 1) : nodeCount;
+            if (edges == null) throw new ArgumentNullException(nameof(edges));
 
-            if (edgesToNodes == null || edgesToNodes.Length != nNodes)
-            {
-                edgesToNodes = new List<Edge>[nNodes];
-                //
-                foreach (var edge in edges)
-                {
-                    edgesToNodes[edge.ToIndex] ??= new List<Edge>();
-                    edgesToNodes[edge.ToIndex].Add(edge);
-                }
-            }
+            int nNodes = ResolveNodeCount(edges, nodeCount);
+            if (destinationIndex < 0 || destinationIndex >= nNodes)
+                throw new ArgumentOutOfRangeException(nameof(destinationIndex), $"The destination index must be within [0, {nNodes}).");
 
-            // Prepare results table with destination defined.
-            float[,] resultTable = new float[nNodes, 3];
-            int[] nodeState = new int[nNodes]; //0 - Node hasn't been scanned yet, 1 - Node has been solved for, 2 - Node has been scanned into heap but not solved for.
-            float[] nodeWeightToDestination = new float[nNodes];
+            CompactAdjacency adjacency = BuildIncomingAdjacency(edges, nNodes, edgesToNodes);
 
-            //Initialize all nodes are unreachable
+            var next = new int[nNodes];
+            var edgeIndexes = new int[nNodes];
+            var dist = new float[nNodes];
+            var state = new int[nNodes];
+            var heap = new IndexedMinHeap(nNodes);
+
+            SolveCore(adjacency, null, destinationIndex, next, edgeIndexes, dist, state, heap);
+            return WriteTable(next, edgeIndexes, dist);
+        }
+
+        /// <summary>
+        /// Runs the destination-rooted solve over the compact adjacency, filling the caller's
+        /// flat buffers: for each node, the next node toward the destination, the edge index to
+        /// take, and the cumulative cost. Buffers are fully re-initialized, so they can be
+        /// reused across calls.
+        /// </summary>
+        /// <param name="adjacency">The incoming-edge compact adjacency.</param>
+        /// <param name="weightOverride">Optional positional weight overlay (indexed by original edge position); null uses the adjacency weights. Requires an adjacency built from an edge sequence.</param>
+        /// <param name="destinationIndex">The destination node.</param>
+        /// <param name="next">Receives the next node toward the destination per node; -1 when unreachable.</param>
+        /// <param name="edgeIndexes">Receives the edge index to take per node; -1 when unreachable.</param>
+        /// <param name="dist">Receives the cumulative cost per node; positive infinity when unreachable.</param>
+        /// <param name="state">Scratch node states (0 unscanned, 1 solved, 2 in the heap).</param>
+        /// <param name="heap">The scratch heap, sized at the node count.</param>
+        /// <remarks>
+        /// The heap holds exactly the nodes with state 2 and never a duplicate: nodes enter only
+        /// through Add when their state is not 2, in-heap improvements route through
+        /// DecreaseKey, and RemoveMin retires the node to state 1. The heap count therefore
+        /// never exceeds the node count, independent of weight signs, which is what makes the
+        /// node-count capacity exact.
+        /// </remarks>
+        internal static void SolveCore(in CompactAdjacency adjacency, float[]? weightOverride, int destinationIndex,
+            int[] next, int[] edgeIndexes, float[] dist, int[] state, IndexedMinHeap heap)
+        {
+            int nNodes = adjacency.NodeCount;
             for (int i = 0; i < nNodes; i++)
             {
-                resultTable[i, NEXT_NODE] = -1;
-                resultTable[i, EDGE_INDEX] = -1;
-                resultTable[i, COST] = float.PositiveInfinity;
-                nodeWeightToDestination[i] = float.PositiveInfinity;
+                next[i] = -1;
+                edgeIndexes[i] = -1;
+                dist[i] = float.PositiveInfinity;
+                state[i] = 0;
             }
+            heap.Clear();
 
-            BinaryHeap<Edge> heap = new BinaryHeap<Edge>(10000);
+            next[destinationIndex] = destinationIndex;
+            edgeIndexes[destinationIndex] = -1;
+            dist[destinationIndex] = 0f;
+            heap.Add(destinationIndex, 0f);
+            state[destinationIndex] = 2;
 
-            resultTable[destinationIndex, NEXT_NODE] = destinationIndex; //Tail
-            resultTable[destinationIndex, EDGE_INDEX] = -1; //edge index
-            resultTable[destinationIndex, COST] = 0; //Cumulative Weight
-            nodeWeightToDestination[destinationIndex] = 0;
-            heap.Add(new BinaryHeap<Edge>.Node(0, destinationIndex, new Edge(destinationIndex, destinationIndex, 0, -1)));
-            nodeState[destinationIndex] = 2;
+            RunToExhaustion(adjacency, weightOverride, next, edgeIndexes, dist, state, heap);
+        }
 
-           
+        /// <summary>
+        /// Drains the heap, relaxing each settled node's incoming edges — the shared main loop
+        /// of the destination-rooted solvers. Seeding is the caller's responsibility.
+        /// </summary>
+        /// <param name="adjacency">The incoming-edge compact adjacency.</param>
+        /// <param name="weightOverride">Optional positional weight overlay; null uses the adjacency weights.</param>
+        /// <param name="next">The per-node next-node buffer.</param>
+        /// <param name="edgeIndexes">The per-node edge-index buffer.</param>
+        /// <param name="dist">The per-node cumulative-cost buffer.</param>
+        /// <param name="state">The per-node state buffer.</param>
+        /// <param name="heap">The seeded heap.</param>
+        internal static void RunToExhaustion(in CompactAdjacency adjacency, float[]? weightOverride,
+            int[] next, int[] edgeIndexes, float[] dist, int[] state, IndexedMinHeap heap)
+        {
+            int[] rowStart = adjacency.RowStart;
+            int[] fromNodes = adjacency.FromNode;
+            int[] toNodes = adjacency.ToNode;
+            float[] weights = adjacency.Weight;
+            int[] slotEdgeIndexes = adjacency.EdgeIndex;
+            int[]? sourcePositions = adjacency.SourcePosition;
+
             while (heap.Count > 0)
             {
-                var node = heap.RemoveMin();
-                int current = node.Index;
-                float cost = node.Weight;
+                heap.RemoveMin(out int current, out float cost);
 
-                if (nodeState[current] == 1)
-                    continue;
+                // Defensive only: the heap never holds a settled node (see SolveCore remarks).
+                if (state[current] == 1) continue;
+                state[current] = 1;
 
-                nodeState[current] = 1;
-
-                if (edgesToNodes[current] == null)
-                    continue;
-
-                foreach (var edge in edgesToNodes[current])
+                int rowEnd = rowStart[current + 1];
+                for (int k = rowStart[current]; k < rowEnd; k++)
                 {
-                    int from = edge.FromIndex;
-                    int to = edge.ToIndex;
-                    float newCost = cost + edge.Weight;
+                    int from = fromNodes[k];
+                    float weight = weightOverride == null ? weights[k] : weightOverride[sourcePositions![k]];
+                    float newCost = cost + weight;
 
-                    if (newCost < nodeWeightToDestination[from])
+                    if (newCost < dist[from])
                     {
-                        nodeWeightToDestination[from] = newCost;
-                        var newNode = new BinaryHeap<Edge>.Node(newCost, from, edge);
-
-                        if (nodeState[from] != 2)
+                        dist[from] = newCost;
+                        if (state[from] != 2)
                         {
-                            heap.Add(newNode);
-                            nodeState[from] = 2;
+                            heap.Add(from, newCost);
+                            state[from] = 2;
                         }
                         else
                         {
-                            heap.DecreaseKey(newNode);
+                            heap.DecreaseKey(from, newCost);
                         }
-
-                        resultTable[from, NEXT_NODE] = to;
-                        resultTable[from, EDGE_INDEX] = edge.Index;
-                        resultTable[from, COST] = newCost;
-                      
+                        next[from] = toNodes[k];
+                        edgeIndexes[from] = slotEdgeIndexes[k];
                     }
                 }
             }
-                return resultTable;
-            }
+        }
 
-        
+        /// <summary>
+        /// Resolves the working node count: -1 derives it from the largest node index the edges
+        /// reference; any other value must be positive and is used as given.
+        /// </summary>
+        /// <param name="edges">The network edges.</param>
+        /// <param name="nodeCount">The caller's node count, or -1 to derive.</param>
+        /// <returns>The node count.</returns>
+        /// <exception cref="ArgumentException">Thrown when the count must be derived from an empty edge list.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when an explicit count is not positive.</exception>
+        private static int ResolveNodeCount(IList<Edge> edges, int nodeCount)
+        {
+            if (nodeCount == -1)
+            {
+                if (edges.Count == 0)
+                    throw new ArgumentException("The node count cannot be derived from an empty edge list; provide nodeCount explicitly.", nameof(edges));
+                int max = 0;
+                for (int i = 0; i < edges.Count; i++)
+                {
+                    Edge edge = edges[i];
+                    if (edge.FromIndex > max) max = edge.FromIndex;
+                    if (edge.ToIndex > max) max = edge.ToIndex;
+                }
+                return max + 1;
+            }
+            if (nodeCount < 1)
+                throw new ArgumentOutOfRangeException(nameof(nodeCount), "The node count must be positive, or -1 to derive it from the edges.");
+            return nodeCount;
+        }
+
+        /// <summary>
+        /// Builds the incoming-edge compact adjacency, honoring the documented precedence: a
+        /// caller-supplied per-node list array whose length matches the node count is
+        /// authoritative; otherwise the adjacency is calculated from the edges.
+        /// </summary>
+        /// <param name="edges">The network edges.</param>
+        /// <param name="nodeCount">The working node count.</param>
+        /// <param name="providedLists">The caller's per-node incoming-edge lists, or null.</param>
+        /// <returns>The compact adjacency.</returns>
+        private static CompactAdjacency BuildIncomingAdjacency(IList<Edge> edges, int nodeCount, List<Edge>[]? providedLists)
+        {
+            if (providedLists != null && providedLists.Length == nodeCount)
+                return CompactAdjacency.FromIncomingLists(providedLists, nodeCount, nameof(edges));
+            return CompactAdjacency.FromEdges(edges, nodeCount, groupByEndNode: true, nameof(edges));
+        }
+
+        /// <summary>
+        /// Writes the flat solve buffers into the public three-column result table.
+        /// </summary>
+        /// <param name="next">The per-node next-node buffer.</param>
+        /// <param name="edgeIndexes">The per-node edge-index buffer.</param>
+        /// <param name="dist">The per-node cumulative-cost buffer.</param>
+        /// <returns>The result table.</returns>
+        internal static float[,] WriteTable(int[] next, int[] edgeIndexes, float[] dist)
+        {
+            int nNodes = next.Length;
+            var resultTable = new float[nNodes, 3];
+            for (int i = 0; i < nNodes; i++)
+            {
+                resultTable[i, NEXT_NODE] = next[i];
+                resultTable[i, EDGE_INDEX] = edgeIndexes[i];
+                resultTable[i, COST] = dist[i];
+            }
+            return resultTable;
+        }
     }
 }

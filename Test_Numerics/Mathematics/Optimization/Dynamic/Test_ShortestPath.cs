@@ -1,5 +1,7 @@
 
+using System.Diagnostics;
 using Numerics.Mathematics.Optimization;
+using Numerics.Sampling;
 
 namespace Mathematics.Optimization
 {
@@ -282,6 +284,410 @@ namespace Mathematics.Optimization
             Assert.AreEqual(2, result[1, 0]);
             Assert.AreEqual(1, result[1, 2]);
             Assert.AreEqual(2, result[2, 0]);
+        }
+
+        /// <summary>
+        /// Pins the edge-index column: every routed node records the index of the edge it takes,
+        /// the destination and unreachable nodes record -1.
+        /// </summary>
+        [TestMethod]
+        public void ResultTableEdgeIndexColumn()
+        {
+            var edges = new List<Edge>
+            {
+                new Edge(0, 1, 2, 0),
+                new Edge(0, 2, 4, 2),
+                new Edge(1, 2, 1, 2),
+                new Edge(1, 3, 7, 3),
+                new Edge(2, 3, 3, 4),
+                new Edge(4, 0, 1, 5),
+            };
+
+            var result = Dijkstra.Solve(edges, 3, 6);
+
+            Assert.AreEqual(0f, result[0, 1]);   // 0 departs on edge 0 toward node 1
+            Assert.AreEqual(2f, result[1, 1]);   // 1 departs on edge 2 toward node 2
+            Assert.AreEqual(4f, result[2, 1]);   // 2 departs on edge 4 toward node 3
+            Assert.AreEqual(-1f, result[3, 1]);  // the destination takes no edge
+            Assert.AreEqual(5f, result[4, 1]);   // 4 departs on edge 5 toward node 0
+            Assert.AreEqual(-1f, result[5, 1]);  // unreachable
+            Assert.AreEqual(1f, result[0, 0]);
+            Assert.AreEqual(2f, result[1, 0]);
+            Assert.AreEqual(3f, result[2, 0]);
+            Assert.AreEqual(0f, result[4, 0]);
+        }
+
+        /// <summary>
+        /// The destination row is exactly (itself, -1, 0) for single- and multi-destination solves.
+        /// </summary>
+        [TestMethod]
+        public void DestinationRowContract()
+        {
+            var edges = new List<Edge> { new Edge(0, 1, 1, 0), new Edge(1, 2, 1, 1) };
+
+            var single = Dijkstra.Solve(edges, 2, 3);
+            Assert.AreEqual(2f, single[2, 0]);
+            Assert.AreEqual(-1f, single[2, 1]);
+            Assert.AreEqual(0f, single[2, 2]);
+
+            var multi = Dijkstra.Solve(edges, [0, 2], 3);
+            Assert.AreEqual(0f, multi[0, 0]);
+            Assert.AreEqual(-1f, multi[0, 1]);
+            Assert.AreEqual(0f, multi[0, 2]);
+            Assert.AreEqual(2f, multi[2, 0]);
+            Assert.AreEqual(-1f, multi[2, 1]);
+            Assert.AreEqual(0f, multi[2, 2]);
+        }
+
+        /// <summary>
+        /// An unreachable node's row is exactly (-1, -1, positive infinity) in all three columns.
+        /// </summary>
+        [TestMethod]
+        public void UnreachableRowContract()
+        {
+            var edges = new List<Edge> { new Edge(0, 1, 1, 0) };
+
+            var result = Dijkstra.Solve(edges, 1, 3);
+
+            Assert.AreEqual(-1f, result[2, 0]);
+            Assert.AreEqual(-1f, result[2, 1]);
+            Assert.IsTrue(float.IsPositiveInfinity(result[2, 2]));
+        }
+
+        /// <summary>
+        /// Solving the same inputs twice produces element-for-element identical tables.
+        /// </summary>
+        [TestMethod]
+        public void RepeatedSolveIsBitIdentical()
+        {
+            var edges = BuildRandomGraph(new MersenneTwister(45678), 300, 1200);
+
+            var first = Dijkstra.Solve(edges, 7, 300);
+            var second = Dijkstra.Solve(edges, 7, 300);
+
+            for (int i = 0; i < 300; i++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    Assert.AreEqual(first[i, c], second[i, c], 0f, $"Cell [{i},{c}] differs between runs.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// On an exact cost tie between destinations, the earlier destination in the array wins;
+        /// reversing the array flips the winner.
+        /// </summary>
+        [TestMethod]
+        public void MultiDestinationTieBreaksByArrayOrder()
+        {
+            var edges = new List<Edge>
+            {
+                new Edge(0, 1, 5, 0),
+                new Edge(0, 2, 5, 1),
+            };
+
+            var forward = Dijkstra.Solve(edges, [1, 2], 3);
+            Assert.AreEqual(1f, forward[0, 0]);
+            Assert.AreEqual(0f, forward[0, 1]);
+            Assert.AreEqual(5f, forward[0, 2]);
+
+            var reversed = Dijkstra.Solve(edges, [2, 1], 3);
+            Assert.AreEqual(2f, reversed[0, 0]);
+            Assert.AreEqual(1f, reversed[0, 1]);
+            Assert.AreEqual(5f, reversed[0, 2]);
+        }
+
+        /// <summary>
+        /// The cost column equals an independent Bellman-Ford re-derivation on fixed-seed random
+        /// graphs of several sizes and densities (integer weights make the comparison exact).
+        /// </summary>
+        [TestMethod]
+        public void SingleDestinationMatchesBellmanFordOnRandomGraphs()
+        {
+            (int nodes, int edges, int seed)[] cases = { (200, 800, 101), (500, 2500, 102), (1000, 6000, 103) };
+            foreach (var (nodeCount, edgeCount, seed) in cases)
+            {
+                var edges = BuildRandomGraph(new MersenneTwister(seed), nodeCount, edgeCount);
+                int destination = nodeCount / 2;
+
+                var result = Dijkstra.Solve(edges, destination, nodeCount);
+                float[] oracle = BellmanFordToDestination(edges, nodeCount, destination);
+
+                for (int i = 0; i < nodeCount; i++)
+                {
+                    Assert.AreEqual(oracle[i], result[i, 2], 0f, $"Cost mismatch at node {i} (n={nodeCount}).");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Multi-destination merged costs equal the per-destination oracle minima.
+        /// </summary>
+        [TestMethod]
+        public void MultiDestinationMatchesPerDestinationOracleMin()
+        {
+            var edges = BuildRandomGraph(new MersenneTwister(104), 400, 1600);
+            int[] destinations = { 3, 200, 397 };
+
+            var result = Dijkstra.Solve(edges, destinations, 400);
+
+            var oracles = new float[destinations.Length][];
+            for (int d = 0; d < destinations.Length; d++)
+            {
+                oracles[d] = BellmanFordToDestination(edges, 400, destinations[d]);
+            }
+            for (int i = 0; i < 400; i++)
+            {
+                float expected = float.PositiveInfinity;
+                for (int d = 0; d < destinations.Length; d++)
+                {
+                    if (oracles[d][i] < expected) expected = oracles[d][i];
+                }
+                Assert.AreEqual(expected, result[i, 2], 0f, $"Merged cost mismatch at node {i}.");
+            }
+        }
+
+        /// <summary>
+        /// Structural self-consistency on random graphs: every reachable non-destination row
+        /// names a real edge from the node to its recorded next node, and the costs telescope
+        /// exactly along that edge.
+        /// </summary>
+        [TestMethod]
+        public void ResultTableIsSelfConsistentOnRandomGraphs()
+        {
+            var edges = BuildRandomGraph(new MersenneTwister(105), 300, 1500);
+            int destination = 17;
+
+            var result = Dijkstra.Solve(edges, destination, 300);
+
+            for (int i = 0; i < 300; i++)
+            {
+                if (i == destination || float.IsPositiveInfinity(result[i, 2])) continue;
+                int next = (int)result[i, 0];
+                int edgeIndex = (int)result[i, 1];
+
+                bool found = false;
+                for (int j = 0; j < edges.Count; j++)
+                {
+                    var edge = edges[j];
+                    if (edge.FromIndex == i && edge.ToIndex == next && edge.Index == edgeIndex
+                        && result[i, 2] == result[next, 2] + edge.Weight)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                Assert.IsTrue(found, $"Node {i} routes over edge index {edgeIndex} to {next}, but no such edge telescopes the costs.");
+            }
+        }
+
+        /// <summary>
+        /// A complete directed graph keeps every node in flight at once; the solver's
+        /// exact-node-count heap capacity must never overflow.
+        /// </summary>
+        [TestMethod]
+        public void DenseGraphNeverOverflowsExactHeapCapacity()
+        {
+            const int n = 200;
+            var edges = new List<Edge>(n * (n - 1));
+            int index = 0;
+            for (int a = 0; a < n; a++)
+            {
+                for (int b = 0; b < n; b++)
+                {
+                    if (a == b) continue;
+                    edges.Add(new Edge(a, b, 1f + ((a + b) % 7), index++));
+                }
+            }
+
+            var result = Dijkstra.Solve(edges, n - 1, n);
+
+            for (int i = 0; i < n; i++)
+            {
+                Assert.IsTrue(Dijkstra.PathExists(result, i), $"Node {i} must reach the destination in a complete graph.");
+            }
+        }
+
+        /// <summary>
+        /// Malformed inputs fail with clear argument exceptions instead of raw index or LINQ
+        /// crashes.
+        /// </summary>
+        [TestMethod]
+        public void SolveValidationThrows()
+        {
+            var edges = new List<Edge> { new Edge(0, 1, 1, 0) };
+
+            Assert.Throws<ArgumentNullException>(() => Dijkstra.Solve(null!, 0, 2));
+            Assert.Throws<ArgumentNullException>(() => Dijkstra.Solve(edges, null!, 2));
+            Assert.Throws<ArgumentException>(() => Dijkstra.Solve(new List<Edge>(), 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, 0, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, -1, 2));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, 2, 2));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, [0, 5], 2));
+            Assert.Throws<ArgumentException>(() => Dijkstra.Solve(new List<Edge> { new Edge(0, 9, 1, 0) }, 0, 3));
+
+            Assert.Throws<ArgumentNullException>(() => Dijkstra.PathExists(null!, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.PathExists(new float[2, 3], 2));
+            Assert.Throws<ArgumentException>(() => Dijkstra.PathExists(new float[2, 2], 0));
+        }
+
+        /// <summary>
+        /// Negative, NaN, and positive-infinity weights pass through without rejection: a
+        /// negative weight computes, a NaN weight never relaxes its edge, and an infinite
+        /// weight is impassable.
+        /// </summary>
+        [TestMethod]
+        public void NegativeNaNAndInfinityWeightsAreAccepted()
+        {
+            var negative = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, -5, 0) }, 1, 2);
+            Assert.AreEqual(-5f, negative[0, 2]);
+
+            var nan = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, float.NaN, 0) }, 1, 2);
+            Assert.IsTrue(float.IsPositiveInfinity(nan[0, 2]), "A NaN weight never relaxes, severing its edge.");
+
+            var infinite = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, float.PositiveInfinity, 0) }, 1, 2);
+            Assert.IsTrue(float.IsPositiveInfinity(infinite[0, 2]), "An infinite weight is impassable.");
+        }
+
+        /// <summary>
+        /// An empty edge list with an explicit node count yields the destination row and
+        /// all-unreachable rows, and an empty destination array yields an all-unreachable table.
+        /// </summary>
+        [TestMethod]
+        public void EmptyInputsPreserveDocumentedSemantics()
+        {
+            var noEdges = Dijkstra.Solve(new List<Edge>(), 0, 3);
+            Assert.AreEqual(0f, noEdges[0, 0]);
+            Assert.AreEqual(0f, noEdges[0, 2]);
+            Assert.IsTrue(float.IsPositiveInfinity(noEdges[1, 2]));
+            Assert.IsTrue(float.IsPositiveInfinity(noEdges[2, 2]));
+
+            var noDestinations = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, 1, 0) }, new int[0], 2);
+            Assert.IsTrue(float.IsPositiveInfinity(noDestinations[0, 2]));
+            Assert.IsTrue(float.IsPositiveInfinity(noDestinations[1, 2]));
+        }
+
+        /// <summary>
+        /// Performance smoke: a 316 by 316 four-neighbor grid (99,856 nodes) solves to a corner
+        /// destination without heap overflow, and the far corner's cost equals the Manhattan
+        /// distance.
+        /// </summary>
+        [TestMethod]
+        [TestCategory("Performance")]
+        public void P1_LargeGridSingleDestination()
+        {
+            const int side = 316;
+            var edges = BuildGrid(side);
+
+            var stopwatch = Stopwatch.StartNew();
+            var result = Dijkstra.Solve(edges, 0, side * side);
+            stopwatch.Stop();
+            Console.WriteLine($"P1 grid {side}x{side}: {stopwatch.Elapsed.TotalSeconds:F3} s");
+
+            Assert.AreEqual(2f * (side - 1), result[side * side - 1, 2], 0f);
+        }
+
+        /// <summary>
+        /// Performance smoke: the same grid solved to its four corners through the
+        /// multi-destination overload; the center's merged cost equals the nearest corner's
+        /// Manhattan distance.
+        /// </summary>
+        [TestMethod]
+        [TestCategory("Performance")]
+        public void P2_LargeGridMultiDestination()
+        {
+            const int side = 316;
+            var edges = BuildGrid(side);
+            int[] corners = { 0, side - 1, side * (side - 1), side * side - 1 };
+
+            var stopwatch = Stopwatch.StartNew();
+            var result = Dijkstra.Solve(edges, corners, side * side);
+            stopwatch.Stop();
+            Console.WriteLine($"P2 grid {side}x{side} x4 destinations: {stopwatch.Elapsed.TotalSeconds:F3} s");
+
+            int center = (side / 2) * side + (side / 2);
+            // The nearest corner from (158, 158) is (315, 315): 157 + 157 steps.
+            float expected = 2f * (side - 1 - side / 2);
+            Assert.AreEqual(expected, result[center, 2], 0f);
+        }
+
+        /// <summary>
+        /// Builds a random directed graph with integer-valued float weights (exact float sums).
+        /// </summary>
+        /// <param name="randy">The seeded generator.</param>
+        /// <param name="nodeCount">The node count.</param>
+        /// <param name="edgeCount">The edge count.</param>
+        /// <returns>The edge list.</returns>
+        private static List<Edge> BuildRandomGraph(Random randy, int nodeCount, int edgeCount)
+        {
+            var edges = new List<Edge>(edgeCount);
+            for (int j = 0; j < edgeCount; j++)
+            {
+                edges.Add(new Edge(randy.Next(0, nodeCount), randy.Next(0, nodeCount), randy.Next(1, 20), j));
+            }
+            return edges;
+        }
+
+        /// <summary>
+        /// Builds a bidirectional four-neighbor grid with unit weights.
+        /// </summary>
+        /// <param name="side">The grid side length.</param>
+        /// <returns>The edge list.</returns>
+        private static List<Edge> BuildGrid(int side)
+        {
+            var edges = new List<Edge>(4 * side * (side - 1));
+            int index = 0;
+            for (int r = 0; r < side; r++)
+            {
+                for (int c = 0; c < side; c++)
+                {
+                    int node = r * side + c;
+                    if (c + 1 < side)
+                    {
+                        edges.Add(new Edge(node, node + 1, 1, index++));
+                        edges.Add(new Edge(node + 1, node, 1, index++));
+                    }
+                    if (r + 1 < side)
+                    {
+                        edges.Add(new Edge(node, node + side, 1, index++));
+                        edges.Add(new Edge(node + side, node, 1, index++));
+                    }
+                }
+            }
+            return edges;
+        }
+
+        /// <summary>
+        /// Independent Bellman-Ford re-derivation of every node's cost to the destination,
+        /// following edges backward exactly like the solver under test.
+        /// </summary>
+        /// <param name="edges">The network edges.</param>
+        /// <param name="nodeCount">The node count.</param>
+        /// <param name="destination">The destination node.</param>
+        /// <returns>The per-node costs to the destination.</returns>
+        private static float[] BellmanFordToDestination(List<Edge> edges, int nodeCount, int destination)
+        {
+            var dist = new float[nodeCount];
+            for (int i = 0; i < nodeCount; i++) dist[i] = float.PositiveInfinity;
+            dist[destination] = 0f;
+
+            for (int pass = 0; pass < nodeCount; pass++)
+            {
+                bool changed = false;
+                for (int j = 0; j < edges.Count; j++)
+                {
+                    var edge = edges[j];
+                    float candidate = dist[edge.ToIndex] + edge.Weight;
+                    if (candidate < dist[edge.FromIndex])
+                    {
+                        dist[edge.FromIndex] = candidate;
+                        changed = true;
+                    }
+                }
+                if (!changed) break;
+            }
+            return dist;
         }
     }
 }
