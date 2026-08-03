@@ -451,6 +451,86 @@ Console.WriteLine($"Constrained optimum: [{constrained.BestParameterSet.Values[0
                   $"{constrained.BestParameterSet.Values[1]:F4}]");
 ```
 
+## Shortest Path (Dijkstra)
+
+The `Dijkstra`, `Network`, `Edge`, and `BinaryHeap<T>` types solve destination-rooted shortest
+paths over directed networks [9] — the routing kernel for agent-based evacuation modeling, where
+every agent needs its route to the nearest destination and edge costs (travel times) change as
+conditions evolve.
+
+### The result table
+
+Every solver returns one `float[,]` routing table with a row per node and three columns:
+
+| Column | Contents |
+|--------|----------|
+| `[i, 0]` | The next node toward the destination |
+| `[i, 1]` | The index of the edge to take (`Edge.Index`) |
+| `[i, 2]` | The cumulative cost to the destination |
+
+The destination row is `(itself, -1, 0)`; an unreachable node's row is `(-1, -1, +∞)`.
+`Dijkstra.PathExists` tests reachability, and `Dijkstra.GetPath` / `Dijkstra.TryGetPath` walk a
+table into the ordered edge-index list with the total cost.
+
+Weight conventions: Dijkstra's algorithm assumes **non-negative weights** (negative weights are
+not rejected, but routes computed from them are undefined); a weight of **positive infinity
+makes an edge impassable** — the natural encoding for a flooded road segment — and a NaN weight
+never relaxes, severing its edge.
+
+```cs
+using Numerics.Mathematics.Optimization;
+
+var edges = new List<Edge>
+{
+    new Edge(0, 1, 2.0f, 0),   // from, to, weight (e.g. travel time), edge index
+    new Edge(1, 2, 1.5f, 1),
+    new Edge(0, 2, 5.0f, 2),
+};
+
+// Route every node to node 2.
+float[,] table = Dijkstra.Solve(edges, destinationIndex: 2);
+
+// Route every node to the nearest of several destinations in ONE pass.
+float[,] nearest = Dijkstra.SolveNearest(edges, new[] { 0, 2 });
+
+// Walk a route out of the table.
+if (Dijkstra.TryGetPath(table, startNodeIndex: 0, out List<int> route, out float cost))
+    Console.WriteLine($"Route: {string.Join(" -> ", route)}, cost {cost:F2}");
+```
+
+`Dijkstra.Solve(edges, destinationIndices, ...)` (the multi-destination overload) solves each
+destination independently and keeps each node's strictly cheapest route, so on an exact cost tie
+the earlier destination in the array wins. `SolveNearest` produces the same costs in a single
+multi-source pass and is the faster form of the nearest-destination query.
+
+### Compiled networks and time-varying weights
+
+`Network` compiles a fixed topology once — node count, incoming and outgoing adjacency, and the
+destination set — so a simulation can re-solve every time step against updated edge weights with
+no rebuild. Weights are positional with the constructor's edge array, and the table-reuse
+overloads run with zero steady-state allocation (they share instance scratch buffers and are not
+thread safe; the allocating overloads remain safe for concurrent use):
+
+```cs
+var network = new Network(edgeArray, destinationIndices);
+var table = new float[network.NodeCount, 3];
+var weights = new float[edgeArray.Length];
+
+for (int t = 0; t < timeSteps; t++)
+{
+    UpdateTravelTimes(weights, t);                  // flooded edges -> float.PositiveInfinity
+    network.SolveNearest(weights, table);           // zero-allocation re-solve
+    RouteAgents(table);                             // each agent walks its row
+}
+
+// Detour routing around blocked segments, splicing onto the precomputed table when possible.
+List<int>? detour = network.GetPath(blockedEdgeIndices, agentNodeIndex, table);
+```
+
+`Network.GetPath` finds the cheapest route to the nearest destination that avoids every edge
+bearing an excluded edge index; when the precomputed table's recorded route is untouched by the
+exclusions it is returned directly, with no solve.
+
 ## Practical Example: Calibrating a Hydrological Model
 
 A complete example of using optimization to calibrate a watershed model:
@@ -643,6 +723,8 @@ else if (optimizer.Status == OptimizationStatus.MaximumIterationsReached)
 <a id="7">[7]</a> Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983). Optimization by simulated annealing. *Science*, 220(4598), 671-680.
 
 <a id="8">[8]</a> Birgin, E. G., & Martínez, J. M. (2014). *Practical Augmented Lagrangian Methods for Constrained Optimization*. SIAM.
+
+<a id="9">[9]</a> Dijkstra, E. W. (1959). A note on two problems in connexion with graphs. *Numerische Mathematik*, 1, 269-271.
 
 ---
 
