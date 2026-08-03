@@ -210,6 +210,26 @@ namespace Distributions
         }
 
         /// <summary>
+        /// Verifies the zero-parameter Independence copula is permanently valid. This
+        /// deliberately inverts the parameterized-copula contract asserted above: with no
+        /// parameters, not even a NaN dependency assignment can invalidate the copula.
+        /// </summary>
+        [TestMethod]
+        public void IndependenceCopulaRemainsPermanentlyValid()
+        {
+            var copula = new IndependenceCopula();
+            Assert.IsTrue(copula.ParametersValid);
+            copula.Theta = double.NaN;
+            Assert.IsTrue(copula.ParametersValid);
+            copula.Theta = double.PositiveInfinity;
+            Assert.IsTrue(copula.ParametersValid);
+            copula.SetCopulaParameters(new[] { double.NaN });
+            Assert.IsTrue(copula.ParametersValid);
+            Assert.IsNull(copula.ValidateParameter(double.NaN, true));
+            Assert.AreEqual(0.35, copula.CDF(0.5, 0.7), 0d);
+        }
+
+        /// <summary>
         /// Determines whether a factory-created distribution supports flattened numeric parameter replacement.
         /// </summary>
         /// <param name="type">The univariate distribution type.</param>

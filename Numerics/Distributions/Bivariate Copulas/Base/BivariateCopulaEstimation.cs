@@ -33,8 +33,14 @@ namespace Numerics.Distributions.Copulas
         /// <param name="sampleDataX">The sample data for the X variable.</param>
         /// <param name="sampleDataY">The sample data for the Y variable.</param>
         /// <param name="estimationMethod">The estimation method to use.</param>
+        /// <remarks>
+        /// A zero-parameter copula (e.g., the <see cref="IndependenceCopula"/>) has nothing to
+        /// estimate; for every estimation method the call is a benign no-op that returns
+        /// immediately and leaves the copula untouched.
+        /// </remarks>
         public static void Estimate(ref BivariateCopula copula, IList<double> sampleDataX, IList<double> sampleDataY, CopulaEstimationMethod estimationMethod)
         {
+            if (copula.NumberOfCopulaParameters == 0) return;
             switch (estimationMethod)
             {
                 case CopulaEstimationMethod.PseudoLikelihood:
