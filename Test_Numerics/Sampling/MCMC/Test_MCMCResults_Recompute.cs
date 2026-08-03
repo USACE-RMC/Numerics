@@ -14,7 +14,6 @@ namespace Sampling.MCMC
     /// (Rhat, ESS, Autocorrelation) AND the underlying chain output (Output, MAP).
     /// </summary>
     /// <remarks>
-    /// This is the cornerstone of the RMC.BestFit Phase 2 reprocess-don't-clear refactor.
     /// A regression that drops one of the three snapshot/restore lines silently corrupts
     /// every convergence-diagnostic display the moment a user changes CredibleIntervalWidth
     /// on an estimated analysis.

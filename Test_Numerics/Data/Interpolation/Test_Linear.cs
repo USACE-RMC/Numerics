@@ -299,7 +299,6 @@ namespace Data.Interpolation
             Assert.AreEqual(0.36093855992815d, Y3, 1E-6);
         }
 
-        // ???
         /// <summary>
         /// Tests linear interpolation from list inputs.
         /// </summary>

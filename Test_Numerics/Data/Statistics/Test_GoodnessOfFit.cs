@@ -402,8 +402,6 @@ namespace Data.Statistics
             var modeled = new double[] { 3.0, -0.5, 2.0, 1.5, 3.0, 2.9, 2.1, 0.8 };
             double KGE = GoodnessOfFit.KlingGuptaEfficiency(observed, modeled);
 
-            // Corrected expected value based on mathematical calculation
-            // Previous test value of 0.9125211 was incorrect
             double trueKGE = 0.88573;
 
             Assert.AreEqual(trueKGE, KGE, 1E-4);
@@ -435,8 +433,6 @@ namespace Data.Statistics
             var modeled = new double[] { 3.0, -0.5, 2.0, 1.5, 3.0, 2.9, 2.1, 0.8 };
             double KGEmod = GoodnessOfFit.KlingGuptaEfficiencyMod(observed, modeled);
 
-            // Corrected expected value based on mathematical calculation
-            // Previous test value of 0.9117433 was close but slightly off
             double trueKGEmod = 0.91295;
 
             Assert.AreEqual(trueKGEmod, KGEmod, 1E-4);

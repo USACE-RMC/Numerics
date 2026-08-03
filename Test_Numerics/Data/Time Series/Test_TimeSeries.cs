@@ -1249,12 +1249,11 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
-        /// Regression test for the off-by-one bug.
         /// On a strongly trended series x[t] = t, the conditional KNN bootstrap (Lall-Sharma)
-        /// should advance through the trend, accumulating mean drift of ≈ +1 per step. The
-        /// pre-fix implementation took the neighbor's own value rather than x[j+1], which
-        /// kept the trajectory hovering near the starting value (zero net drift).
-        /// We average drift over multiple seeds to crush the random-walk noise.
+        /// advances through the trend, accumulating mean drift of ≈ +1 per step: each step
+        /// must take the neighbor's successor value x[j+1], never the neighbor's own value,
+        /// or the trajectory hovers near the starting value (zero net drift). Drift is
+        /// averaged over multiple seeds to suppress the random-walk noise.
         /// </summary>
         [TestMethod]
         public void Test_ResampleWithKNN_AdvancesThroughTime()
@@ -1273,11 +1272,11 @@ namespace Data.TimeSeriesAnalysis
             }
             avgDrift /= trials;
 
-            // Pre-fix: avgDrift ~ N(0, ~5) — fails this assertion clearly.
-            // Post-fix: avgDrift ~ +50 (drift = +1 per step over 50 steps).
+            // Successor sampling gives avgDrift ≈ +50 (+1 per step over 50 steps);
+            // neighbor-value sampling gives avgDrift ~ N(0, ~5) and fails clearly.
             Assert.IsGreaterThan(25.0, avgDrift,
                 $"Expected KNN trajectory to advance through the trend (avgDrift > 25 over {steps} steps); " +
-                $"observed avgDrift = {avgDrift:F2}. The pre-fix off-by-one keeps the trajectory near the starting value.");
+                $"observed avgDrift = {avgDrift:F2}. Sampling the neighbor's own value keeps the trajectory near the starting value.");
         }
 
         /// <summary>

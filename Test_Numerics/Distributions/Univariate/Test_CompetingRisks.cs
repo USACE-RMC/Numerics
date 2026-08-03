@@ -97,7 +97,6 @@ namespace Distributions.Univariate
         [TestMethod]
         public void Test_PDF_MaxRule_SmallX_NoInfinity()
         {
-            // This test verifies the fix for division by zero when CDF ≈ 0
             var dist1 = new Normal(100, 10);
             var dist2 = new Normal(110, 15);
             var cr = new CompetingRisks(new[] { dist1, dist2 });
