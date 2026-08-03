@@ -913,14 +913,6 @@ namespace Numerics.Distributions
 
             rr = (1.0 + r) * (1.0 - r);
 
-            if (rr < 0.0)
-            {
-                //cerr << "\n";
-                //cerr << "BIVNOR - Fatal error!\n";
-                //cerr << "  1 < |R|.\n";
-                //exit(0);
-            }
-
             if (rr == 0.0)
             {
                 if (r < 0.0)
@@ -1459,7 +1451,6 @@ namespace Numerics.Distributions
             double SUM, AI = 0, BI = 0, DI = 0, EI = 0;
 
             var Y = new double[NL];
-            //double[] Y = new double[500];
 
             double result = 1;
             int INFA = 0;
@@ -1908,8 +1899,6 @@ namespace Numerics.Distributions
 
             int PLIM = 28, NLIM = 1000, KLIM = 100, KLIMI, K, INTVLS, MINSMP = 8;
 
-            //int[] P = new int[PLIM];
-            //int[,] C = new int[PLIM, KLIM - 1];
             double DIFINT, FINVAL, VARSQR, VARPRD, VALUE = 0;
             double[] X = new double[2 * NLIM];
             double[] VK = new double[NLIM];

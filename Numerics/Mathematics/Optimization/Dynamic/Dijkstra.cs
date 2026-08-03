@@ -82,7 +82,6 @@ namespace Numerics.Mathematics.Optimization
 
 
             float[,] resultTable = new float[nNodes, 3];
-            //int[] nodeState = new int[nNodes]; //0 - Node hasn't been scanned yet, 1 - Node has been solved for, 2 - Node has been scanned into heap but not solved for.
             for(int i = 0; i < nNodes; i++)
             {
                 resultTable[i, NEXT_NODE] = -1;
@@ -168,10 +167,6 @@ namespace Numerics.Mathematics.Optimization
 
                 nodeState[current] = 1;
 
-                //resultTable[current, NEXT_NODE] = node.Value.ToIndex;
-                //resultTable[current, EDGE_INDEX] = node.Value.Index;
-                //resultTable[current, COST] = cost;
-
                 if (edgesToNodes[current] == null)
                     continue;
 
@@ -203,11 +198,6 @@ namespace Numerics.Mathematics.Optimization
                     }
                 }
             }
-                for (int i = 0; i < nNodes; i++)
-                {
-                    if (nodeState[i] == 0)
-                        Console.WriteLine($"Node{i} is unreachable from destination {destinationIndex}");
-                }
                 return resultTable;
             }
 
