@@ -118,6 +118,49 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public abstract double CDF(double u, double v);
 
+        /// <summary>
+        /// Returns the forward conditional cumulative distribution function (h-function),
+        /// h(v|u) = ∂C(u,v)/∂u = P(V ≤ v | U = u).
+        /// </summary>
+        /// <param name="u">The conditioning variate, a non-exceedance probability between 0 and 1.</param>
+        /// <param name="v">The dependent variate, a non-exceedance probability between 0 and 1.</param>
+        /// <returns>The conditional non-exceedance probability P(V ≤ v | U = u).</returns>
+        /// <remarks>
+        /// Both arguments follow the copula convention of non-exceedance probabilities.
+        /// The base implementation approximates the partial derivative with a central finite
+        /// difference over <see cref="CDF"/> using ε = 1E-6, clamping u ± ε to [0, 1] and dividing
+        /// by the realized step width. Every copula shipped with the library overrides this method
+        /// with its exact analytic conditional; the finite-difference fallback exists so an external
+        /// subclass that only implements <see cref="CDF"/> still gets a correct approximation.
+        /// <see cref="InverseConditionalCDF"/> inverts this function in v.
+        /// </remarks>
+        public virtual double ConditionalCDF(double u, double v)
+        {
+            double uPlus = Math.Min(u + 1E-6, 1d);
+            double uMinus = Math.Max(u - 1E-6, 0d);
+            return (CDF(uPlus, v) - CDF(uMinus, v)) / (uPlus - uMinus);
+        }
+
+        /// <summary>
+        /// Returns the inverse of the forward conditional CDF with respect to v: the value v
+        /// such that h(v|u) = t, where h is <see cref="ConditionalCDF"/>.
+        /// </summary>
+        /// <param name="u">The conditioning variate, a non-exceedance probability between 0 and 1.</param>
+        /// <param name="t">The conditional non-exceedance probability between 0 and 1.</param>
+        /// <returns>The dependent variate v such that P(V ≤ v | U = u) = t.</returns>
+        /// <remarks>
+        /// This is the scalar, non-allocating form of the conditional simulation that
+        /// <see cref="InverseCDF(double, double)"/> returns as its second element. The base
+        /// implementation delegates to that array form; every copula shipped with the library
+        /// overrides this method with the scalar computation and recomposes the array form on
+        /// top of it, so hot loops can invert conditional probabilities without per-call
+        /// allocation.
+        /// </remarks>
+        public virtual double InverseConditionalCDF(double u, double t)
+        {
+            return InverseCDF(u, t)[1];
+        }
+
         /// <inheritdoc/>
         public abstract double[] InverseCDF(double u, double v);
 

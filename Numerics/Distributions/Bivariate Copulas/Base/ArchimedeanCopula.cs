@@ -108,22 +108,52 @@ namespace Numerics.Distributions.Copulas
 
         /// <inheritdoc/>
         /// <remarks>
-        /// This method is based on Genest et al. 1986
-        /// 1) Two independent uniformly distributed U(0,1) random variates, u and v, are generated.
-        /// 2) Two new variables, s and w, are obtained as s = GeneratorPrime(u) / v and w = GeneratorPrimeInverse(s).
-        /// 3) Another variable v is obtained as v = GeneratorInverse(Generator(w) - Generator(u))
-        /// 4) The pairs u and v are the simulated pair, preserving the dependence structure.
-        /// 5) Both these u and v in the range [0,1]. These simulated pairs of u and v are then
-        /// back-transformed through their corresponding marginal distributions.
+        /// <para>
+        /// For an Archimedean copula with generator φ, differentiating C(u,v) = φ⁻¹(φ(u) + φ(v))
+        /// with respect to u gives the exact generic conditional h(v|u) = φ′(u) / φ′(C(u,v)).
+        /// The ratio is insensitive to a family's internal sign convention for φ′.
+        /// </para>
+        /// <para>
+        /// Per family the ratio reduces to the closed forms:
+        /// Clayton h = u^(−θ−1)·(u^(−θ) + v^(−θ) − 1)^(−1−1/θ);
+        /// Frank h = e^(−θu)(e^(−θv) − 1) / [(e^(−θ) − 1) + (e^(−θu) − 1)(e^(−θv) − 1)];
+        /// Gumbel h = C(u,v)·A^(1/θ−1)·(−ln u)^(θ−1)/u with A = (−ln u)^θ + (−ln v)^θ;
+        /// Joe h = (1−u)^(θ−1)·[1 − (1−v)^θ]·A^(1/θ−1) with A = (1−u)^θ + (1−v)^θ − (1−u)^θ(1−v)^θ;
+        /// Ali-Mikhail-Haq h = v(1 − θ(1−v))/D² with D = 1 − θ(1−u)(1−v).
+        /// </para>
         /// </remarks>
-        public override double[] InverseCDF(double u, double v)
+        public override double ConditionalCDF(double u, double v)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
-            double s = GeneratorPrime(u) / v;
+            return GeneratorPrime(u) / GeneratorPrime(CDF(u, v));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// This method is based on Genest et al. 1986
+        /// 1) Two independent uniformly distributed U(0,1) random variates, u and t, are generated.
+        /// 2) Two new variables, s and w, are obtained as s = GeneratorPrime(u) / t and w = GeneratorPrimeInverse(s).
+        /// 3) The dependent variate is obtained as v = GeneratorInverse(Generator(w) - Generator(u))
+        /// 4) The pairs u and v are the simulated pair, preserving the dependence structure.
+        /// 5) Both these u and v are in the range [0,1]. Simulated pairs of u and v are then
+        /// back-transformed through their corresponding marginal distributions.
+        /// This is the exact inverse of the generic conditional h(v|u) = φ′(u)/φ′(C(u,v)):
+        /// setting h = t and solving gives C = φ′⁻¹(φ′(u)/t) and v = φ⁻¹(φ(C) − φ(u)).
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
+        {
+            // Validate parameters
+            if (_parametersValid == false) ValidateParameter(Theta, true);
+            double s = GeneratorPrime(u) / t;
             double w = GeneratorPrimeInverse(s);
-            v = GeneratorInverse(Generator(w) - Generator(u));
-            return [u, v];
+            return GeneratorInverse(Generator(w) - Generator(u));
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
     }

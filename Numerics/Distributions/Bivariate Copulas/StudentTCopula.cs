@@ -337,8 +337,43 @@ namespace Numerics.Distributions.Copulas
         /// <param name="u">The first uniform variate in (0, 1).</param>
         /// <param name="v">The second uniform variate in (0, 1), used as the conditional probability.</param>
         /// <returns>
-        /// A 2-element array [u, v'] where v' is the conditionally sampled variate.
+        /// A 2-element array [u, v'] where v' is the conditionally sampled variate,
+        /// computed by <see cref="InverseConditionalCDF"/>.
         /// </returns>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// Uses the conditional distribution of the bivariate Student's t:
+        /// X₂ | X₁ = x₁ ~ t_{ν+1}(ρ·x₁, √((1-ρ²)(ν+x₁²)/(ν+1))), so
+        /// h(v|u) = T_{ν+1}((x₂ − ρx₁)/s) with x₁ = T⁻¹_ν(u), x₂ = T⁻¹_ν(v), and
+        /// s = √((1-ρ²)(ν+x₁²)/(ν+1)).
+        /// </para>
+        /// </remarks>
+        public override double ConditionalCDF(double u, double v)
+        {
+            // Validate parameters
+            if (_parametersValid == false) ValidateParameter(Theta, true);
+
+            double r = _theta;
+            double nu = _nu;
+
+            // Transform to t-quantiles
+            var tNu = new StudentT(0, 1, _nu);
+            double x1 = tNu.InverseCDF(u);
+            double x2 = tNu.InverseCDF(v);
+
+            // Evaluate the conditional t_{ν+1} CDF at the standardized residual
+            double conditionalScale = Math.Sqrt((1.0 - r * r) * (nu + x1 * x1) / (nu + 1.0));
+            var tNu1 = new StudentT(0, 1, _nu + 1);
+            return tNu1.CDF((x2 - r * x1) / conditionalScale);
+        }
+
+        /// <inheritdoc/>
         /// <remarks>
         /// <para>
         /// Uses the conditional distribution of the bivariate Student's t:
@@ -348,12 +383,12 @@ namespace Numerics.Distributions.Copulas
         /// The algorithm is:
         /// <list type="number">
         /// <item><description>Transform u to t-quantile: x₁ = t⁻¹_ν(u)</description></item>
-        /// <item><description>Sample from the conditional t_{ν+1} distribution using v</description></item>
-        /// <item><description>Transform the conditional sample back to uniform: v' = t_ν(x₂)</description></item>
+        /// <item><description>Sample from the conditional t_{ν+1} distribution using t</description></item>
+        /// <item><description>Transform the conditional sample back to uniform: v = t_ν(x₂)</description></item>
         /// </list>
         /// </para>
         /// </remarks>
-        public override double[] InverseCDF(double u, double v)
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
@@ -367,14 +402,13 @@ namespace Numerics.Distributions.Copulas
 
             // Conditional distribution: X2|X1=x1 ~ t_{ν+1} with location = ρ·x1, scale = √((1-ρ²)(ν+x1²)/(ν+1))
             var tNu1 = new StudentT(0, 1, _nu + 1);
-            double z2 = tNu1.InverseCDF(v);
+            double z2 = tNu1.InverseCDF(t);
 
             double conditionalScale = Math.Sqrt((1.0 - r * r) * (nu + x1 * x1) / (nu + 1.0));
             double x2 = r * x1 + conditionalScale * z2;
 
             // Transform back to uniform
-            v = tNu.CDF(x2);
-            return [u, v];
+            return tNu.CDF(x2);
         }
 
         /// <summary>

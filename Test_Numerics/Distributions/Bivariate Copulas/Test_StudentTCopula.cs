@@ -511,5 +511,63 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(30.0, constraints[1, 1]);
         }
 
+        /// <summary>
+        /// Test the forward conditional CDF (h-function),
+        /// h(v|u) = T_{ν+1}((x₂ − ρx₁)/s), s = √((1−ρ²)(ν+x₁²)/(ν+1)).
+        /// Reference values were computed with the Python package pyvinecopulib 0.7.6
+        /// (Bicop.hfunc1, family student), cross-checked at generation against the 50-digit
+        /// closed form computed with mpmath 1.4.1 via the regularized incomplete beta
+        /// (agreement ≤ 1E-15). The finite-difference cross-check against CDF is asserted at
+        /// only 1E-3 because the copula CDF is itself a K = 200 stratified numerical
+        /// integration (MultivariateStudentT.CDF) whose discretization error dominates the
+        /// difference quotient — the precision anchor for the analytic conditional is the
+        /// pyvinecopulib pin set, not the finite difference.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new StudentTCopula(0.5, 5d);
+            Assert.AreEqual(0.8285717360290429, copula.ConditionalCDF(0.3, 0.7), 1E-8);
+            Assert.AreEqual(0.17142826397095706, copula.ConditionalCDF(0.7, 0.3), 1E-8);
+            Assert.AreEqual(0.9708221102006659, copula.ConditionalCDF(0.05, 0.9), 1E-8);
+            Assert.AreEqual(0.0135553651824768, copula.ConditionalCDF(0.9, 0.05), 1E-8);
+
+            // The exact-edge identity h(1|u) = 1 is not asserted for this family because the
+            // underlying univariate Student's t quantile is unbounded at v = 1.
+            foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+            {
+                foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                {
+                    double fd = (copula.CDF(u + 1E-6, v) - copula.CDF(u - 1E-6, v)) / 2E-6;
+                    Assert.AreEqual(fd, copula.ConditionalCDF(u, v), 1E-3);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF. Reference values were computed with the
+        /// Python package pyvinecopulib 0.7.6 (Bicop.hinv1, family student). The round trip
+        /// h(InverseConditionalCDF(u, t) | u) = t runs through the univariate Student's t
+        /// CDF/quantile pair in both directions, so 1E-8 is asserted, and
+        /// InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new StudentTCopula(0.5, 5d);
+            Assert.AreEqual(0.5646309029414425, copula.InverseConditionalCDF(0.3, 0.7), 1E-8);
+            Assert.AreEqual(0.16018486883023958, copula.InverseConditionalCDF(0.9, 0.05), 1E-8);
+
+            foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+            {
+                foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                {
+                    double v = copula.InverseConditionalCDF(u, t);
+                    Assert.AreEqual(t, copula.ConditionalCDF(u, v), 1E-8);
+                    Assert.AreEqual(v, copula.InverseCDF(u, t)[1], 0d);
+                }
+            }
+        }
+
     }
 }

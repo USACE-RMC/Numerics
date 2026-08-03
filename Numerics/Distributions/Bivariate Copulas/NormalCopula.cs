@@ -157,16 +157,39 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] InverseCDF(double u, double v)
+        /// <remarks>
+        /// For the Gaussian copula, the conditional distribution of the underlying standard
+        /// normal Z₂ | Z₁ = z₁ is Normal(ρz₁, 1 − ρ²), so
+        /// h(v|u) = Φ((Φ⁻¹(v) − ρΦ⁻¹(u)) / √(1 − ρ²)).
+        /// </remarks>
+        public override double ConditionalCDF(double u, double v)
+        {
+            // Validate parameters
+            if (_parametersValid == false) ValidateParameter(Theta, true);
+            double r = _theta;
+            return Normal.StandardCDF((Normal.StandardZ(v) - r * Normal.StandardZ(u)) / Math.Sqrt(1d - r * r));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Uses the Gaussian closed-form conditional inversion
+        /// v = Φ(ρΦ⁻¹(u) + √(1 − ρ²)·Φ⁻¹(t)).
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
             double z1 = Normal.StandardZ(u);
-            double z2 = Normal.StandardZ(v);
+            double z2 = Normal.StandardZ(t);
             double r = _theta;
             double w2 = r * z1 + Math.Sqrt(1d - r * r) * z2;
-            v = Normal.StandardCDF(w2);
-            return [u, v];
+            return Normal.StandardCDF(w2);
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
         /// <summary>

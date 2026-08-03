@@ -150,14 +150,29 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] InverseCDF(double u, double v)
+        /// <remarks>
+        /// Uses the Frank closed-form conditional inversion. The evaluation always runs at the
+        /// negated dependency −|θ|, where the logarithm's argument is well conditioned, and maps
+        /// a positive-θ request through the Frank reflection identity
+        /// h_θ(v|u) = 1 − h_{−θ}(1−v|u): solving h_θ(v|u) = t therefore requires handing the
+        /// negative-θ evaluation the complemented conditional 1 − t and reflecting its result,
+        /// so that the round trip ConditionalCDF(u, InverseConditionalCDF(u, t)) = t holds on
+        /// both dependency branches.
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
             double a = -Math.Abs(Theta);
-            v = -1d / a * Math.Log((-v * (Math.Exp(-a) - 1d) / (Math.Exp(-a * u) * (v - 1d) - v)) + 1d);
-            v = Theta > 0d ? 1d - v : v;
-            return [u, v];
+            double s = Theta > 0d ? 1d - t : t;
+            double v = -1d / a * Math.Log((-s * (Math.Exp(-a) - 1d) / (Math.Exp(-a * u) * (s - 1d) - s)) + 1d);
+            return Theta > 0d ? 1d - v : v;
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
         /// <summary>

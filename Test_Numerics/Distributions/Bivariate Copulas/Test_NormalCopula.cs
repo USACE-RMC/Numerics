@@ -244,5 +244,82 @@ namespace Distributions.BivariateCopulas
             clone.Theta = 0.9;
             Assert.AreEqual(0.5, copula.Theta);
         }
+
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = Φ((Φ⁻¹(v) − ρΦ⁻¹(u))/√(1−ρ²)),
+        /// covering both positive and negative correlation. Reference values were computed with
+        /// the Python package pyvinecopulib 0.7.6 (Bicop.hfunc1, family gaussian), cross-checked
+        /// at generation against the 50-digit closed form computed with mpmath 1.4.1
+        /// (agreement ≤ 1E-15). The analytic conditional is also cross-checked against a central
+        /// finite difference of the CDF (ε = 1E-6; the CDF is Genz's deterministic BVND, so the
+        /// noise floor is ~1E-9 and 1E-7 is asserted) and pinned at the exact upper edge
+        /// h(1|u) = 1 and at the independence reduction h(v|u) = v for ρ = 0.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new NormalCopula(0.5);
+            Assert.AreEqual(0.8181370471246912, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.18186295287530885, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9924394369055246, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.00415488230042399, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            copula = new NormalCopula(-0.6);
+            Assert.AreEqual(0.6034164721188054, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.39658352788119433, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.6436749391998347, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.1367794885453144, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            // At ρ = 0 the Gaussian copula is the product copula, so h(v|u) = v exactly.
+            var independent = new NormalCopula(0d);
+            Assert.AreEqual(0.35, independent.ConditionalCDF(0.8, 0.35), 1E-12);
+
+            foreach (double rho in new[] { 0.5, -0.6 })
+            {
+                var c = new NormalCopula(rho);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF, v = Φ(ρΦ⁻¹(u) + √(1−ρ²)·Φ⁻¹(t)).
+        /// Reference values were computed with the Python package pyvinecopulib 0.7.6
+        /// (Bicop.hinv1, family gaussian). The closed-form round trip
+        /// h(InverseConditionalCDF(u, t) | u) = t is asserted at 1E-10, and
+        /// InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new NormalCopula(0.5);
+            Assert.AreEqual(0.5761069289340888, copula.InverseConditionalCDF(0.3, 0.7), 1E-9);
+            Assert.AreEqual(0.21660536867655228, copula.InverseConditionalCDF(0.9, 0.05), 1E-9);
+
+            copula = new NormalCopula(-0.6);
+            Assert.AreEqual(0.7685746042193584, copula.InverseConditionalCDF(0.3, 0.7), 1E-9);
+            Assert.AreEqual(0.01854310092874273, copula.InverseConditionalCDF(0.9, 0.05), 1E-9);
+
+            foreach (double rho in new[] { 0.5, -0.6 })
+            {
+                var c = new NormalCopula(rho);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-10);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
     }
 }

@@ -116,19 +116,30 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] InverseCDF(double u, double v)
+        /// <remarks>
+        /// The Joe conditional has no closed-form inverse, so the conditional probability
+        /// function h(x|u) = (1−u)^(θ−1)·[1 − (1−x)^θ]·A^(1/θ−1),
+        /// A = (1−u)^θ + (1−x)^θ − (1−u)^θ(1−x)^θ, is inverted numerically with Brent's
+        /// method on x ∈ [0, 1].
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
 
-            // Use conditional probability function 
-            double p = v;
-            v = Brent.Solve(x =>
+            // Use conditional probability function
+            double p = t;
+            return Brent.Solve(x =>
             {
                 double vu = -(Math.Pow(1d - x, Theta) - 1d) * Math.Pow(Math.Pow(1d - u, Theta) - Math.Pow(1d - u, Theta) * Math.Pow(1d - x, Theta) + Math.Pow(1d - x, Theta), (-Theta + 1d) / Theta) * Math.Pow(1d - u, Theta - 1d);
                 return vu - p;
             }, 0d, 1d);
-            return [u, v];
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
         /// <summary>

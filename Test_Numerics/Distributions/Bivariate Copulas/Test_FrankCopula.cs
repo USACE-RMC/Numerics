@@ -194,5 +194,78 @@ namespace Distributions.BivariateCopulas
             clone.Theta = 2.0;
             Assert.AreEqual(4.2, copula.Theta);
         }
+
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = ∂C(u,v)/∂u, covering both
+        /// the positive- and negative-dependence branches. Reference values were computed with
+        /// the Python package pyvinecopulib 0.7.6 (Bicop.hfunc1, family frank), cross-checked
+        /// at generation against a 50-digit numerical ∂C/∂u of the Frank CDF computed with
+        /// mpmath 1.4.1 (agreement ≤ 1E-15). The analytic conditional is also cross-checked
+        /// against a central finite difference of the closed-form CDF (ε = 1E-6; noise floor
+        /// ~1E-9, so 1E-7 is asserted) and pinned at the exact upper edge h(1|u) = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new FrankCopula(4d);
+            Assert.AreEqual(0.8693978167836881, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.1306021832163123, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9888149481553941, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.0061499217658669445, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            copula = new FrankCopula(-3d);
+            Assert.AreEqual(0.5965731714099825, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.4034268285900173, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.755959800956752, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.11288571261377746, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            foreach (double theta in new[] { 4d, -3d })
+            {
+                var c = new FrankCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF, covering both the positive- and
+        /// negative-dependence branches of the reflected closed form. Reference values were
+        /// computed with the Python package pyvinecopulib 0.7.6 (Bicop.hinv1, family frank),
+        /// whose internal inversion carries ~3E-11 residual, so 1E-8 deltas are asserted for
+        /// the pins. The closed-form round trip h(InverseConditionalCDF(u, t) | u) = t is
+        /// asserted at 1E-10, and InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new FrankCopula(4d);
+            Assert.AreEqual(0.5090047384437639, copula.InverseConditionalCDF(0.3, 0.7), 1E-8);
+            Assert.AreEqual(0.2597601357556414, copula.InverseConditionalCDF(0.9, 0.05), 1E-8);
+
+            copula = new FrankCopula(-3d);
+            Assert.AreEqual(0.7771017148916144, copula.InverseConditionalCDF(0.3, 0.7), 1E-8);
+            Assert.AreEqual(0.02170136771746911, copula.InverseConditionalCDF(0.9, 0.05), 1E-8);
+
+            foreach (double theta in new[] { 4d, -3d })
+            {
+                var c = new FrankCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-10);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
     }
 }

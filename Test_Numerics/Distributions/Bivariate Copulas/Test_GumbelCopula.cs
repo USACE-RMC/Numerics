@@ -225,5 +225,77 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(2.0, copula.Theta);
         }
 
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = ∂C(u,v)/∂u.
+        /// Reference values were computed with the Python package pyvinecopulib 0.7.6
+        /// (Bicop.hfunc1, family gumbel), cross-checked at generation against a 50-digit
+        /// numerical ∂C/∂u of the Gumbel CDF computed with mpmath 1.4.1 (agreement ≤ 1E-15).
+        /// The analytic conditional is also cross-checked against a central finite difference
+        /// of the closed-form CDF (ε = 1E-6; noise floor ~1E-9, so 1E-7 is asserted) and
+        /// pinned at the exact upper edge h(1|u) = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new GumbelCopula(2d);
+            Assert.AreEqual(0.9104803864754554, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.11559784394154599, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9975327563905108, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.001949079483034616, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            copula = new GumbelCopula(3.5);
+            Assert.AreEqual(0.9852294418984343, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.0201697450039637, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9999871895213038, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(1.2887217392734802E-05, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            foreach (double theta in new[] { 2d, 3.5 })
+            {
+                var c = new GumbelCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF. Reference values were computed with the
+        /// Python package pyvinecopulib 0.7.6 (Bicop.hinv1, family gumbel). The Gumbel inverse
+        /// is a Brent solve with tolerance 1E-8, so 1E-6 absolute deltas are asserted for the
+        /// reference pins and for the round trip h(InverseConditionalCDF(u, t) | u) = t.
+        /// InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new GumbelCopula(2d);
+            Assert.AreEqual(0.48403043854946104, copula.InverseConditionalCDF(0.3, 0.7), 1E-6);
+            Assert.AreEqual(0.39821464719708766, copula.InverseConditionalCDF(0.9, 0.05), 1E-6);
+
+            copula = new GumbelCopula(3.5);
+            Assert.AreEqual(0.39761414717848886, copula.InverseConditionalCDF(0.3, 0.7), 1E-6);
+            Assert.AreEqual(0.7272049794715586, copula.InverseConditionalCDF(0.9, 0.05), 1E-6);
+
+            foreach (double theta in new[] { 2d, 3.5 })
+            {
+                var c = new GumbelCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-6);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
+
     }
 }

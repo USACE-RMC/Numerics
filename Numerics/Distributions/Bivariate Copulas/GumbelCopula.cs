@@ -114,19 +114,29 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] InverseCDF(double u, double v)
+        /// <remarks>
+        /// The Gumbel conditional has no closed-form inverse, so the conditional probability
+        /// function h(x|u) = C(u,x)·A^(1/θ−1)·(−ln u)^(θ−1)/u, A = (−ln u)^θ + (−ln x)^θ,
+        /// is inverted numerically with Brent's method on x ∈ [0, 1].
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
 
-            // Use conditional probability function 
-            double p = v;
-            v = Brent.Solve(x =>
+            // Use conditional probability function
+            double p = t;
+            return Brent.Solve(x =>
             {
                 double vu = Math.Pow(-Math.Log(u), Theta - 1d) * Math.Exp(-Math.Pow(Math.Pow(-Math.Log(u), Theta) + Math.Pow(-Math.Log(x), Theta), 1d / Theta)) * Math.Pow(Math.Pow(-Math.Log(u), Theta) + Math.Pow(-Math.Log(x), Theta), 1d / Theta - 1d) / u;
                 return vu - p;
             }, 0d, 1d);
-            return [u, v];
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
         /// <summary>

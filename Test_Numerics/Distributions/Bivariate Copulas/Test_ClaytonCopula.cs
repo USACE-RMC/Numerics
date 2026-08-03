@@ -224,5 +224,77 @@ namespace Distributions.BivariateCopulas
             clone.Theta = 4.0;
             Assert.AreEqual(2.0, copula.Theta);
         }
+
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = ∂C(u,v)/∂u.
+        /// Reference values were computed with the Python package pyvinecopulib 0.7.6
+        /// (Bicop.hfunc1, family clayton), cross-checked at generation against a 50-digit
+        /// numerical ∂C/∂u of the Clayton CDF computed with mpmath 1.4.1 (agreement ≤ 1E-15).
+        /// The analytic conditional is also cross-checked against a central finite difference
+        /// of the closed-form CDF (ε = 1E-6; the difference-quotient noise floor is ~1E-9, so
+        /// 1E-7 is asserted) and pinned at the exact upper edge h(1|u) = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new ClaytonCopula(2d);
+            Assert.AreEqual(0.8743161176077272, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.06882371771256163, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9991210147197616, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.0001713170464197122, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            copula = new ClaytonCopula(5d);
+            Assert.AreEqual(0.985754642959101, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.006108127860986364, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9999997399342684, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(2.9401186465615086E-08, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            foreach (double theta in new[] { 2d, 5d })
+            {
+                var c = new ClaytonCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF. Reference values were computed with the
+        /// Python package pyvinecopulib 0.7.6 (Bicop.hinv1, family clayton). Also verifies the
+        /// closed-form round trip h(InverseConditionalCDF(u, t) | u) = t (both directions are
+        /// closed forms, so 1E-10 is asserted) and that InverseCDF(u, t)[1] recomposes the
+        /// scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new ClaytonCopula(2d);
+            Assert.AreEqual(0.5010908594248752, copula.InverseConditionalCDF(0.3, 0.7), 1E-9);
+            Assert.AreEqual(0.3359223320941678, copula.InverseConditionalCDF(0.9, 0.05), 1E-9);
+
+            copula = new ClaytonCopula(5d);
+            Assert.AreEqual(0.37039687871242977, copula.InverseConditionalCDF(0.3, 0.7), 1E-9);
+            Assert.AreEqual(0.5500280933001612, copula.InverseConditionalCDF(0.9, 0.05), 1E-9);
+
+            foreach (double theta in new[] { 2d, 5d })
+            {
+                var c = new ClaytonCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-10);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
     }
 }

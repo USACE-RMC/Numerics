@@ -215,6 +215,80 @@ namespace Distributions.BivariateCopulas
             clone.Theta = 0.8;
             Assert.AreEqual(0.4, copula.Theta);
         }
+
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = ∂C(u,v)/∂u, covering both
+        /// positive and negative dependence. The Ali-Mikhail-Haq family is not available in
+        /// pyvinecopulib, so reference values were computed with the Python package mpmath
+        /// 1.4.1 as a 50-digit numerical ∂C/∂u of the AMH CDF C(u,v) = uv/(1 − θ(1−u)(1−v)),
+        /// cross-checked at generation against the closed form v(1 − θ(1−v))/D²,
+        /// D = 1 − θ(1−u)(1−v), to 1E-30. The analytic conditional is also cross-checked
+        /// against a central finite difference of the closed-form CDF (ε = 1E-6; noise floor
+        /// ~1E-9, so 1E-7 is asserted) and pinned at the exact upper edge h(1|u) = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new AMHCopula(0.5);
+            Assert.AreEqual(0.742798289691333, copula.ConditionalCDF(0.3, 0.7), 1E-12);
+            Assert.AreEqual(0.24343809494085702, copula.ConditionalCDF(0.7, 0.3), 1E-12);
+            Assert.AreEqual(0.9424018848037696, copula.ConditionalCDF(0.05, 0.9), 1E-12);
+            Assert.AreEqual(0.028933391200115736, copula.ConditionalCDF(0.9, 0.05), 1E-12);
+
+            copula = new AMHCopula(-0.7);
+            Assert.AreEqual(0.6438083047470791, copula.ConditionalCDF(0.3, 0.7), 1E-12);
+            Assert.AreEqual(0.3397666023871834, copula.ConditionalCDF(0.7, 0.3), 1E-12);
+            Assert.AreEqual(0.8466512766037415, copula.ConditionalCDF(0.05, 0.9), 1E-12);
+            Assert.AreEqual(0.07319181596808046, copula.ConditionalCDF(0.9, 0.05), 1E-12);
+
+            foreach (double theta in new[] { 0.5, -0.7 })
+            {
+                var c = new AMHCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF, covering both positive and negative
+        /// dependence. Reference values were computed with the Python package mpmath 1.4.1
+        /// as a 50-digit root solve of the conditional CDF (the AMH family is not available
+        /// in pyvinecopulib). The closed-form round trip
+        /// h(InverseConditionalCDF(u, t) | u) = t is asserted at 1E-10, and
+        /// InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new AMHCopula(0.5);
+            Assert.AreEqual(0.6538170057580951, copula.InverseConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.08399461695722253, copula.InverseConditionalCDF(0.9, 0.05), 1E-10);
+
+            copula = new AMHCopula(-0.7);
+            Assert.AreEqual(0.750531409535383, copula.InverseConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.033999893497902646, copula.InverseConditionalCDF(0.9, 0.05), 1E-10);
+
+            foreach (double theta in new[] { 0.5, -0.7 })
+            {
+                var c = new AMHCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-10);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
     }
 
 }
