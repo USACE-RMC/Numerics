@@ -187,6 +187,20 @@ The AMH copula models **weak dependence structures** and has no tail dependence.
 var amhCopula = new AMHCopula(0.5);
 ```
 
+### Independence Copula
+
+The Independence (product) copula $\Pi(u,v) = u \cdot v$ is the copula of any pair of independent random variables. It is the natural default when no dependence structure has been asserted, and the identity against which dependence modeling is compared — every family that admits independence in its parameter interior reduces to it there (e.g., the Normal copula at $\rho = 0$, the Frank copula as $\theta \to 0$).
+
+The copula has **no parameters**: `NumberOfCopulaParameters` is zero, `SetCopulaParameters` is a no-op, and the copula is *permanently valid* — no assignment can invalidate it. Parameter estimation via `BivariateCopulaEstimation.Estimate` is a benign no-op for it. Its density is identically 1, its conditional CDF is $h(v|u) = v$, conditional simulation is the identity, and both tail dependence coefficients are zero.
+
+```cs
+// Independence (product) copula — no parameters
+var independence = new IndependenceCopula();
+
+double cdf = independence.CDF(0.5, 0.7);   // 0.35 = 0.5 · 0.7
+double pdf = independence.PDF(0.5, 0.7);   // 1.0
+```
+
 ### Copula Selection Guide
 
 | Copula | Tail Dependence | Parameter Range | Best For |
@@ -198,6 +212,7 @@ var amhCopula = new AMHCopula(0.5);
 | Frank | None | $\theta \in \mathbb{R} \setminus \lbrace 0\rbrace$ | Moderate symmetric dependence |
 | Joe | Upper tail | $\theta \in [1, \infty)$ | Strong upper tail dependence |
 | AMH | None | $\theta \in [-1, 1]$ | Weak dependence structures |
+| Independence | None | (no parameters) | Independent variables; the no-dependence default |
 
 ## Fitting Copulas to Data
 
@@ -241,6 +256,21 @@ Alternatively, copula parameters can be estimated by maximizing the pseudo-log-l
 // PseudoLogLikelihood  — copula-only log-likelihood
 // IFMLogLikelihood     — inference functions for margins (with pre-estimated marginals)
 // LogLikelihood        — full log-likelihood (copula + marginals)
+```
+
+## Serializing Copulas
+
+A copula's dependence structure serializes to a single XML element through `ToXElement()`: the copula type by enumeration name and the parameters as a pipe-delimited, invariant-culture, round-trip (`G17`) string. Marginal distributions are deliberately not part of the element — consumers own their marginals and attach them separately. `CopulaFactory` reconstructs a validated copula from either the element or a bare `CopulaType`:
+
+```cs
+using System.Xml.Linq;
+using Numerics.Distributions.Copulas;
+
+var copula = new ClaytonCopula(2.0);
+XElement element = copula.ToXElement();   // <Copula Type="Clayton" Parameters="2" />
+
+BivariateCopula restored = CopulaFactory.CreateCopula(element);   // parameters bit-identical
+BivariateCopula fresh = CopulaFactory.CreateCopula(CopulaType.Gumbel);   // default parameters
 ```
 
 ## Practical Example: Bivariate Distribution
@@ -313,26 +343,42 @@ The AND joint exceedance probability is computed as $P(X > x \text{ and } Y > y)
 
 ### Conditional Distributions
 
-Given flow, what is the conditional distribution of stage? The conditional CDF can be computed numerically using the copula CDF via partial differentiation: $C(v|u) = \frac{\partial C(u,v)}{\partial u}$.
+Given flow, what is the conditional distribution of stage? The forward conditional CDF (the **h-function** of the vine-copula literature [[2]](#2)) is the partial derivative of the copula with respect to the conditioning variable:
+
+```math
+h(v|u) = \frac{\partial C(u,v)}{\partial u} = P(V \le v \mid U = u)
+```
+
+where $u$ and $v$ are non-exceedance probabilities. Every copula exposes it directly as `ConditionalCDF(u, v)`, with an exact analytic implementation per family:
+
+| Copula | $h(v\|u)$ |
+|--------|-----------|
+| Archimedean (generic) | $\varphi'(u) \, / \, \varphi'(C(u,v))$ |
+| Clayton | $u^{-\theta-1}\left(u^{-\theta} + v^{-\theta} - 1\right)^{-1-1/\theta}$ |
+| Frank | $\dfrac{e^{-\theta u}(e^{-\theta v} - 1)}{(e^{-\theta} - 1) + (e^{-\theta u} - 1)(e^{-\theta v} - 1)}$ |
+| Gumbel | $C(u,v) \cdot A^{1/\theta - 1} (-\ln u)^{\theta-1}/u$, with $A = (-\ln u)^\theta + (-\ln v)^\theta$ |
+| Joe | $(1-u)^{\theta-1}\left[1 - (1-v)^\theta\right] A^{1/\theta-1}$, with $A = (1-u)^\theta + (1-v)^\theta - (1-u)^\theta(1-v)^\theta$ |
+| AMH | $v\left(1 - \theta(1-v)\right)/D^2$, with $D = 1 - \theta(1-u)(1-v)$ |
+| Normal | $\Phi\!\left(\dfrac{\Phi^{-1}(v) - \rho\,\Phi^{-1}(u)}{\sqrt{1-\rho^2}}\right)$ |
+| Student-t | $T_{\nu+1}\!\left(\dfrac{x_2 - \rho x_1}{s}\right)$, with $x_i = T_\nu^{-1}(\cdot)$, $s = \sqrt{\frac{(1-\rho^2)(\nu + x_1^2)}{\nu+1}}$ |
+| Independence | $v$ |
+
+The scalar `InverseConditionalCDF(u, t)` inverts the h-function in $v$ without allocating, and the array form `InverseCDF(u, t)` returns the pair `[u, v]` on top of it — the conditional-simulation surface. The base-class `ConditionalCDF` also provides a central-finite-difference fallback over `CDF` for external copula subclasses that predate the analytic surface.
 
 ```cs
 // Observed flow
 double observedFlow = 12000;
 double uFlow = margin1.CDF(observedFlow);
 
-// Approximate the conditional CDF: dC(u,v)/du via finite difference
-Func<double, double> conditionalCDF = (stage) =>
-{
-    double uStage = margin2.CDF(stage);
-    double du = 1e-6;
-    double uPlus = Math.Min(uFlow + du, 1.0);
-    double uMinus = Math.Max(uFlow - du, 0.0);
-    return (copula.CDF(uPlus, uStage) - copula.CDF(uMinus, uStage)) / (uPlus - uMinus);
-};
-
-// Conditional probability at specific values
+// Exact conditional CDF of stage given flow
+double uStage = margin2.CDF(15);
+double h = copula.ConditionalCDF(uFlow, uStage);
 Console.WriteLine($"Given flow = {observedFlow:F0} cfs:");
-Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - conditionalCDF(15):P1}");
+Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - h:P1}");
+
+// Conditional quantile: the stage exceeded with 1% probability given the flow
+double vStage = copula.InverseConditionalCDF(uFlow, 0.99);
+Console.WriteLine($"  99th percentile stage given the flow = {margin2.InverseCDF(vStage):F1}");
 ```
 
 ## Tail Dependence
