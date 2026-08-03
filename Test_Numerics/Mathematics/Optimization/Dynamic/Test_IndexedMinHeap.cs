@@ -100,7 +100,7 @@ namespace Mathematics.Optimization
             {
                 weights[node] = (float)randy.NextDouble();
                 heap.Add(node, weights[node]);
-                Assert.IsTrue(heap.Count <= capacity);
+                Assert.IsLessThanOrEqualTo(capacity, heap.Count);
             }
             Assert.AreEqual(capacity, heap.Count);
             Assert.Throws<InvalidOperationException>(() => heap.Add(0, 0f));
@@ -117,7 +117,7 @@ namespace Mathematics.Optimization
             for (int i = 0; i < capacity; i++)
             {
                 heap.RemoveMin(out _, out float weight);
-                Assert.IsTrue(weight >= previous, "The drain must be non-decreasing.");
+                Assert.IsGreaterThanOrEqualTo(previous, weight, "The drain must be non-decreasing.");
                 previous = weight;
             }
             Assert.AreEqual(0, heap.Count);

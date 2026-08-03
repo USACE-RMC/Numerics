@@ -50,10 +50,10 @@ namespace Mathematics.Optimization
             var network = new Network(edges, destinations);
 
             Assert.AreEqual(5, network.NodeCount);
-            Assert.AreEqual(5, network.IncomingEdges.Length);
-            Assert.AreEqual(5, network.OutgoingEdges.Length);
-            Assert.AreEqual(2, network.OutgoingEdges[0].Count);   // 0->1 and 0->3
-            Assert.AreEqual(1, network.IncomingEdges[4].Count);
+            Assert.HasCount(5, network.IncomingEdges);
+            Assert.HasCount(5, network.OutgoingEdges);
+            Assert.HasCount(2, network.OutgoingEdges[0]);   // 0->1 and 0->3
+            Assert.HasCount(1, network.IncomingEdges[4]);
             Assert.AreEqual(2, network.IncomingEdges[4][0].FromIndex);
             CollectionAssert.AreEqual(new[] { 4 }, network.DestinationIndices);
 
@@ -61,9 +61,9 @@ namespace Mathematics.Optimization
             // instead verify a node with no incoming edges gets an empty list, not null.
             var oneWay = new Network(new[] { new Edge(0, 1, 1, 0) }, new[] { 1 });
             Assert.IsNotNull(oneWay.IncomingEdges[0]);
-            Assert.AreEqual(0, oneWay.IncomingEdges[0].Count);
+            Assert.IsEmpty(oneWay.IncomingEdges[0]);
             Assert.IsNotNull(oneWay.OutgoingEdges[1]);
-            Assert.AreEqual(0, oneWay.OutgoingEdges[1].Count);
+            Assert.IsEmpty(oneWay.OutgoingEdges[1]);
         }
 
         /// <summary>
@@ -283,7 +283,7 @@ namespace Mathematics.Optimization
             var table = network.Solve(destinations);
             var severed = network.GetPath(new[] { 1, 3 }, 0, table);
             Assert.IsNotNull(severed);
-            Assert.AreEqual(0, severed!.Count);
+            Assert.IsEmpty(severed!);
         }
 
         /// <summary>
@@ -297,12 +297,12 @@ namespace Mathematics.Optimization
 
             var direct = network.GetPath(new[] { 1 }, 4);
             Assert.IsNotNull(direct);
-            Assert.AreEqual(0, direct!.Count);
+            Assert.IsEmpty(direct!);
 
             var table = network.Solve(destinations);
             var viaTable = network.GetPath(new[] { 1 }, 4, table);
             Assert.IsNotNull(viaTable);
-            Assert.AreEqual(0, viaTable!.Count);
+            Assert.IsEmpty(viaTable!);
         }
 
         /// <summary>
@@ -370,7 +370,7 @@ namespace Mathematics.Optimization
             var first = tieNetwork.GetPath(new int[0], 1);
             var second = tieNetwork.GetPath(new int[0], 1);
             Assert.IsNotNull(first);
-            Assert.AreEqual(1, first!.Count);
+            Assert.HasCount(1, first!);
             CollectionAssert.AreEqual(first, second);
         }
 

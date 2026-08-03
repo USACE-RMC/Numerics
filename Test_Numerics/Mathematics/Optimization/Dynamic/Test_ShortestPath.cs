@@ -605,10 +605,10 @@ namespace Mathematics.Optimization
 
             var path = Dijkstra.GetPath(result, 1);
             Assert.IsNotNull(path);
-            Assert.AreEqual(0, path!.Count);
+            Assert.IsEmpty(path!);
 
             Assert.IsTrue(Dijkstra.TryGetPath(result, 1, out var tryPath, out float cost));
-            Assert.AreEqual(0, tryPath.Count);
+            Assert.IsEmpty(tryPath);
             Assert.AreEqual(0f, cost, 0f);
         }
 
@@ -622,7 +622,7 @@ namespace Mathematics.Optimization
 
             Assert.IsNull(Dijkstra.GetPath(result, 2));
             Assert.IsFalse(Dijkstra.TryGetPath(result, 2, out var path, out float cost));
-            Assert.AreEqual(0, path.Count);
+            Assert.IsEmpty(path);
             Assert.IsTrue(float.IsPositiveInfinity(cost));
         }
 
