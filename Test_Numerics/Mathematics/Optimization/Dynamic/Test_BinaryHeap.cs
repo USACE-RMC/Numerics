@@ -11,7 +11,7 @@ namespace Mathematics.Optimization
     /// Tests binary heap behavior used by dynamic optimization routines.
     /// </summary>
     [TestClass]
-    public class BinaryHeapTesting
+    public class Test_BinaryHeap
     {
         /// <summary>
         /// Checking weights on heap.

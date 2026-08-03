@@ -7,10 +7,10 @@ namespace Mathematics.Optimization
     /// Tests shortest-path routing behavior for Dijkstra networks.
     /// </summary>
     [TestClass]
-    public class ShortestPathTesting
+    public class Test_ShortestPath
     {
         /// <summary>
-        /// Testing a something that cost doesn't really matter.
+        /// Tests predecessor routing and cumulative costs on a simple edge graph.
         /// </summary>
         [TestMethod]
         public void SimpleEdgeGraphCost()
