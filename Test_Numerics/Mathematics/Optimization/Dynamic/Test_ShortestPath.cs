@@ -569,6 +569,152 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// The path walker returns the ordered edge indices to the destination, and the try
+        /// variant returns the total cost read from the table.
+        /// </summary>
+        [TestMethod]
+        public void GetPathWalksEdgeIndices()
+        {
+            var edges = new List<Edge>
+            {
+                new Edge(0, 1, 2, 0),
+                new Edge(0, 2, 4, 2),
+                new Edge(1, 2, 1, 2),
+                new Edge(1, 3, 7, 3),
+                new Edge(2, 3, 3, 4),
+                new Edge(4, 0, 1, 5),
+            };
+            var result = Dijkstra.Solve(edges, 3, 6);
+
+            var path = Dijkstra.GetPath(result, 0);
+            Assert.IsNotNull(path);
+            CollectionAssert.AreEqual(new List<int> { 0, 2, 4 }, path);
+
+            Assert.IsTrue(Dijkstra.TryGetPath(result, 4, out var fromFour, out float cost));
+            CollectionAssert.AreEqual(new List<int> { 5, 0, 2, 4 }, fromFour);
+            Assert.AreEqual(7f, cost, 0f);
+        }
+
+        /// <summary>
+        /// Starting the walk at the destination returns an empty path with zero cost, not null.
+        /// </summary>
+        [TestMethod]
+        public void GetPathStartAtDestinationReturnsEmpty()
+        {
+            var result = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, 1, 0) }, 1, 2);
+
+            var path = Dijkstra.GetPath(result, 1);
+            Assert.IsNotNull(path);
+            Assert.AreEqual(0, path!.Count);
+
+            Assert.IsTrue(Dijkstra.TryGetPath(result, 1, out var tryPath, out float cost));
+            Assert.AreEqual(0, tryPath.Count);
+            Assert.AreEqual(0f, cost, 0f);
+        }
+
+        /// <summary>
+        /// Walking from an unreachable node returns null (or false with an infinite cost).
+        /// </summary>
+        [TestMethod]
+        public void GetPathUnreachableReturnsNull()
+        {
+            var result = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, 1, 0) }, 1, 3);
+
+            Assert.IsNull(Dijkstra.GetPath(result, 2));
+            Assert.IsFalse(Dijkstra.TryGetPath(result, 2, out var path, out float cost));
+            Assert.AreEqual(0, path.Count);
+            Assert.IsTrue(float.IsPositiveInfinity(cost));
+        }
+
+        /// <summary>
+        /// A cyclic or non-converging table fails the walk loudly instead of hanging.
+        /// </summary>
+        [TestMethod]
+        public void GetPathThrowsOnInconsistentTable()
+        {
+            var cyclic = new float[2, 3];
+            cyclic[0, 0] = 1; cyclic[0, 1] = 0; cyclic[0, 2] = 1;
+            cyclic[1, 0] = 0; cyclic[1, 1] = 1; cyclic[1, 2] = 1;
+
+            Assert.Throws<ArgumentException>(() => Dijkstra.GetPath(cyclic, 0));
+        }
+
+        /// <summary>
+        /// The single-pass nearest-destination solve matches the merged multi-destination solve:
+        /// costs are identical on random graphs, and every column is identical on a tie-free
+        /// graph.
+        /// </summary>
+        [TestMethod]
+        public void SolveNearestMatchesMergedSolve()
+        {
+            var edges = BuildRandomGraph(new MersenneTwister(106), 400, 1600);
+            int[] destinations = { 11, 222, 333 };
+            var merged = Dijkstra.Solve(edges, destinations, 400);
+            var nearest = Dijkstra.SolveNearest(edges, destinations, 400);
+            for (int i = 0; i < 400; i++)
+            {
+                Assert.AreEqual(merged[i, 2], nearest[i, 2], 0f, $"Cost mismatch at node {i}.");
+            }
+
+            // Tie-free line graph: 0 -1- 1 -1- 2 -10- 3 -1- 4; destinations 0 and 4.
+            var line = new List<Edge>
+            {
+                new Edge(1, 0, 1, 0),
+                new Edge(2, 1, 1, 1),
+                new Edge(3, 2, 10, 2),
+                new Edge(3, 4, 1, 3),
+                new Edge(2, 3, 10, 4),
+                new Edge(1, 2, 1, 5),
+                new Edge(0, 1, 1, 6),
+                new Edge(4, 3, 1, 7),
+            };
+            var mergedLine = Dijkstra.Solve(line, [0, 4], 5);
+            var nearestLine = Dijkstra.SolveNearest(line, [0, 4], 5);
+            for (int i = 0; i < 5; i++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    Assert.AreEqual(mergedLine[i, c], nearestLine[i, c], 0f, $"Cell [{i},{c}] differs on the tie-free graph.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The nearest-destination solve is deterministic across repeated calls and tolerates
+        /// duplicate destination indices.
+        /// </summary>
+        [TestMethod]
+        public void SolveNearestIsDeterministic()
+        {
+            var edges = BuildRandomGraph(new MersenneTwister(107), 250, 1000);
+
+            var first = Dijkstra.SolveNearest(edges, [5, 5, 100], 250);
+            var second = Dijkstra.SolveNearest(edges, [5, 100], 250);
+            for (int i = 0; i < 250; i++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    Assert.AreEqual(first[i, c], second[i, c], 0f, $"Cell [{i},{c}] differs with duplicate destinations.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The nearest-destination solve rejects null and empty destination arrays and
+        /// out-of-range destinations.
+        /// </summary>
+        [TestMethod]
+        public void SolveNearestValidationThrows()
+        {
+            var edges = new List<Edge> { new Edge(0, 1, 1, 0) };
+
+            Assert.Throws<ArgumentNullException>(() => Dijkstra.SolveNearest(null!, [0], 2));
+            Assert.Throws<ArgumentNullException>(() => Dijkstra.SolveNearest(edges, null!, 2));
+            Assert.Throws<ArgumentException>(() => Dijkstra.SolveNearest(edges, new int[0], 2));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.SolveNearest(edges, [7], 2));
+        }
+
+        /// <summary>
         /// Performance smoke: a 316 by 316 four-neighbor grid (99,856 nodes) solves to a corner
         /// destination without heap overflow, and the far corner's cost equals the Manhattan
         /// distance.
@@ -606,10 +752,16 @@ namespace Mathematics.Optimization
             stopwatch.Stop();
             Console.WriteLine($"P2 grid {side}x{side} x4 destinations: {stopwatch.Elapsed.TotalSeconds:F3} s");
 
+            stopwatch.Restart();
+            var nearest = Dijkstra.SolveNearest(edges, corners, side * side);
+            stopwatch.Stop();
+            Console.WriteLine($"P2 grid {side}x{side} SolveNearest: {stopwatch.Elapsed.TotalSeconds:F3} s");
+
             int center = (side / 2) * side + (side / 2);
             // The nearest corner from (158, 158) is (315, 315): 157 + 157 steps.
             float expected = 2f * (side - 1 - side / 2);
             Assert.AreEqual(expected, result[center, 2], 0f);
+            Assert.AreEqual(expected, nearest[center, 2], 0f);
         }
 
         /// <summary>

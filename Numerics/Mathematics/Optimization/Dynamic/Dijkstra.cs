@@ -92,6 +92,128 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
+        /// Walks a result table from the specified start node and returns the ordered list of
+        /// edge indices leading to the destination.
+        /// </summary>
+        /// <param name="resultTable">A result table produced by one of the solvers.</param>
+        /// <param name="startNodeIndex">The node to start from.</param>
+        /// <returns>
+        /// The ordered edge indices from the start node to the destination; an empty list when
+        /// the start node is itself the destination; null when the destination is unreachable.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when the result table is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the result table does not have three columns, or does not converge to a destination.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the table.</exception>
+        public static List<int>? GetPath(float[,] resultTable, int startNodeIndex)
+        {
+            return TryGetPath(resultTable, startNodeIndex, out List<int> pathEdgeIndices, out _) ? pathEdgeIndices : null;
+        }
+
+        /// <summary>
+        /// Attempts to walk a result table from the specified start node, returning the ordered
+        /// edge indices and the total path cost.
+        /// </summary>
+        /// <param name="resultTable">A result table produced by one of the solvers.</param>
+        /// <param name="startNodeIndex">The node to start from.</param>
+        /// <param name="pathEdgeIndices">Receives the ordered edge indices; empty when the start node is the destination or unreachable.</param>
+        /// <param name="totalCost">Receives the total path cost; positive infinity when unreachable.</param>
+        /// <returns>True when the destination is reachable from the start node; otherwise false.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when the result table is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the result table does not have three columns, or does not converge to a destination.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the table.</exception>
+        public static bool TryGetPath(float[,] resultTable, int startNodeIndex, out List<int> pathEdgeIndices, out float totalCost)
+        {
+            if (resultTable == null) throw new ArgumentNullException(nameof(resultTable));
+            if (resultTable.GetLength(1) != 3) throw new ArgumentException("The result table must have three columns.", nameof(resultTable));
+            int rowCount = resultTable.GetLength(0);
+            if (startNodeIndex < 0 || startNodeIndex >= rowCount) throw new ArgumentOutOfRangeException(nameof(startNodeIndex), $"The start node index must be within [0, {rowCount}).");
+
+            pathEdgeIndices = new List<int>();
+            totalCost = resultTable[startNodeIndex, COST];
+            if (float.IsPositiveInfinity(totalCost)) return false;
+
+            int node = startNodeIndex;
+            int steps = 0;
+            while (resultTable[node, EDGE_INDEX] >= 0f)
+            {
+                if (++steps > rowCount)
+                    throw new ArgumentException("The result table does not converge to a destination; it may be inconsistent.", nameof(resultTable));
+                pathEdgeIndices.Add((int)resultTable[node, EDGE_INDEX]);
+                int next = (int)resultTable[node, NEXT_NODE];
+                if (next < 0 || next >= rowCount)
+                    throw new ArgumentException("The result table routes to a node outside the table; it may be inconsistent.", nameof(resultTable));
+                node = next;
+            }
+            if (resultTable[node, COST] != 0f)
+                throw new ArgumentException("The result table walk ended away from a destination; it may be inconsistent.", nameof(resultTable));
+            return true;
+        }
+
+        /// <summary>
+        /// Solves the shortest path from every node to its nearest destination in a single
+        /// multi-source pass.
+        /// </summary>
+        /// <param name="edges">Edges, or segments, that make up the network.</param>
+        /// <param name="destinationIndices">Indices of the destination nodes; at least one is required.</param>
+        /// <param name="nodeCount">Optional number of nodes in the network. If not provided it will be calculated internally.</param>
+        /// <returns>Lookup table of shortest paths from any given node to its nearest destination.</returns>
+        /// <remarks>
+        /// Costs match the multi-destination <see cref="Solve(IList{Edge}, int[], int, List{Edge}[])"/>
+        /// overload exactly; the routed next node and edge can differ from it only where two
+        /// destinations are exactly equidistant, where this method resolves the tie by
+        /// deterministic heap order rather than destination array order. One pass over the
+        /// network replaces one pass per destination. Duplicate destination indices are
+        /// tolerated.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when the edges or destination indices are null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the destination array is empty, the node count cannot be derived, or an edge references a node outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the node count is not positive, or a destination index is outside the network.</exception>
+        public static float[,] SolveNearest(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1)
+        {
+            if (edges == null) throw new ArgumentNullException(nameof(edges));
+            if (destinationIndices == null) throw new ArgumentNullException(nameof(destinationIndices));
+            if (destinationIndices.Length == 0) throw new ArgumentException("At least one destination index is required.", nameof(destinationIndices));
+
+            int nNodes = ResolveNodeCount(edges, nodeCount);
+            for (int i = 0; i < destinationIndices.Length; i++)
+            {
+                if (destinationIndices[i] < 0 || destinationIndices[i] >= nNodes)
+                    throw new ArgumentOutOfRangeException(nameof(destinationIndices), $"The destination index {destinationIndices[i]} must be within [0, {nNodes}).");
+            }
+
+            CompactAdjacency adjacency = CompactAdjacency.FromEdges(edges, nNodes, groupByEndNode: true, nameof(edges));
+
+            var next = new int[nNodes];
+            var edgeIndexes = new int[nNodes];
+            var dist = new float[nNodes];
+            var state = new int[nNodes];
+            var heap = new IndexedMinHeap(nNodes);
+
+            for (int i = 0; i < nNodes; i++)
+            {
+                next[i] = -1;
+                edgeIndexes[i] = -1;
+                dist[i] = float.PositiveInfinity;
+                state[i] = 0;
+            }
+            heap.Clear();
+
+            for (int d = 0; d < destinationIndices.Length; d++)
+            {
+                int destination = destinationIndices[d];
+                if (state[destination] == 2) continue; // duplicate destination
+                next[destination] = destination;
+                edgeIndexes[destination] = -1;
+                dist[destination] = 0f;
+                heap.Add(destination, 0f);
+                state[destination] = 2;
+            }
+
+            RunToExhaustion(adjacency, null, next, edgeIndexes, dist, state, heap);
+            return WriteTable(next, edgeIndexes, dist);
+        }
+
+        /// <summary>
         /// Solves the shortest path from every node in the network of edges to the nearest of
         /// the given destinations.
         /// </summary>
