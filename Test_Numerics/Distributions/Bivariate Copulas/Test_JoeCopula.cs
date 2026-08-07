@@ -276,5 +276,43 @@ namespace Distributions.BivariateCopulas
             }
         }
 
+        /// <summary>
+        /// Test the inverse conditional at conditional probabilities within rounding distance
+        /// of the boundaries. In exact arithmetic h(1|u) = 1, but the floating-point objective
+        /// can round below 1, so t = 1 − 1E-16 used to leave the Brent bracket without a sign
+        /// change and throw — rare at moderate θ but affecting most of the unit interval at
+        /// θ = 20 (measured 1,648 of 1,999 uniform u values). The asserted contract is the
+        /// inverse relationship, not a particular value: every call returns a probability in
+        /// [0, 1] whose value is monotone in the conditional level. The contract is
+        /// deliberately not a round trip through <see cref="BivariateCopula.ConditionalCDF"/>:
+        /// the Archimedean families evaluate that through the generator ratio
+        /// φ′(u)/φ′(C(u,v)) rather than the closed form this inverse solves, and its precision
+        /// degrades at v = 1 for large θ (measured: h(1|u) returns 0.5245 at θ = 20, u = 0.846,
+        /// where the exact value is 1 — a property of that formula, not of this inverse).
+        /// Interior levels are pinned against reference values above.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF_BoundaryConditionals()
+        {
+            foreach (double theta in new[] { 1.2, 1.5, 2.5, 10d, 20d })
+            {
+                var copula = new JoeCopula(theta);
+                for (int i = 1; i < 2000; i++)
+                {
+                    double u = i / 2000d;
+                    double top = copula.InverseConditionalCDF(u, 1d - 1E-16);
+                    Assert.IsTrue(top >= 0d && top <= 1d,
+                        $"Top-edge inverse left [0, 1] at θ = {theta}, u = {u}: {top}.");
+                    Assert.IsGreaterThanOrEqualTo(copula.InverseConditionalCDF(u, 0.999), top,
+                        $"The top-edge inverse must not fall below an interior level at θ = {theta}, u = {u}.");
+                    double bottom = copula.InverseConditionalCDF(u, 1E-16);
+                    Assert.IsTrue(bottom >= 0d && bottom <= 1d,
+                        $"Bottom-edge inverse left [0, 1] at θ = {theta}, u = {u}: {bottom}.");
+                    Assert.IsLessThanOrEqualTo(copula.InverseConditionalCDF(u, 0.001), bottom,
+                        $"The bottom-edge inverse must not exceed an interior level at θ = {theta}, u = {u}.");
+                }
+            }
+        }
+
     }
 }

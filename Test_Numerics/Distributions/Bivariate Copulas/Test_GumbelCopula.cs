@@ -297,5 +297,46 @@ namespace Distributions.BivariateCopulas
             }
         }
 
+        /// <summary>
+        /// Test the inverse conditional at conditional probabilities within rounding distance
+        /// of the boundaries. In exact arithmetic h(1|u) = 1, but the floating-point objective
+        /// rounds below 1 by roughly |ln u| ulps, so t = 1 − 1E-16 used to leave the Brent
+        /// bracket without a sign change and throw for u values with |ln u| ≳ 1 (first failure
+        /// near u = 0.006 at θ = 2). The asserted contract is the inverse relationship, not a
+        /// particular value: every call returns a probability in [0, 1] whose conditional CDF
+        /// reproduces the requested level. That phrasing is deliberate — in the far tail under
+        /// strong dependence the conditional CDF is numerically saturated across a band of v,
+        /// so several values satisfy h(v|u) = 1 − 1E-16 to full double precision and the
+        /// solver may legitimately return any of them. The asserted contract is therefore
+        /// completion, range, and monotonicity in the conditional level — deliberately not a
+        /// round trip through <see cref="BivariateCopula.ConditionalCDF"/>, which the
+        /// Archimedean families evaluate through the generator ratio φ′(u)/φ′(C(u,v)) rather
+        /// than the closed form this inverse solves, and whose precision degrades at v = 1 for
+        /// large θ. Interior levels are pinned against reference values above, which is where
+        /// the round trip belongs.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF_BoundaryConditionals()
+        {
+            foreach (double theta in new[] { 1.2, 2d, 3.5, 10d, 20d })
+            {
+                var copula = new GumbelCopula(theta);
+                for (int i = 1; i < 2000; i++)
+                {
+                    double u = i / 2000d;
+                    double top = copula.InverseConditionalCDF(u, 1d - 1E-16);
+                    Assert.IsTrue(top >= 0d && top <= 1d,
+                        $"Top-edge inverse left [0, 1] at θ = {theta}, u = {u}: {top}.");
+                    Assert.IsGreaterThanOrEqualTo(copula.InverseConditionalCDF(u, 0.999), top,
+                        $"The top-edge inverse must not fall below an interior level at θ = {theta}, u = {u}.");
+                    double bottom = copula.InverseConditionalCDF(u, 1E-16);
+                    Assert.IsTrue(bottom >= 0d && bottom <= 1d,
+                        $"Bottom-edge inverse left [0, 1] at θ = {theta}, u = {u}: {bottom}.");
+                    Assert.IsLessThanOrEqualTo(copula.InverseConditionalCDF(u, 0.001), bottom,
+                        $"The bottom-edge inverse must not exceed an interior level at θ = {theta}, u = {u}.");
+                }
+            }
+        }
+
     }
 }

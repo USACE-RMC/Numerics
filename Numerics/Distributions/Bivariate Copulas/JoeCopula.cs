@@ -120,7 +120,10 @@ namespace Numerics.Distributions.Copulas
         /// The Joe conditional has no closed-form inverse, so the conditional probability
         /// function h(x|u) = (1−u)^(θ−1)·[1 − (1−x)^θ]·A^(1/θ−1),
         /// A = (1−u)^θ + (1−x)^θ − (1−u)^θ(1−x)^θ, is inverted numerically with Brent's
-        /// method on x ∈ [0, 1].
+        /// method on x ∈ [0, 1]. In exact arithmetic h(1|u) = 1, but the floating-point
+        /// evaluation can round below 1, so a conditional probability within rounding distance
+        /// of 1 would otherwise leave the bracket without a sign change; the inverse saturates
+        /// at the boundary there.
         /// </remarks>
         public override double InverseConditionalCDF(double u, double t)
         {
@@ -129,11 +132,13 @@ namespace Numerics.Distributions.Copulas
 
             // Use conditional probability function
             double p = t;
-            return Brent.Solve(x =>
+            Func<double, double> f = x =>
             {
                 double vu = -(Math.Pow(1d - x, Theta) - 1d) * Math.Pow(Math.Pow(1d - u, Theta) - Math.Pow(1d - u, Theta) * Math.Pow(1d - x, Theta) + Math.Pow(1d - x, Theta), (-Theta + 1d) / Theta) * Math.Pow(1d - u, Theta - 1d);
                 return vu - p;
-            }, 0d, 1d);
+            };
+            if (f(1d) <= 0d) return 1d;
+            return Brent.Solve(f, 0d, 1d);
         }
 
         /// <inheritdoc/>
