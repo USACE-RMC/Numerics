@@ -6,7 +6,7 @@ using Numerics.Distributions.Copulas;
 namespace Distributions.BivariateCopulas
 {
     /// <summary>
-    /// Unit tests for the Clayton Copula. All tests are compared against the R 'copula' package. 
+    /// Unit tests for the Clayton Copula. Reference values come from the R 'copula' package for the original methods and from pyvinecopulib 0.7.6 and mpmath 1.4.1 for the conditional-distribution methods.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -186,8 +186,8 @@ namespace Distributions.BivariateCopulas
 
         /// <summary>
         /// Test that ParametersValid tracks the dependency parameter's valid range.
-        /// Regression: the Archimedean base ValidateParameter returned a non-null
-        /// sentinel for valid parameters, leaving ParametersValid permanently false.
+        /// ValidateParameter returns null for a valid dependence parameter and a non-null
+        /// exception otherwise, so ParametersValid follows the parameter.
         /// </summary>
         [TestMethod]
         public void Test_ParametersValid()

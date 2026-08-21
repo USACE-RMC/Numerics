@@ -6,7 +6,7 @@ using Numerics.Distributions.Copulas;
 namespace Distributions.BivariateCopulas
 {
     /// <summary>
-    /// Unit tests for the Gumbel Copula. All tests are compared against the R 'copula' package. 
+    /// Unit tests for the Gumbel Copula. Reference values come from the R 'copula' package for the original methods and from pyvinecopulib 0.7.6 and mpmath 1.4.1 for the conditional-distribution methods.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -186,8 +186,8 @@ namespace Distributions.BivariateCopulas
 
         /// <summary>
         /// Test that ParametersValid tracks the dependency parameter's valid range.
-        /// Regression: the Archimedean base ValidateParameter returned a non-null
-        /// sentinel for valid parameters, leaving ParametersValid permanently false.
+        /// ValidateParameter returns null for a valid dependence parameter and a non-null
+        /// exception otherwise, so ParametersValid follows the parameter.
         /// </summary>
         [TestMethod]
         public void Test_ParametersValid()
@@ -300,9 +300,9 @@ namespace Distributions.BivariateCopulas
         /// <summary>
         /// Test the inverse conditional at conditional probabilities within rounding distance
         /// of the boundaries. In exact arithmetic h(1|u) = 1, but the floating-point objective
-        /// rounds below 1 by roughly |ln u| ulps, so t = 1 − 1E-16 used to leave the Brent
-        /// bracket without a sign change and throw for u values with |ln u| ≳ 1 (first failure
-        /// near u = 0.006 at θ = 2). The asserted contract is the inverse relationship, not a
+        /// rounds below 1 by roughly |ln u| ulps, so a requested level of t = 1 − 1E-16 can exceed the
+        /// attainable maximum of the objective for u values with |ln u| ≳ 1; the solver must still
+        /// complete. The asserted contract is the inverse relationship, not a
         /// particular value: every call returns a probability in [0, 1] whose conditional CDF
         /// reproduces the requested level. That phrasing is deliberate — in the far tail under
         /// strong dependence the conditional CDF is numerically saturated across a band of v,

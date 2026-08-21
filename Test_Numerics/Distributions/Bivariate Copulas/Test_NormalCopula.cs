@@ -6,7 +6,7 @@ using Numerics.Distributions.Copulas;
 namespace Distributions.BivariateCopulas
 {
     /// <summary>
-    /// Unit tests for the Normal Copula. All tests are compared against the R 'copula' package. 
+    /// Unit tests for the Normal Copula. Reference values come from the R 'copula' package for the original methods and from pyvinecopulib 0.7.6 and mpmath 1.4.1 for the conditional-distribution methods.
     /// </summary>
     /// <remarks>
     /// <para>

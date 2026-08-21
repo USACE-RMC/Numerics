@@ -22,7 +22,7 @@ namespace Distributions.BivariateCopulas
     /// <b> References: </b>
     /// </para>
     /// <para>
-    /// Reference values verified against R 'copula' package (tCopula, dCopula, pCopula).
+    /// Reference values come from the R 'copula' package (tCopula, dCopula, pCopula) for the original methods and from pyvinecopulib 0.7.6 and mpmath 1.4.1 for the conditional-distribution methods.
     /// </para>
     /// </remarks>
     [TestClass]
