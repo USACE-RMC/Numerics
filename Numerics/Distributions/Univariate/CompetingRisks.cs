@@ -883,7 +883,7 @@ namespace Numerics.Distributions
                 double maxP = 1 - 1E-16;
                 double minX = Distributions.Min(d => d.InverseCDF(minP));
                 double maxX = Distributions.Max(d => d.InverseCDF(maxP));
-                bins = Stratify.XValues(new StratificationOptions(minX, maxX, 200, false), XTransform == Transform.Logarithmic ? true : false);
+                bins = Stratify.XValues(new StratificationOptions(minX, maxX, 200, false), true);
             }
 
             var D = Distributions.Count();
@@ -1161,7 +1161,7 @@ namespace Numerics.Distributions
             int order = (int)Math.Floor(Math.Log10(max) - Math.Log10(min));
             int binN = Math.Max(200, 100 * order) - 1;
             // Create bins
-            var bins = Stratify.XValues(new StratificationOptions(minX, maxX, binN, false), XTransform == Transform.Logarithmic ? true : false);
+            var bins = Stratify.XValues(new StratificationOptions(minX, maxX, binN, false), true);
             var xValues = new List<double>();
             var pValues = new List<double>();
             var x = bins.First().LowerBound;

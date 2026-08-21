@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Data;
 using Numerics.Distributions;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
@@ -1183,6 +1184,60 @@ namespace Distributions.Univariate
             }
 
             return maxDiff;
+        }
+
+        /// <summary>
+        /// Test that the empirical inverse CDF resolves the quantiles of heavy-tailed, negative-support
+        /// and positive-support components to within half a percent of a root-solved inversion for
+        /// both x-transforms, because the empirical grid is log-spaced on the offset axis regardless
+        /// of the transform.
+        /// </summary>
+        [TestMethod]
+        public void Test_EmpiricalInverseCDF_ResolvesQuantilesRegardlessOfXTransform()
+        {
+            AssertEmpiricalInverseMatchesRootSolve(
+                new CompetingRisks(new UnivariateDistributionBase[] { new GeneralizedExtremeValue(100, 20, -0.2), new GeneralizedExtremeValue(130, 25, -0.15) })
+                {
+                    MinimumOfRandomVariables = false,
+                    XTransform = Transform.None
+                },
+                new[] { 0.5, 0.9, 0.99, 0.999 },
+                "heavy-tailed maxima, no transform");
+            AssertEmpiricalInverseMatchesRootSolve(
+                new CompetingRisks(new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(5, 2) })
+                {
+                    MinimumOfRandomVariables = false,
+                    XTransform = Transform.None
+                },
+                new[] { 0.01, 0.5, 0.99 },
+                "negative support, no transform");
+            AssertEmpiricalInverseMatchesRootSolve(
+                new CompetingRisks(new UnivariateDistributionBase[] { new GeneralizedPareto(0, 10, -0.1), new Exponential(0, 8) })
+                {
+                    MinimumOfRandomVariables = true,
+                    XTransform = Transform.Logarithmic
+                },
+                new[] { 0.1, 0.5, 0.9, 0.99 },
+                "positive support, logarithmic transform");
+        }
+
+        /// <summary>
+        /// Asserts the empirical inverse CDF of a competing-risks model matches the root-solved
+        /// inverse of an identical model without an empirical CDF.
+        /// </summary>
+        /// <param name="competingRisks">The model to evaluate through its empirical CDF.</param>
+        /// <param name="probabilities">The non-exceedance probabilities to check.</param>
+        /// <param name="context">The assertion context.</param>
+        private static void AssertEmpiricalInverseMatchesRootSolve(CompetingRisks competingRisks, double[] probabilities, string context)
+        {
+            var reference = (CompetingRisks)competingRisks.Clone();
+            competingRisks.CreateEmpiricalCDF();
+            foreach (double probability in probabilities)
+            {
+                double expected = reference.InverseCDF(probability);
+                double actual = competingRisks.InverseCDF(probability);
+                Assert.AreEqual(expected, actual, Math.Abs(expected) * 0.005 + 1E-9, $"{context}: p = {probability}");
+            }
         }
 
         #endregion
