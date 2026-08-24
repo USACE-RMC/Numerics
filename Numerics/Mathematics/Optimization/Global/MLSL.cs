@@ -240,7 +240,11 @@ namespace Numerics.Mathematics.Optimization
                 // The ordered result is copied back into the existing list rather than assigned as a
                 // new list, because SampledPoints is public and a caller holding a reference during a
                 // run would otherwise be left with a detached list that stops growing. Do not replace
-                // this with an assignment.
+                // this with an assignment. The trade-off is that the shared list is transiently empty
+                // here, so a caller enumerating SampledPoints from another thread during a run could
+                // see a partial list or an invalidated enumerator where the previous code handed it a
+                // stable detached snapshot; the sort runs on the optimization thread between the
+                // sequential sample loop and the local searches, so no in-tree caller is affected.
                 var sorted = SampledPoints.OrderBy(x => x.ParameterSet.Fitness).ToList();
                 SampledPoints.Clear();
                 SampledPoints.AddRange(sorted);

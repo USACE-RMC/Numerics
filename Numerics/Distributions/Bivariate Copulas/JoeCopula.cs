@@ -184,8 +184,13 @@ namespace Numerics.Distributions.Copulas
         /// <summary>
         /// Returns Kendall's τ (tau) implied by the Joe copula dependency parameter θ (theta).
         /// </summary>
-        /// <param name="theta">The dependency parameter, θ. Must be greater than or equal to 1.</param>
+        /// <param name="theta">The dependency parameter, θ. Must be finite and greater than or equal to 1.</param>
         /// <returns>Kendall's τ for the given θ. The value is 0 at θ = 1 and increases to 1 as θ → ∞.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when θ is below <see cref="ThetaMinimum"/> or is not finite. The series is defined outside
+        /// that domain but the value it returns has no meaning for this copula, so an inadmissible θ is
+        /// rejected rather than returned as a plausible-looking number.
+        /// </exception>
         /// <remarks>
         /// <para>
         /// The Joe copula has no closed-form relation between θ and Kendall's τ. The relation is the series
@@ -206,8 +211,9 @@ namespace Numerics.Distributions.Copulas
         /// expanded in inverse powers of k, giving 1 / (θ² k³) * Σ[j ≥ 0] (-1)^j h_j / k^j with
         /// h_j = Σ[i = 0 to j] p^i q^(j - i), p = 2/θ and q = (2 - θ)/θ, and each power is summed over k &gt; K
         /// with the Euler-Maclaurin form of the Hurwitz zeta function. Retaining terms through j = 6 leaves a
-        /// residual below 1E-25, so the accuracy of the result is limited only by double rounding. The
-        /// implementation agrees with pyvinecopulib 0.7.6 to 5E-16 or better over θ in [1, 100].
+        /// residual below 1E-25, so the accuracy of the result is limited only by double rounding. The seven
+        /// pinned pyvinecopulib 0.7.6 oracle points are matched to 4.5E-16, and against mpmath at 60 decimal
+        /// digits on a grid over θ in [1, 100] the worst absolute error is 1.7E-16.
         /// </para>
         /// <para>
         /// <b> References: </b>
@@ -221,8 +227,11 @@ namespace Numerics.Distributions.Copulas
         /// </description></item>
         /// </list>
         /// </remarks>
-        public static double KendallsTauFromTheta(double theta)
+        internal static double KendallsTauFromTheta(double theta)
         {
+            if (theta < 1d || double.IsNaN(theta) || double.IsInfinity(theta))
+                throw new ArgumentOutOfRangeException(nameof(theta), "The dependency parameter θ (theta) must be finite and greater than or equal to 1.");
+
             // The terms are summed from the smallest to the largest to limit accumulated rounding error.
             double sum = 0d;
             for (int k = TauSeriesTerms; k >= 1; k--)
@@ -285,7 +294,7 @@ namespace Numerics.Distributions.Copulas
         /// Kendall's τ is estimated from the sample data and <see cref="KendallsTauFromTheta(double)"/> is
         /// inverted with Brent's method over the bracket returned by
         /// <see cref="ParameterConstraints(IList{double}, IList{double})"/>, θ in [1, 100]. That bracket reaches
-        /// τ in [0, 0.9803]. The Joe copula models positive dependence only, so a negative τ is not attainable
+        /// τ in [0, 0.98025359]. The Joe copula models positive dependence only, so a negative τ is not attainable
         /// at any θ, and a τ above the upper end means the dependence is too strong to fit within the bracket;
         /// both throw. A τ of 0 is the independence limit, reached at θ = 1, and is assigned directly rather
         /// than handed to a bracket that does not straddle a root.
@@ -298,7 +307,7 @@ namespace Numerics.Distributions.Copulas
             double U = 100d;
 
             if (tau < 0d || tau > KendallsTauFromTheta(U))
-                throw new ArgumentException("For the Joe copula, tau must be in [0, 0.9803], the range attainable over the fitting bracket θ (theta) of [1, 100]. The Joe copula models positive dependence only, and the dependency in the data is too strong to use the Joe copula.");
+                throw new ArgumentException("For the Joe copula, tau must be in ~= [0, 0.98025], the range attainable over the fitting bracket θ (theta) of [1, 100]. The Joe copula models positive dependence only, and the dependency in the data is too strong to use the Joe copula.");
 
             // τ(1) is 0 up to rounding, so any τ at or below it is the independence limit at θ = 1.
             if (tau <= KendallsTauFromTheta(L))

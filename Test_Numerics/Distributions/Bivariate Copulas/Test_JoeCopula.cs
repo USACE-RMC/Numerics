@@ -436,12 +436,12 @@ namespace Distributions.BivariateCopulas
             // Perfect concordance gives tau = 1, above the largest tau the bracket theta in [1, 100] reaches.
             var concordant = PermutationWithInversions(RankFixtureLength, 0);
             var tooStrong = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, concordant));
-            StringAssert.Contains(tooStrong.Message, "[0, 0.9803]");
+            StringAssert.Contains(tooStrong.Message, "~= [0, 0.98025]");
 
             // Perfect discordance gives tau = -1, and the Joe copula models positive dependence only.
             var discordant = PermutationWithInversions(RankFixtureLength, (int)RankFixturePairs);
             var negative = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, discordant));
-            StringAssert.Contains(negative.Message, "[0, 0.9803]");
+            StringAssert.Contains(negative.Message, "~= [0, 0.98025]");
         }
 
         /// <summary>

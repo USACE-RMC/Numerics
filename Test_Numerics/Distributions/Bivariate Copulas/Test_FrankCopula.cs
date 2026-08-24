@@ -393,11 +393,11 @@ namespace Distributions.BivariateCopulas
             // bracket theta in [-100, 100] reaches.
             var concordant = PermutationWithInversions(RankFixtureLength, 0);
             var positive = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, concordant));
-            StringAssert.Contains(positive.Message, "[-0.9607, 0.9607]");
+            StringAssert.Contains(positive.Message, "~= [-0.96065, 0.96065]");
 
             var discordant = PermutationWithInversions(RankFixtureLength, (int)RankFixturePairs);
             var negative = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, discordant));
-            StringAssert.Contains(negative.Message, "[-0.9607, 0.9607]");
+            StringAssert.Contains(negative.Message, "~= [-0.96065, 0.96065]");
         }
 
         /// <summary>
@@ -405,8 +405,9 @@ namespace Distributions.BivariateCopulas
         /// </summary>
         /// <remarks>
         /// The Frank independence limit is theta = 0, at which the generator and the distribution functions are
-        /// indeterminate, so the fit returns the bracket endpoint nearest independence instead. The resulting
-        /// copula must be indistinguishable from independence over the unit square.
+        /// indeterminate, so the fit returns the bracket endpoint nearest independence instead. A tau of exactly
+        /// zero takes the negative bracket, matching ParameterConstraints, so the endpoint is -0.001. The
+        /// resulting copula must be indistinguishable from independence over the unit square.
         /// </remarks>
         [TestMethod]
         public void Test_SetThetaFromTau_Independence()
@@ -417,7 +418,7 @@ namespace Distributions.BivariateCopulas
 
             var copula = new FrankCopula();
             copula.SetThetaFromTau(ranks, permuted);
-            Assert.AreEqual(0.001d, copula.Theta, 0d);
+            Assert.AreEqual(-0.001d, copula.Theta, 0d);
             Assert.AreEqual(0d, FrankCopula.KendallsTauFromTheta(copula.Theta), 1E-3);
             foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
             {

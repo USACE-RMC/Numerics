@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.SpecialFunctions;
 
@@ -108,6 +108,53 @@ namespace Mathematics.SpecialFunctions
                 testResults[i] = Debye.Function(testX[i]);
                 Assert.AreEqual(testResults[i], testValid[i], 1E-4);
             }
+        }
+
+        /// <summary>
+        /// Test the order-1 Debye function against a high-precision reference.
+        /// </summary>
+        /// <remarks>
+        /// The reference values were computed with mpmath at 60 decimal digits by two independent routes that
+        /// agree to better than 1E-58: tanh-sinh quadrature of the defining integral D1(x) = (1/x) integral of
+        /// t / (e^t - 1) from 0 to x, and the polylogarithm closed form
+        /// D1(x) = pi^2 / (6x) + ln(1 - e^-x) - Li2(e^-x) / x. They are corroborated at the endpoints by the
+        /// asymptote D1(100) = pi^2 / 600 = 0.016449340668482264 and by the reflection D1(-1) = D1(1) + 0.5.
+        /// The relative tolerance of 1E-14 is well above the measured worst error of 3 ulp.
+        /// </remarks>
+        [TestMethod]
+        public void Test_DebyeOrderOne()
+        {
+            var testX = new double[] { -100d, -30d, -10d, -5d, -1d, -0.5, -0.001, 0.001, 0.01, 0.1, 0.5, 1d, 1.5, 2d, 5d, 10d, 30d, 100d };
+            var testValid = new double[]
+            {
+                50.01644934066848, 15.05483113556151, 5.164443465679946, 2.820876197700146,
+                1.2775046341122482, 1.1319271567906055, 1.0002500277777775, 0.9997500277777776,
+                0.997502777775, 0.9752777500047232, 0.8819271567906055, 0.7775046341122482,
+                0.686145310789402, 0.6069472846098101, 0.32087619770014614, 0.16444346567994603,
+                0.054831135561510855, 0.016449340668482266
+            };
+
+            for (int i = 0; i < testValid.Length; i++)
+            {
+                double result = Debye.FunctionOrderOne(testX[i]);
+                Assert.AreEqual(testValid[i], result, Math.Abs(testValid[i]) * 1E-14, $"The order-1 Debye function is out of tolerance at x = {testX[i]}.");
+            }
+
+            // The integrand tends to 1 as t tends to 0, so the removable limit is returned exactly.
+            Assert.AreEqual(1d, Debye.FunctionOrderOne(0d), 0d);
+
+            // D1(-x) - D1(x) = x / 2 for x > 0. The tolerance is scaled by the size of the values being
+            // subtracted rather than by the size of the difference: for a small x the two values are both near
+            // 1 and the subtraction itself costs about half an ulp of 1, which is far larger than half an ulp
+            // of x / 2. This is cancellation in the assertion, not error in the function.
+            foreach (double x in new[] { 0.001, 0.25, 1d, 1.75, 7.5, 40d })
+            {
+                double reflected = Debye.FunctionOrderOne(-x);
+                Assert.AreEqual(0.5 * x, reflected - Debye.FunctionOrderOne(x), Math.Abs(reflected) * 1E-15, $"The order-1 Debye reflection failed at x = {x}.");
+            }
+
+            // The order-3 function is a different function and must not be confused with this one.
+            Assert.AreNotEqual(Debye.Function(1d), Debye.FunctionOrderOne(1d));
         }
 
         /// <summary>
