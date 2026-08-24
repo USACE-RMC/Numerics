@@ -237,7 +237,13 @@ namespace Numerics.Mathematics.Optimization
                 // exactly at the sort boundary, so ties would decide which points start local searches
                 // and therefore which optimum is returned. OrderBy is a stable sort, so equally fit
                 // points keep the order in which they were sampled. Do not replace it with Sort.
-                SampledPoints = SampledPoints.OrderBy(x => x.ParameterSet.Fitness).ToList();
+                // The ordered result is copied back into the existing list rather than assigned as a
+                // new list, because SampledPoints is public and a caller holding a reference during a
+                // run would otherwise be left with a detached list that stops growing. Do not replace
+                // this with an assignment.
+                var sorted = SampledPoints.OrderBy(x => x.ParameterSet.Fitness).ToList();
+                SampledPoints.Clear();
+                SampledPoints.AddRange(sorted);
                 int gkN = (int)Math.Ceiling(Gamma * (Iterations + 1) * N);
                 var Rk = SampledPoints.Take(gkN).ToList();
 

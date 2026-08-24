@@ -336,12 +336,15 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// Test that the sample reduction sort keeps equally fit sample points in the order they were generated.
+        /// Test that the sample reduction sort orders by fitness and keeps equally fit sample points in the order they were generated.
         /// </summary>
         /// <remarks>
-        /// A constant objective function makes every sampled point tie exactly. The reduced sample is
-        /// truncated at the sort boundary, so under an unstable sort the ties would decide which points
-        /// start local searches, and therefore which optimum is returned.
+        /// The objective function returns the same value everywhere except in a narrow strip of the
+        /// search space, where it is strictly lower. Most sampled points therefore tie exactly, and a
+        /// few are distinctly better. The reduced sample is truncated at the sort boundary, so under an
+        /// unstable sort the ties would decide which points start local searches, and therefore which
+        /// optimum is returned. The strictly better points are not the first points generated, so the
+        /// test pins the primary fitness key as well as the tie-break and fails if the sort is removed.
         /// </remarks>
         [TestMethod]
         public void Test_TiedFitnessPreservesSampleOrder()
@@ -355,7 +358,10 @@ namespace Mathematics.Optimization
             // in this list is the position at which that sample point was added.
             var evaluated = new List<double[]>();
             var sync = new object();
-            var solver = new MLSL(x => { lock (sync) { evaluated.Add(x); } return 1d; }, 2, initial, lower, upper)
+
+            // The objective is constant except in a narrow strip near the upper bound of the first
+            // parameter. The initial point is outside the strip, so it belongs to the tied group.
+            var solver = new MLSL(x => { lock (sync) { evaluated.Add(x); } return x[0] > 0.9d ? 0d : 1d; }, 2, initial, lower, upper)
             {
                 // A small reduction parameter keeps the number of local searches down.
                 Gamma = 0.02,
@@ -365,23 +371,87 @@ namespace Mathematics.Optimization
 
             // Each iteration appends exactly one generation of sample points.
             Assert.AreEqual(0, solver.SampledPoints.Count % solver.SampleSize);
-
-            // Every point ties, and the tied group is larger than the insertion-sort threshold of the
-            // framework sort, so an unstable sort is free to permute it.
-            foreach (var point in solver.SampledPoints)
-                Assert.AreEqual(1d, point.ParameterSet.Fitness);
             Assert.IsGreaterThan(16, solver.SampledPoints.Count);
 
-            // The sorted sample must still be in generation order.
-            int previous = -1;
+            // Resolve the generation order of every sample point.
+            var generation = new int[solver.SampledPoints.Count];
             for (int i = 0; i < solver.SampledPoints.Count; i++)
             {
                 var values = solver.SampledPoints[i].ParameterSet.Values;
-                int index = evaluated.FindIndex(v => ReferenceEquals(v, values));
-                Assert.IsGreaterThanOrEqualTo(0, index, "Every sample point must have been evaluated.");
-                Assert.IsGreaterThan(previous, index, $"Sample point {i} is out of generation order.");
-                previous = index;
+                generation[i] = evaluated.FindIndex(v => ReferenceEquals(v, values));
+                Assert.IsGreaterThanOrEqualTo(0, generation[i], "Every sample point must have been evaluated.");
             }
+
+            // The objective takes exactly two values, and both groups must be populated for the test to
+            // pin the primary sort key as well as the tie-break.
+            int better = solver.SampledPoints.Count(p => p.ParameterSet.Fitness == 0d);
+            int tied = solver.SampledPoints.Count(p => p.ParameterSet.Fitness == 1d);
+            Assert.AreEqual(solver.SampledPoints.Count, better + tied);
+            Assert.IsGreaterThan(0, better, "At least one point must fall in the strictly better strip.");
+
+            // The tied group is larger than the insertion-sort threshold of the framework sort, so an
+            // unstable sort is free to permute it.
+            Assert.IsGreaterThan(16, tied);
+
+            // The strictly better points must sort ahead of the tied points.
+            for (int i = 0; i < better; i++)
+                Assert.AreEqual(0d, solver.SampledPoints[i].ParameterSet.Fitness, $"Sample point {i} should be in the better group.");
+            for (int i = better; i < solver.SampledPoints.Count; i++)
+                Assert.AreEqual(1d, solver.SampledPoints[i].ParameterSet.Fitness, $"Sample point {i} should be in the tied group.");
+
+            // No point of the better group was generated first, so leaving the sample in generation
+            // order, or sorting on anything other than fitness, fails here.
+            Assert.IsGreaterThan(0, generation[0], "The best sample point must have moved to the front of the sample.");
+
+            // Within each fitness group the sample must still be in generation order.
+            for (int i = 1; i < better; i++)
+                Assert.IsGreaterThan(generation[i - 1], generation[i], $"Better sample point {i} is out of generation order.");
+            for (int i = better + 1; i < solver.SampledPoints.Count; i++)
+                Assert.IsGreaterThan(generation[i - 1], generation[i], $"Tied sample point {i} is out of generation order.");
+        }
+
+        /// <summary>
+        /// Test that the sampled point list keeps the same instance for the whole optimization run.
+        /// </summary>
+        /// <remarks>
+        /// The sample reduction sort runs on every iteration, and <see cref="MLSL.SampledPoints"/> is a
+        /// public property. Sorting into a new list instance would leave a caller that captured the list
+        /// during a run holding a detached copy that stops growing, so the ordered result must be copied
+        /// back into the existing list.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SampledPointsKeepSameListInstance()
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+
+            // Record every distinct list instance observed from inside the run. A run that replaces the
+            // list on each iteration records one instance per iteration.
+            var instances = new List<List<MLSL.SamplePoint>>();
+            var sync = new object();
+            MLSL solver = null;
+            solver = new MLSL(x =>
+            {
+                lock (sync)
+                {
+                    var points = solver?.SampledPoints;
+                    if (points != null && (instances.Count == 0 || !ReferenceEquals(instances[instances.Count - 1], points)))
+                        instances.Add(points);
+                }
+                return Math.Pow(x[0] - 0.3d, 2d) + Math.Pow(x[1] - 0.7d, 2d);
+            }, 2, initial, lower, upper)
+            {
+                ReportFailure = false
+            };
+            solver.Minimize();
+
+            // More than one generation of sample points was drawn, so the sort ran at least once.
+            Assert.IsGreaterThan(solver.SampleSize, solver.SampledPoints.Count);
+
+            // The list instance never changed, and it is the one the solver still exposes.
+            Assert.HasCount(1, instances);
+            Assert.IsTrue(ReferenceEquals(instances[0], solver.SampledPoints), "The sampled point list instance must not be replaced during a run.");
         }
     }
 }

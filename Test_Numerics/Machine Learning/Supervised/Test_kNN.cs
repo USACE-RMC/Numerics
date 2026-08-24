@@ -226,5 +226,122 @@ namespace MachineLearning
             CollectionAssert.AreEqual(neighbors, repeated);
         }
 
+        /// <summary>
+        /// Verify that the regression prediction resolves exact distance ties by the lowest training-row index.
+        /// </summary>
+        /// <remarks>
+        /// The prediction path sorts distances independently of the neighbor lookup, and its result feeds
+        /// the inverse distance weighted average, so an unstable sort would make the predicted value
+        /// implementation-defined whenever tied rows carry different response values. Bootstrap resampling
+        /// duplicates rows, so exact ties are guaranteed by construction in the prediction intervals.
+        /// </remarks>
+        [TestMethod]
+        public void Test_kNNPredict_Regression_TiedDistances_UseLowestIndex()
+        {
+            // 24 training rows, more than the insertion-sort threshold of the framework sort.
+            // Rows 0-19 sit on top of each other at (1, 0), all exactly distance 1 from the query
+            // (0, 0), but each carries a different response value. Row 20 at (0.5, 0) is the unique
+            // nearest row, and rows 21-23 are far away.
+            int n = 24;
+            var x1 = new double[n];
+            var x2 = new double[n];
+            var y = new double[n];
+            for (int i = 0; i < 20; i++)
+            {
+                x1[i] = 1d;
+                x2[i] = 0d;
+                y[i] = i;
+            }
+            x1[20] = 0.5d;
+            x2[20] = 0d;
+            y[20] = 100d;
+            for (int i = 21; i < n; i++)
+            {
+                x1[i] = 10d;
+                x2[i] = 0d;
+                y[i] = 999d;
+            }
+
+            var X_training = new Matrix(new List<double[]> { x1, x2 });
+            var Y_training = new Vector(y);
+            var knn = new KNearestNeighbors(X_training, Y_training, 3) { IsRegression = true };
+
+            // Confirm the tie is exact before relying on it.
+            var query = new double[] { 0d, 0d };
+            for (int i = 1; i < 20; i++)
+                Assert.AreEqual(Tools.Distance(query, X_training.Row(0)), Tools.Distance(query, X_training.Row(i)), 0d, "The stacked rows must tie exactly.");
+            Assert.AreEqual(0.5d, Tools.Distance(query, X_training.Row(20)), 0d);
+
+            var prediction = knn.Predict(new double[,] { { 0d, 0d } });
+            Assert.IsNotNull(prediction);
+            Assert.HasCount(1, prediction);
+
+            // The three neighbors are row 20 and the two lowest indices of the tied group, rows 0 and 1.
+            // The inverse distance weights are 1 / 0.5^2 = 4 for row 20 and 1 / 1^2 = 1 for each tied row.
+            // Any other resolution of the tie changes the result by at least 1 / 6.
+            double expected = (100d * 4d) / 6d + (0d * 1d) / 6d + (1d * 1d) / 6d;
+            Assert.AreEqual(expected, prediction[0], 1E-12);
+
+            // Repeated calls must return the same prediction.
+            var repeated = knn.Predict(new double[,] { { 0d, 0d } });
+            Assert.IsNotNull(repeated);
+            Assert.AreEqual(prediction[0], repeated[0], 0d);
+        }
+
+        /// <summary>
+        /// Verify that the classification prediction resolves exact distance ties by the lowest training-row index.
+        /// </summary>
+        /// <remarks>
+        /// The classification branch of the prediction path takes the most common response among the
+        /// selected neighbors, so under an unstable distance sort the predicted class would be
+        /// implementation-defined whenever more rows tie at the neighbor boundary than there are
+        /// neighbors to select.
+        /// </remarks>
+        [TestMethod]
+        public void Test_kNNPredict_Classification_TiedDistances_UseLowestIndex()
+        {
+            // Rows 0-19 sit on top of each other at (1, 0), all exactly distance 1 from the query
+            // (0, 0). Rows 0-2 are class 1 and rows 3-19 are class 2. Rows 20-23 are far away.
+            int n = 24;
+            var x1 = new double[n];
+            var x2 = new double[n];
+            var y = new double[n];
+            for (int i = 0; i < 20; i++)
+            {
+                x1[i] = 1d;
+                x2[i] = 0d;
+                y[i] = i < 3 ? 1d : 2d;
+            }
+            for (int i = 20; i < n; i++)
+            {
+                x1[i] = 10d;
+                x2[i] = 0d;
+                y[i] = 3d;
+            }
+
+            var X_training = new Matrix(new List<double[]> { x1, x2 });
+            var Y_training = new Vector(y);
+            var knn = new KNearestNeighbors(X_training, Y_training, 5) { IsRegression = false };
+
+            // Confirm the tie is exact before relying on it.
+            var query = new double[] { 0d, 0d };
+            for (int i = 1; i < 20; i++)
+                Assert.AreEqual(Tools.Distance(query, X_training.Row(0)), Tools.Distance(query, X_training.Row(i)), 0d, "The stacked rows must tie exactly.");
+
+            var prediction = knn.Predict(new double[,] { { 0d, 0d } });
+            Assert.IsNotNull(prediction);
+            Assert.HasCount(1, prediction);
+
+            // The five neighbors are the five lowest indices of the tied group, rows 0-4, which vote
+            // three to two for class 1. Any selection holding fewer than three of rows 0-2 votes for
+            // class 2 instead.
+            Assert.AreEqual(1d, prediction[0]);
+
+            // Repeated calls must return the same prediction.
+            var repeated = knn.Predict(new double[,] { { 0d, 0d } });
+            Assert.IsNotNull(repeated);
+            Assert.AreEqual(prediction[0], repeated[0]);
+        }
+
     }
 }
