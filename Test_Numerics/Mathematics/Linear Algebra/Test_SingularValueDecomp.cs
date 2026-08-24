@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.LinearAlgebra;
 
@@ -316,6 +316,55 @@ namespace Mathematics.LinearAlgebra
             double true_det = 6.356108; //Math.Log(576)
             double det = svd.LogPseudoDeterminant();
             Assert.AreEqual(det, true_det, 0.0001d);
+        }
+
+        /// <summary>
+        /// Tests the thresholded log pseudo-determinant against the parameterless overload on a
+        /// rank-deficient matrix.
+        /// </summary>
+        /// <remarks>
+        /// The matrix below has its third row equal to its first, so it has rank two and its smallest
+        /// singular value is zero in exact arithmetic. In floating point that singular value comes out at
+        /// roughly 3E-16 rather than exactly zero, so the parameterless
+        /// <see cref="SingularValueDecomposition.LogPseudoDeterminant()"/> — which zeroes a singular value
+        /// only on an exact comparison against zero — includes it and returns a large negative number. The
+        /// thresholded overload zeroes it at the same threshold used by
+        /// <see cref="SingularValueDecomposition.Rank(double)"/> and returns the pseudo-determinant of
+        /// 4.158312395177701 * 0.8416876048222999, whose log is 1.2527629684953678 (verified against
+        /// scipy 1.17.1, which reports the same log pseudo-determinant for this matrix).
+        /// </remarks>
+        [TestMethod()]
+        public void Test_LogPseudoDeterminant_ThresholdedIgnoresNumericallyZeroSingularValues()
+        {
+            var A = new Matrix(new double[,] { { 2d, 0.5d, 2d }, { 0.5d, 1d, 0.5d }, { 2d, 0.5d, 2d } });
+            var svd = new SingularValueDecomposition(A);
+            double threshold = svd.Threshold;
+
+            Assert.AreEqual(2, svd.Rank(threshold));
+            Assert.AreEqual(1.2527629684953678d, svd.LogPseudoDeterminant(threshold), 1E-12d);
+
+            // The parameterless overload keeps its exact-zero convention, so it still folds in the
+            // numerically zero singular value and lands far from the pseudo-determinant.
+            Assert.IsLessThan(-30d, svd.LogPseudoDeterminant());
+
+            // A negative threshold falls back to the class default, which is the same threshold here.
+            Assert.AreEqual(1.2527629684953678d, svd.LogPseudoDeterminant(-1d), 1E-12d);
+        }
+
+        /// <summary>
+        /// Tests the thresholded log pseudo-determinant on a full-rank matrix, where it must agree with the
+        /// ordinary log determinant.
+        /// </summary>
+        [TestMethod()]
+        public void Test_LogPseudoDeterminant_ThresholdedMatchesLogDeterminantAtFullRank()
+        {
+            var A = new Matrix(new double[,] { { 4d, 1d, 0.5d }, { 1d, 3d, 0.25d }, { 0.5d, 0.25d, 2d } });
+            var svd = new SingularValueDecomposition(A);
+            double threshold = svd.Threshold;
+
+            Assert.AreEqual(3, svd.Rank(threshold));
+            Assert.AreEqual(svd.LogDeterminant(), svd.LogPseudoDeterminant(threshold), 1E-12d);
+            Assert.AreEqual(3.056356895370426d, svd.LogPseudoDeterminant(threshold), 1E-12d);
         }
 
     }

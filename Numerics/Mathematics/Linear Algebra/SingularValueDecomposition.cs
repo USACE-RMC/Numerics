@@ -509,11 +509,43 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <summary>
         /// Takes Log determinant of the Matrix W
         /// </summary>
+        /// <remarks>
+        /// This overload treats a singular value as zero only when it compares exactly equal to zero.
+        /// A singular value that is numerically zero but not exactly zero — a rank-deficient matrix
+        /// commonly produces one of order 1E-16 rather than 0 — is therefore included in the sum and
+        /// contributes a large negative term. Use <see cref="LogPseudoDeterminant(double)"/> to zero
+        /// singular values at the same threshold used by <see cref="Rank(double)"/> and
+        /// <see cref="Solve(Vector, double)"/>.
+        /// </remarks>
         public double LogPseudoDeterminant()
         {
             double det = 0;
             for (int i = 0; i < W.Length; i++)
                 if (W[i] != 0) det += Math.Log((double)W[i]);
+            return det;
+        }
+
+        /// <summary>
+        /// Takes the log pseudo-determinant of the Matrix W, after zeroing any singular values smaller
+        /// than the threshold.
+        /// </summary>
+        /// <param name="threshold">The threshold to evaluate.
+        /// If the threshold is negative, a default value based on estimated roundoff is used.</param>
+        /// <returns>The sum of the logs of the singular values above the threshold.</returns>
+        /// <remarks>
+        /// The pseudo-determinant is the product of the nonzero singular values, so this is the
+        /// log-determinant restricted to the range of A. Sharing the threshold with
+        /// <see cref="Rank(double)"/>, <see cref="Nullspace(double)"/> and
+        /// <see cref="Solve(Vector, double)"/> keeps the rank, the pseudo-determinant and the
+        /// pseudo-inverse in agreement about which singular values are zero, which is required when
+        /// they are combined — for example in a degenerate multivariate normal density.
+        /// </remarks>
+        public double LogPseudoDeterminant(double threshold)
+        {
+            Threshold = (threshold >= 0d ? threshold : 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps);
+            double det = 0;
+            for (int i = 0; i < W.Length; i++)
+                if (W[i] > Threshold) det += Math.Log((double)W[i]);
             return det;
         }
 
