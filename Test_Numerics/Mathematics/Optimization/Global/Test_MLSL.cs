@@ -334,5 +334,54 @@ namespace Mathematics.Optimization
             bool match2 = Math.Abs(x - validY) < 1E-4 && Math.Abs(y - validX) < 1E-4;
             Assert.IsTrue(match1 || match2);
         }
+
+        /// <summary>
+        /// Test that the sample reduction sort keeps equally fit sample points in the order they were generated.
+        /// </summary>
+        /// <remarks>
+        /// A constant objective function makes every sampled point tie exactly. The reduced sample is
+        /// truncated at the sort boundary, so under an unstable sort the ties would decide which points
+        /// start local searches, and therefore which optimum is returned.
+        /// </remarks>
+        [TestMethod]
+        public void Test_TiedFitnessPreservesSampleOrder()
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+
+            // Record the evaluated parameter arrays by reference. A sample point stores the same array
+            // instance that was handed to the objective function, so the first occurrence of an array
+            // in this list is the position at which that sample point was added.
+            var evaluated = new List<double[]>();
+            var sync = new object();
+            var solver = new MLSL(x => { lock (sync) { evaluated.Add(x); } return 1d; }, 2, initial, lower, upper)
+            {
+                // A small reduction parameter keeps the number of local searches down.
+                Gamma = 0.02,
+                ReportFailure = false
+            };
+            solver.Minimize();
+
+            // Each iteration appends exactly one generation of sample points.
+            Assert.AreEqual(0, solver.SampledPoints.Count % solver.SampleSize);
+
+            // Every point ties, and the tied group is larger than the insertion-sort threshold of the
+            // framework sort, so an unstable sort is free to permute it.
+            foreach (var point in solver.SampledPoints)
+                Assert.AreEqual(1d, point.ParameterSet.Fitness);
+            Assert.IsGreaterThan(16, solver.SampledPoints.Count);
+
+            // The sorted sample must still be in generation order.
+            int previous = -1;
+            for (int i = 0; i < solver.SampledPoints.Count; i++)
+            {
+                var values = solver.SampledPoints[i].ParameterSet.Values;
+                int index = evaluated.FindIndex(v => ReferenceEquals(v, values));
+                Assert.IsGreaterThanOrEqualTo(0, index, "Every sample point must have been evaluated.");
+                Assert.IsGreaterThan(previous, index, $"Sample point {i} is out of generation order.");
+                previous = index;
+            }
+        }
     }
 }

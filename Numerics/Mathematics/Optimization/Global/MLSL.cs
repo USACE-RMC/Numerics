@@ -233,7 +233,11 @@ namespace Numerics.Mathematics.Optimization
                 // Select the γkN points with the lowest objective function values. 
                 // This resultant set, Rk, is called the reduced sample.
 
-                SampledPoints.Sort((x, y) => x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness));
+                // List.Sort is an unstable introspective sort, and the reduced sample is truncated
+                // exactly at the sort boundary, so ties would decide which points start local searches
+                // and therefore which optimum is returned. OrderBy is a stable sort, so equally fit
+                // points keep the order in which they were sampled. Do not replace it with Sort.
+                SampledPoints = SampledPoints.OrderBy(x => x.ParameterSet.Fitness).ToList();
                 int gkN = (int)Math.Ceiling(Gamma * (Iterations + 1) * N);
                 var Rk = SampledPoints.Take(gkN).ToList();
 

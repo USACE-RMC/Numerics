@@ -460,8 +460,14 @@ namespace Numerics.Sampling.MCMC
                 tempPopulation.Add(new ParameterSet((double[])parameters.Clone(), logLH));
             }
             
-            // Sort temp population by log-likelihood in descending order
-            tempPopulation.Sort((x, y) => -1 * x.Fitness.CompareTo(y.Fitness));
+            // Sort temp population by log-likelihood in descending order.
+            // List.Sort is an unstable introspective sort, and the chain starting states are taken from
+            // the front of this list, so ties would decide the starting states and with them the entire
+            // trajectory of every chain. A wide prior can leave many draws at exactly negative infinity.
+            // OrderByDescending is a stable sort using the same default double comparison, so the order
+            // of distinct log-likelihoods is unchanged and ties keep their draw order. Do not replace it
+            // with Sort.
+            tempPopulation = tempPopulation.OrderByDescending(x => x.Fitness).ToList();
 
             // Set the initial vectors to the best performing parameter sets
             for (int i = 0; i < NumberOfChains; i++)

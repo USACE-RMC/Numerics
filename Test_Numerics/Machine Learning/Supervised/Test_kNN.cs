@@ -168,5 +168,63 @@ namespace MachineLearning
             Assert.IsGreaterThanOrEqualTo(6, neighbors[3], $"Second query's 2nd nearest should be in cluster B, got index {neighbors[3]}");
         }
 
+        /// <summary>
+        /// Verify that exact distance ties are resolved by the lowest training-row index.
+        /// </summary>
+        /// <remarks>
+        /// Duplicated training rows produce bit-identical distances, and the distance sort is an
+        /// unstable introspective sort, so without an explicit index tie-break the chosen neighbors
+        /// are implementation-defined and can differ between target frameworks.
+        /// </remarks>
+        [TestMethod]
+        public void Test_kNN_TiedDistances_UseLowestIndex()
+        {
+            // 24 training rows, more than the insertion-sort threshold of the framework sort.
+            // Rows 0-19 are duplicates at (1, 0), all exactly distance 1 from the query (0, 0).
+            // Row 20 at (0.5, 0) is the unique nearest row, and rows 21-23 are far away.
+            int n = 24;
+            var x1 = new double[n];
+            var x2 = new double[n];
+            var y = new double[n];
+            for (int i = 0; i < 20; i++)
+            {
+                x1[i] = 1d;
+                x2[i] = 0d;
+                y[i] = 1d;
+            }
+            x1[20] = 0.5d;
+            x2[20] = 0d;
+            y[20] = 2d;
+            for (int i = 21; i < n; i++)
+            {
+                x1[i] = 10d;
+                x2[i] = 0d;
+                y[i] = 3d;
+            }
+
+            var X_training = new Matrix(new List<double[]> { x1, x2 });
+            var Y_training = new Vector(y);
+            var knn = new KNearestNeighbors(X_training, Y_training, 3);
+
+            // Confirm the tie is exact before relying on it.
+            var distances = new double[20];
+            for (int i = 0; i < 20; i++)
+                distances[i] = Tools.Distance(new double[] { 0d, 0d }, X_training.Row(i));
+            for (int i = 1; i < 20; i++)
+                Assert.AreEqual(distances[0], distances[i], 0d, "The duplicated rows must tie exactly.");
+
+            var query = new double[,] { { 0d, 0d } };
+            var neighbors = knn.GetNeighbors(query);
+            Assert.IsNotNull(neighbors);
+
+            // Row 20 is the unique nearest; the other two must be the lowest indices of the tied group.
+            CollectionAssert.AreEqual(new int[] { 20, 0, 1 }, neighbors);
+
+            // Repeated calls must return the same neighbors.
+            var repeated = knn.GetNeighbors(query);
+            Assert.IsNotNull(repeated);
+            CollectionAssert.AreEqual(neighbors, repeated);
+        }
+
     }
 }
