@@ -267,5 +267,165 @@ namespace Distributions.BivariateCopulas
                 }
             }
         }
+
+        /// <summary>
+        /// The length of the rank fixtures used by the method of moments tests.
+        /// </summary>
+        private const int RankFixtureLength = 101;
+
+        /// <summary>
+        /// The number of pairs in a rank fixture, which is the denominator of Kendall's tau without ties.
+        /// </summary>
+        private const double RankFixturePairs = RankFixtureLength * (RankFixtureLength - 1) / 2d;
+
+        /// <summary>
+        /// Returns a permutation of 0 to n - 1 carrying exactly the requested number of inversions.
+        /// </summary>
+        /// <param name="n">The length of the permutation.</param>
+        /// <param name="inversions">The number of inverted pairs, between 0 and n * (n - 1) / 2.</param>
+        /// <returns>The permutation, as a double array.</returns>
+        /// <remarks>
+        /// Paired against the ascending sequence 0 to n - 1, a permutation carrying d inversions has exactly d
+        /// discordant pairs and no ties, so Kendall's tau of the pair is exactly 1 - 2 d / (n (n - 1) / 2). This
+        /// gives a fixture whose tau is a chosen rational value, which is what lets the method of moments fit be
+        /// exercised at a prescribed dependence. The permutation is built from its Lehmer code, taking as many
+        /// inversions as the remaining positions allow at each step.
+        /// </remarks>
+        private static double[] PermutationWithInversions(int n, int inversions)
+        {
+            var available = new List<int>();
+            for (int i = 0; i < n; i++) available.Add(i);
+
+            var result = new double[n];
+            int remaining = inversions;
+            for (int i = 0; i < n; i++)
+            {
+                int take = Math.Min(remaining, n - 1 - i);
+                result[i] = available[take];
+                available.RemoveAt(take);
+                remaining -= take;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the ascending sequence 0 to n - 1.
+        /// </summary>
+        /// <param name="n">The length of the sequence.</param>
+        /// <returns>The ascending sequence, as a double array.</returns>
+        private static double[] AscendingRanks(int n)
+        {
+            var result = new double[n];
+            for (int i = 0; i < n; i++) result[i] = i;
+            return result;
+        }
+
+        /// <summary>
+        /// Test Kendall's tau as a function of theta against an external oracle.
+        /// </summary>
+        /// <remarks>
+        /// The reference values are from pyvinecopulib 0.7.6, the Python bindings of vinecopulib, which is the
+        /// C++ engine behind the R package rvinecopulib. They are an independent implementation of the Frank tau
+        /// relation and are not derived from the Debye evaluation used here. The negative rows are the ones that
+        /// pin the Debye reflection: statsmodels 0.14.6 omits it and returns 2.7E6 at theta = -30, while it
+        /// reproduces the positive rows below to about 3.5E-12.
+        /// </remarks>
+        [TestMethod]
+        public void Test_KendallsTauFromTheta()
+        {
+            Assert.AreEqual(-0.8739774847415348, FrankCopula.KendallsTauFromTheta(-30.0), 1E-12);
+            Assert.AreEqual(-0.6657773862719784, FrankCopula.KendallsTauFromTheta(-10.0), 1E-12);
+            Assert.AreEqual(-0.4567009581601168, FrankCopula.KendallsTauFromTheta(-5.0), 1E-12);
+            Assert.AreEqual(-0.11001853644899295, FrankCopula.KendallsTauFromTheta(-1.0), 1E-12);
+            Assert.AreEqual(0.11001853644899295, FrankCopula.KendallsTauFromTheta(1.0), 1E-12);
+            Assert.AreEqual(0.4567009581601168, FrankCopula.KendallsTauFromTheta(5.0), 1E-12);
+            Assert.AreEqual(0.6657773862719784, FrankCopula.KendallsTauFromTheta(10.0), 1E-12);
+            Assert.AreEqual(0.8739774847415348, FrankCopula.KendallsTauFromTheta(30.0), 1E-12);
+        }
+
+        /// <summary>
+        /// Estimate using the method of moments.
+        /// </summary>
+        [TestMethod]
+        public void Test_MOM_Fit()
+        {
+            var copula = new FrankCopula();
+            copula.SetThetaFromTau(data1, data2);
+            Assert.AreEqual(7.7385956, copula.Theta, 1E-4);
+        }
+
+        /// <summary>
+        /// Test that the method of moments fit recovers the theta implied by the sample tau, on both dependency branches.
+        /// </summary>
+        /// <remarks>
+        /// Each fixture has a Kendall's tau that is an exact rational, so the fitted theta must reproduce that
+        /// tau when it is pushed back through the tau relation. The tolerance reflects the root-finding
+        /// tolerance of Brent's method, not the accuracy of the tau relation.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SetThetaFromTau_RoundTrip()
+        {
+            var ranks = AscendingRanks(RankFixtureLength);
+            foreach (int inversions in new[] { 200, 1200, 2400, 3800, 4800 })
+            {
+                var permuted = PermutationWithInversions(RankFixtureLength, inversions);
+                double expected = 1d - 2d * inversions / RankFixturePairs;
+                Assert.AreEqual(expected, Correlation.KendallsTau(ranks, permuted), 1E-12, $"The fixture with {inversions} inversions must carry the expected tau.");
+
+                var copula = new FrankCopula();
+                copula.SetThetaFromTau(ranks, permuted);
+                Assert.AreEqual(Math.Sign(expected), Math.Sign(copula.Theta), "The fitted theta must take the sign of the sample tau.");
+                Assert.IsLessThanOrEqualTo(100d, Math.Abs(copula.Theta));
+                Assert.AreEqual(expected, FrankCopula.KendallsTauFromTheta(copula.Theta), 1E-7, $"The fit with {inversions} inversions did not recover the sample tau.");
+            }
+        }
+
+        /// <summary>
+        /// Test that a tau the fitting bracket cannot reach is rejected.
+        /// </summary>
+        [TestMethod]
+        public void Test_SetThetaFromTau_UnattainableTau()
+        {
+            var ranks = AscendingRanks(RankFixtureLength);
+            var copula = new FrankCopula();
+
+            // Perfect concordance and perfect discordance give tau = 1 and tau = -1, both outside the range the
+            // bracket theta in [-100, 100] reaches.
+            var concordant = PermutationWithInversions(RankFixtureLength, 0);
+            var positive = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, concordant));
+            StringAssert.Contains(positive.Message, "[-0.9607, 0.9607]");
+
+            var discordant = PermutationWithInversions(RankFixtureLength, (int)RankFixturePairs);
+            var negative = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, discordant));
+            StringAssert.Contains(negative.Message, "[-0.9607, 0.9607]");
+        }
+
+        /// <summary>
+        /// Test that an independent sample is fitted at the smallest dependency the bracket admits.
+        /// </summary>
+        /// <remarks>
+        /// The Frank independence limit is theta = 0, at which the generator and the distribution functions are
+        /// indeterminate, so the fit returns the bracket endpoint nearest independence instead. The resulting
+        /// copula must be indistinguishable from independence over the unit square.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SetThetaFromTau_Independence()
+        {
+            var ranks = AscendingRanks(RankFixtureLength);
+            var permuted = PermutationWithInversions(RankFixtureLength, (int)RankFixturePairs / 2);
+            Assert.AreEqual(0d, Correlation.KendallsTau(ranks, permuted), 0d, "Half of the pairs discordant gives a tau of exactly zero.");
+
+            var copula = new FrankCopula();
+            copula.SetThetaFromTau(ranks, permuted);
+            Assert.AreEqual(0.001d, copula.Theta, 0d);
+            Assert.AreEqual(0d, FrankCopula.KendallsTauFromTheta(copula.Theta), 1E-3);
+            foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+            {
+                foreach (double v in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    Assert.AreEqual(u * v, copula.CDF(u, v), 1E-4, $"The near-independent fit must reproduce the independence copula at ({u}, {v}).");
+                }
+            }
+        }
     }
 }
