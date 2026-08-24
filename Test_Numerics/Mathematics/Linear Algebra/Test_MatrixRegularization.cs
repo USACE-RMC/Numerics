@@ -104,7 +104,7 @@ namespace Mathematics.LinearAlgebra
             // The candidate the loop accepted really is accepted by the tightened test.
             var chol = new CholeskyDecomposition(regularized);
             Assert.IsTrue(chol.IsPositiveDefinite);
-            Assert.IsGreaterThan(6.661338147750960E-16d, chol.L[2, 2] * chol.L[2, 2] / regularized[2, 2]);
+            Assert.IsGreaterThan(chol.RelativeTolerance, chol.L[2, 2] * chol.L[2, 2] / regularized[2, 2]);
         }
 
         /// <summary>

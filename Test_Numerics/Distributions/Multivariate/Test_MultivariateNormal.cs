@@ -1044,33 +1044,57 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Documents what the Cholesky path does with the two singular reference covariances, which is the
-        /// behaviour issue #145 was filed about.
+        /// Verifies that the Cholesky path now rejects both singular reference covariances, and that the
+        /// singular value path returns the correct density for the one that used to slip through.
         /// </summary>
         /// <remarks>
-        /// Case 3, the rank-one covariance, fails cleanly: the Cholesky factorization reaches a
-        /// non-positive pivot and throws. Case 2, the rank-two covariance, does <b>not</b> throw — its final
-        /// pivot evaluates to about 4.4E-16 rather than exactly zero, so the factorization completes with a
-        /// pivot of order 1E-8 and the resulting log density is wrong by about 17 nats. This test
-        /// pins both behaviours as they stand today and shows the singular value path getting the right
-        /// answer where the Cholesky path does not. Neither Cholesky behaviour is changed here.
+        /// <para>
+        /// Case 3, the rank-one covariance, always failed cleanly: the Cholesky factorization reaches a
+        /// pivot of exactly zero and throws.
+        /// </para>
+        /// <para>
+        /// Case 2, the rank-two covariance, did <b>not</b> throw before this was fixed. Its final pivot
+        /// evaluates to 4.440892E-16 rather than exactly zero, so under the purely absolute
+        /// <c>pivot &lt;= 0</c> test the factorization completed with a factor entry of order 1E-8 and
+        /// reported the matrix positive-definite. The resulting log density at the origin was
+        /// +14.638629610696878 against the correct -2.4642585506570285 — wrong by 17.1 nats, a factor of
+        /// about 2.7E+7 on the density — with no exception, no warning and no flag. That silent wrong answer
+        /// is the failure mode issue #145 describes, and it is what the scale-relative pivot test in
+        /// <see cref="CholeskyDecomposition"/> now catches: the pivot ratio is 2.220446E-16 against a
+        /// tolerance of 6.661338E-16 at this dimension.
+        /// </para>
+        /// <para>
+        /// Rejecting the covariance is the right answer for the Cholesky path, which factorizes only
+        /// strictly positive-definite matrices; a caller who wants a density on a degenerate covariance
+        /// selects <see cref="DecompositionMethod.SingularValue"/>, which is asserted here to return the
+        /// oracle value.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void Test_Cholesky_BehaviourOnSingularCovariancesIsUnchanged()
+        public void Test_Cholesky_RejectsSingularCovariances()
         {
-            // Case 3: a clean failure.
-            var exception = AssertThrowsAny(() => new MultivariateNormal(new[] { 0d, 0d }, Case3Covariance));
-            Assert.IsGreaterThanOrEqualTo(0, exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
+            // Case 3: a clean failure, unchanged — the pivot is exactly zero.
+            var case3Exception = AssertThrowsAny(() => new MultivariateNormal(new[] { 0d, 0d }, Case3Covariance));
+            Assert.IsGreaterThanOrEqualTo(0, case3Exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
 
-            // Case 2: no failure, but an unusable density — the silent failure mode the issue describes.
-            var cholesky = new MultivariateNormal(new[] { 0d, 0d, 0d }, Case2Covariance);
-            double choleskyLogPdf = cholesky.LogPDF(new[] { 0d, 0d, 0d });
+            // Case 2: now rejected rather than silently factorized.
+            var case2Exception = AssertThrowsAny(() => new MultivariateNormal(new[] { 0d, 0d, 0d }, Case2Covariance));
+            Assert.IsGreaterThanOrEqualTo(0, case2Exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
+
+            // The non-throwing mutable path reports the same rejection without raising.
+            var mutable = new MultivariateNormal(new[] { 0d, 0d, 0d }, new[,] { { 1d, 0d, 0d }, { 0d, 1d, 0d }, { 0d, 0d, 1d } });
+            Assert.IsFalse(mutable.TrySetCovariance(Case2Covariance));
+            Assert.IsFalse(mutable.IsDensityValid);
+
+            // The singular value path is the supported way to get a density here, and it is correct.
             double oracle = -2.4642585506570285d;
-            Assert.IsGreaterThan(1d, Math.Abs(choleskyLogPdf - oracle),
-                "The Cholesky path is expected to be far from the correct density on a rank-deficient covariance.");
-
             var singular = new MultivariateNormal(new[] { 0d, 0d, 0d }, Case2Covariance, DecompositionMethod.SingularValue);
             Assert.AreEqual(oracle, singular.LogPDF(new[] { 0d, 0d, 0d }), OracleTolerance);
+
+            // The old behaviour is still reachable through the explicit zero tolerance, and it is still wrong.
+            var legacy = new CholeskyDecomposition(new Matrix(Case2Covariance), 0d);
+            Assert.IsTrue(legacy.IsPositiveDefinite);
+            Assert.AreEqual(-34.790890420621793d, legacy.LogDeterminant(), 1E-5d);
         }
 
         /// <summary>
