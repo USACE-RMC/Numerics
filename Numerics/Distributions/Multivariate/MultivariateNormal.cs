@@ -128,21 +128,33 @@ namespace Numerics.Distributions
         private double[]? _standardDeviation;
 
         /// <summary>
-        /// The multiple of the machine epsilon used when comparing a covariance matrix against its own
-        /// symmetric reconstruction and when testing whether a point lies on the support of a degenerate
-        /// distribution.
+        /// The multiple of <see cref="RelativeMachineEpsilon"/> below which an eigenvalue of the covariance
+        /// matrix, or a null-space residual, counts as zero.
         /// </summary>
         /// <remarks>
-        /// Both comparisons separate quantities that are zero up to accumulated roundoff from quantities
-        /// that are genuinely nonzero. The multiplier follows the convention used by
-        /// <c>scipy.stats.multivariate_normal</c>, which scales the double-precision epsilon by 1E6 before
-        /// deciding that an eigenvalue or a null-space residual is zero. It was chosen with several orders
-        /// of margin on both sides: the measured roundoff on the reference covariance matrices of
-        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/> is of order 1E-15 relative to the
-        /// matrix scale, while a genuinely indefinite matrix or a genuinely off-support point misses by an
-        /// amount of order one.
+        /// This is the <c>1E6</c> factor that <c>scipy.stats.multivariate_normal</c> applies through
+        /// <c>scipy.stats._multivariate._eigvalsh_to_eps</c>, verified against scipy 1.17.1. It is generous
+        /// on purpose, and it is what makes rank detection reliable: the numerically zero eigenvalue of a
+        /// rank-deficient covariance is of order 1E-16 relative to the matrix scale, but so is the roundoff
+        /// in the decomposition itself, so a threshold placed at the roundoff level has almost no margin.
+        /// Placing it six orders higher leaves roughly 3E6 of margin below and, on any covariance whose
+        /// nonzero eigenvalues are not themselves within a factor of 1E-10 of the largest, a comparable
+        /// margin above.
         /// </remarks>
         private const double ZeroToleranceFactor = 1E6;
+
+        /// <summary>
+        /// The relative spacing of double-precision numbers, 2⁻⁵² ≈ 2.220446049250313E-16.
+        /// </summary>
+        /// <remarks>
+        /// This is deliberately <b>not</b> <see cref="Tools.DoubleMachineEpsilon"/>, which is the unit
+        /// roundoff 2⁻⁵³ — exactly half of this value. The zero thresholds of this class are calibrated to
+        /// match <c>scipy.stats.multivariate_normal</c> value for value, and NumPy's
+        /// <c>np.finfo(float).eps</c>, which scipy multiplies by <see cref="ZeroToleranceFactor"/>, is the
+        /// relative spacing 2⁻⁵². Using the unit roundoff instead would halve every threshold below and
+        /// silently break that agreement.
+        /// </remarks>
+        private const double RelativeMachineEpsilon = 2.220446049250313E-16;
 
         // variables required for the multivariate CDF
         private Matrix _correlation = null!;
@@ -337,7 +349,12 @@ namespace Numerics.Distributions
         /// internally and is unaffected. Nor does it govern <see cref="Conditional"/> and
         /// <see cref="Marginal"/>, which factorize the observed sub-covariance with its own Cholesky
         /// decomposition and return distributions that use the default
-        /// <see cref="DecompositionMethod.Cholesky"/> selector.
+        /// <see cref="DecompositionMethod.Cholesky"/> selector. Those two helpers therefore <b>throw</b>
+        /// when the sub-covariance they need is singular, even on a distribution built with
+        /// <see cref="DecompositionMethod.SingularValue"/> whose own density evaluates perfectly well —
+        /// which is exactly what a caller with collinear gridded cells runs into. Take the marginal or
+        /// conditional mean and covariance and construct the sub-distribution explicitly with the
+        /// <see cref="DecompositionMethod.SingularValue"/> constructor to work around it.
         /// </para>
         /// <para>
         /// Under <see cref="DecompositionMethod.SingularValue"/> the distribution follows the degenerate
@@ -347,6 +364,30 @@ namespace Numerics.Distributions
         /// rather than the log determinant, and the pseudo-inverse rather than the inverse in the quadratic
         /// form. A point off that support has density exactly zero, so <see cref="LogPDF"/> returns negative
         /// infinity and <see cref="PDF"/> returns zero there.
+        /// </para>
+        /// <para>
+        /// <b>The zero threshold.</b> A single threshold
+        /// ε = <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/> · max|λ| decides
+        /// what counts as a zero eigenvalue, and it is applied consistently to acceptance, the rank, the
+        /// null space, the log pseudo-determinant and the pseudo-inverse. A covariance is rejected when its
+        /// smallest eigenvalue is below −ε, and every eigenvalue with |λ| ≤ ε — negative by roundoff or
+        /// exactly zero alike — is set to zero rather than kept. This is
+        /// <c>scipy.stats._multivariate._eigvalsh_to_eps</c> and <c>_PSD</c>, verified value for value
+        /// against scipy 1.17.1. One consequence is worth knowing: because ε is relative to the largest
+        /// eigenvalue, a covariance that mixes wildly different scales loses its smallest directions — for
+        /// Σ = diag(1E8, 1E-8) the threshold is 2.2E-2, so the second direction is treated as null. That is
+        /// scipy's behaviour as well, and it is the price of a scale-invariant threshold.
+        /// </para>
+        /// <para>
+        /// <b>Two deliberate departures from scipy.</b> First, a point is tested against the support with a
+        /// tolerance proportional to ‖x − μ‖, where scipy uses one proportional to the eigenvalue scale of
+        /// Σ. For a large-scale singular covariance scipy therefore admits points that are visibly off the
+        /// support — for Σ = 1E12 · [[1,1],[1,1]] scipy returns a finite density at (1, −1) — where this
+        /// class returns negative infinity. The answer here is the mathematically exact one and is kept.
+        /// Second, when Σ is identically zero the support is the single point μ; this class reports
+        /// <see cref="PDF"/> = 1 and <see cref="LogPDF"/> = 0 there, the counting-measure density that the
+        /// rank-0 case of the convention above implies, while scipy returns zero density even at μ. Every
+        /// point other than μ is off the support and scores zero in both.
         /// </para>
         /// <para>
         /// Added for <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
@@ -377,10 +418,12 @@ namespace Numerics.Distributions
         /// </remarks>
         public void SetParameters(double[] mean, double[,] covariance)
         {
-            // Validate parameters
-            ValidateParameters(mean, covariance, true);
+            // Validate parameters. Under the singular value path the validation already builds the
+            // decomposition it needs, so it is handed back and reused for the factorization rather than
+            // being recomputed: an O(n^3) factorization is the whole cost this selector trades away.
+            ValidateParameters(mean, covariance, true, out var singularValues);
 
-            _dimension = mean.Length;
+            _dimension = mean.Length;      
             _mean = mean;
             _covariance = new Matrix(covariance);
             if (_decomposition == DecompositionMethod.Cholesky)
@@ -393,7 +436,7 @@ namespace Numerics.Distributions
             }
             else
             {
-                FactorizeWithSingularValues();
+                FactorizeWithSingularValues(singularValues!);
             }
 
             // Set up parameters for MVN CDF
@@ -420,27 +463,35 @@ namespace Numerics.Distributions
         /// the degenerate density and the sampler need: the rank, the null space, the normalizing constant
         /// built on the log pseudo-determinant, and the sampling factor A = U·sqrt(W).
         /// </summary>
+        /// <param name="singularValues">The decomposition of the covariance matrix, already validated as
+        /// symmetric positive semi-definite by <see cref="ValidateParameters(double[], double[,], bool)"/>.</param>
         /// <remarks>
         /// <para>
-        /// The threshold below which a singular value counts as zero is captured once, immediately after the
-        /// decomposition, and is then passed explicitly to every query. <see cref="SingularValueDecomposition"/>
-        /// recomputes its <see cref="SingularValueDecomposition.Threshold"/> on each call that takes a
-        /// threshold argument, so passing the captured value keeps the rank, the null space, the
-        /// pseudo-determinant and the pseudo-inverse solve in agreement about which singular values are zero.
+        /// The threshold below which a singular value counts as zero comes from
+        /// <see cref="SingularValueThreshold"/> and is passed explicitly to every query — never left to the
+        /// default. This matters twice over. <see cref="SingularValueDecomposition"/> recomputes its
+        /// <see cref="SingularValueDecomposition.Threshold"/> on each call that takes a threshold argument,
+        /// including when the argument is negative, so passing the value explicitly is the only way to keep
+        /// the rank, the null space, the pseudo-determinant and the pseudo-inverse solve in agreement about
+        /// which singular values are zero. And the value itself is scipy's, not the decomposition's own
+        /// roundoff-based default, which is six orders smaller and leaves too little margin to detect rank
+        /// reliably.
         /// </para>
         /// <para>
-        /// Because Σ is symmetric positive semi-definite — enforced by <see cref="ValidateParameters"/> — the
+        /// Because Σ is symmetric positive semi-definite — enforced by <see cref="ValidateParameters(double[], double[,], bool)"/> — the
         /// left and right singular vectors coincide for every singular value above the threshold, so
         /// Σ = U·W·Uᵀ and A = U·sqrt(W) satisfies A·Aᵀ = Σ. This is the factor NumPy builds for
         /// <c>multivariate_normal(..., method='svd')</c>. Null directions get a zero column and therefore
-        /// carry no noise, which places every draw on the support of the distribution.
+        /// carry no noise, which places every draw on the support of the distribution. Note that a direction
+        /// whose eigenvalue was negative but within the threshold is zeroed here rather than kept, so it
+        /// contributes neither sampling noise nor a term to the log pseudo-determinant.
         /// </para>
         /// </remarks>
-        private void FactorizeWithSingularValues()
+        private void FactorizeWithSingularValues(SingularValueDecomposition singularValues)
         {
             _cholesky = null!;
-            _svd = new SingularValueDecomposition(_covariance);
-            _svdThreshold = _svd.Threshold;
+            _svd = singularValues;
+            _svdThreshold = SingularValueThreshold(_svd);
             _rank = _svd.Rank(_svdThreshold);
             _nullspace = _svd.Nullspace(_svdThreshold);
             double lndet = _svd.LogPseudoDeterminant(_svdThreshold);
@@ -458,6 +509,27 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// The threshold below which an eigenvalue of the covariance matrix counts as zero.
+        /// </summary>
+        /// <param name="singularValues">The decomposition of the covariance matrix.</param>
+        /// <returns>
+        /// <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/> · max|λ|, where max|λ|
+        /// is the largest singular value. Zero when the covariance matrix is identically zero.
+        /// </returns>
+        /// <remarks>
+        /// This is <c>scipy.stats._multivariate._eigvalsh_to_eps</c>. The singular values of a symmetric
+        /// matrix are the absolute values of its eigenvalues and
+        /// <see cref="SingularValueDecomposition"/> returns them in descending order, so the first one is
+        /// max|λ|. Every consumer of the decomposition in this class — acceptance, rank, null space, log
+        /// pseudo-determinant and pseudo-inverse — is given this same value, so they cannot disagree about
+        /// which directions are null.
+        /// </remarks>
+        private static double SingularValueThreshold(SingularValueDecomposition singularValues)
+        {
+            return ZeroToleranceFactor * RelativeMachineEpsilon * singularValues.W[0];
+        }
+
+        /// <summary>
         /// Determines whether a point lies on the affine support μ + range(Σ) of the distribution.
         /// </summary>
         /// <param name="x">A point in the distribution space.</param>
@@ -467,14 +539,25 @@ namespace Numerics.Distributions
         /// support is the whole space.
         /// </returns>
         /// <remarks>
+        /// <para>
         /// The centred point is projected onto the orthonormal null-space basis returned by
         /// <see cref="SingularValueDecomposition.Nullspace"/>. The projection is compared against
-        /// <see cref="ZeroToleranceFactor"/> times the machine epsilon, scaled by the magnitude of the
-        /// centred point so that the test stays meaningful for points far from the mean, where the roundoff
-        /// in the projection grows in proportion. On the reference cases of
+        /// <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/>, scaled by the magnitude
+        /// of the centred point so that the test stays meaningful for points far from the mean, where the
+        /// roundoff in the projection grows in proportion. On the reference cases of
         /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/> an on-support point projects to at
         /// most 6E-16 while an off-support point projects to more than 0.7, so the test has several orders
         /// of margin on both sides.
+        /// </para>
+        /// <para>
+        /// The scaling is by ‖x − μ‖, which is <b>not</b> what
+        /// <c>scipy.stats.multivariate_normal</c> does: scipy scales its support tolerance by the
+        /// eigenvalue magnitude of Σ instead. The two agree whenever Σ is of order one, and diverge for a
+        /// large-scale singular Σ, where scipy's tolerance becomes very loose — for Σ = 1E12 · [[1,1],[1,1]]
+        /// scipy's tolerance is about 4.4E+5, so it returns a finite density at (1, −1), a point plainly off
+        /// the support. This class returns negative infinity there, which is the exact answer, and that is
+        /// deliberate.
+        /// </para>
         /// </remarks>
         private bool IsOnSupport(double[] x)
         {
@@ -487,7 +570,7 @@ namespace Numerics.Distributions
                 z[i] = x[i] - _mean[i];
                 norm += z[i] * z[i];
             }
-            double tolerance = ZeroToleranceFactor * Tools.DoubleMachineEpsilon * Math.Max(1d, Math.Sqrt(norm));
+            double tolerance = ZeroToleranceFactor * RelativeMachineEpsilon * Math.Max(1d, Math.Sqrt(norm));
             for (int j = 0; j < _nullspace.NumberOfColumns; j++)
             {
                 double projection = 0d;
@@ -529,8 +612,33 @@ namespace Numerics.Distributions
         /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
         /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
+        /// <returns>The reason the parameters are invalid, or null when they are valid.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the parameters are invalid and
+        /// <paramref name="throwException"/> is true.</exception>
+        /// <remarks>
+        /// The covariance is checked against the requirement of the decomposition method chosen at
+        /// construction: strictly positive-definite under <see cref="DecompositionMethod.Cholesky"/>,
+        /// symmetric positive semi-definite under <see cref="DecompositionMethod.SingularValue"/>. See
+        /// <see cref="Decomposition"/> for the threshold that separates the two.
+        /// </remarks>
         public ArgumentOutOfRangeException? ValidateParameters(double[] mean, double[,] covariance, bool throwException)
         {
+            return ValidateParameters(mean, covariance, throwException, out _);
+        }
+
+        /// <summary>
+        /// Validate the parameters, handing back the decomposition built along the way so that
+        /// <see cref="SetParameters"/> does not have to recompute it.
+        /// </summary>
+        /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
+        /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
+        /// <param name="throwException">Determines whether to throw an exception or not.</param>
+        /// <param name="singularValues">On return, the decomposition of the covariance matrix under
+        /// <see cref="DecompositionMethod.SingularValue"/> when the parameters are valid; null otherwise.</param>
+        /// <returns>The reason the parameters are invalid, or null when they are valid.</returns>
+        private ArgumentOutOfRangeException? ValidateParameters(double[] mean, double[,] covariance, bool throwException, out SingularValueDecomposition? singularValues)
+        {
+            singularValues = null;
             if (mean == null)
             {
                 var ex = new ArgumentOutOfRangeException(nameof(mean), "Mean vector must not be null.");
@@ -581,10 +689,15 @@ namespace Numerics.Distributions
                     if (throwException) throw ex; else return ex;
                 }
             }
-            else if (!IsSymmetricPositiveSemiDefinite(m))
+            else
             {
-                var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not symmetric positive-semi-definite.");
-                if (throwException) throw ex; else return ex;
+                var svd = new SingularValueDecomposition(m);
+                if (!IsSymmetricPositiveSemiDefinite(svd, m))
+                {
+                    var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not symmetric positive-semi-definite.");
+                    if (throwException) throw ex; else return ex;
+                }
+                singularValues = svd;
             }
             return null;
         }
@@ -593,47 +706,70 @@ namespace Numerics.Distributions
         /// Determines whether a matrix is symmetric and positive semi-definite, the requirement of the
         /// singular value decomposition path.
         /// </summary>
+        /// <param name="singularValues">The decomposition of the candidate covariance matrix.</param>
         /// <param name="covariance">The candidate covariance matrix.</param>
-        /// <returns>True when the matrix is symmetric with no negative eigenvalue.</returns>
+        /// <returns>True when the matrix is symmetric with no eigenvalue below −ε.</returns>
         /// <remarks>
         /// <para>
-        /// Singular values are unsigned, so they cannot by themselves distinguish a negative eigenvalue from
-        /// a positive one. The test instead compares the matrix against its own symmetric reconstruction
-        /// U·W·Uᵀ. For a symmetric matrix the singular value decomposition returns Wⱼ = |λⱼ| with left and
-        /// right singular vectors that agree up to the sign of λⱼ, so the reconstruction reproduces the
-        /// matrix exactly when every eigenvalue is non-negative and misses by about 2·|λ| for each negative
-        /// eigenvalue. An asymmetric matrix likewise fails to reconstruct. The test therefore checks exactly
-        /// the property the sampling factor A = U·sqrt(W) depends on, and unlike a sign test on the singular
-        /// vectors it stays correct when eigenvalues of equal magnitude and opposite sign make the singular
-        /// subspace ambiguous.
+        /// Singular values are unsigned — Wⱼ = |λⱼ| — so they cannot by themselves tell a negative eigenvalue
+        /// from a positive one. The signed eigenvalues are recovered as the Rayleigh quotients
+        /// λⱼ = uⱼᵀ·Σ·uⱼ, which is exact whenever the columns of U are eigenvectors of Σ. The matrix is
+        /// rejected when min(λ) &lt; −ε, with ε from <see cref="SingularValueThreshold"/> — the same threshold
+        /// that later decides the rank, the null space, the pseudo-determinant and the pseudo-inverse.
+        /// Sharing it is what makes the outcome coherent: an eigenvalue this test tolerates as
+        /// negative-by-roundoff is one the factorization then <b>zeroes</b>, so it can contribute neither
+        /// sampling noise nor a log|λ| term to the pseudo-determinant. This is
+        /// <c>scipy.stats._multivariate._PSD</c>, verified against scipy 1.17.1.
         /// </para>
         /// <para>
-        /// The comparison uses <see cref="ZeroToleranceFactor"/> times the machine epsilon, scaled by the
-        /// magnitude of the largest entry so that the test is invariant to the units of the covariance. This
-        /// tolerates eigenvalues that are negative only by roundoff, matching the convention of
-        /// <c>scipy.stats.multivariate_normal</c>.
+        /// The Rayleigh quotients alone are not sufficient, because they are only the eigenvalues when U is
+        /// an eigenbasis. When Σ is asymmetric, or when eigenvalues of equal magnitude and opposite sign make
+        /// the singular subspace ambiguous — Σ = [[0, 2], [2, 0]] has eigenvalues +2 and −2, and every
+        /// quotient comes out at zero — U is not an eigenbasis and the quotients say nothing useful. The
+        /// second test closes that gap by requiring Σ to equal its own reconstruction Σⱼ λⱼ uⱼ uⱼᵀ, which is
+        /// precisely the property the sampling factor A = U·sqrt(W) relies on. For [[0, 2], [2, 0]] the
+        /// reconstruction misses by 2.0 and the matrix is correctly rejected.
+        /// </para>
+        /// <para>
+        /// Both comparisons use ε, which is proportional to the largest eigenvalue and therefore invariant
+        /// to the units of the covariance. Measured margins: the reconstruction residual of a genuine
+        /// symmetric covariance is about 4E-15 against an ε of 1E-9 on the reference cases, and a genuinely
+        /// indefinite or asymmetric matrix misses by an amount of order one.
         /// </para>
         /// </remarks>
-        private static bool IsSymmetricPositiveSemiDefinite(Matrix covariance)
+        private static bool IsSymmetricPositiveSemiDefinite(SingularValueDecomposition singularValues, Matrix covariance)
         {
             int n = covariance.NumberOfRows;
-            double scale = 0d;
-            for (int i = 0; i < n; i++)
+            double threshold = SingularValueThreshold(singularValues);
+
+            // Signed eigenvalues by Rayleigh quotient. A single negative eigenvalue below the threshold
+            // means the matrix is genuinely indefinite, not merely singular.
+            var eigenvalues = new double[n];
+            for (int j = 0; j < n; j++)
             {
-                for (int j = 0; j < n; j++)
-                    scale = Math.Max(scale, Math.Abs(covariance[i, j]));
+                double quotient = 0d;
+                for (int i = 0; i < n; i++)
+                {
+                    double row = 0d;
+                    for (int k = 0; k < n; k++)
+                        row += covariance[i, k] * singularValues.U[k, j];
+                    quotient += singularValues.U[i, j] * row;
+                }
+                eigenvalues[j] = quotient;
+                if (!(quotient >= -threshold)) return false;
             }
-            double tolerance = ZeroToleranceFactor * Tools.DoubleMachineEpsilon * Math.Max(1d, scale);
-            var svd = new SingularValueDecomposition(covariance);
+
+            // The quotients are the eigenvalues only if U diagonalizes the matrix, so require the
+            // reconstruction to hold. This is also what rejects an asymmetric covariance.
             for (int i = 0; i < n; i++)
             {
                 for (int j = i; j < n; j++)
                 {
                     double reconstructed = 0d;
                     for (int k = 0; k < n; k++)
-                        reconstructed += svd.U[i, k] * svd.W[k] * svd.U[j, k];
-                    if (!(Math.Abs(reconstructed - covariance[i, j]) <= tolerance)) return false;
-                    if (!(Math.Abs(reconstructed - covariance[j, i]) <= tolerance)) return false;
+                        reconstructed += eigenvalues[k] * singularValues.U[i, k] * singularValues.U[j, k];
+                    if (!(Math.Abs(reconstructed - covariance[i, j]) <= threshold)) return false;
+                    if (!(Math.Abs(reconstructed - covariance[j, i]) <= threshold)) return false;
                 }
             }
             return true;
@@ -871,7 +1007,7 @@ namespace Numerics.Distributions
         {
             if (x.Length != Dimension)
                 throw new ArgumentOutOfRangeException(nameof(x), "The vector must be the same dimension as the distribution.");
-            //
+            // 
             var z = new double[_mean.Length];
             for (int i = 0; i < x.Length; i++)
                 z[i] = x[i] - _mean[i];

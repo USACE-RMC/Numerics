@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Mathematics.LinearAlgebra;
@@ -954,7 +955,15 @@ namespace Distributions.Multivariate
         /// <remarks>
         /// The expected values were captured from the library immediately before the decomposition selector
         /// of issue #145 was added, and are asserted exactly — not within a tolerance — so the Cholesky path
-        /// is held bit-identical.
+        /// is held bit-identical. Every entry point that was rewired to the shared sampling factor is
+        /// covered: <see cref="MultivariateNormal.GenerateRandomValues"/>,
+        /// <see cref="MultivariateNormal.LatinHypercubeRandomValues"/>,
+        /// <see cref="MultivariateNormal.StratifiedRandomValues"/> and
+        /// <see cref="MultivariateNormal.InverseCDF"/>; so are the three that gained a branch on the
+        /// selector, <see cref="MultivariateNormal.PDF"/>, <see cref="MultivariateNormal.LogPDF"/> and
+        /// <see cref="MultivariateNormal.Mahalanobis"/>; and so are
+        /// <see cref="MultivariateNormal.CDF"/> and <see cref="MultivariateNormal.Interval"/>, which were
+        /// not rewired but share the factorization.
         /// </remarks>
         [TestMethod]
         public void Test_Cholesky_SeededOutputIsUnchanged()
@@ -994,10 +1003,45 @@ namespace Distributions.Multivariate
             Assert.AreEqual(1.3592242172276996d, inverse[1], 0d);
             Assert.AreEqual(4.460838864683783d, inverse[2], 0d);
 
+            var bins = new List<StratificationBin>
+            {
+                new StratificationBin(0.00d, 0.25d),
+                new StratificationBin(0.25d, 0.50d),
+                new StratificationBin(0.50d, 0.75d),
+                new StratificationBin(0.75d, 1.00d)
+            };
+            var stratified = cholesky.StratifiedRandomValues(bins, 5150);
+            var expectedStratified = new[,]
+            {
+                { -1.3006987607520157d, -0.8144318863167115d, 4.461886627255922d },
+                { 0.3627212720712497d, 4.646543433116568d, 0.8644127494580243d },
+                { 1.6372787279287504d, 1.5022701945239427d, 0.7967225481719957d },
+                { 3.3006987607520157d, 2.4317362224467263d, 3.204286114090976d }
+            };
+            for (int i = 0; i < 4; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                    Assert.AreEqual(expectedStratified[i, j], stratified[i, j], 0d);
+            }
+
             Assert.AreEqual(-4.2849940472992305d, cholesky.LogPDF(new[] { 1d, 2d, 3d }), 0d);
             Assert.AreEqual(-6.9894058120051135d, cholesky.LogPDF(new[] { 0d, 0d, 0d }), 0d);
             Assert.AreEqual(-5.108155812005113d, cholesky.LogPDF(new[] { 2.5d, 1d, 4d }), 0d);
             Assert.AreEqual(-7.226170517887466d, cholesky.LogPDF(new[] { -1d, 5d, 2d }), 0d);
+
+            // PDF carries its own branch on the decomposition selector, so it is pinned separately
+            // rather than inferred from LogPDF.
+            Assert.AreEqual(0.013773703511785982d, cholesky.PDF(new[] { 1d, 2d, 3d }), 0d);
+            Assert.AreEqual(0.0009215939690854924d, cholesky.PDF(new[] { 0d, 0d, 0d }), 0d);
+            Assert.AreEqual(0.006047224866023802d, cholesky.PDF(new[] { 2.5d, 1d, 4d }), 0d);
+            Assert.AreEqual(0.000727300722148393d, cholesky.PDF(new[] { -1d, 5d, 2d }), 0d);
+            Assert.AreEqual(1.6463235294117646d, cholesky.Mahalanobis(new[] { 2.5d, 1d, 4d }), 0d);
+
+            // The CDF advances the lattice generator, so this is pinned on an instance that has not
+            // evaluated it yet.
+            var forCdf = new MultivariateNormal(Case1Mean, Case1Covariance);
+            Assert.AreEqual(0.42500215172393263d, forCdf.CDF(new[] { 2d, 3d, 4d }), 0d);
+            Assert.AreEqual(0.370099135561744d, forCdf.Interval(new[] { 0d, 0d, 0d }, new[] { 3d, 4d, 5d }), 0d);
         }
 
         /// <summary>
@@ -1140,9 +1184,14 @@ namespace Distributions.Multivariate
             var cholesky = new MultivariateNormal(Case1Mean, Case1Covariance);
             var singular = new MultivariateNormal(Case1Mean, Case1Covariance, DecompositionMethod.SingularValue);
 
-            // MVNDST is a randomized lattice rule that advances its generator, so compare first
-            // evaluations on freshly constructed instances.
-            Assert.AreEqual(cholesky.CDF(new[] { 2d, 3d, 4d }), singular.CDF(new[] { 2d, 3d, 4d }), 0d);
+            // MVNDST is a randomized lattice rule that advances its generator, so this must be the first
+            // evaluation on each freshly constructed instance, and it is pinned rather than compared
+            // between the two: a comparison would also pass if both instances had drifted together, and
+            // would depend on argument evaluation order. A second call on the same instance returns
+            // 0.4250624631430677, which is how far the lattice shift moves the answer.
+            const double expectedCdf = 0.42500215172393263d;
+            Assert.AreEqual(expectedCdf, cholesky.CDF(new[] { 2d, 3d, 4d }), 0d);
+            Assert.AreEqual(expectedCdf, singular.CDF(new[] { 2d, 3d, 4d }), 0d);
 
             // The conditional and marginal helpers return distributions on the default selector.
             var conditional = singular.Conditional(new[] { 2 }, new[] { 3d });
@@ -1155,6 +1204,175 @@ namespace Distributions.Multivariate
             Assert.AreEqual(choleskyConditional.LogPDF(new[] { 1d, 2d }), conditional.LogPDF(new[] { 1d, 2d }), 0d);
             var choleskyMarginal = cholesky.Marginal(0, 1);
             Assert.AreEqual(choleskyMarginal.LogPDF(new[] { 1d, 2d }), marginal.LogPDF(new[] { 1d, 2d }), 0d);
+        }
+
+
+        /// <summary>
+        /// A covariance with a negative variance small enough to be roundoff must be accepted and treated
+        /// as a degenerate normal with that direction removed, not kept as a positive variance.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Σ = [[4, 0], [0, −1E-10]] is the case that forced this threshold to be reworked. The class
+        /// originally carried two different notions of "numerically zero" about 6.7 orders of magnitude
+        /// apart: an acceptance tolerance of roughly 5.6E-11·max|Σᵢⱼ| and a rank threshold of roughly
+        /// 1.5E-16·λmax. Everything in that band was mishandled, because a tolerated eigenvalue was
+        /// <b>kept</b> rather than zeroed — the direction acquired sqrt(|λ|) of sampling noise and
+        /// contributed log|λ| to the log pseudo-determinant. This matrix was accepted, reported
+        /// <see cref="MultivariateNormal.IsPositiveDefinite"/> true, and returned a log density of about
+        /// +8.98 at the origin: a negative variance silently turned into a positive one, which is the
+        /// failure mode issue #145 exists to remove.
+        /// </para>
+        /// <para>
+        /// A single threshold ε = 1E6·2⁻⁵²·max|λ| = 8.881784197001252E-10 now governs acceptance, rank,
+        /// null space, pseudo-determinant and pseudo-inverse alike. The eigenvalue −1E-10 lies inside it,
+        /// so the matrix is accepted and that direction is zeroed, giving a rank-1 normal on the x-axis with
+        /// log pseudo-determinant log(4) = 1.3862943611198906 and
+        /// logpdf(0,0) = −0.5·(log(2π) + log(4)) = −1.612085713764618. Oracle:
+        /// <c>scipy.stats.multivariate_normal(mean, cov, allow_singular=True)</c>, scipy 1.17.1, which
+        /// returns exactly that.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_SVD_RoundoffNegativeEigenvalueIsZeroedNotKept()
+        {
+            var mean = new[] { 0d, 0d };
+            var covariance = new[,] { { 4d, 0d }, { 0d, -1E-10d } };
+            var singular = new MultivariateNormal(mean, covariance, DecompositionMethod.SingularValue);
+
+            // Rank 1, not 2: the negative direction is zeroed, so the covariance is not positive-definite.
+            Assert.IsFalse(singular.IsPositiveDefinite);
+
+            Assert.AreEqual(-1.612085713764618d, singular.LogPDF(new[] { 0d, 0d }), OracleTolerance);
+            Assert.AreEqual(-1.737085713764618d, singular.LogPDF(new[] { 1d, 0d }), OracleTolerance);
+            Assert.AreEqual(Math.Exp(-1.612085713764618d), singular.PDF(new[] { 0d, 0d }), 1E-15d);
+
+            // The support is the x-axis, so any point off it has zero density. Before the fix this
+            // returned a finite value, because the zeroed direction was still being sampled and inverted.
+            Assert.AreEqual(double.NegativeInfinity, singular.LogPDF(new[] { 0d, 1d }));
+            Assert.AreEqual(0d, singular.PDF(new[] { 0d, 1d }), 0d);
+
+            // The zeroed direction carries no sampling noise at all: every draw lands on the x-axis.
+            var sample = singular.GenerateRandomValues(100, 999);
+            for (int i = 0; i < 100; i++)
+                Assert.AreEqual(0d, sample[i, 1], 0d);
+
+            // The default Cholesky selector still rejects this matrix outright. The two paths diverge here
+            // by design — Cholesky factorizes only strictly positive-definite matrices — and that
+            // divergence is asserted rather than left to chance.
+            AssertThrowsAny(() => new MultivariateNormal(mean, covariance));
+        }
+
+        /// <summary>
+        /// A genuinely indefinite covariance must still be rejected by the singular value path, and the
+        /// accept/reject boundary must sit exactly at the scipy threshold.
+        /// </summary>
+        /// <remarks>
+        /// Tolerating eigenvalues that are negative only by roundoff must not become tolerance for real
+        /// negative variance. With max|λ| = 4 the threshold is ε = 1E6·2⁻⁵²·4 = 8.881784197001252E-10, and
+        /// the sweep below pins the cut to that value: −8.8E-10 is inside and accepted, −8.9E-10 is outside
+        /// and rejected. <c>scipy.stats.multivariate_normal</c> raises
+        /// <c>"The input matrix must be symmetric positive semidefinite"</c> for [[4,0],[0,−1]] under the
+        /// same rule.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SVD_GenuinelyIndefiniteCovarianceIsStillRejected()
+        {
+            var mean = new[] { 0d, 0d };
+
+            // A full-sized negative eigenvalue, far outside the threshold.
+            AssertThrowsOutOfRange(() => new MultivariateNormal(mean, new[,] { { 4d, 0d }, { 0d, -1d } }, DecompositionMethod.SingularValue));
+
+            // Just inside the threshold: accepted, and the direction is zeroed.
+            var accepted = new MultivariateNormal(mean, new[,] { { 4d, 0d }, { 0d, -8.8E-10d } }, DecompositionMethod.SingularValue);
+            Assert.IsFalse(accepted.IsPositiveDefinite);
+            Assert.AreEqual(-1.612085713764618d, accepted.LogPDF(new[] { 0d, 0d }), OracleTolerance);
+
+            // Just outside it: rejected.
+            AssertThrowsOutOfRange(() => new MultivariateNormal(mean, new[,] { { 4d, 0d }, { 0d, -8.9E-10d } }, DecompositionMethod.SingularValue));
+
+            // The non-throwing path agrees on both sides of the boundary.
+            var mutable = new MultivariateNormal(mean, new[,] { { 1d, 0d }, { 0d, 1d } }, DecompositionMethod.SingularValue);
+            Assert.IsTrue(mutable.TrySetCovariance(new[,] { { 4d, 0d }, { 0d, -8.8E-10d } }));
+            Assert.IsFalse(mutable.TrySetCovariance(new[,] { { 4d, 0d }, { 0d, -8.9E-10d } }));
+            Assert.IsFalse(mutable.IsDensityValid);
+        }
+
+        /// <summary>
+        /// Guards the margin by which rank detection separates a numerically zero singular value from a
+        /// genuine one, on the headline case of the feature.
+        /// </summary>
+        /// <remarks>
+        /// Case 2 is rank-deficient by exactly one, and its null singular value comes out at about
+        /// 3.23E-16 rather than exactly zero. Against the roundoff-based default threshold of the
+        /// decomposition, 6.107E-16, that is a margin of only 1.9x — thin enough that a slightly different
+        /// matrix, or a slightly less accurate decomposition, misdetects the rank, at which point
+        /// <see cref="SingularValueDecomposition.Nullspace"/> comes back empty and off-support detection is
+        /// silently disabled. The scipy threshold of 1E6·2⁻⁵²·λmax ≈ 9.233E-10 turns that 1.9x into about
+        /// 2.9E6, while still sitting about 9E8 <i>below</i> the smallest genuine singular value. This test
+        /// pins both ends of that window so a future tightening cannot quietly re-break detection.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SVD_RankDetectionMarginIsLarge()
+        {
+            var svd = new SingularValueDecomposition(new Matrix(Case2Covariance));
+            double threshold = 1E6 * 2.220446049250313E-16 * svd.W[0];
+
+            Assert.AreEqual(9.233308329420933E-10d, threshold, 1E-20d);
+
+            // The numerically zero singular value is far below the threshold.
+            Assert.IsLessThan(1E-14d, svd.W[2]);
+            Assert.IsGreaterThan(1E5d, threshold / svd.W[2]);
+
+            // The smallest genuine singular value is far above it.
+            Assert.IsGreaterThan(1E7d, svd.W[1] / threshold);
+
+            // And the rank that follows is the one the density depends on.
+            Assert.AreEqual(2, svd.Rank(threshold));
+            Assert.AreEqual(1, svd.Nullity(threshold));
+        }
+
+        /// <summary>
+        /// Pins the rank-0 convention: an identically zero covariance is a point mass at the mean.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// With Σ = 0 the support is the single point μ and the rank is zero, so the normalizing constant,
+        /// the log pseudo-determinant and the quadratic form are all zero and the log density at μ is zero,
+        /// i.e. a density of 1. That is the counting-measure density the rank-r convention of
+        /// <see cref="MultivariateNormal.Decomposition"/> implies when r = 0, it needs no special case, and
+        /// it is consistent with the sampler, which returns μ exactly every time. Every other point is off
+        /// the support and scores zero.
+        /// </para>
+        /// <para>
+        /// This is a deliberate departure from <c>scipy.stats.multivariate_normal</c>, which returns
+        /// negative infinity even at μ. Verified against scipy 1.17.1: the rank and log pseudo-determinant
+        /// that scipy itself reports for this matrix are 0 and 0.0, which imply a log density of zero, but
+        /// its support test compares the residual with a strict <c>&lt;</c> against a threshold that is
+        /// itself exactly zero here, so no point at all passes — including the mean.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_SVD_ZeroCovarianceIsAPointMassAtTheMean()
+        {
+            var mean = new[] { 3d, -1d };
+            var singular = new MultivariateNormal(mean, new[,] { { 0d, 0d }, { 0d, 0d } }, DecompositionMethod.SingularValue);
+
+            Assert.IsFalse(singular.IsPositiveDefinite);
+            Assert.AreEqual(0d, singular.LogPDF(mean), 0d);
+            Assert.AreEqual(1d, singular.PDF(mean), 0d);
+
+            Assert.AreEqual(double.NegativeInfinity, singular.LogPDF(new[] { 3d, 0d }));
+            Assert.AreEqual(0d, singular.PDF(new[] { 3d, 0d }), 0d);
+            Assert.AreEqual(double.NegativeInfinity, singular.LogPDF(new[] { 0d, -1d }));
+
+            // Every draw is the mean exactly, which is what makes the density at the mean the right answer.
+            var sample = singular.GenerateRandomValues(10, 271828);
+            for (int i = 0; i < 10; i++)
+            {
+                Assert.AreEqual(mean[0], sample[i, 0], 0d);
+                Assert.AreEqual(mean[1], sample[i, 1], 0d);
+            }
         }
 
         #endregion
