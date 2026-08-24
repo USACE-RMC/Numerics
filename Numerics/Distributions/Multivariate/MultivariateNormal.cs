@@ -60,15 +60,89 @@ namespace Numerics.Distributions
             SetParameters(mean, covariance);
         }
 
+        /// <summary>
+        /// Constructs a multivariate Gaussian distribution with zero mean vector and identity covariance
+        /// matrix, factorized with the given decomposition method.
+        /// </summary>
+        /// <param name="dimension">The number of dimensions in the distribution.</param>
+        /// <param name="decomposition">The decomposition method used to factorize the covariance matrix.</param>
+        /// <remarks>
+        /// See <see cref="Decomposition"/> for what the selector governs. Added for
+        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// </remarks>
+        public MultivariateNormal(int dimension, DecompositionMethod decomposition)
+        {
+            _decomposition = decomposition;
+            var mean = new double[dimension];
+            SetParameters(mean, Matrix.Identity(dimension).ToArray());
+        }
+
+        /// <summary>
+        /// Constructs a new Multivariate Normal distribution with an identity covariance matrix,
+        /// factorized with the given decomposition method.
+        /// </summary>
+        /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
+        /// <param name="decomposition">The decomposition method used to factorize the covariance matrix.</param>
+        /// <remarks>
+        /// See <see cref="Decomposition"/> for what the selector governs. Added for
+        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// </remarks>
+        public MultivariateNormal(double[] mean, DecompositionMethod decomposition)
+        {
+            _decomposition = decomposition;
+            SetParameters(mean, Matrix.Identity(mean.Length).ToArray());
+        }
+
+        /// <summary>
+        /// Constructs a new Multivariate Normal distribution, factorized with the given decomposition method.
+        /// </summary>
+        /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
+        /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
+        /// <param name="decomposition">The decomposition method used to factorize the covariance matrix.</param>
+        /// <remarks>
+        /// <see cref="DecompositionMethod.SingularValue"/> accepts a singular (collinear) covariance matrix
+        /// that <see cref="DecompositionMethod.Cholesky"/> rejects. See <see cref="Decomposition"/> for what
+        /// the selector governs and for the degenerate-density convention. Added for
+        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// </remarks>
+        public MultivariateNormal(double[] mean, double[,] covariance, DecompositionMethod decomposition)
+        {
+            _decomposition = decomposition;
+            SetParameters(mean, covariance);
+        }
+
         private bool _parametersValid = true;
         private int _dimension = 0;
         private double[] _mean = null!;
         private Matrix _covariance = null!;
 
+        private DecompositionMethod _decomposition = DecompositionMethod.Cholesky;
         private CholeskyDecomposition _cholesky = null!;
+        private SingularValueDecomposition _svd = null!;
+        private Matrix _factor = null!;
+        private Matrix _nullspace = null!;
+        private double _svdThreshold;
+        private int _rank;
         private double _lnconstant;
         private double[]? _variance;
         private double[]? _standardDeviation;
+
+        /// <summary>
+        /// The multiple of the machine epsilon used when comparing a covariance matrix against its own
+        /// symmetric reconstruction and when testing whether a point lies on the support of a degenerate
+        /// distribution.
+        /// </summary>
+        /// <remarks>
+        /// Both comparisons separate quantities that are zero up to accumulated roundoff from quantities
+        /// that are genuinely nonzero. The multiplier follows the convention used by
+        /// <c>scipy.stats.multivariate_normal</c>, which scales the double-precision epsilon by 1E6 before
+        /// deciding that an eigenvalue or a null-space residual is zero. It was chosen with several orders
+        /// of margin on both sides: the measured roundoff on the reference covariance matrices of
+        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/> is of order 1E-15 relative to the
+        /// matrix scale, while a genuinely indefinite matrix or a genuinely off-support point misses by an
+        /// amount of order one.
+        /// </remarks>
+        private const double ZeroToleranceFactor = 1E6;
 
         // variables required for the multivariate CDF
         private Matrix _correlation = null!;
@@ -242,26 +316,85 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// The decomposition method used to factorize the covariance matrix. Default =
+        /// <see cref="DecompositionMethod.Cholesky"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The selector is fixed at construction and is honoured by every re-factorization performed by
+        /// <see cref="SetParameters"/>, <see cref="TrySetParameters"/> and <see cref="TrySetCovariance"/>.
+        /// It is deliberately get-only: a setter would have to re-factorize, and between the assignment and
+        /// the next call to <see cref="SetParameters"/> every cached quantity — the normalizing constant and
+        /// the sampling factor — would be stale.
+        /// </para>
+        /// <para>
+        /// The selector governs the density (<see cref="PDF"/>, <see cref="LogPDF"/>,
+        /// <see cref="Mahalanobis"/>), the log-determinant carried in the normalizing constant, and the
+        /// factor A with A·Aᵀ = Σ used by <see cref="InverseCDF"/>,
+        /// <see cref="GenerateRandomValues"/>, <see cref="LatinHypercubeRandomValues"/> and
+        /// <see cref="StratifiedRandomValues"/>. It does <b>not</b> govern <see cref="CDF"/> or
+        /// <see cref="Interval"/>: the Genz MVNDST numerical integrator factorizes the correlation matrix
+        /// internally and is unaffected. Nor does it govern <see cref="Conditional"/> and
+        /// <see cref="Marginal"/>, which factorize the observed sub-covariance with its own Cholesky
+        /// decomposition and return distributions that use the default
+        /// <see cref="DecompositionMethod.Cholesky"/> selector.
+        /// </para>
+        /// <para>
+        /// Under <see cref="DecompositionMethod.SingularValue"/> the distribution follows the degenerate
+        /// convention of <c>scipy.stats.multivariate_normal(..., allow_singular=True)</c>: the density is
+        /// taken with respect to Lebesgue measure on the affine support μ + range(Σ), so the normalizing
+        /// constant uses the <b>rank</b> of Σ rather than <see cref="Dimension"/>, the log pseudo-determinant
+        /// rather than the log determinant, and the pseudo-inverse rather than the inverse in the quadratic
+        /// form. A point off that support has density exactly zero, so <see cref="LogPDF"/> returns negative
+        /// infinity and <see cref="PDF"/> returns zero there.
+        /// </para>
+        /// <para>
+        /// Added for <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// </para>
+        /// </remarks>
+        public DecompositionMethod Decomposition => _decomposition;
+
+        /// <summary>
         /// Determines if the covariance matrix is positive definite.
         /// </summary>
-        public bool IsPositiveDefinite => _cholesky.IsPositiveDefinite;
+        /// <remarks>
+        /// Under <see cref="DecompositionMethod.SingularValue"/> the covariance is only required to be
+        /// positive semi-definite, so this reports whether the singular value decomposition found the
+        /// covariance to have full rank.
+        /// </remarks>
+        public bool IsPositiveDefinite => _decomposition == DecompositionMethod.Cholesky
+            ? _cholesky.IsPositiveDefinite
+            : _rank == _dimension;
 
         /// <summary>
         /// Set the distribution parameters.
         /// </summary>
         /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
         /// <param name="covariance">The covariance matrix Σ (sigma) for the distribution.</param>
+        /// <remarks>
+        /// The covariance is factorized with the decomposition method chosen at construction; see
+        /// <see cref="Decomposition"/>.
+        /// </remarks>
         public void SetParameters(double[] mean, double[,] covariance)
         {
             // Validate parameters
             ValidateParameters(mean, covariance, true);
 
-            _dimension = mean.Length;      
+            _dimension = mean.Length;
             _mean = mean;
             _covariance = new Matrix(covariance);
-            _cholesky = new CholeskyDecomposition(_covariance);
-            double lndet = _cholesky.LogDeterminant();
-            _lnconstant = -(Math.Log(2d * Math.PI) * _mean.Length + lndet) * 0.5d;
+            if (_decomposition == DecompositionMethod.Cholesky)
+            {
+                _cholesky = new CholeskyDecomposition(_covariance);
+                double lndet = _cholesky.LogDeterminant();
+                _lnconstant = -(Math.Log(2d * Math.PI) * _mean.Length + lndet) * 0.5d;
+                // The sampling factor A with A*A^T = Sigma is the lower triangular Cholesky factor itself.
+                _factor = _cholesky.L;
+            }
+            else
+            {
+                FactorizeWithSingularValues();
+            }
 
             // Set up parameters for MVN CDF
             _correlationMatrixCreated = false;
@@ -280,6 +413,89 @@ namespace Numerics.Distributions
             _correl = new double[NL];
             _correlation = new Matrix(Dimension, Dimension);
 
+        }
+
+        /// <summary>
+        /// Factorizes the covariance matrix with a singular value decomposition and caches every quantity
+        /// the degenerate density and the sampler need: the rank, the null space, the normalizing constant
+        /// built on the log pseudo-determinant, and the sampling factor A = U·sqrt(W).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The threshold below which a singular value counts as zero is captured once, immediately after the
+        /// decomposition, and is then passed explicitly to every query. <see cref="SingularValueDecomposition"/>
+        /// recomputes its <see cref="SingularValueDecomposition.Threshold"/> on each call that takes a
+        /// threshold argument, so passing the captured value keeps the rank, the null space, the
+        /// pseudo-determinant and the pseudo-inverse solve in agreement about which singular values are zero.
+        /// </para>
+        /// <para>
+        /// Because Σ is symmetric positive semi-definite — enforced by <see cref="ValidateParameters"/> — the
+        /// left and right singular vectors coincide for every singular value above the threshold, so
+        /// Σ = U·W·Uᵀ and A = U·sqrt(W) satisfies A·Aᵀ = Σ. This is the factor NumPy builds for
+        /// <c>multivariate_normal(..., method='svd')</c>. Null directions get a zero column and therefore
+        /// carry no noise, which places every draw on the support of the distribution.
+        /// </para>
+        /// </remarks>
+        private void FactorizeWithSingularValues()
+        {
+            _cholesky = null!;
+            _svd = new SingularValueDecomposition(_covariance);
+            _svdThreshold = _svd.Threshold;
+            _rank = _svd.Rank(_svdThreshold);
+            _nullspace = _svd.Nullspace(_svdThreshold);
+            double lndet = _svd.LogPseudoDeterminant(_svdThreshold);
+            // The normalizing constant uses the rank, not the dimension: the density lives on the
+            // rank-dimensional affine support mu + range(Sigma).
+            _lnconstant = -(Math.Log(2d * Math.PI) * _rank + lndet) * 0.5d;
+            var factor = new Matrix(_dimension, _dimension);
+            for (int j = 0; j < _dimension; j++)
+            {
+                double scale = _svd.W[j] > _svdThreshold ? Math.Sqrt(_svd.W[j]) : 0d;
+                for (int i = 0; i < _dimension; i++)
+                    factor[i, j] = _svd.U[i, j] * scale;
+            }
+            _factor = factor;
+        }
+
+        /// <summary>
+        /// Determines whether a point lies on the affine support μ + range(Σ) of the distribution.
+        /// </summary>
+        /// <param name="x">A point in the distribution space.</param>
+        /// <returns>
+        /// True when the centred point has a negligible component in the null space of Σ. Always true under
+        /// <see cref="DecompositionMethod.Cholesky"/>, where the covariance is positive-definite and the
+        /// support is the whole space.
+        /// </returns>
+        /// <remarks>
+        /// The centred point is projected onto the orthonormal null-space basis returned by
+        /// <see cref="SingularValueDecomposition.Nullspace"/>. The projection is compared against
+        /// <see cref="ZeroToleranceFactor"/> times the machine epsilon, scaled by the magnitude of the
+        /// centred point so that the test stays meaningful for points far from the mean, where the roundoff
+        /// in the projection grows in proportion. On the reference cases of
+        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/> an on-support point projects to at
+        /// most 6E-16 while an off-support point projects to more than 0.7, so the test has several orders
+        /// of margin on both sides.
+        /// </remarks>
+        private bool IsOnSupport(double[] x)
+        {
+            // A dimension mismatch is reported by Mahalanobis, which validates the point.
+            if (_nullspace == null || _nullspace.NumberOfColumns == 0 || x.Length != Dimension) return true;
+            double norm = 0d;
+            var z = new double[Dimension];
+            for (int i = 0; i < Dimension; i++)
+            {
+                z[i] = x[i] - _mean[i];
+                norm += z[i] * z[i];
+            }
+            double tolerance = ZeroToleranceFactor * Tools.DoubleMachineEpsilon * Math.Max(1d, Math.Sqrt(norm));
+            for (int j = 0; j < _nullspace.NumberOfColumns; j++)
+            {
+                double projection = 0d;
+                for (int i = 0; i < Dimension; i++)
+                    projection += _nullspace[i, j] * z[i];
+                if (!(Math.Abs(projection) <= tolerance)) return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -356,13 +572,71 @@ namespace Numerics.Distributions
                 }
             }
             
-            var chol = new CholeskyDecomposition(m);
-            if (!chol.IsPositiveDefinite)
+            if (_decomposition == DecompositionMethod.Cholesky)
             {
-                var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
+                var chol = new CholeskyDecomposition(m);
+                if (!chol.IsPositiveDefinite)
+                {
+                    var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
+                    if (throwException) throw ex; else return ex;
+                }
+            }
+            else if (!IsSymmetricPositiveSemiDefinite(m))
+            {
+                var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not symmetric positive-semi-definite.");
                 if (throwException) throw ex; else return ex;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Determines whether a matrix is symmetric and positive semi-definite, the requirement of the
+        /// singular value decomposition path.
+        /// </summary>
+        /// <param name="covariance">The candidate covariance matrix.</param>
+        /// <returns>True when the matrix is symmetric with no negative eigenvalue.</returns>
+        /// <remarks>
+        /// <para>
+        /// Singular values are unsigned, so they cannot by themselves distinguish a negative eigenvalue from
+        /// a positive one. The test instead compares the matrix against its own symmetric reconstruction
+        /// U·W·Uᵀ. For a symmetric matrix the singular value decomposition returns Wⱼ = |λⱼ| with left and
+        /// right singular vectors that agree up to the sign of λⱼ, so the reconstruction reproduces the
+        /// matrix exactly when every eigenvalue is non-negative and misses by about 2·|λ| for each negative
+        /// eigenvalue. An asymmetric matrix likewise fails to reconstruct. The test therefore checks exactly
+        /// the property the sampling factor A = U·sqrt(W) depends on, and unlike a sign test on the singular
+        /// vectors it stays correct when eigenvalues of equal magnitude and opposite sign make the singular
+        /// subspace ambiguous.
+        /// </para>
+        /// <para>
+        /// The comparison uses <see cref="ZeroToleranceFactor"/> times the machine epsilon, scaled by the
+        /// magnitude of the largest entry so that the test is invariant to the units of the covariance. This
+        /// tolerates eigenvalues that are negative only by roundoff, matching the convention of
+        /// <c>scipy.stats.multivariate_normal</c>.
+        /// </para>
+        /// </remarks>
+        private static bool IsSymmetricPositiveSemiDefinite(Matrix covariance)
+        {
+            int n = covariance.NumberOfRows;
+            double scale = 0d;
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = 0; j < n; j++)
+                    scale = Math.Max(scale, Math.Abs(covariance[i, j]));
+            }
+            double tolerance = ZeroToleranceFactor * Tools.DoubleMachineEpsilon * Math.Max(1d, scale);
+            var svd = new SingularValueDecomposition(covariance);
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = i; j < n; j++)
+                {
+                    double reconstructed = 0d;
+                    for (int k = 0; k < n; k++)
+                        reconstructed += svd.U[i, k] * svd.W[k] * svd.U[j, k];
+                    if (!(Math.Abs(reconstructed - covariance[i, j]) <= tolerance)) return false;
+                    if (!(Math.Abs(reconstructed - covariance[j, i]) <= tolerance)) return false;
+                }
+            }
+            return true;
         }
 
         /// <summary>
@@ -555,9 +829,14 @@ namespace Numerics.Distributions
         /// The Probability Density Function (PDF) of the distribution evaluated at a point X.
         /// </summary>
         /// <param name="x">A point in the distribution space.</param>
+        /// <remarks>
+        /// Under <see cref="DecompositionMethod.SingularValue"/> a point off the affine support
+        /// μ + range(Σ) has density exactly zero; see <see cref="Decomposition"/>.
+        /// </remarks>
         public override double PDF(double[] x)
         {
             if (!_densityValid) return 0d;
+            if (_decomposition == DecompositionMethod.SingularValue && !IsOnSupport(x)) return 0d;
             return Math.Exp(-0.5d * Mahalanobis(x) + _lnconstant);
         }
 
@@ -565,9 +844,14 @@ namespace Numerics.Distributions
         /// Returns the natural log of the PDF.
         /// </summary>
         /// <param name="x">The vector of x values.</param>
+        /// <remarks>
+        /// Under <see cref="DecompositionMethod.SingularValue"/> a point off the affine support
+        /// μ + range(Σ) returns negative infinity; see <see cref="Decomposition"/>.
+        /// </remarks>
         public override double LogPDF(double[] x)
         {
             if (!_densityValid) return double.NegativeInfinity;
+            if (_decomposition == DecompositionMethod.SingularValue && !IsOnSupport(x)) return double.NegativeInfinity;
             double f = -0.5d * Mahalanobis(x) + _lnconstant;
             if (double.IsNaN(f) || double.IsInfinity(f)) return double.NegativeInfinity;
             return f;
@@ -577,15 +861,23 @@ namespace Numerics.Distributions
         /// Gets the Mahalanobis distance between a sample and this distribution.
         /// </summary>
         /// <param name="x">A point in the distribution space.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the point is not the dimension of the distribution.</exception>
+        /// <remarks>
+        /// Under <see cref="DecompositionMethod.SingularValue"/> the quadratic form uses the pseudo-inverse
+        /// of Σ, which ignores the null directions; a point off the support therefore still returns a finite
+        /// distance, and it is <see cref="PDF"/> and <see cref="LogPDF"/> that apply the support test.
+        /// </remarks>
         public double Mahalanobis(double[] x)
         {
             if (x.Length != Dimension)
                 throw new ArgumentOutOfRangeException(nameof(x), "The vector must be the same dimension as the distribution.");
-            // 
+            //
             var z = new double[_mean.Length];
             for (int i = 0; i < x.Length; i++)
                 z[i] = x[i] - _mean[i];
-            var a = _cholesky.Solve(new Vector(z));
+            var a = _decomposition == DecompositionMethod.Cholesky
+                ? _cholesky.Solve(new Vector(z))
+                : _svd.Solve(new Vector(z), _svdThreshold);
             double b = 0d;
             for (int i = 0; i < z.Length; i++)
                 b += a[i] * z[i];
@@ -669,6 +961,14 @@ namespace Numerics.Distributions
         /// The inverse cumulative distribution function (InverseCDF).
         /// </summary>
         /// <param name="probabilities">Array of probabilities.</param>
+        /// <remarks>
+        /// The probabilities are mapped to standard normal variates z and correlated as x = A·z + μ, where A
+        /// is the factor with A·Aᵀ = Σ produced by the decomposition method chosen at construction: the
+        /// Cholesky factor L, or U·sqrt(W) from the singular value decomposition. Under
+        /// <see cref="DecompositionMethod.SingularValue"/> the null directions of a singular covariance carry
+        /// a zero column, so the result lies on the support of the distribution. See
+        /// <see cref="Decomposition"/>.
+        /// </remarks>
         public double[] InverseCDF(double[] probabilities)
         {
             var sample = new double[Dimension];
@@ -677,7 +977,7 @@ namespace Numerics.Distributions
             for (int j = 0; j < Dimension; j++)
                 z[j] = Normal.StandardZ(probabilities[j]);
             // x = A*z + mu
-            var Az = _cholesky.L * z;
+            var Az = _factor * z;
             for (int j = 0; j < Dimension; j++)
                 sample[j] = Az[j] + _mean[j];
             return sample;
@@ -726,6 +1026,11 @@ namespace Numerics.Distributions
         /// Array of random values. The number of rows are equal to the sample size.
         /// The number of columns are equal to the dimensions of this distribution.
         /// </returns>
+        /// <remarks>
+        /// The standard normal variates z are correlated as x = A·z + μ, where A is the factor with
+        /// A·Aᵀ = Σ produced by the decomposition method chosen at construction; see
+        /// <see cref="Decomposition"/>.
+        /// </remarks>
         public double[,] GenerateRandomValues(int sampleSize, int seed = -1)
         {
             // Create PRNG for generating random numbers
@@ -739,7 +1044,7 @@ namespace Numerics.Distributions
                 for (int j = 0; j < Dimension; j++)
                     z[j] = Normal.StandardZ(rnd.NextDouble());
                 // x = A*z + mu
-                var Az = _cholesky.L * z;
+                var Az = _factor * z;
                 for (int j = 0; j < Dimension; j++)
                     sample[i, j] = Az[j] + _mean[j];
             }
@@ -755,6 +1060,11 @@ namespace Numerics.Distributions
         /// <returns>
         /// Array of random values.
         /// </returns>
+        /// <remarks>
+        /// The standard normal variates z are correlated as x = A·z + μ, where A is the factor with
+        /// A·Aᵀ = Σ produced by the decomposition method chosen at construction; see
+        /// <see cref="Decomposition"/>.
+        /// </remarks>
         public double[,] LatinHypercubeRandomValues(int sampleSize, int seed)
         {
             var r = LatinHypercube.Random(sampleSize, Dimension, seed);
@@ -767,7 +1077,7 @@ namespace Numerics.Distributions
                 for (int j = 0; j < Dimension; j++)
                     z[j] = Normal.StandardZ(r[i, j]);
                 // x = A*z + mu
-                var Az = _cholesky.L * z;
+                var Az = _factor * z;
                 for (int j = 0; j < Dimension; j++)
                     sample[i, j] = Az[j] + _mean[j];
             }
@@ -780,6 +1090,11 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="stratificationBins">A list of stratification bins.</param>
         /// <param name="seed"> Seed for random number generator. </param>
+        /// <remarks>
+        /// The standard normal variates z are correlated as x = A·z + μ, where A is the factor with
+        /// A·Aᵀ = Σ produced by the decomposition method chosen at construction; see
+        /// <see cref="Decomposition"/>.
+        /// </remarks>
         public double[,] StratifiedRandomValues(List<StratificationBin> stratificationBins, int seed)
         {
             int samplesize = stratificationBins.Count;
@@ -802,7 +1117,7 @@ namespace Numerics.Distributions
                     }               
                 }               
                 // x = A*z + mu
-                var Az = _cholesky.L * z;
+                var Az = _factor * z;
                 for (int j = 0; j < Dimension; j++)
                     sample[i, j] = Az[j] + _mean[j];
             }
@@ -2366,7 +2681,13 @@ namespace Numerics.Distributions
                 _dimension = this.Dimension,
                 _mean = this.Mean.ToArray(),
                 _covariance = this._covariance.Clone(),
+                _decomposition = this._decomposition,
                 _cholesky = this._cholesky,
+                _svd = this._svd,
+                _factor = this._factor,
+                _nullspace = this._nullspace,
+                _svdThreshold = this._svdThreshold,
+                _rank = this._rank,
                 _lnconstant = this._lnconstant,
                 _variance = this.Variance.ToArray(),
                 _standardDeviation = this.StandardDeviation.ToArray(),
