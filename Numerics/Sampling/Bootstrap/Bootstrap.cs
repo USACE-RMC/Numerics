@@ -294,13 +294,16 @@ namespace Numerics.Sampling
         /// <summary>
         /// Gets the number of leave-one-out jackknife replicates that failed while computing the BCa
         /// acceleration constants on the most recent <see cref="GetConfidenceIntervals(BootstrapCIMethod, double)"/>
-        /// call that requested <see cref="BootstrapCIMethod.BCa"/>. Zero for every other interval method.
+        /// call that requested <see cref="BootstrapCIMethod.BCa"/>.
         /// </summary>
         /// <remarks>
         /// Failed jackknife replicates are excluded from the acceleration sums, so a non-zero count means
         /// the acceleration constants rest on fewer leave-one-out samples than the sample size implies.
         /// This is reported separately from <see cref="FailedReplicates"/>, which counts bootstrap
-        /// resampling failures rather than jackknife failures.
+        /// resampling failures rather than jackknife failures. The count is zero until BCa intervals have
+        /// been requested, and a request for any other interval method leaves it unchanged rather than
+        /// clearing it, so it always describes the most recent BCa computation rather than the most
+        /// recent call.
         /// </remarks>
         public int FailedJackknifeReplicates => _failedJackknifeReplicates;
 
@@ -898,7 +901,13 @@ namespace Numerics.Sampling
         /// <param name="method">The confidence interval method.</param>
         /// <param name="alpha">The two-sided alpha level. Default = 0.1, resulting in 90% confidence intervals.</param>
         /// <returns>A <see cref="BootstrapResults"/> object containing confidence intervals for parameters and statistics.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when the requested interval method is incompatible with the last run mode.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the requested interval method is incompatible with the last run mode, when
+        /// <see cref="StatisticFunction"/> has not been set, or when <paramref name="method"/> is
+        /// <see cref="BootstrapCIMethod.BCa"/> and the acceleration constants cannot be computed because
+        /// <see cref="SampleSizeFunction"/> reports a non-positive sample size or every leave-one-out
+        /// replicate fails. The first leave-one-out failure is preserved as the inner exception.
+        /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="alpha"/> is not between zero and one.</exception>
         public BootstrapResults GetConfidenceIntervals(BootstrapCIMethod method, double alpha = 0.1)
         {
@@ -1242,7 +1251,11 @@ namespace Numerics.Sampling
                     {
                         var jackData = jackknife(_originalData, idx);
                         var jackFit = fitFunc(jackData);
-                        var jackStats = statistic(jackFit);
+
+                        // Validate the leave-one-out statistic the same way the original estimates are
+                        // validated. Inside this try a bad statistic becomes a counted failed replicate
+                        // with its exception preserved, rather than poisoning the moment accumulators.
+                        var jackStats = ValidateStatistics(statistic(jackFit), _numStats);
 
                         for (int i = 0; i < _numStats; i++)
                         {
@@ -1282,7 +1295,7 @@ namespace Numerics.Sampling
                     ? " The first failure was: " + firstJackknifeFailure.Message
                     : string.Empty;
                 throw new InvalidOperationException(
-                    "Every leave-one-out replicate produced by JackknifeFunction failed, so the BCa acceleration constants are undefined." + cause,
+                    "Every leave-one-out replicate failed, so the BCa acceleration constants are undefined. Each replicate applies JackknifeFunction, then FitFunction, then StatisticFunction, and any of the three can be the cause." + cause,
                     firstJackknifeFailure);
             }
 
@@ -1296,9 +1309,13 @@ namespace Numerics.Sampling
                     thirdMoment += chunkThirdMoments[c][i];
                 }
 
-                // A zero second moment means every jackknife replicate returned the same statistic value,
-                // so the statistic has no jackknife variation. Zero is the correct limit of the
-                // acceleration there, and BCa degenerates to the bias-corrected interval.
+                // Two distinct cases fall to the zero fallback.
+                // 1. A zero second moment means every leave-one-out replicate returned the same statistic
+                //    value, so the statistic has no jackknife variation. Zero is the correct limit of the
+                //    acceleration there, and BCa degenerates to the bias-corrected interval.
+                // 2. A non-finite second moment. Each leave-one-out statistic is validated as finite
+                //    above, so this can now only arise from overflow while summing finite squared
+                //    differences. Zero is a defensive fallback, not a modelling statement.
                 a[i] = secondMoment > 0d && Tools.IsFinite(secondMoment)
                     ? thirdMoment / (Math.Pow(secondMoment, 1.5) * 6d)
                     : 0d;

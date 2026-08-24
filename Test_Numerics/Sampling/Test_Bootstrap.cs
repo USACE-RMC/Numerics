@@ -465,6 +465,37 @@ namespace Sampling
         }
 
         /// <summary>
+        /// Reproduces the BCa limit that a zero acceleration constant would produce for one statistic,
+        /// from the same bootstrap ensemble the analysis used.
+        /// </summary>
+        /// <param name="values">The bootstrap values for one statistic.</param>
+        /// <param name="populationEstimate">The original statistic estimate.</param>
+        /// <param name="alpha">The two-sided alpha level.</param>
+        /// <param name="upper">True for the upper limit, false for the lower limit.</param>
+        /// <returns>The limit implied by an acceleration constant of exactly zero.</returns>
+        /// <remarks>
+        /// With a = 0 the BCa denominator 1 - a(Z₀ + z) is exactly one, so the division leaves its
+        /// numerator bit-unchanged and the adjusted probability is Φ(Z₀ + (Z₀ + z)). Every step below
+        /// therefore reproduces the library's arithmetic exactly, which lets the caller compare bit
+        /// patterns instead of choosing a tolerance.
+        /// </remarks>
+        private static double ZeroAccelerationBCaLimit(double[] values, double populationEstimate, double alpha, bool upper)
+        {
+            var validValues = values.Where(Tools.IsFinite).ToArray();
+            int countLeq = 0;
+            for (int i = 0; i < validValues.Length; i++)
+                if (validValues[i] <= populationEstimate) countLeq++;
+
+            double p0 = (double)(countLeq + 1) / (validValues.Length + 1);
+            Array.Sort(validValues);
+
+            double z0 = Normal.StandardZ(p0);
+            double z = Normal.StandardZ(upper ? 1d - alpha / 2d : alpha / 2d);
+            double adjusted = Normal.StandardCDF(z0 + (z0 + z) / 1d);
+            return Statistics.Percentile(validValues, adjusted, true);
+        }
+
+        /// <summary>
         /// Test that a wholly failed jackknife reports the cause instead of producing NaN acceleration.
         /// </summary>
         /// <remarks>
@@ -538,12 +569,90 @@ namespace Sampling
                 Assert.IsTrue(Tools.IsFinite(bca.StatisticResults[i].LowerCI), $"Lower CI is not finite for statistic {i}.");
                 Assert.IsTrue(Tools.IsFinite(bca.StatisticResults[i].UpperCI), $"Upper CI is not finite for statistic {i}.");
 
-                // With a zero acceleration the BCa limits reduce to the bias-corrected limits; the two
-                // differ only by the plotting-position offset in the bias proportion, which is O(1/B).
+                // Pin the acceleration to exactly zero. Reproducing the a = 0 limit from the bootstrap
+                // ensemble is bit-exact, so any non-zero acceleration moves the limit and fails here.
+                var values = boot.BootstrapStatistics.GetColumn(i);
+                double populationEstimate = bca.StatisticResults[i].PopulationEstimate;
+                Assert.AreEqual(
+                    BitConverter.DoubleToInt64Bits(ZeroAccelerationBCaLimit(values, populationEstimate, 0.1d, false)),
+                    BitConverter.DoubleToInt64Bits(bca.StatisticResults[i].LowerCI),
+                    $"The lower CI does not match a zero acceleration for statistic {i}.");
+                Assert.AreEqual(
+                    BitConverter.DoubleToInt64Bits(ZeroAccelerationBCaLimit(values, populationEstimate, 0.1d, true)),
+                    BitConverter.DoubleToInt64Bits(bca.StatisticResults[i].UpperCI),
+                    $"The upper CI does not match a zero acceleration for statistic {i}.");
+
+                // With a zero acceleration the BCa limits also reduce to the bias-corrected limits. The
+                // residual gap is not zero because the two methods use different plotting positions for
+                // the bias proportion — countLeq / (B + 1) versus (countLeq + 1) / (B + 1) — an offset of
+                // 1/(B+1) in P0 that propagates to roughly 2E-4 in the limit here. The tolerance bounds
+                // that offset and nothing wider.
                 Assert.AreEqual(biasCorrected.StatisticResults[i].LowerCI, bca.StatisticResults[i].LowerCI,
-                    0.01 * Math.Abs(biasCorrected.StatisticResults[i].LowerCI));
+                    1E-3 * Math.Abs(biasCorrected.StatisticResults[i].LowerCI));
                 Assert.AreEqual(biasCorrected.StatisticResults[i].UpperCI, bca.StatisticResults[i].UpperCI,
-                    0.01 * Math.Abs(biasCorrected.StatisticResults[i].UpperCI));
+                    1E-3 * Math.Abs(biasCorrected.StatisticResults[i].UpperCI));
+            }
+        }
+
+        /// <summary>
+        /// Test that a leave-one-out replicate whose statistic is non-finite is counted as a failure
+        /// rather than silently poisoning the jackknife moments.
+        /// </summary>
+        /// <remarks>
+        /// A non-finite statistic drives the second moment to NaN. Because NaN fails every ordered
+        /// comparison, it would otherwise fall through the zero-acceleration fallback and quietly
+        /// degenerate BCa to the bias-corrected interval while reporting no failures at all.
+        /// </remarks>
+        [TestMethod]
+        public void Test_BCa_NonFiniteJackknifeStatisticIsCountedAsFailure()
+        {
+            var sampleData = CreateJackknifeSample();
+            var boot = CreateJackknifeBootstrap(sampleData, 1000);
+
+            // One leave-one-out index returns a sample two elements short. Bootstrap resamples have the
+            // full length and every other leave-one-out sample has length n-1, so carrying the length
+            // through the parameter set's fitness field marks exactly one replicate.
+            int markerLength = sampleData.Length - 2;
+            boot.JackknifeFunction = (data, idx) =>
+            {
+                var list = new List<double>(data);
+                list.RemoveAt(idx);
+                if (idx == 7) list.RemoveAt(0);
+                return list.ToArray();
+            };
+
+            boot.FitFunction = (sample) =>
+            {
+                var d = new Normal();
+                ((IEstimation)d).Estimate(sample, ParameterEstimationMethod.MethodOfMoments);
+                if (!d.ParametersValid) throw new Exception("Invalid parameters.");
+                return new ParameterSet(d.GetParameters, sample.Length);
+            };
+
+            boot.StatisticFunction = (ps) =>
+            {
+                if (ps.Fitness == markerLength) return new double[] { double.NaN, double.NaN };
+                var d = new Normal(ps.Values[0], ps.Values[1]);
+                return new double[] { d.InverseCDF(0.5d), d.InverseCDF(0.99d) };
+            };
+
+            boot.Run();
+            var results = boot.GetConfidenceIntervals(BootstrapCIMethod.BCa);
+
+            Assert.AreEqual(1, boot.FailedJackknifeReplicates);
+            for (int i = 0; i < results.StatisticResults.Length; i++)
+            {
+                Assert.IsTrue(Tools.IsFinite(results.StatisticResults[i].LowerCI), $"Lower CI is not finite for statistic {i}.");
+                Assert.IsTrue(Tools.IsFinite(results.StatisticResults[i].UpperCI), $"Upper CI is not finite for statistic {i}.");
+
+                // The surviving 39 replicates still carry jackknife variation, so the acceleration must
+                // not have collapsed to the zero fallback.
+                var values = boot.BootstrapStatistics.GetColumn(i);
+                double populationEstimate = results.StatisticResults[i].PopulationEstimate;
+                Assert.AreNotEqual(
+                    BitConverter.DoubleToInt64Bits(ZeroAccelerationBCaLimit(values, populationEstimate, 0.1d, false)),
+                    BitConverter.DoubleToInt64Bits(results.StatisticResults[i].LowerCI),
+                    $"The lower CI collapsed to a zero acceleration for statistic {i}.");
             }
         }
 

@@ -617,7 +617,7 @@ namespace Numerics.Data.Statistics
         /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
         /// <returns>The k-th percentile.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> or <paramref name="k"/> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="data"/> is empty.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="k"/> has entries and <paramref name="data"/> is empty. An empty <paramref name="k"/> returns an empty array without inspecting <paramref name="data"/>.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when any entry of <paramref name="k"/> is not a finite value in [0,1].</exception>
         public static double[] Percentile(IList<double> data, IList<double> k, bool dataIsSorted = false)
         {
