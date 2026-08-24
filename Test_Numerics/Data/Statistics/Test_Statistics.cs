@@ -412,6 +412,28 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Test that the Percentile methods reject a null sample and a non-finite percentile.
+        /// </summary>
+        /// <remarks>
+        /// Every comparison against NaN is false, so a NaN percentile used to pass the range check and
+        /// reach the interpolation index. On .NET Core the float-to-int conversion saturates and the
+        /// method silently returned NaN; on .NET Framework the conversion is undefined and the indexer
+        /// threw. Both infinities were already rejected by the range check.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Percentile_InvalidArguments()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.PositiveInfinity));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NegativeInfinity));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, new double[] { 0.5d, double.NaN }));
+
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(null, 0.5d));
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(null, new double[] { 0.5d }));
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, (IList<double>)null));
+        }
+
+        /// <summary>
         /// Test the FiveNumberSummary methods that returns {min, 25th-percentile, 50th-percentile, 75th-percentile, max} against the validation values 
         /// attained in the previous tests of each individual statistic.
         /// </summary>

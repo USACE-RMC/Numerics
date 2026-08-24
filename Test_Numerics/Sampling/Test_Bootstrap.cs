@@ -413,5 +413,180 @@ namespace Sampling
             }
         }
 
+        /// <summary>
+        /// Creates a deterministic sample used by the BCa jackknife tests.
+        /// </summary>
+        /// <returns>A fixed Normal sample.</returns>
+        private static double[] CreateJackknifeSample()
+        {
+            return new Normal(3.1d, 0.55d).GenerateRandomValues(40, 8675309);
+        }
+
+        /// <summary>
+        /// Creates a small BCa-ready bootstrap over the supplied sample. The jackknife delegate is left
+        /// unset so each test can supply its own leave-one-out behavior.
+        /// </summary>
+        /// <param name="sampleData">The observed sample.</param>
+        /// <param name="replicates">The number of bootstrap replicates.</param>
+        /// <returns>The configured bootstrap.</returns>
+        private static Bootstrap<double[]> CreateJackknifeBootstrap(double[] sampleData, int replicates)
+        {
+            var dist = new Normal();
+            ((IEstimation)dist).Estimate(sampleData, ParameterEstimationMethod.MethodOfMoments);
+
+            var boot = new Bootstrap<double[]>(sampleData, new ParameterSet(dist.GetParameters, double.NaN))
+            {
+                Replicates = replicates,
+                PRNGSeed = 12345
+            };
+
+            boot.ResampleFunction = (data, ps, rng) =>
+            {
+                var d = new Normal(ps.Values[0], ps.Values[1]);
+                return d.GenerateRandomValues(sampleData.Length, rng.Next());
+            };
+
+            boot.FitFunction = (sample) =>
+            {
+                var d = new Normal();
+                ((IEstimation)d).Estimate(sample, ParameterEstimationMethod.MethodOfMoments);
+                if (!d.ParametersValid) throw new Exception("Invalid parameters.");
+                return new ParameterSet(d.GetParameters, double.NaN);
+            };
+
+            boot.StatisticFunction = (ps) =>
+            {
+                var d = new Normal(ps.Values[0], ps.Values[1]);
+                return new double[] { d.InverseCDF(0.5d), d.InverseCDF(0.99d) };
+            };
+
+            boot.SampleSizeFunction = (data) => data.Length;
+            return boot;
+        }
+
+        /// <summary>
+        /// Test that a wholly failed jackknife reports the cause instead of producing NaN acceleration.
+        /// </summary>
+        /// <remarks>
+        /// A NaN acceleration constant reaches Statistics.Percentile as the percentile argument, where it
+        /// silently returned NaN bounds on .NET Core and raised an index error on .NET Framework.
+        /// </remarks>
+        [TestMethod]
+        public void Test_BCa_AllJackknifeReplicatesFail()
+        {
+            var sampleData = CreateJackknifeSample();
+            var boot = CreateJackknifeBootstrap(sampleData, 500);
+            boot.JackknifeFunction = (data, idx) => throw new InvalidOperationException("Jackknife replicate rejected.");
+
+            boot.Run();
+
+            var exception = Assert.Throws<InvalidOperationException>(() => boot.GetConfidenceIntervals(BootstrapCIMethod.BCa));
+            StringAssert.Contains(exception.Message, nameof(Bootstrap<double[]>.JackknifeFunction));
+            StringAssert.Contains(exception.Message, "Jackknife replicate rejected.");
+            Assert.AreEqual(sampleData.Length, boot.FailedJackknifeReplicates);
+        }
+
+        /// <summary>
+        /// Test that a partially failing jackknife still produces finite BCa bounds and reports the failures.
+        /// </summary>
+        [TestMethod]
+        public void Test_BCa_PartialJackknifeFailuresAreReported()
+        {
+            var sampleData = CreateJackknifeSample();
+            var boot = CreateJackknifeBootstrap(sampleData, 500);
+            boot.JackknifeFunction = (data, idx) =>
+            {
+                if (idx % 5 == 0) throw new InvalidOperationException("Jackknife replicate rejected.");
+                var list = new List<double>(data);
+                list.RemoveAt(idx);
+                return list.ToArray();
+            };
+
+            boot.Run();
+            var results = boot.GetConfidenceIntervals(BootstrapCIMethod.BCa);
+
+            Assert.AreEqual(sampleData.Length / 5, boot.FailedJackknifeReplicates);
+            for (int i = 0; i < results.StatisticResults.Length; i++)
+            {
+                Assert.IsTrue(Tools.IsFinite(results.StatisticResults[i].LowerCI), $"Lower CI is not finite for statistic {i}.");
+                Assert.IsTrue(Tools.IsFinite(results.StatisticResults[i].UpperCI), $"Upper CI is not finite for statistic {i}.");
+                Assert.IsLessThan(results.StatisticResults[i].UpperCI, results.StatisticResults[i].LowerCI);
+            }
+        }
+
+        /// <summary>
+        /// Test that a statistic with no jackknife variation yields a zero acceleration constant, so BCa
+        /// degenerates to the bias-corrected interval instead of dividing zero by zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_BCa_DegenerateJackknifeYieldsBiasCorrectedInterval()
+        {
+            var sampleData = CreateJackknifeSample();
+            var boot = CreateJackknifeBootstrap(sampleData, 2000);
+
+            // Returning the whole sample for every index makes each jackknife statistic identical to the
+            // population estimate, so the jackknife second moment is exactly zero.
+            boot.JackknifeFunction = (data, idx) => (double[])data.Clone();
+
+            boot.Run();
+            var bca = boot.GetConfidenceIntervals(BootstrapCIMethod.BCa);
+            var biasCorrected = boot.GetConfidenceIntervals(BootstrapCIMethod.BiasCorrected);
+
+            Assert.AreEqual(0, boot.FailedJackknifeReplicates);
+            for (int i = 0; i < bca.StatisticResults.Length; i++)
+            {
+                Assert.IsTrue(Tools.IsFinite(bca.StatisticResults[i].LowerCI), $"Lower CI is not finite for statistic {i}.");
+                Assert.IsTrue(Tools.IsFinite(bca.StatisticResults[i].UpperCI), $"Upper CI is not finite for statistic {i}.");
+
+                // With a zero acceleration the BCa limits reduce to the bias-corrected limits; the two
+                // differ only by the plotting-position offset in the bias proportion, which is O(1/B).
+                Assert.AreEqual(biasCorrected.StatisticResults[i].LowerCI, bca.StatisticResults[i].LowerCI,
+                    0.01 * Math.Abs(biasCorrected.StatisticResults[i].LowerCI));
+                Assert.AreEqual(biasCorrected.StatisticResults[i].UpperCI, bca.StatisticResults[i].UpperCI,
+                    0.01 * Math.Abs(biasCorrected.StatisticResults[i].UpperCI));
+            }
+        }
+
+        /// <summary>
+        /// Test that two BCa runs over the same fixture produce bit-identical bounds. The jackknife
+        /// reduction must not depend on the thread scheduler.
+        /// </summary>
+        [TestMethod]
+        public void Test_BCa_BoundsAreBitReproducible()
+        {
+            var sampleData = CreateJackknifeSample();
+
+            var first = RunReproducibleBCa(sampleData);
+            var second = RunReproducibleBCa(sampleData);
+
+            Assert.HasCount(first.Length, second);
+            for (int i = 0; i < first.Length; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(first[i].LowerCI), BitConverter.DoubleToInt64Bits(second[i].LowerCI),
+                    $"Lower CI is not bit-identical for statistic {i}.");
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(first[i].UpperCI), BitConverter.DoubleToInt64Bits(second[i].UpperCI),
+                    $"Upper CI is not bit-identical for statistic {i}.");
+            }
+        }
+
+        /// <summary>
+        /// Runs a complete BCa analysis over a fresh bootstrap instance.
+        /// </summary>
+        /// <param name="sampleData">The observed sample.</param>
+        /// <returns>The BCa statistic results.</returns>
+        private static BootstrapStatisticResult[] RunReproducibleBCa(double[] sampleData)
+        {
+            var boot = CreateJackknifeBootstrap(sampleData, 1000);
+            boot.JackknifeFunction = (data, idx) =>
+            {
+                var list = new List<double>(data);
+                list.RemoveAt(idx);
+                return list.ToArray();
+            };
+
+            boot.Run();
+            return boot.GetConfidenceIntervals(BootstrapCIMethod.BCa).StatisticResults;
+        }
+
     }
 }

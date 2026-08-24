@@ -151,6 +151,76 @@ namespace Distributions.Univariate
                 new KernelDensity(new[] { -1d, 0d, 1d }, KernelDensity.KernelType.Gaussian, 0d));
         }
 
+        /// <summary>
+        /// Creates a deterministic sample large enough for the density reduction to be partitioned
+        /// across several threads.
+        /// </summary>
+        /// <returns>A fixed Normal sample.</returns>
+        private static double[] CreateReductionSample()
+        {
+            return new Normal(10d, 3d).GenerateRandomValues(2000, 20250824);
+        }
+
+        /// <summary>
+        /// Verifies that repeated density evaluations at the same ordinate return bit-identical values.
+        /// </summary>
+        /// <remarks>
+        /// The density is a sum over every sample point, so a scheduler-dependent accumulation order lets
+        /// the last bits of a public distribution function change between otherwise identical calls.
+        /// </remarks>
+        [TestMethod]
+        public void PDF_IsBitReproducibleAcrossRepeatedCalls()
+        {
+            var reductionSample = CreateReductionSample();
+            var weights = new double[reductionSample.Length];
+            for (int i = 0; i < weights.Length; i++) weights[i] = 0.5d + i % 7;
+
+            var unweighted = new KernelDensity(reductionSample);
+            var weighted = new KernelDensity(reductionSample, weights);
+
+            foreach (double x in new[] { 2.5d, 7d, 10d, 13.25d, 19d })
+            {
+                long expectedUnweighted = BitConverter.DoubleToInt64Bits(unweighted.PDF(x));
+                long expectedWeighted = BitConverter.DoubleToInt64Bits(weighted.PDF(x));
+                for (int trial = 0; trial < 25; trial++)
+                {
+                    Assert.AreEqual(expectedUnweighted, BitConverter.DoubleToInt64Bits(unweighted.PDF(x)),
+                        $"The unweighted density is not bit-identical at x = {x}.");
+                    Assert.AreEqual(expectedWeighted, BitConverter.DoubleToInt64Bits(weighted.PDF(x)),
+                        $"The weighted density is not bit-identical at x = {x}.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Verifies that the mode and the cached CDF are bit-identical across separate instances built
+        /// from the same sample. Both are derived from the density, so a drifting density moves them too.
+        /// </summary>
+        [TestMethod]
+        public void ModeAndCDF_AreBitReproducibleAcrossInstances()
+        {
+            var reductionSample = CreateReductionSample();
+            long expectedMode = 0L;
+            long expectedCDF = 0L;
+
+            for (int trial = 0; trial < 3; trial++)
+            {
+                var distribution = new KernelDensity(reductionSample);
+                long mode = BitConverter.DoubleToInt64Bits(distribution.Mode);
+                long cdf = BitConverter.DoubleToInt64Bits(distribution.CDF(11.5d));
+
+                if (trial == 0)
+                {
+                    expectedMode = mode;
+                    expectedCDF = cdf;
+                    continue;
+                }
+
+                Assert.AreEqual(expectedMode, mode, "The mode is not bit-identical across instances.");
+                Assert.AreEqual(expectedCDF, cdf, "The CDF is not bit-identical across instances.");
+            }
+        }
+
 
 
 

@@ -148,6 +148,13 @@ namespace Numerics.Distributions
         private double[]? _weights;     // one weight per sample (unnormalised)
         private double _sumW = 1.0;  // Σ wᵢ   (defaults to 1 for un‑weighted case)
 
+        /// <summary>
+        /// The number of accumulation chunks used by the density reduction. Fixed, not derived from the
+        /// processor count, so the summation order — and therefore the returned density — does not vary
+        /// with the machine or the thread count.
+        /// </summary>
+        private const int ReductionChunks = 64;
+
 
         /// <summary>
         /// Returns the array of X values. Points On the cumulative curve are specified
@@ -732,27 +739,49 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The kernel contributions are accumulated over a fixed number of chunks and merged serially in
+        /// chunk order, so the density is bit-reproducible run to run. A scheduler-dependent reduction
+        /// would let the last bits of the density — and with them <see cref="Mode"/> and the cached
+        /// interpolated CDF — vary between otherwise identical runs.
+        /// </remarks>
         public override double PDF(double x)
         {
+            int n = SampleSize;
+            int chunks = Math.Min(ReductionChunks, n);
+            var chunkSums = new double[chunks];
 
             if (_weights == null)
             {
-                double total = 0d;
-                Parallel.For(0, SampleSize, () => 0d, (i, loop, subtotal) =>
+                Parallel.For(0, chunks, c =>
                 {
-                    subtotal += _kernel.Function((x - _sampleData[i]) / Bandwidth);
-                    return subtotal;
-                }, z => Tools.ParallelAdd(ref total, z));
+                    double subtotal = 0d;
+                    int start = (int)((long)c * n / chunks);
+                    int end = (int)((long)(c + 1) * n / chunks);
+                    for (int i = start; i < end; i++)
+                        subtotal += _kernel.Function((x - _sampleData[i]) / Bandwidth);
+                    chunkSums[c] = subtotal;
+                });
+
+                double total = 0d;
+                for (int c = 0; c < chunks; c++) total += chunkSums[c];
                 return total / (SampleSize * Bandwidth);
             }
             else
             {
-                double total = 0d;
-                Parallel.For(0, SampleSize, () => 0.0, (i, loop, subtotal) =>
+                var weights = _weights;
+                Parallel.For(0, chunks, c =>
                 {
-                    subtotal += _weights[i] * _kernel.Function((x - _sampleData[i]) / Bandwidth);
-                    return subtotal;
-                },z => Tools.ParallelAdd(ref total, z));
+                    double subtotal = 0d;
+                    int start = (int)((long)c * n / chunks);
+                    int end = (int)((long)(c + 1) * n / chunks);
+                    for (int i = start; i < end; i++)
+                        subtotal += weights[i] * _kernel.Function((x - _sampleData[i]) / Bandwidth);
+                    chunkSums[c] = subtotal;
+                });
+
+                double total = 0d;
+                for (int c = 0; c < chunks; c++) total += chunkSums[c];
                 return total / (_sumW * Bandwidth);
             }
         }

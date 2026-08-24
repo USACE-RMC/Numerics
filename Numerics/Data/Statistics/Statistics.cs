@@ -580,12 +580,19 @@ namespace Numerics.Data.Statistics
         /// <param name="k">The k-th percentile to find.</param>
         /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
         /// <returns>The k-th percentile.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="data"/> is empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when <paramref name="k"/> is not a finite value in [0,1]. Every comparison against NaN
+        /// is false, so NaN is rejected explicitly; without that test it would reach the interpolation
+        /// index, which saturates to zero on .NET Core and is undefined on .NET Framework.
+        /// </exception>
         public static double Percentile(IList<double> data, double k, bool dataIsSorted = false)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             int n = data.Count;
             if (n == 0) throw new ArgumentException("Sequence contains no elements.", nameof(data));
-            if (k < 0.0 || k > 1.0) throw new ArgumentOutOfRangeException(nameof(k), "k must be in [0,1].");
+            if (double.IsNaN(k) || k < 0.0 || k > 1.0) throw new ArgumentOutOfRangeException(nameof(k), "k must be in [0,1].");
 
             // Copy & sort if needed
             var sortedData = dataIsSorted ? data: data.OrderBy(x => x).ToArray();
@@ -609,8 +616,14 @@ namespace Numerics.Data.Statistics
         /// <param name="k">The list of k-th percentiles to find.</param>
         /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
         /// <returns>The k-th percentile.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> or <paramref name="k"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="data"/> is empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when any entry of <paramref name="k"/> is not a finite value in [0,1].</exception>
         public static double[] Percentile(IList<double> data, IList<double> k, bool dataIsSorted = false)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (k == null) throw new ArgumentNullException(nameof(k));
+
             // Copy & sort if needed
             var sortedData = dataIsSorted ? data : data.OrderBy(x => x).ToArray();
             var result = new double[k.Count];

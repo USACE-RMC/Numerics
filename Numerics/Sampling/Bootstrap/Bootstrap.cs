@@ -113,6 +113,15 @@ namespace Numerics.Sampling
         private int _numStats;
         private int _numParams;
         private int _failedCount;
+        private int _failedJackknifeReplicates;
+
+        /// <summary>
+        /// The number of accumulation chunks used by the jackknife reduction. Fixed, not derived from
+        /// the processor count, so the summation order — and therefore the acceleration constant —
+        /// does not vary with the machine or the thread count.
+        /// </summary>
+        private const int JackknifeChunks = 64;
+
         private bool[] _validFlags = null!;
         private double[,]? _studentizedValues;
         private double[,]? _transformedStatistics;
@@ -281,6 +290,19 @@ namespace Numerics.Sampling
         /// For pivotal bootstrap, this is the raw covariance-aware fit failure count.
         /// </summary>
         public int FailedReplicates => _failedCount;
+
+        /// <summary>
+        /// Gets the number of leave-one-out jackknife replicates that failed while computing the BCa
+        /// acceleration constants on the most recent <see cref="GetConfidenceIntervals(BootstrapCIMethod, double)"/>
+        /// call that requested <see cref="BootstrapCIMethod.BCa"/>. Zero for every other interval method.
+        /// </summary>
+        /// <remarks>
+        /// Failed jackknife replicates are excluded from the acceleration sums, so a non-zero count means
+        /// the acceleration constants rest on fewer leave-one-out samples than the sample size implies.
+        /// This is reported separately from <see cref="FailedReplicates"/>, which counts bootstrap
+        /// resampling failures rather than jackknife failures.
+        /// </remarks>
+        public int FailedJackknifeReplicates => _failedJackknifeReplicates;
 
         #endregion
 
@@ -1171,6 +1193,15 @@ namespace Numerics.Sampling
         /// </summary>
         /// <param name="populationEstimates">The original statistic estimates.</param>
         /// <returns>The acceleration constant for each statistic.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when <see cref="SampleSizeFunction"/> reports a non-positive sample size, or when every
+        /// leave-one-out replicate produced by <see cref="JackknifeFunction"/> fails.
+        /// </exception>
+        /// <remarks>
+        /// The jackknife second and third moments are accumulated over a fixed number of chunks and merged
+        /// serially in chunk order, so the acceleration constants are reproducible run to run rather than
+        /// dependent on the thread scheduler.
+        /// </remarks>
         private double[] ComputeAccelerationConstants(double[] populationEstimates)
         {
             var sampleSize = SampleSizeFunction!;
@@ -1179,33 +1210,99 @@ namespace Numerics.Sampling
             var statistic = StatisticFunction!;
 
             int N = sampleSize(_originalData);
-            var I2 = new double[_numStats];
-            var I3 = new double[_numStats];
             var a = new double[_numStats];
+            _failedJackknifeReplicates = 0;
+            if (N <= 0)
+                throw new InvalidOperationException("The BCa acceleration constants require at least one leave-one-out jackknife replicate, but SampleSizeFunction reported a non-positive sample size.");
 
-            Parallel.For(0, N, idx =>
+            int chunks = Math.Min(JackknifeChunks, N);
+            var chunkSecondMoments = new double[chunks][];
+            var chunkThirdMoments = new double[chunks][];
+            var chunkValid = new int[chunks];
+            var chunkFailed = new int[chunks];
+            var chunkFirstFailure = new Exception?[chunks];
+            for (int c = 0; c < chunks; c++)
             {
-                try
-                {
-                    var jackData = jackknife(_originalData, idx);
-                    var jackFit = fitFunc(jackData);
-                    var jackStats = statistic(jackFit);
+                chunkSecondMoments[c] = new double[_numStats];
+                chunkThirdMoments[c] = new double[_numStats];
+            }
 
-                    for (int i = 0; i < _numStats; i++)
+            Parallel.For(0, chunks, c =>
+            {
+                var secondMoments = chunkSecondMoments[c];
+                var thirdMoments = chunkThirdMoments[c];
+                int start = (int)((long)c * N / chunks);
+                int end = (int)((long)(c + 1) * N / chunks);
+                int valid = 0;
+                int failed = 0;
+                Exception? firstFailure = null;
+                for (int idx = start; idx < end; idx++)
+                {
+                    try
                     {
-                        double diff = populationEstimates[i] - jackStats[i];
-                        Tools.ParallelAdd(ref I2[i], diff * diff);
-                        Tools.ParallelAdd(ref I3[i], diff * diff * diff);
+                        var jackData = jackknife(_originalData, idx);
+                        var jackFit = fitFunc(jackData);
+                        var jackStats = statistic(jackFit);
+
+                        for (int i = 0; i < _numStats; i++)
+                        {
+                            double diff = populationEstimates[i] - jackStats[i];
+                            secondMoments[i] += diff * diff;
+                            thirdMoments[i] += diff * diff * diff;
+                        }
+                        valid++;
+                    }
+                    catch (Exception exception)
+                    {
+                        // Count the failed jackknife replicate and keep the first exception so the cause
+                        // survives instead of being discarded silently.
+                        failed++;
+                        if (firstFailure == null) firstFailure = exception;
                     }
                 }
-                catch (Exception)
-                {
-                    // Skip failed jackknife samples.
-                }
+                chunkValid[c] = valid;
+                chunkFailed[c] = failed;
+                chunkFirstFailure[c] = firstFailure;
             });
 
+            int validCount = 0;
+            int failedCount = 0;
+            Exception? firstJackknifeFailure = null;
+            for (int c = 0; c < chunks; c++)
+            {
+                validCount += chunkValid[c];
+                failedCount += chunkFailed[c];
+                if (firstJackknifeFailure == null) firstJackknifeFailure = chunkFirstFailure[c];
+            }
+            _failedJackknifeReplicates = failedCount;
+
+            if (validCount == 0)
+            {
+                string cause = firstJackknifeFailure != null
+                    ? " The first failure was: " + firstJackknifeFailure.Message
+                    : string.Empty;
+                throw new InvalidOperationException(
+                    "Every leave-one-out replicate produced by JackknifeFunction failed, so the BCa acceleration constants are undefined." + cause,
+                    firstJackknifeFailure);
+            }
+
             for (int i = 0; i < _numStats; i++)
-                a[i] = I3[i] / (Math.Pow(I2[i], 1.5) * 6d);
+            {
+                double secondMoment = 0d;
+                double thirdMoment = 0d;
+                for (int c = 0; c < chunks; c++)
+                {
+                    secondMoment += chunkSecondMoments[c][i];
+                    thirdMoment += chunkThirdMoments[c][i];
+                }
+
+                // A zero second moment means every jackknife replicate returned the same statistic value,
+                // so the statistic has no jackknife variation. Zero is the correct limit of the
+                // acceleration there, and BCa degenerates to the bias-corrected interval.
+                a[i] = secondMoment > 0d && Tools.IsFinite(secondMoment)
+                    ? thirdMoment / (Math.Pow(secondMoment, 1.5) * 6d)
+                    : 0d;
+            }
 
             return a;
         }
