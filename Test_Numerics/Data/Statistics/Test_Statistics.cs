@@ -337,6 +337,38 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Test that the LinearMoments probability weighted moment numerators do not overflow for large samples.
+        /// </summary>
+        /// <remarks>
+        /// An evenly spaced sample xᵢ = 1 + 0.5 i is a linear function of the ranks, so its L-skewness
+        /// and L-kurtosis are analytically exactly zero at every sample length. The b₂ and b₃ numerators
+        /// exceed <see cref="int.MaxValue"/> at n = 46,343 and n = 1,293 respectively, so evaluating them
+        /// in integer arithmetic wraps silently and corrupts τ₃ and τ₄. See USACE-RMC/Numerics#146.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ComputeLinearMoments_LargeSample()
+        {
+            // n = 1292 is the last length whose b₃ numerator fits in an int; 1293 is the first that does not.
+            foreach (int n in new[] { 1292, 1293, 1300 })
+            {
+                var data = new double[n];
+                for (int i = 0; i < n; i++) data[i] = 1d + 0.5d * i;
+
+                var lmoms = Numerics.Data.Statistics.Statistics.LinearMoments(data);
+                Assert.AreEqual(0d, lmoms[2], 1E-12, $"L-skewness (τ₃) is not zero at n = {n}.");
+                Assert.AreEqual(0d, lmoms[3], 1E-12, $"L-kurtosis (τ₄) is not zero at n = {n}.");
+            }
+
+            // Below the overflow the numerators are exact integers, so the published reference case is unchanged.
+            var reference = new double[] { 1953d, 1939d, 1677d, 1692d, 2051d, 2371d, 2022d, 1521d, 1448d, 1825d, 1363d, 1760d, 1672d, 1603d, 1244d, 1521d, 1783d, 1560d, 1357d, 1673d, 1625d, 1425d, 1688d, 1577d, 1736d, 1640d, 1584d, 1293d, 1277d, 1742d, 1491d };
+            var referenceMoments = Numerics.Data.Statistics.Statistics.LinearMoments(reference);
+            Assert.AreEqual(1648.8064516d, referenceMoments[0], 1E-7);
+            Assert.AreEqual(138.2365591d, referenceMoments[1], 1E-7);
+            Assert.AreEqual(0.1033903d, referenceMoments[2], 1E-7);
+            Assert.AreEqual(0.1940943d, referenceMoments[3], 1E-7);
+        }
+
+        /// <summary>
         /// Test the Percentile method against R's "quantile()" method from the "stats" package.
         /// </summary>
         [TestMethod]

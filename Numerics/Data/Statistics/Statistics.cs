@@ -524,6 +524,16 @@ namespace Numerics.Data.Statistics
         /// Returns the linear moments of a sample {L-Mean (λ1), L-Scale (λ2), L-Skewness (τ3), and L-Kurtosis (τ4)}, or returns NaN if data is empty or any entry is NaN.
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <returns>The linear moments {λ1, λ2, τ3, τ4}, or four NaN values when the sample has fewer than four entries.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> is null.</exception>
+        /// <remarks>
+        /// The probability weighted moment numerators are accumulated in double precision. Evaluating
+        /// them in integer arithmetic overflows silently under the unchecked default: the b₃ numerator
+        /// (i-3)(i-2)(i-1) exceeds <see cref="int.MaxValue"/> at i = 1,293 and the b₂ numerator
+        /// (i-2)(i-1) exceeds it at i = 46,343, which corrupts τ₃ and τ₄ for large samples. Below those
+        /// thresholds the products are exact integers well under 2⁵³, so the double accumulation
+        /// reproduces the integer results exactly. See USACE-RMC/Numerics#146.
+        /// </remarks>
         public static double[] LinearMoments(IList<double> data)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -537,15 +547,17 @@ namespace Numerics.Data.Statistics
             double B0 = 0, B1 = 0, B2 = 0, B3 = 0;
             for (int i = 1; i <= N; i++)
             {
+                // Form the b2 and b3 numerators in double so that large samples do not overflow the int products.
+                double di = i;
                 B0 += sortedData[i - 1];
                 if (i > 1)
                     B1 += (i - 1) / (N - 1) * sortedData[i - 1];
                 if (i > 2)
-                    B2 += (i - 2) * (i - 1) / ((N - 2) * (N - 1)) * sortedData[i - 1];
+                    B2 += (di - 2) * (di - 1) / ((N - 2) * (N - 1)) * sortedData[i - 1];
                 if (i > 3)
-                    B3 += (i - 3) * (i - 2) * (i - 1) / ((N - 3) * (N - 2) * (N - 1)) * sortedData[i - 1];
+                    B3 += (di - 3) * (di - 2) * (di - 1) / ((N - 3) * (N - 2) * (N - 1)) * sortedData[i - 1];
             }
- 
+
             B0 /= N;
             B1 /= N;
             B2 /= N;
