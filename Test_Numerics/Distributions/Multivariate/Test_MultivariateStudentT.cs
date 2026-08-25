@@ -325,16 +325,22 @@ namespace Distributions.Multivariate
         public void Test_CDF_3D_Scipy()
         {
             double[,] shape = { { 1.0, 0.5, 0.3 }, { 0.5, 1.0, 0.4 }, { 0.3, 0.4, 1.0 } };
-            var mvt = new MultivariateStudentT(5.0, new double[3], shape);
+
+            // A fresh instance per point. Above two dimensions the CDF advances the instance's MVNUNI, so
+            // reusing one instance would make each assertion depend on how many CDF calls preceded it, and
+            // the pinned values would shift if a call were inserted or reordered. Constructing per point
+            // makes every value a first-call value, which is also the protocol the agreements below were
+            // measured under.
+            double Cdf(double[] point) => new MultivariateStudentT(5.0, new double[3], shape).CDF(point);
 
             // measured agreement 1.21E-05
-            Assert.AreEqual(0.2236624425, mvt.CDF(new[] { 0.0, 0.0, 0.0 }), 5E-5);
+            Assert.AreEqual(0.2236624425, Cdf(new[] { 0.0, 0.0, 0.0 }), 5E-5);
             // measured agreement 1.30E-05
-            Assert.AreEqual(0.6307840101, mvt.CDF(new[] { 1.0, 1.0, 1.0 }), 5E-5);
+            Assert.AreEqual(0.6307840101, Cdf(new[] { 1.0, 1.0, 1.0 }), 5E-5);
             // measured agreement 2.05E-05
-            Assert.AreEqual(0.7480738713, mvt.CDF(new[] { 2.0, 1.5, 1.0 }), 5E-5);
+            Assert.AreEqual(0.7480738713, Cdf(new[] { 2.0, 1.5, 1.0 }), 5E-5);
             // measured agreement 1.46E-05
-            Assert.AreEqual(0.1566553047, mvt.CDF(new[] { -1.0, 0.5, 2.0 }), 5E-5);
+            Assert.AreEqual(0.1566553047, Cdf(new[] { -1.0, 0.5, 2.0 }), 5E-5);
         }
 
         /// <summary>
@@ -364,16 +370,17 @@ namespace Distributions.Multivariate
                 { 0.0, 0.0, 1.0, 0.0 },
                 { 0.0, 0.0, 0.0, 1.0 }
             };
-            var mvt = new MultivariateStudentT(4.0, new double[4], shape);
+            // A fresh instance per point, for the reason given in Test_CDF_3D_Scipy.
+            double Cdf(double[] point) => new MultivariateStudentT(4.0, new double[4], shape).CDF(point);
 
             // Analytic: 1/2^4 by sign symmetry about the origin. Returned exactly.
-            Assert.AreEqual(0.0625, mvt.CDF(new[] { 0.0, 0.0, 0.0, 0.0 }), 1E-12,
+            Assert.AreEqual(0.0625, Cdf(new[] { 0.0, 0.0, 0.0, 0.0 }), 1E-12,
                 "The lower-orthant probability at the centre of a symmetric 4-D distribution is exactly 1/16.");
 
             // measured agreement 6.04E-06
-            Assert.AreEqual(0.4642714854, mvt.CDF(new[] { 1.0, 1.0, 1.0, 1.0 }), 5E-5);
+            Assert.AreEqual(0.4642714854, Cdf(new[] { 1.0, 1.0, 1.0, 1.0 }), 5E-5);
             // measured agreement 4.78E-05
-            Assert.AreEqual(0.8086925605, mvt.CDF(new[] { 2.0, 2.0, 2.0, 2.0 }), 1E-4);
+            Assert.AreEqual(0.8086925605, Cdf(new[] { 2.0, 2.0, 2.0, 2.0 }), 1E-4);
         }
 
         /// <summary>

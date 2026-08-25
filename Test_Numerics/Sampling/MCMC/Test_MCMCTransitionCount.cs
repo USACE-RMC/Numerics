@@ -163,24 +163,45 @@ namespace Sampling.MCMC
 
             sampler.Sample();
 
-            long observedPerChain = sampler.ChainCallCount[0] * sampler.ThinningInterval;
-            Assert.AreEqual(sampler.TransitionCount, observedPerChain,
-                "TransitionCount must equal the transitions Sample() performs on one chain.");
+            // Compare against the COUNTED transitions directly. Nothing here multiplies by
+            // ThinningInterval: TransitionCallCount is incremented once per ChainIteration, which is one
+            // real transition, so if the inner loop in SampleChain ever ran a different number of times
+            // than ThinningInterval the counts would diverge and this would fail. Multiplying an observed
+            // SampleChain count by ThinningInterval would instead assume the very thing under test.
+            Assert.AreEqual(sampler.TransitionCount, sampler.TransitionCallCount[0],
+                "TransitionCount must equal the transitions Sample() actually performs on one chain.");
 
             long observedTotal = 0;
             for (int i = 0; i < sampler.NumberOfChains; i++)
             {
-                Assert.AreEqual(sampler.ChainCallCount[0], sampler.ChainCallCount[i],
+                Assert.AreEqual(sampler.TransitionCallCount[0], sampler.TransitionCallCount[i],
                     "Every chain is advanced the same number of times.");
-                observedTotal += sampler.ChainCallCount[i] * sampler.ThinningInterval;
+                observedTotal += sampler.TransitionCallCount[i];
             }
             Assert.AreEqual(sampler.TotalTransitionCount, observedTotal,
                 "TotalTransitionCount must equal the transitions Sample() performs across all chains.");
+
+            // The recorded-iteration count is a separate fact worth pinning: it is the outer loop,
+            // Iterations + ceil(OutputLength / NumberOfChains) = 150, and the transitions are that times
+            // the thinning interval. Asserting both separately locates a future break to one loop or the
+            // other rather than just reporting a mismatched product.
+            Assert.AreEqual(150L, sampler.ChainCallCount[0],
+                "SampleChain must be invoked once per recorded iteration.");
+            Assert.AreEqual(sampler.ChainCallCount[0] * sampler.ThinningInterval, sampler.TransitionCallCount[0],
+                "Each recorded iteration must advance the chain exactly ThinningInterval times.");
         }
 
         /// <summary>
-        /// An RWMH sampler that records how many times each chain is advanced.
+        /// An RWMH sampler that records both how many times each chain is advanced (<c>SampleChain</c>, the
+        /// outer recorded-iteration loop) and how many transitions actually occur (<c>ChainIteration</c>,
+        /// the inner thinning loop).
         /// </summary>
+        /// <remarks>
+        /// Counting <c>ChainIteration</c> is what makes the anti-drift assertion real. Counting only
+        /// <c>SampleChain</c> and multiplying by <see cref="MCMCSampler.ThinningInterval"/> would assume the
+        /// inner loop performs exactly that many transitions, which is one of the two things
+        /// <see cref="MCMCSampler.TransitionCount"/> claims.
+        /// </remarks>
         private sealed class CountingRWMH : RWMH
         {
             /// <summary>
@@ -195,15 +216,37 @@ namespace Sampling.MCMC
             }
 
             /// <summary>
-            /// The number of times each chain has been advanced, indexed by chain.
+            /// The number of times each chain's recorded iteration ran, indexed by chain.
             /// </summary>
-            public long[] ChainCallCount { get; } = new long[64];
+            public long[] ChainCallCount { get; private set; } = [];
+
+            /// <summary>
+            /// The number of transitions each chain actually performed, indexed by chain.
+            /// </summary>
+            public long[] TransitionCallCount { get; private set; } = [];
+
+            /// <inheritdoc/>
+            public override void Sample()
+            {
+                // Sized here rather than at construction because NumberOfChains is assigned by the caller
+                // after the constructor runs.
+                ChainCallCount = new long[NumberOfChains];
+                TransitionCallCount = new long[NumberOfChains];
+                base.Sample();
+            }
 
             /// <inheritdoc/>
             protected override ParameterSet SampleChain(int index, ParameterSet state)
             {
                 ChainCallCount[index]++;
                 return base.SampleChain(index, state);
+            }
+
+            /// <inheritdoc/>
+            protected override ParameterSet ChainIteration(int index, ParameterSet state)
+            {
+                TransitionCallCount[index]++;
+                return base.ChainIteration(index, state);
             }
         }
     }

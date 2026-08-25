@@ -292,7 +292,7 @@ namespace Numerics.Distributions
         /// <see cref="CentralMoments(int)"/>, whose argument is a number of integration steps. The two are
         /// distinguished only by the type of the single argument, so the choice is invisible at the call
         /// site: <c>CentralMoments(1E-8)</c> requests a relative tolerance of 1E-8 from this adaptive
-        /// routine, while <c>CentralMoments(1000)</c> selects the fixed-step trapezoidal overload with 1,000
+        /// routine, while <c>CentralMoments(1000)</c> selects the fixed-step bin-expectation overload with 1,000
         /// steps. Writing <c>CentralMoments(1)</c> when a tolerance of 1.0 was meant silently runs the other
         /// method with a single step. The C++ port team flagged this pair as a foot-gun; the signatures are
         /// kept for source compatibility.
@@ -334,7 +334,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Trapezoidal rule.
+        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using a fixed-step discrete expectation over stratified bins.
         /// </summary>
         ///<param name="steps">Number of integration steps. Default = 300.</param>
         /// <returns>Mean, Standard Deviation, Skew, and Kurtosis.</returns>
@@ -350,10 +350,21 @@ namespace Numerics.Distributions
         /// source compatibility.
         /// </para>
         /// <para>
-        /// This overload stratifies [InverseCDF(1E-8), InverseCDF(1 − 1E-8)] into <paramref name="steps"/>
-        /// equal bins and accumulates a trapezoidal sum, so the cost and the accuracy are both fixed by
-        /// <paramref name="steps"/> and there is no convergence check. Note that its integration range is
-        /// narrower than the adaptive overload's, so the two do not agree exactly even when both converge.
+        /// <b>What this overload actually computes</b>, which is worth stating precisely because a port
+        /// cannot be written from the word "trapezoidal" alone: it stratifies
+        /// [InverseCDF(1E-8), InverseCDF(1 − 1E-8)] into <paramref name="steps"/> equal bins, takes each
+        /// bin's probability mass ΔFᵢ as a difference of <see cref="CDF(double)"/> values, and accumulates
+        /// the discrete expectation Σᵢ xᵢᵏ · ΔFᵢ. It is therefore a bin-probability (midpoint) expectation
+        /// against the distribution, <b>not</b> a trapezoidal rule applied to the integrand x·f(x). The
+        /// representative point xᵢ is the bin midpoint for interior bins, the upper bound for the first bin
+        /// and the lower bound for the last. The standard deviation is recovered from the raw second moment
+        /// as √(E[X²] − E[X]²), and skewness and kurtosis are accumulated as already-standardized powers.
+        /// </para>
+        /// <para>
+        /// The first and last bins carry the whole of their tails — ΔF₀ is CDF(upper bound of bin 0), taken
+        /// from −∞, and the final ΔF is 1 − CDF(lower bound of the last bin) — so despite the 1E-8 stratification
+        /// endpoints the total probability sums to one and the effective range is <b>not</b> truncated. Cost
+        /// and accuracy are both fixed by <paramref name="steps"/> and there is no convergence check.
         /// Within this library <c>CompetingRisks</c>, <c>EmpiricalDistribution</c>,
         /// <c>GeneralizedNormal</c>, <c>KappaFour</c>, <c>Mixture</c> and <c>TruncatedDistribution</c> all
         /// use this overload; only <c>NoncentralT</c> uses the adaptive one.

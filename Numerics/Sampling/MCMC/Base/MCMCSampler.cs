@@ -189,12 +189,17 @@ namespace Numerics.Sampling.MCMC
         /// </para>
         /// <para>
         /// The type is <see cref="long"/> because the product overflows <see cref="int"/> well inside the
-        /// range of settings the sampler accepts: there is no upper bound on <see cref="Iterations"/>, so a
-        /// run of 10⁸ iterations at the default thinning already exceeds <see cref="int.MaxValue"/>.
+        /// range of settings the sampler accepts: nothing bounds <see cref="Iterations"/> from above, and at
+        /// the default output length, chain count and thinning interval the per-chain product passes
+        /// <see cref="int.MaxValue"/> at about 1.074E8 iterations. <see cref="TotalTransitionCount"/> passes
+        /// it four times sooner, at about 2.68E7 iterations, because of the multiplication by the default
+        /// four chains.
         /// </para>
         /// <para>
         /// This reports the settings as they are currently configured and does not validate them; the
-        /// settings are checked by <c>ValidateSettings</c> when <see cref="Sample"/> is called.
+        /// settings are checked by <c>ValidateSettings</c> when <see cref="Sample"/> is called. The one
+        /// exception is <see cref="NumberOfChains"/>: a value below one is not a samplable configuration and
+        /// would otherwise divide by zero here, so it reports 0 rather than a framework-dependent number.
         /// </para>
         /// <para>
         /// The count describes the base <see cref="Sample"/> loop and the base <c>SampleChain</c>, neither of
@@ -207,23 +212,42 @@ namespace Numerics.Sampling.MCMC
         {
             get
             {
-                // Derived from the same expressions Sample() uses, so the two cannot drift apart:
-                // Sample() computes outputIterations = ceil(OutputLength / NumberOfChains) and
-                // totalIterations = Iterations + outputIterations, then SampleChain advances the chain
-                // ThinningInterval times per iteration. The sum is widened to long before the
-                // multiplication so that large settings do not overflow.
-                int outputIterations = (int)Math.Ceiling(OutputLength / (double)NumberOfChains);
-                return ((long)Iterations + outputIterations) * ThinningInterval;
+                // NumberOfChains is only validated by ValidateSettings when Sample() runs, but this property
+                // is readable at any time. At zero chains the division below would be Infinity, and casting
+                // Infinity to int saturates to int.MaxValue on .NET Core while being unspecified on .NET
+                // Framework, so the answer would differ by target framework. Report 0 for a configuration
+                // that cannot be sampled instead.
+                if (NumberOfChains < 1) return 0L;
+
+                // OutputIterations is the same member Sample() uses, so the two cannot drift apart. Each
+                // recorded iteration advances the chain ThinningInterval times. The sum is widened to long
+                // before the multiplication so that large settings do not overflow.
+                return ((long)Iterations + OutputIterations) * ThinningInterval;
             }
         }
+
+        /// <summary>
+        /// The number of recorded iterations that <see cref="Sample"/> runs beyond <see cref="Iterations"/>
+        /// in order to collect the posterior output, ceil(<see cref="OutputLength"/> / <see cref="NumberOfChains"/>).
+        /// </summary>
+        /// <remarks>
+        /// Shared by <see cref="Sample"/> and <see cref="TransitionCount"/> so that the reported work and the
+        /// work actually performed are computed from a single expression rather than two copies of it.
+        /// Callers must ensure <see cref="NumberOfChains"/> is at least one; <see cref="Sample"/> does so via
+        /// <c>ValidateSettings</c> and <see cref="TransitionCount"/> guards it directly.
+        /// </remarks>
+        private int OutputIterations => (int)Math.Ceiling(OutputLength / (double)NumberOfChains);
 
         /// <summary>
         /// The number of chain transitions performed across all chains during a call to <see cref="Sample"/>.
         /// </summary>
         /// <returns><see cref="TransitionCount"/> × <see cref="NumberOfChains"/>.</returns>
         /// <remarks>
-        /// The total evaluation budget of a run. At the defaults this is 120,000 × 4 = 480,000 transitions,
-        /// and therefore at least that many evaluations of <see cref="LogLikelihoodFunction"/>. See
+        /// At the defaults this is 120,000 × 4 = 480,000 transitions. Treat it as a <b>lower bound</b> on the
+        /// evaluation count, not as a budget: every transition costs at least one evaluation of
+        /// <see cref="LogLikelihoodFunction"/>, but a gradient-based sampler such as HMC or NUTS spends many
+        /// likelihood and gradient evaluations per transition, and chain initialization adds further
+        /// evaluations on top of all of these. See
         /// <see cref="TransitionCount"/> for why this differs so widely from <see cref="Iterations"/>. When
         /// <see cref="ParallelizeChains"/> is true these are distributed across worker threads, so this is
         /// the total work rather than the critical path.
@@ -613,8 +637,9 @@ namespace Numerics.Sampling.MCMC
                 InitializeCustomSettings();
             }
 
-            // Output settings
-            int outputIterations = (int)Math.Ceiling(OutputLength / (double)NumberOfChains);
+            // Output settings. OutputIterations is shared with TransitionCount so that the advertised work
+            // and the work performed here cannot drift apart.
+            int outputIterations = OutputIterations;
             int totalIterations = Iterations + outputIterations;
             int outputCount = 0;
             Output = new List<ParameterSet>[NumberOfChains];

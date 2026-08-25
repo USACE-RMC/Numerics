@@ -415,10 +415,18 @@ namespace Data.Statistics
         /// integer arithmetic and wrapped silently on large samples (USACE-RMC/Numerics#146). On this same
         /// sample the pre-fix code returned τ₄ = −0.185 at n = 1293 against an exact −3.80E−06, and
         /// τ₄ = −17.01 at n = 1460 against an exact +1.40E−04. τ₄ is bounded roughly in [−0.25, 1] for any real
-        /// distribution, so −17.01 is not an imprecise answer but a meaningless one. n = 1292 is the last
-        /// length whose b₃ numerator fits in an <see cref="int"/> — the pre-fix code is bit-compatible there,
-        /// which is why the test also pins a length above the threshold. n = 1460 is four years of daily data,
-        /// the scenario the issue reports as triggering it in practice.
+        /// distribution, so −17.01 is not an imprecise answer but a meaningless one.
+        /// </para>
+        /// <para>
+        /// <b>The three lengths are chosen to straddle the overflow threshold.</b> n = 1292 is the last
+        /// length whose b₃ numerator fits in an <see cref="int"/>, so the pre-fix code is bit-compatible
+        /// there; that case pins the correct answer but does not by itself guard the bug. n = 1293 is the
+        /// first length that overflows, so it pins the threshold itself: exact τ₄ is −3.797E−06 against a
+        /// pre-fix −0.185. n = 1460 is four years of daily data, the scenario the issue reports as
+        /// triggering it in practice. n = 1293 is also the clearest evidence that the tolerance floor below
+        /// is the right shape: τ₄ there is six times smaller than at n = 1292, yet the absolute error is
+        /// unchanged in order (1.56E-14 against 1.88E-14), which is what a magnitude-independent
+        /// cancellation floor looks like and is not what a relative error bound would predict.
         /// </para>
         /// </remarks>
         [TestMethod]
@@ -428,6 +436,7 @@ namespace Data.Statistics
             var oracle = new Dictionary<int, double[]>
             {
                 { 1292, new[] { 522512.5024550116d, 261084.88504577902d, 0.19954627498563463d, -2.204844394426912E-05d } },
+                { 1293, new[] { 522161.99051382445d, 261046.5194639539d, 0.19994530607607433d, -3.796995958157631E-06d } },
                 { 1460, new[] { 522816.5913848459d, 261222.97693894972d, 0.19969563852408587d, 1.4021596010174597E-04d } }
             };
             var names = new[] { "L-mean (λ₁)", "L-scale (λ₂)", "L-skewness (τ₃)", "L-kurtosis (τ₄)" };

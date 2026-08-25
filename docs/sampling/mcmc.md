@@ -109,8 +109,10 @@ transitions per chain = (Iterations + ceil(OutputLength / NumberOfChains)) * Thi
                       = 480,000          across the 4 default chains
 ```
 
-Every transition costs at least one log-likelihood evaluation, so 480,000 is the evaluation budget of
-a default run. Note that `WarmupIterations` is a *subset* of `Iterations`, not an addition to it —
+Every transition costs at least one log-likelihood evaluation, so 480,000 is a **floor** on the
+evaluation count of a default run, not a budget. A gradient-based sampler such as HMC or NUTS spends
+many likelihood and gradient evaluations per transition, and chain initialization adds more on top,
+so the real count can be far higher. Note that `WarmupIterations` is a *subset* of `Iterations`, not an addition to it —
 `ValidateSettings` rejects a warmup longer than half of `Iterations` — so it is already inside these
 figures and must not be added again.
 

@@ -158,9 +158,11 @@ namespace Numerics.Distributions
         /// <para>
         /// The literal above is written out rather than derived as <c>2d * Tools.DoubleMachineEpsilon</c>,
         /// and that matters. <see cref="Tools.DoubleMachineEpsilon"/> is the decimal literal
-        /// 1.11022302462516E-16, which is a truncated 2⁻⁵³ and not 2⁻⁵³ itself: the exact value is
-        /// 1.1102230246251565E-16, so the ratio between the two constants is 1.9999999999999938 rather than
-        /// 2. Doubling the truncated constant would therefore <b>not</b> yield 2⁻⁵² bit-exactly, and the
+        /// 1.11022302462516E-16, which is 2⁻⁵³ rounded to fifteen significant figures and not 2⁻⁵³ itself.
+        /// 2⁻⁵³ is exactly 1.1102230246251565E-16, so the literal is the <i>larger</i> of the two, at
+        /// 1.000000000000003 times 2⁻⁵³, and the ratio between the two class constants is
+        /// 1.9999999999999938 rather than 2. Doubling the rounded constant would therefore
+        /// <b>not</b> yield 2⁻⁵² bit-exactly, and the
         /// thresholds built on it would drift off scipy's by a few ulps — enough to break an exact-agreement
         /// test without producing any visible symptom. Do not "simplify" this back to a multiple of
         /// <see cref="Tools.DoubleMachineEpsilon"/>.
