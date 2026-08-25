@@ -15,8 +15,23 @@ namespace Numerics.Mathematics.Optimization
     /// <para>
     /// <b> Description: </b>
     /// This method minimizes the function by bi-directionally searching along search vectors via Brent's method. The minima of
-    /// these search vectors are recorded and used to create new search vectors, as the current ones are deleted after use. 
+    /// these search vectors are recorded and used to create new search vectors, as the current ones are deleted after use.
     /// The algorithm iterates until no significant improvement is made.
+    /// </para>
+    /// <para>
+    /// <b> Feasible region: </b>
+    /// The search is confined to the box defined by <see cref="LowerBounds"/> and <see cref="UpperBounds"/>, and the objective
+    /// function is never evaluated outside it. Each line search is restricted to the feasible step interval, which is the set
+    /// of step lengths along the search direction that keep every coordinate between its bounds. That interval always contains
+    /// zero because the current iterate is feasible, so restricting the search never excludes the current point. The
+    /// extrapolated point used by the direction-set update is scored only when the reflection that produces it is itself
+    /// feasible; an infeasible extrapolation is treated as no improvement and the direction set is left alone for that
+    /// iteration. Projecting the reflection back onto the box instead was measured and rejected, because the projected point
+    /// sits on a face where the objective can be far smaller than at the reflection, which makes the acceptance test fire on a
+    /// point the test was not derived for and admits direction replacements that slow convergence badly on smooth problems.
+    /// These restrictions matter most when this class is the local solver inside a global optimizer, because the objective
+    /// function is then the global solver's own evaluation routine and any point it scores can be recorded as the reported
+    /// solution.
     /// </para>
     /// <b> References: </b>
     /// <list type="bullet">
@@ -137,14 +152,24 @@ namespace Numerics.Mathematics.Optimization
                 }
                 // Construct the extrapolated point and save the average direction moved.
                 // Save the old starting point.
+                // The reflection through the current point readily leaves the box even when both points are
+                // inside it, and this point is scored through the objective function, so it has to be kept
+                // feasible. It is skipped rather than projected back: projection moves the point onto a face
+                // where the objective can be much smaller than at the reflection, which turns the acceptance
+                // test below into a test on a different point and admits direction replacements the test was
+                // never meant to admit. See the remarks on this class.
+                bool extrapolationIsFeasible = true;
                 for (j = 0; j < D; j++)
                 {
                     ptt[j] = 2.0 * p[j] - pt[j];
+                    if (ptt[j] < LowerBounds[j] || ptt[j] > UpperBounds[j]) extrapolationIsFeasible = false;
                     xi[j] = p[j] - pt[j];
                     pt[j] = p[j];
                 }
-                // Function evaluated at the extrapolated point
-                fptt = Evaluate(ptt, ref cancel);
+                // Function evaluated at the extrapolated point. An infeasible extrapolation is treated as no
+                // improvement, which is the same outcome the acceptance test reaches for a point that does
+                // not beat the value at the start of this iteration.
+                fptt = extrapolationIsFeasible ? Evaluate(ptt, ref cancel) : double.PositiveInfinity;
                 if (cancel == true) return;
                 if (fptt < fp)
                 {
@@ -171,33 +196,106 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
-        /// Auxiliary line minimization routine. 
+        /// Auxiliary line minimization routine.
         /// </summary>
-        /// <param name="startPoint">The initial point.</param>
-        /// <param name="direction">The initial direction.</param>
+        /// <param name="startPoint">The initial point. Updated in place to the minimizing point along the direction.</param>
+        /// <param name="direction">The initial direction. Updated in place to the vector displacement actually taken.</param>
         /// <param name="cancel">Determines if the solver should be canceled.</param>
+        /// <returns>
+        /// The fitness at the returned point, or <see cref="double.NaN"/> when the solver was canceled.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// The search is restricted to the feasible step interval returned by
+        /// <see cref="GetFeasibleStepInterval"/>. That interval always contains zero, so restricting the
+        /// search never excludes the current point. Three guards enforce the restriction, because
+        /// <see cref="BrentSearch.Bracket"/> expands geometrically and overwrites its own bounds, so
+        /// constructing the search over a narrower interval would not by itself confine it.
+        /// </para>
+        /// <list type="number">
+        /// <item><description>
+        /// The step length is clamped to the feasible interval before the trial point is formed, and each
+        /// coordinate of that point is then repaired. The objective seen by <see cref="BrentSearch"/> is
+        /// therefore the restriction of the function to the feasible segment, extended as a constant past
+        /// each end. No trial point can lie outside the box however far the bracket expands, and the
+        /// constant tails stop the bracketing search within a step or two of leaving the interval instead
+        /// of letting it run away.
+        /// </description></item>
+        /// <item><description>
+        /// The first bracketing step comes from <see cref="GetBracketingStep"/> and always lands inside the
+        /// feasible interval, so the single comparison that chooses the bracketing direction is made
+        /// between two genuinely different points rather than on a constant tail.
+        /// </description></item>
+        /// <item><description>
+        /// The accepted step length is clamped to the feasible interval before the displacement is applied,
+        /// so a bracket that ran past an endpoint cannot enlarge the recorded displacement or put an
+        /// infeasible direction into the direction set. Clamping the accepted step exactly matches the
+        /// clamping inside the objective, so the returned fitness is the value of the objective at the
+        /// returned point.
+        /// </description></item>
+        /// </list>
+        /// <para>
+        /// The zero step is evaluated before the search and is kept unless the search strictly improves on
+        /// it, so this routine is non-increasing. The enclosing algorithm relies on that: it identifies the
+        /// direction of largest decrease by index, and that index is only defined when some direction did
+        /// decrease.
+        /// </para>
+        /// <para>
+        /// When the feasible interval collapses to the single point zero, the line search cannot move. That
+        /// happens when the direction is identically zero and when the iterate sits on a bound with the
+        /// direction pointing out of the box in every constrained coordinate. In that case the value at the
+        /// current point is returned and the direction is left unchanged, so a blocked direction is retained
+        /// in the direction set and can be retried from a later iterate.
+        /// </para>
+        /// </remarks>
         private double LineMinimization(double[] startPoint, double[] direction, ref bool cancel)
         {
-            // Line-minimization routine, Given an n-dimensional point p[0..n-1] and an n-dimension 
+            // Line-minimization routine, Given an n-dimensional point p[0..n-1] and an n-dimension
             // direction xi[0..n-1], moves and resets p to where the function of functor func(p) takes on
             // a minimum along the direction xi from p, and replaces xi by the actual vector displacement
             // that p was moved. Also returns the value of func at the return location p. This is actually
-            // all accomplished by calling the Brent minimize routine. 
+            // all accomplished by calling the Brent minimize routine.
             int D = NumberOfParameters;
             bool c = cancel;
+            GetFeasibleStepInterval(startPoint, direction, out double alphaMin, out double alphaMax);
+
+            // The value at the current point, which is the zero step. Brent starts from the middle of the
+            // interval it is given rather than from an endpoint, so it need not evaluate the zero step at
+            // all. Taking it here makes it the fallback below, which is what keeps this routine from ever
+            // returning a point worse than the one it was given.
+            double zeroStep = Evaluate(startPoint, ref c);
+            cancel = c;
+            if (cancel) return double.NaN;
+
+            // The interval always contains zero, so this is the degenerate case in which no step is
+            // feasible in either sense. Report the value at the current point instead of searching.
+            if (alphaMin == 0d && alphaMax == 0d) return zeroStep;
+
             double func(double alpha)
             {
+                double step = alpha < alphaMin ? alphaMin : (alpha > alphaMax ? alphaMax : alpha);
                 var x = new double[D];
                 for (int i = 0; i < D; i++)
-                    x[i] = startPoint[i] + alpha * direction[i];
+                    x[i] = RepairParameter(startPoint[i] + step * direction[i], LowerBounds[i], UpperBounds[i]);
                 return Evaluate(x, ref c);
             }
+
             var brent = new BrentSearch(func, 0d, 1d) { RelativeTolerance = RelativeTolerance, AbsoluteTolerance = AbsoluteTolerance };
-            brent.Bracket(0.1);
+            brent.Bracket(GetBracketingStep(alphaMin, alphaMax));
             brent.Minimize();
             cancel = c;
             if (cancel) return double.NaN;
             double xmin = brent.BestParameterSet.Values[0];
+            // Keep the accepted step inside the feasible interval, matching the clamping in func above.
+            xmin = xmin < alphaMin ? alphaMin : (xmin > alphaMax ? alphaMax : xmin);
+            double fmin = brent.BestParameterSet.Fitness;
+            // Fall back on the zero step unless the search strictly improved on it. Written this way so a
+            // search that returned NaN keeps the current point rather than moving to it.
+            if (!(fmin < zeroStep))
+            {
+                xmin = 0d;
+                fmin = zeroStep;
+            }
             for (int j = 0; j < NumberOfParameters; j++)
             {
                 direction[j] *= xmin;
@@ -205,7 +303,91 @@ namespace Numerics.Mathematics.Optimization
                 // Make sure the parameter is within bounds
                 startPoint[j] = RepairParameter(startPoint[j], LowerBounds[j], UpperBounds[j]);
             }
-            return brent.BestParameterSet.Fitness;
+            return fmin;
+        }
+
+        /// <summary>
+        /// Returns the first bracketing step for a line search over the given feasible step interval.
+        /// </summary>
+        /// <param name="alphaMin">The most negative feasible step length. Must not be positive.</param>
+        /// <param name="alphaMax">The most positive feasible step length. Must not be negative.</param>
+        /// <returns>A nonzero step length that lies inside the feasible interval.</returns>
+        /// <remarks>
+        /// <para>
+        /// <see cref="BrentSearch.Bracket"/> compares the objective at the origin against the objective one
+        /// step away, and only that single comparison decides which way it then expands. The objective handed
+        /// to it by <see cref="LineMinimization"/> is constant outside the feasible interval, so a first step
+        /// that lands outside carries no information: the comparison sees two equal values, the search never
+        /// turns around, and the whole feasible side can be missed. Returning a step that lies inside the
+        /// interval is what prevents that.
+        /// </para>
+        /// <para>
+        /// The default magnitude is the same 0.1 the routine has always used, and it is kept whenever the
+        /// interval is wide enough to hold it in either sense, so an interior iterate brackets exactly as
+        /// before. Only when the interval is narrower than the default in both senses is the magnitude
+        /// reduced, to half of the wider side, which is inside the interval and nonzero because the caller
+        /// has already handled the interval that collapses to a point.
+        /// </para>
+        /// </remarks>
+        private static double GetBracketingStep(double alphaMin, double alphaMax)
+        {
+            const double defaultStep = 0.1;
+            if (alphaMax >= defaultStep) return defaultStep;
+            if (alphaMin <= -defaultStep) return -defaultStep;
+            return alphaMax >= -alphaMin ? 0.5 * alphaMax : 0.5 * alphaMin;
+        }
+
+        /// <summary>
+        /// Returns the interval of step lengths along a direction that keeps every coordinate within its bounds.
+        /// </summary>
+        /// <param name="startPoint">The feasible point the step is taken from.</param>
+        /// <param name="direction">The search direction.</param>
+        /// <param name="alphaMin">When this method returns, the most negative feasible step length.</param>
+        /// <param name="alphaMax">When this method returns, the most positive feasible step length.</param>
+        /// <remarks>
+        /// <para>
+        /// For each coordinate the two ratios <c>(UpperBounds[i] - startPoint[i]) / direction[i]</c> and
+        /// <c>(LowerBounds[i] - startPoint[i]) / direction[i]</c> are the step lengths that put that coordinate
+        /// exactly on a bound. The larger of the two is an upper limit and the smaller is a lower limit when the
+        /// component is positive, and the roles swap when it is negative. A zero component imposes no limit, and
+        /// an infinite bound produces an infinite limit, which is also no limit.
+        /// </para>
+        /// <para>
+        /// A direction with no nonzero component cannot move the point, so the interval is reported as the single
+        /// point zero rather than as the whole line. Because <paramref name="startPoint"/> is feasible the interval
+        /// always contains zero; that is enforced explicitly at the end so that a rounding error in one of the
+        /// ratios, or a non-finite ratio, cannot produce an interval that excludes the current point.
+        /// </para>
+        /// </remarks>
+        private void GetFeasibleStepInterval(double[] startPoint, double[] direction, out double alphaMin, out double alphaMax)
+        {
+            alphaMin = double.NegativeInfinity;
+            alphaMax = double.PositiveInfinity;
+            bool moves = false;
+            for (int i = 0; i < NumberOfParameters; i++)
+            {
+                double d = direction[i];
+                if (d == 0d) continue;
+                moves = true;
+                double toUpper = (UpperBounds[i] - startPoint[i]) / d;
+                double toLower = (LowerBounds[i] - startPoint[i]) / d;
+                double high = d > 0d ? toUpper : toLower;
+                double low = d > 0d ? toLower : toUpper;
+                if (high < alphaMax) alphaMax = high;
+                if (low > alphaMin) alphaMin = low;
+            }
+
+            if (!moves)
+            {
+                alphaMin = 0d;
+                alphaMax = 0d;
+                return;
+            }
+
+            // The start point is feasible, so zero is always a feasible step. These comparisons are written
+            // so that a NaN limit collapses that side of the interval to zero rather than propagating.
+            if (!(alphaMax > 0d)) alphaMax = 0d;
+            if (!(alphaMin < 0d)) alphaMin = 0d;
         }
 
     }
