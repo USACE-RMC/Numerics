@@ -1,4 +1,5 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Linq;
 using Numerics.Mathematics.Optimization;
 
 namespace Mathematics.Optimization
@@ -534,6 +535,19 @@ namespace Mathematics.Optimization
 
             CollectionAssert.AreEqual(callerSnapshot, initial, "The caller's own array must not be modified by a run.");
             CollectionAssert.AreEqual(callerSnapshot, solver.InitialValues, "InitialValues must still equal what was passed to the constructor after a run.");
+
+            // Reference identity is the assertion that actually discriminates here. The value
+            // comparisons above cannot detect a regression of this fix: the constructor rejects
+            // out-of-bounds initial values, so the bounds repair inside the local solver is a no-op
+            // for any legally constructed MLSL, and the first sampled point is added with
+            // Minimized = true, which the local-search loop skips. Both aliasing paths are therefore
+            // inert for legal use, and only the aliasing itself is observable.
+            //
+            // The whole collection is searched rather than element zero, because the run sorts
+            // SampledPoints by fitness and rebuilds the list, so the initial point does not stay
+            // at a known index.
+            Assert.IsFalse(solver.SampledPoints.Any(p => ReferenceEquals(p.ParameterSet.Values, solver.InitialValues)),
+                "No sampled point may alias the public InitialValues array; each must own its own values.");
         }
 
         /// <summary>
