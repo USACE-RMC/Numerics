@@ -141,7 +141,9 @@ namespace Numerics.Sampling.MCMC
         private double[] _previousEnergy = Array.Empty<double>();
         private bool[] _hasPreviousEnergy = Array.Empty<bool>();
 
-        // Dual averaging hyperparameters (Hoffman & Gelman 2014, Section 3.2)
+        // Dual averaging hyperparameters (Hoffman & Gelman 2014, Section 3.2).
+        // DELTA_TARGET is the default of the settable TargetAcceptanceRate, which is what the
+        // adaptation actually reads.
         private const double DELTA_TARGET = 0.80;
         private const double GAMMA = 0.05;
         private const double T0 = 10.0;
@@ -178,9 +180,34 @@ namespace Numerics.Sampling.MCMC
         public HMC.Gradient GradientFunction { get; }
 
         /// <summary>
-        /// The target Metropolis acceptance probability for dual averaging adaptation. Default = 0.80.
+        /// Gets or sets the target Metropolis acceptance probability that dual averaging adapts the
+        /// leapfrog step size toward during warmup. Must be strictly between 0 and 1. Default = 0.80.
         /// </summary>
-        public double TargetAcceptanceRate => DELTA_TARGET;
+        /// <remarks>
+        /// <para>
+        /// The default of 0.80 is the value recommended by Hoffman and Gelman (2014) and is what Stan's
+        /// <c>adapt_delta</c> defaults to. Leaving it alone reproduces the sampler's historical behaviour
+        /// exactly.
+        /// </para>
+        /// <para>
+        /// Raising it toward 0.90 or 0.95 makes dual averaging settle on a shorter step size, which
+        /// integrates the Hamiltonian more accurately and is the standard response to a run that reports
+        /// divergent transitions through <see cref="DivergenceCounts"/>. The cost is proportional: a
+        /// shorter step needs more leapfrog steps, and therefore more gradient evaluations, to cover the
+        /// same trajectory length. A target close to 1 can drive the step size to the lower clamp and
+        /// exhaust <see cref="MaxTreeDepth"/> on every transition, so raise it in steps and watch
+        /// <see cref="MeanLeapfrogSteps"/> alongside <see cref="DivergenceCounts"/>.
+        /// </para>
+        /// <para>
+        /// Persistent divergences that survive a raised target usually indicate a posterior geometry the
+        /// step size cannot fix on its own, such as a funnel, rather than an adaptation failure.
+        /// </para>
+        /// <para>
+        /// The value is validated when sampling starts, not at assignment, which is the convention the
+        /// other settings on this class and on <see cref="MCMCSampler"/> follow.
+        /// </para>
+        /// </remarks>
+        public double TargetAcceptanceRate { get; set; } = DELTA_TARGET;
 
         /// <summary>
         /// Gets the mean post-warmup Hamiltonian acceptance probability for each chain.
@@ -327,6 +354,7 @@ namespace Numerics.Sampling.MCMC
             if (Mass.Length != NumberOfParameters) throw new ArgumentException(nameof(Mass), "The mass vector must be the same length as the number of parameters.");
             if (_initialStepSize <= 0) throw new ArgumentException("stepSize", "The leapfrog step size must be positive.");
             if (MaxTreeDepth < 1) throw new ArgumentException(nameof(MaxTreeDepth), "The maximum tree depth must be at least 1.");
+            if (!Tools.IsFinite(TargetAcceptanceRate) || TargetAcceptanceRate <= 0d || TargetAcceptanceRate >= 1d) throw new ArgumentException(nameof(TargetAcceptanceRate), "The target acceptance rate must be greater than 0 and less than 1.");
         }
 
         /// <inheritdoc/>
@@ -677,7 +705,7 @@ namespace Numerics.Sampling.MCMC
                 // Preserve the original neutral fallback when no subtree contributed.
                 double adaptationAcceptanceProbability = numAlpha > 0
                     ? averageAcceptanceProbability
-                    : DELTA_TARGET;
+                    : TargetAcceptanceRate;
                 DualAveragingUpdate(index, adaptationAcceptanceProbability);
 
                 // Accumulate Welford statistics during mass-matrix adaptation windows.
@@ -1118,7 +1146,7 @@ namespace Numerics.Sampling.MCMC
 
             // Update running average of the acceptance statistic
             _chainHBar[chainIndex] = (1.0 - 1.0 / (m + T0)) * _chainHBar[chainIndex]
-                                   + (DELTA_TARGET - avgAcceptProb) / (m + T0);
+                                   + (TargetAcceptanceRate - avgAcceptProb) / (m + T0);
 
             // Compute new log step size
             double logEps = _chainMu[chainIndex] - Math.Sqrt(m) / GAMMA * _chainHBar[chainIndex];
