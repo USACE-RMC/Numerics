@@ -569,17 +569,21 @@ After warmup, the step size is fixed to $\exp(\log \bar{\varepsilon})$.
 - Divergence threshold: if $H - H_0 > 1000$, the trajectory is considered divergent and tree-building stops
 - NUTS always accepts a candidate from the tree (acceptance is built into the multinomial weighting), so `AcceptCount` increments every iteration
 - Step size adaptation occurs only during the warmup phase, with step sizes clamped to $[10^{-10}, \, 10^{5}]$
+- `AdaptMassMatrix` defaults to `true`. During warmup the diagonal metric is estimated with Welford's online algorithm over Stan-style doubling windows, and each parameter's estimated posterior variance becomes its inverse mass, so the leapfrog step in that direction scales with the parameter's own posterior width. Without it a single step size has to serve every parameter at once, and on a posterior whose parameters differ in scale the sampler saturates `MaxTreeDepth` on nearly every transition. Set it to `false` to sample with the fixed metric supplied through `Mass`
 
 ```cs
 var nuts = new NUTS(priors, logLikelihood);
 
 // NUTS-specific settings
 nuts.NumberOfChains = 4;
-nuts.WarmupIterations = 1000;       // Step size adapts during warmup
+nuts.WarmupIterations = 1000;       // Step size and diagonal metric adapt during warmup
 nuts.Iterations = 2000;
 
 // Optional: set step size and max tree depth
 // nuts = new NUTS(priors, logLikelihood, stepSize: 0.5, maxTreeDepth: 10);
+
+// Optional: sample with the fixed identity metric instead of the adapted diagonal one
+// nuts.AdaptMassMatrix = false;
 
 Console.WriteLine("Running No-U-Turn Sampler...");
 nuts.Sample();

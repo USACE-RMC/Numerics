@@ -295,12 +295,31 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
-        /// Gets or sets whether to adapt the diagonal mass matrix during warmup.
-        /// When enabled, uses Stan-style windowed adaptation with Welford's online algorithm
-        /// to estimate the posterior variance per parameter and precondition the Hamiltonian dynamics.
-        /// Default = false.
+        /// Gets or sets whether to adapt the diagonal mass matrix during warmup. Default = true.
         /// </summary>
-        public bool AdaptMassMatrix { get; set; } = false;
+        /// <remarks>
+        /// <para>
+        /// When enabled, the sampler uses Stan-style windowed adaptation with Welford's online algorithm
+        /// to estimate the posterior variance of each parameter during warmup, and takes that variance as
+        /// the coordinate's inverse mass. Each leapfrog step then scales with the coordinate's own posterior
+        /// width, which is what lets one step size serve a posterior whose parameters differ in scale.
+        /// </para>
+        /// <para>
+        /// The default is <see langword="true"/> because an identity metric forces the step size to track the
+        /// narrowest direction while the trajectory has to span the widest, so on an ill-conditioned posterior
+        /// NUTS saturates <see cref="MaxTreeDepth"/> on nearly every transition. On a 50-parameter Gaussian
+        /// whose standard deviations span <c>1e-3</c> to <c>1e1</c>, adaptation reduces the cost from about
+        /// 4,090 leapfrog steps per transition to 7 and removes every maximum-tree-depth hit. On small,
+        /// well-conditioned fits the metric has little to correct and the adaptation costs up to about 40%
+        /// more leapfrog steps per transition, which is the price of the general case.
+        /// </para>
+        /// <para>
+        /// Set this to <see langword="false"/> to sample with the fixed metric supplied through
+        /// <see cref="Mass"/>. Doing so reproduces the sampler's behaviour exactly as it was before this
+        /// property defaulted to <see langword="true"/>.
+        /// </para>
+        /// </remarks>
+        public bool AdaptMassMatrix { get; set; } = true;
 
         /// <inheritdoc/>
         protected override void ValidateCustomSettings()
