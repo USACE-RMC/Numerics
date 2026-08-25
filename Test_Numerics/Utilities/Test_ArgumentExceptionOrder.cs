@@ -1,13 +1,16 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics;
 using Numerics.Data;
+using Numerics.Distributions;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling.MCMC;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Utilities
 {
@@ -36,8 +39,9 @@ namespace Utilities
     public class Test_ArgumentExceptionOrder
     {
         /// <summary>
-        /// Scans every Numerics source file and fails if any <c>new ArgumentException(...)</c> passes
-        /// <c>nameof(...)</c> as the first argument.
+        /// Scans every Numerics source file and fails if any <c>new ArgumentException(...)</c> has its
+        /// arguments inverted: either <c>nameof(...)</c> passed as the first argument, or a quoted bare
+        /// identifier (for example <c>"stepSize"</c>) passed as the first argument.
         /// </summary>
         /// <remarks>
         /// The scan masks comments, string literals and character literals before parsing so that text
@@ -49,7 +53,10 @@ namespace Utilities
         public void Test_NoInvertedArgumentExceptionArguments()
         {
             string sourceRoot = LocateNumericsSourceRoot();
-            if (sourceRoot == null) Assert.Inconclusive("The Numerics source tree was not found next to the compiled test assembly, so the source scan could not run.");
+            if (sourceRoot == null)
+                Assert.Fail("The Numerics source tree was not found next to the compiled test assembly, so this guard could not scan the library sources. " +
+                    "This fails hard rather than reporting Inconclusive: a guard that silently stands down when its own lookup breaks (for example, because the " +
+                    "checkout was renamed or moved) could let an inverted ArgumentException ship undetected, which defeats its purpose.");
 
             var offenders = new List<string>();
             foreach (string file in EnumerateSourceFiles(sourceRoot))
@@ -66,7 +73,14 @@ namespace Utilities
                     var arguments = SplitTopLevelArguments(masked.Substring(open + 1, close - open - 1));
                     if (arguments.Count < 2) continue;
                     if (arguments[1].Trim().Length == 0) continue;
-                    if (!arguments[0].TrimStart().StartsWith("nameof", StringComparison.Ordinal)) continue;
+
+                    // The first split argument always starts at the opening parenthesis, in both the masked
+                    // and the original text (masking preserves length and delimiters), so this slice recovers
+                    // the un-masked source for the first argument alone.
+                    string firstArgumentOriginal = text.Substring(open + 1, arguments[0].Length);
+
+                    bool inverted = IsNameofExpression(arguments[0]) || IsBareIdentifierLiteral(firstArgumentOriginal);
+                    if (!inverted) continue;
 
                     int line = masked.Take(start).Count(c => c == '\n') + 1;
                     offenders.Add(file.Substring(sourceRoot.Length).TrimStart(Path.DirectorySeparatorChar) + ":" + line);
@@ -74,8 +88,52 @@ namespace Utilities
             }
 
             Assert.IsEmpty(offenders,
-                "ArgumentException takes (message, paramName). These sites pass nameof(...) first, which puts the identifier in Message and the sentence in ParamName: "
+                "ArgumentException takes (message, paramName). These sites pass the parameter name first, which puts it in Message and the sentence in ParamName: "
                 + string.Join(", ", offenders));
+        }
+
+        /// <summary>
+        /// Determines whether an argument, taken in its entirety once trimmed, is a single <c>nameof(...)</c>
+        /// expression.
+        /// </summary>
+        /// <param name="argument">A masked, comma-split constructor argument.</param>
+        /// <returns><see langword="true"/> when the whole trimmed argument is exactly one <c>nameof(...)</c> call.</returns>
+        /// <remarks>
+        /// Anchoring on the whole argument, rather than only its prefix, avoids flagging a message built as
+        /// <c>nameof(Foo) + " is invalid"</c>: that argument starts with <c>nameof</c> but, once the trailing
+        /// concatenation is accounted for, is not itself a <c>nameof</c> expression.
+        /// </remarks>
+        private static bool IsNameofExpression(string argument)
+        {
+            string trimmed = argument.Trim();
+            if (!trimmed.StartsWith("nameof", StringComparison.Ordinal)) return false;
+
+            int i = "nameof".Length;
+            while (i < trimmed.Length && char.IsWhiteSpace(trimmed[i])) i++;
+            if (i >= trimmed.Length || trimmed[i] != '(') return false;
+
+            int close = FindMatchingParenthesis(trimmed, i);
+            return close == trimmed.Length - 1;
+        }
+
+        /// <summary>
+        /// Determines whether an argument's original (unmasked) source text is a quoted, bare identifier,
+        /// such as <c>"stepSize"</c>.
+        /// </summary>
+        /// <param name="originalArgument">The corresponding argument text taken from the unmasked source.</param>
+        /// <returns><see langword="true"/> when the argument is a string literal containing a single identifier
+        /// with no spaces or sentence punctuation.</returns>
+        /// <remarks>
+        /// A genuine message is a sentence: it has spaces and terminal punctuation. A quoted bare identifier in
+        /// the message slot is almost certainly a parameter name that was written as a string literal instead
+        /// of passed as <c>nameof(...)</c>, or otherwise placed in the wrong argument position. This mirrors
+        /// the shape of <c>new ArgumentException("stepSize", "The leapfrog step size must be positive.")</c>,
+        /// which the <c>nameof</c>-prefix check alone cannot see because its first argument is not a
+        /// <c>nameof</c> expression at all.
+        /// </remarks>
+        private static bool IsBareIdentifierLiteral(string originalArgument)
+        {
+            return Regex.IsMatch(originalArgument.Trim(), "^\"[A-Za-z_][A-Za-z0-9_]*\"$", RegexOptions.None);
         }
 
         /// <summary>
@@ -134,6 +192,23 @@ namespace Utilities
             var exception = AssertThrows<ArgumentException>(() => series.MovingAverage(3));
             Assert.AreEqual("period", exception.ParamName);
             StringAssert.Contains(exception.Message, "The period must be less than the length of the time-series.");
+        }
+
+        /// <summary>
+        /// Verifies the corrected argument order on the <c>stepSize</c> validation site in <see cref="NUTS"/>,
+        /// which the <c>nameof</c>-prefix scan could not see because its first argument was the string literal
+        /// <c>"stepSize"</c> rather than a <c>nameof(...)</c> expression.
+        /// </summary>
+        [TestMethod]
+        public void Test_NUTS_ReportsParameterName()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(-50d, 50d), new Uniform(-50d, 50d) };
+            static double logLH(double[] x) => -0.5d * (x[0] * x[0] + x[1] * x[1]);
+            var sampler = new NUTS(priors, logLH, stepSize: 0d);
+
+            var exception = AssertThrows<ArgumentException>(() => sampler.Sample());
+            Assert.AreEqual("stepSize", exception.ParamName);
+            StringAssert.Contains(exception.Message, "The leapfrog step size must be positive.");
         }
 
         #region Helpers
@@ -264,11 +339,10 @@ namespace Utilities
                     continue;
                 }
 
-                if (c == '"' || c == '\'')
+                if (c == '"')
                 {
-                    char quote = c;
                     i++;
-                    while (i < text.Length && text[i] != quote)
+                    while (i < text.Length && text[i] != '"')
                     {
                         if (text[i] == '\\' && i + 1 < text.Length)
                         {
@@ -284,10 +358,74 @@ namespace Utilities
                     continue;
                 }
 
+                if (c == '\'')
+                {
+                    int closeQuote = FindCharLiteralClose(text, i);
+                    if (closeQuote < 0)
+                    {
+                        // Not a valid char literal (for example, an apostrophe inside a preprocessor directive
+                        // or other non-literal text). Leave it as ordinary text rather than masking everything
+                        // up to the next unrelated quote character.
+                        i++;
+                        continue;
+                    }
+
+                    for (int k = i + 1; k < closeQuote; k++)
+                    {
+                        if (text[k] != '\n' && text[k] != '\r') masked[k] = ' ';
+                    }
+                    i = closeQuote + 1;
+                    continue;
+                }
+
                 i++;
             }
 
             return masked.ToString();
+        }
+
+        /// <summary>
+        /// Finds the offset of the closing quote of the char literal that opens at <paramref name="openQuote"/>,
+        /// if the text at that position is actually a well-formed char literal.
+        /// </summary>
+        /// <param name="text">The source text.</param>
+        /// <param name="openQuote">The offset of the opening <c>'</c>.</param>
+        /// <returns>The offset of the matching closing <c>'</c>, or -1 when the content is not a valid char
+        /// literal (most commonly a stray apostrophe that is not part of any literal).</returns>
+        /// <remarks>
+        /// A well-formed char literal contains exactly one ordinary character, or one backslash escape
+        /// (<c>\n</c>, <c>\t</c>, <c>\\</c>, <c>\'</c>, and so on, or a <c>\xH..H</c>, <c>\uHHHH</c>, or
+        /// <c>\UHHHHHHHH</c> hexadecimal escape), and never spans a line. Requiring this exact shape, rather
+        /// than treating any later <c>'</c> as the terminator, keeps an unrelated apostrophe (for example, one
+        /// inside a preprocessor directive, which is not itself masked as a comment or string) from being
+        /// mistaken for the start of a char literal and masking everything up to the next unrelated quote.
+        /// </remarks>
+        private static int FindCharLiteralClose(string text, int openQuote)
+        {
+            int i = openQuote + 1;
+            if (i >= text.Length || text[i] == '\n' || text[i] == '\r') return -1;
+
+            if (text[i] == '\\')
+            {
+                i++;
+                if (i >= text.Length || text[i] == '\n' || text[i] == '\r') return -1;
+                char escape = text[i];
+                i++;
+
+                int maxDigits = escape == 'U' ? 8 : escape == 'u' || escape == 'x' ? 4 : 0;
+                int digits = 0;
+                while (digits < maxDigits && i < text.Length && Uri.IsHexDigit(text[i]))
+                {
+                    i++;
+                    digits++;
+                }
+            }
+            else
+            {
+                i++;
+            }
+
+            return i < text.Length && text[i] == '\'' ? i : -1;
         }
 
         /// <summary>
@@ -296,17 +434,16 @@ namespace Utilities
         /// <param name="masked">Masked source text.</param>
         /// <param name="typeName">The exception type name to search for.</param>
         /// <returns>The offsets at which each construction begins.</returns>
+        /// <remarks>
+        /// Matches on a regular expression rather than the literal token <c>"new " + typeName</c> so that
+        /// unusual but legal spacing (extra spaces, a line break between <c>new</c> and the type) and a
+        /// namespace-qualified type name (for example <c>System.ArgumentException</c>) are still found.
+        /// </remarks>
         private static IEnumerable<int> FindConstructions(string masked, string typeName)
         {
-            string token = "new " + typeName;
-            int index = 0;
-            while ((index = masked.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
-            {
-                int after = index + token.Length;
-                while (after < masked.Length && char.IsWhiteSpace(masked[after])) after++;
-                if (after < masked.Length && masked[after] == '(') yield return index;
-                index += token.Length;
-            }
+            string pattern = @"\bnew\s+(?:[A-Za-z_][A-Za-z0-9_]*\.)*" + Regex.Escape(typeName) + @"\s*\(";
+            foreach (Match match in Regex.Matches(masked, pattern))
+                yield return match.Index;
         }
 
         /// <summary>
