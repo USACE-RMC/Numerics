@@ -419,5 +419,134 @@ namespace Mathematics.Optimization
             CollectionAssert.AreEqual(callerSnapshot, initial, "The caller's own array must not be modified by a run.");
             CollectionAssert.AreEqual(callerSnapshot, solver.InitialValues, "InitialValues must still equal what was passed to the constructor after a run.");
         }
+
+        /// <summary>
+        /// A quadratic whose unconstrained minimum lies far outside the unit square used by the local method
+        /// tests below, so that the constrained solution is the corner (1, 1) with value 722.
+        /// </summary>
+        /// <param name="x">The point to evaluate.</param>
+        /// <returns>The value of the quadratic at <paramref name="x"/>.</returns>
+        private static double CornerQuadratic(double[] x)
+        {
+            return (x[0] - 20d) * (x[0] - 20d) + (x[1] - 20d) * (x[1] - 20d);
+        }
+
+        /// <summary>
+        /// Test that every local method this solver supports returns a point inside the declared bounds, and
+        /// that the reported fitness is the objective function evaluated at that same point.
+        /// </summary>
+        /// <param name="method">The local search method to drive.</param>
+        /// <param name="polish">Whether a final local search polishes the best member.</param>
+        /// <remarks>
+        /// <para>
+        /// The local solvers are built over this solver's own objective delegate, so their probes are scored
+        /// through <see cref="Optimizer.Evaluate"/> and any of them can be recorded as the incumbent. The
+        /// objective here falls monotonically toward its unconstrained minimum outside the box, so any probe
+        /// that leaves the box scores better than the constrained corner and would be reported.
+        /// </para>
+        /// <para>
+        /// Both settings of <see cref="MultiStart.Polish"/> are covered because the two used to fail
+        /// differently. Without polishing, the reported point was the infeasible probe itself. With polishing,
+        /// the reported point was repaired back to the corner while the fitness recorded at the infeasible
+        /// probe was kept, which produced a feasible-looking point carrying a fitness from somewhere else.
+        /// </para>
+        /// <para>
+        /// The fitness comparison is exact rather than approximate. <see cref="Optimizer.Evaluate"/> stores
+        /// the point and the value it computed there in the same operation, so the two can only disagree if
+        /// something later replaced one of them.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        [DataRow(LocalMethod.BFGS, true)]
+        [DataRow(LocalMethod.BFGS, false)]
+        [DataRow(LocalMethod.NelderMead, true)]
+        [DataRow(LocalMethod.NelderMead, false)]
+        [DataRow(LocalMethod.Powell, true)]
+        [DataRow(LocalMethod.Powell, false)]
+        public void Test_SupportedLocalMethodReturnsAFeasibleAndConsistentSolution(LocalMethod method, bool polish)
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            var solver = new MultiStart(CornerQuadratic, 2, initial, lower, upper, method)
+            {
+                ReportFailure = false,
+                RecordTraces = false,
+                // Every local start converges on the same corner, so a handful of starts covers the guarded
+                // path as thoroughly as the default hundred and keeps the test cheap.
+                MaxIterations = 10,
+                Polish = polish
+            };
+            solver.Minimize();
+
+            var solution = solver.BestParameterSet.Values;
+            Assert.IsNotNull(solution);
+            for (int i = 0; i < solution.Length; i++)
+            {
+                Assert.IsGreaterThanOrEqualTo(lower[i], solution[i], "Parameter " + i + " is below its lower bound.");
+                Assert.IsLessThanOrEqualTo(upper[i], solution[i], "Parameter " + i + " is above its upper bound.");
+            }
+
+            // The constrained minimum is the corner nearest the unconstrained optimum.
+            Assert.AreEqual(1d, solution[0], 1E-6);
+            Assert.AreEqual(1d, solution[1], 1E-6);
+            Assert.AreEqual(CornerQuadratic(solution), solver.BestParameterSet.Fitness, "The reported fitness must be the objective function evaluated at the reported point.");
+        }
+
+        /// <summary>
+        /// Test that the local methods this solver does not build report that rather than returning a point.
+        /// </summary>
+        /// <param name="method">The unsupported local search method.</param>
+        /// <remarks>
+        /// <see cref="LocalMethod"/> also names the Adam and gradient descent algorithms, which this solver
+        /// has never constructed. This pins the behaviour so that the coverage above is known to be complete
+        /// for the enumeration as it stands, and so that adding support later is a deliberate change rather
+        /// than a silent one.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(LocalMethod.ADAM)]
+        [DataRow(LocalMethod.GradientDescent)]
+        public void Test_UnsupportedLocalMethodIsReported(LocalMethod method)
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            var solver = new MultiStart(CornerQuadratic, 2, initial, lower, upper, method) { RecordTraces = false, MaxIterations = 10 };
+
+            Assert.ThrowsExactly<NotSupportedException>(() => solver.Minimize());
+        }
+
+        /// <summary>
+        /// Test that maximization stores the negated objective at the reported point.
+        /// </summary>
+        /// <param name="method">The local search method to drive.</param>
+        /// <remarks>
+        /// <see cref="Optimizer.Evaluate"/> scales the objective by minus one while maximizing and stores
+        /// that scaled value as the fitness. The local solvers are minimized over this solver's evaluation
+        /// routine, which has already applied the scale, so the convention is the same for every method: the
+        /// stored fitness is the negated objective at the stored point.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(LocalMethod.BFGS)]
+        [DataRow(LocalMethod.NelderMead)]
+        [DataRow(LocalMethod.Powell)]
+        public void Test_MaximizeStoresTheNegatedObjective(LocalMethod method)
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            double peak(double[] x) => 5d - (x[0] - 0.3d) * (x[0] - 0.3d) - (x[1] - 0.4d) * (x[1] - 0.4d);
+            var solver = new MultiStart(peak, 2, initial, lower, upper, method) { ReportFailure = false, RecordTraces = false, MaxIterations = 10, ComputeHessian = false };
+            solver.Maximize();
+
+            var solution = solver.BestParameterSet.Values;
+            Assert.IsNotNull(solution);
+            // The location tolerance is loose because the point of this test is the sign convention on the
+            // stored fitness, not the accuracy of any one local method. The simplex method in particular
+            // stops on its own simplex size rather than on a gradient.
+            Assert.AreEqual(0.3d, solution[0], 1E-3);
+            Assert.AreEqual(0.4d, solution[1], 1E-3);
+            Assert.AreEqual(-peak(solution), solver.BestParameterSet.Fitness, "While maximizing, the stored fitness is the negated objective at the stored point.");
+        }
     }
 }
