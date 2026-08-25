@@ -127,7 +127,7 @@ namespace Numerics.Mathematics.Optimization
 
             // Calculate the starting function value and gradient, and initialize the inverse Hessian to the unit matrix.
             double fp = Evaluate(p, ref cancel);
-            var g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancel), p);
+            var g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancel), p, LowerBounds, UpperBounds);
             var dg = new double[D];
             var hdg = new double[D];
             var xi = new double[D];
@@ -170,7 +170,7 @@ namespace Numerics.Mathematics.Optimization
                 // Save the old gradient, and get the new gradient. 
                 for (int i = 0; i < D; i++) 
                     dg[i] = g[i];
-                g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p);
+                g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p, LowerBounds, UpperBounds);
                 if (cancel) return;
 
                 // Compute difference of gradients.
@@ -357,7 +357,7 @@ namespace Numerics.Mathematics.Optimization
                 }
 
                 bool cancelFlag = cancel;
-                g = Gradient != null ? Gradient(xTemp) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancelFlag), xTemp);
+                g = Gradient != null ? Gradient(xTemp) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancelFlag), xTemp, LowerBounds, UpperBounds);
                 cancel = cancelFlag;
                 if (cancel) return;
 
@@ -420,7 +420,7 @@ namespace Numerics.Mathematics.Optimization
                 else
                 {
                     bool cancelFlag = cancel;
-                    g = Gradient != null ? Gradient(xTemp) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancelFlag), xTemp);
+                    g = Gradient != null ? Gradient(xTemp) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancelFlag), xTemp, LowerBounds, UpperBounds);
                     cancel = cancelFlag;
                     if (cancel) return;
 

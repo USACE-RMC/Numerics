@@ -111,7 +111,7 @@ namespace Numerics.Mathematics.Optimization
             while (Iterations < MaxIterations)
             {
                 // Get gradient with respect to objective function
-                g = Gradient != null ? Gradient(p0) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p0);
+                g = Gradient != null ? Gradient(p0) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p0, LowerBounds, UpperBounds);
                 if (cancel) return;
 
                 // Update parameters

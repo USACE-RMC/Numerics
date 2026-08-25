@@ -306,6 +306,16 @@ namespace Mathematics.Optimization
             var validY = 404.2319d;
             Assert.AreEqual(x, validX, 1E-2);
             Assert.AreEqual(y, validY, 1E-1);
+
+            // The optimum sits on the upper bound, so the local solver's finite-difference gradient is
+            // taken at a point on that bound. The local solver scores its probes through this solver's
+            // objective delegate, so an unclamped perturbation can be reported as the solution. Guard the
+            // declared feasible region explicitly rather than relying on the tolerances above.
+            for (int i = 0; i < solution.Length; i++)
+            {
+                Assert.IsGreaterThanOrEqualTo(lower[i], solution[i], "Parameter " + i + " is below its lower bound.");
+                Assert.IsLessThanOrEqualTo(upper[i], solution[i], "Parameter " + i + " is above its upper bound.");
+            }
         }
 
         /// <summary>
