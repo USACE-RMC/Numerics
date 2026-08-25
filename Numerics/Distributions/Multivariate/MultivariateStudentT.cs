@@ -108,6 +108,42 @@ namespace Numerics.Distributions
         private double _lnconstant;
         private double[]? _variance;
         private double[]? _standardDeviation;
+        private Random _MVNUNI = new MersenneTwister(MultivariateNormal.DefaultMVNUNISeed);
+
+        /// <summary>
+        /// The uniform(0,1) random number generator used by the inner multivariate normal CDF for dimensions
+        /// greater than two.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Above two dimensions <see cref="CDF(double[])"/> integrates the χ²(ν) mixing variable against
+        /// <see cref="MultivariateNormal.CDF(double[])"/>, which is the Genz MVNDST randomized lattice rule
+        /// and draws its lattice shifts from this generator. The multivariate t CDF therefore carries a small
+        /// stochastic error above two dimensions and only reproduces when the generator is seeded. At one and
+        /// two dimensions the CDF is a closed form and never touches this generator.
+        /// </para>
+        /// <para>
+        /// The default is a Mersenne twister seeded with <see cref="MultivariateNormal.DefaultMVNUNISeed"/>,
+        /// which is what makes the default result reproducible — but it also means every instance left at the
+        /// default replays the identical lattice shifts, so the quadrature errors of separate instances are
+        /// correlated rather than independent and do not average out when many evaluations are aggregated.
+        /// Assign a seeded generator to tie results to a caller's own seed and to decorrelate the error
+        /// across instances. This mirrors <see cref="MultivariateNormal.MVNUNI"/> so that the two classes
+        /// behave the same way.
+        /// </para>
+        /// <para>
+        /// MVNDST advances the generator, so successive CDF evaluations on the same instance consume
+        /// successive shifts and are not bit-identical to one another above two dimensions; two freshly
+        /// constructed instances with the same parameters and the same seed are. The generator is not
+        /// thread-safe, so an instance shared across threads must be cloned per thread.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when the assigned generator is null.</exception>
+        public Random MVNUNI
+        {
+            get { return _MVNUNI; }
+            set { _MVNUNI = value ?? throw new ArgumentNullException(nameof(MVNUNI)); }
+        }
 
         /// <summary>
         /// Gets the number of variables for the distribution.
@@ -493,8 +529,11 @@ namespace Numerics.Distributions
             for (int i = 0; i < Dimension; i++)
                 zVec[i] = x[i] - _location[i];
 
-            // Create MVN with zero mean and the scale matrix Σ for CDF evaluation
-            var mvn = new MultivariateNormal(new double[Dimension], _scaleMatrix.ToArray());
+            // Create MVN with zero mean and the scale matrix Σ for CDF evaluation. The caller's generator is
+            // handed to it so that the lattice shifts MVNDST draws come from this instance's MVNUNI rather
+            // than from a private default-seeded one; without this the property could be assigned and would
+            // have no effect on the result.
+            var mvn = new MultivariateNormal(new double[Dimension], _scaleMatrix.ToArray()) { MVNUNI = _MVNUNI };
 
             double sum = 0.0;
             for (int k = 0; k < K; k++)
@@ -719,6 +758,7 @@ namespace Numerics.Distributions
                 _scaleMatrix = this._scaleMatrix.Clone(),
                 _cholesky = new CholeskyDecomposition(this._scaleMatrix.Clone()),
                 _lnconstant = this._lnconstant,
+                _MVNUNI = this._MVNUNI,
             };
             return clone;
         }

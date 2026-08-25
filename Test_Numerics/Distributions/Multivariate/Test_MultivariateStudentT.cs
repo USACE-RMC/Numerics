@@ -297,6 +297,136 @@ namespace Distributions.Multivariate
                 $"CDF at (0,0) = {cdf_00:F4}, expected ≈ 0.0454");
         }
 
+        /// <summary>
+        /// Verify the 3-D CDF against <c>scipy.stats.multivariate_t.cdf</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Above two dimensions the CDF takes a different route than the 1-D and 2-D closed forms: it is a
+        /// 200-stratum quadrature over the χ²(ν) mixing variable against the Genz MVNDST randomized-lattice
+        /// multivariate normal CDF. Neither <see cref="Test_CDF_1D"/> nor <see cref="Test_CDF_2D"/> touches
+        /// that path, so these are the first tests to cover it.
+        /// </para>
+        /// <para>
+        /// The oracle is scipy 1.17.1's <c>multivariate_t(loc, shape, df).cdf(x)</c>, an independent
+        /// implementation. The correspondence with this class was confirmed on the existing 2-D fixture,
+        /// where scipy returns 0.3075081, 0.9166859 and 0.0453216 against the 0.3076, 0.9166 and 0.0454 that
+        /// <see cref="Test_CDF_2D"/> asserts. scipy's cdf is itself randomised quasi-Monte-Carlo, so the
+        /// values below are means over 8 seeds, with a seed-to-seed spread of 3E-05 to 8E-05.
+        /// </para>
+        /// <para>
+        /// The tolerances are measured rather than guessed. This implementation agrees with the scipy means
+        /// to 1.21E-05, 1.30E-05, 2.05E-05 and 1.46E-05 at the four points, which is the same order as
+        /// scipy's own repeatability, so each tolerance below is that measurement rounded out. All four are
+        /// far inside the 1E-02 that the 2-D tests use.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_3D_Scipy()
+        {
+            double[,] shape = { { 1.0, 0.5, 0.3 }, { 0.5, 1.0, 0.4 }, { 0.3, 0.4, 1.0 } };
+            var mvt = new MultivariateStudentT(5.0, new double[3], shape);
+
+            // measured agreement 1.21E-05
+            Assert.AreEqual(0.2236624425, mvt.CDF(new[] { 0.0, 0.0, 0.0 }), 5E-5);
+            // measured agreement 1.30E-05
+            Assert.AreEqual(0.6307840101, mvt.CDF(new[] { 1.0, 1.0, 1.0 }), 5E-5);
+            // measured agreement 2.05E-05
+            Assert.AreEqual(0.7480738713, mvt.CDF(new[] { 2.0, 1.5, 1.0 }), 5E-5);
+            // measured agreement 1.46E-05
+            Assert.AreEqual(0.1566553047, mvt.CDF(new[] { -1.0, 0.5, 2.0 }), 5E-5);
+        }
+
+        /// <summary>
+        /// Verify the 4-D CDF against <c>scipy.stats.multivariate_t.cdf</c> and, at the origin, against an
+        /// analytic value.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The origin is not a Monte Carlo reference. For any elliptically symmetric distribution centred at
+        /// the origin the lower-orthant probability is exactly 1/2ᵈ by sign symmetry, so the expected value
+        /// at (0,0,0,0) is 0.0625 exactly. scipy reproduces it with zero spread across seeds, and this
+        /// implementation returns it exactly, so it is asserted tightly.
+        /// </para>
+        /// <para>
+        /// The two off-origin points are scipy means over 8 seeds, with spreads of 4.3E-05 and 5.8E-05. This
+        /// implementation agrees to 6.04E-06 and 4.78E-05 respectively; the tolerances below are those
+        /// measurements rounded out.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_4D_Scipy()
+        {
+            double[,] shape =
+            {
+                { 1.0, 0.0, 0.0, 0.0 },
+                { 0.0, 1.0, 0.0, 0.0 },
+                { 0.0, 0.0, 1.0, 0.0 },
+                { 0.0, 0.0, 0.0, 1.0 }
+            };
+            var mvt = new MultivariateStudentT(4.0, new double[4], shape);
+
+            // Analytic: 1/2^4 by sign symmetry about the origin. Returned exactly.
+            Assert.AreEqual(0.0625, mvt.CDF(new[] { 0.0, 0.0, 0.0, 0.0 }), 1E-12,
+                "The lower-orthant probability at the centre of a symmetric 4-D distribution is exactly 1/16.");
+
+            // measured agreement 6.04E-06
+            Assert.AreEqual(0.4642714854, mvt.CDF(new[] { 1.0, 1.0, 1.0, 1.0 }), 5E-5);
+            // measured agreement 4.78E-05
+            Assert.AreEqual(0.8086925605, mvt.CDF(new[] { 2.0, 2.0, 2.0, 2.0 }), 1E-4);
+        }
+
+        /// <summary>
+        /// Verify that the D&gt;=3 CDF is reproducible and that <see cref="MultivariateStudentT.MVNUNI"/> is
+        /// actually wired into it.
+        /// </summary>
+        /// <remarks>
+        /// Above two dimensions the CDF draws lattice shifts from <see cref="MultivariateStudentT.MVNUNI"/>,
+        /// so the result is reproducible only because that generator is seeded by default. Two freshly
+        /// constructed instances therefore agree bit for bit, and so do two instances given generators with
+        /// the same non-default seed — but the non-default seed must produce a different answer, otherwise
+        /// the property would be inert and the escape hatch it advertises would not exist. The difference is
+        /// bounded to confirm it is quadrature noise on the same quantity and not a different quantity.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_3D_MVNUNI_Reproducibility()
+        {
+            double[,] shape = { { 1.0, 0.5, 0.3 }, { 0.5, 1.0, 0.4 }, { 0.3, 0.4, 1.0 } };
+            var point = new[] { 1.0, 1.0, 1.0 };
+
+            // Two fresh instances at the default seed agree exactly.
+            double defaultA = new MultivariateStudentT(5.0, new double[3], shape).CDF(point);
+            double defaultB = new MultivariateStudentT(5.0, new double[3], shape).CDF(point);
+            Assert.AreEqual(defaultA, defaultB, 0d,
+                "Two default-seeded instances must return bit-identical CDF values.");
+
+            // Two instances given the same non-default seed also agree exactly.
+            var seededA = new MultivariateStudentT(5.0, new double[3], shape) { MVNUNI = new MersenneTwister(987654321) };
+            var seededB = new MultivariateStudentT(5.0, new double[3], shape) { MVNUNI = new MersenneTwister(987654321) };
+            double valueA = seededA.CDF(point);
+            double valueB = seededB.CDF(point);
+            Assert.AreEqual(valueA, valueB, 0d,
+                "Two instances seeded alike must return bit-identical CDF values.");
+
+            // ...and they must differ from the default-seed result, or the property is not wired in.
+            Assert.AreNotEqual(defaultA, valueA,
+                "Assigning a different MVNUNI seed must change the D>=3 CDF, otherwise the property is inert.");
+
+            // The difference is quadrature noise on the same probability, not a different probability.
+            Assert.AreEqual(defaultA, valueA, 1E-3,
+                "The seed only perturbs the lattice shifts, so the two results must agree to quadrature error.");
+        }
+
+        /// <summary>
+        /// Verify that <see cref="MultivariateStudentT.MVNUNI"/> rejects a null generator.
+        /// </summary>
+        [TestMethod]
+        public void Test_MVNUNI_NullThrows()
+        {
+            var mvt = CreateStandard2D();
+            Assert.Throws<ArgumentNullException>(() => mvt.MVNUNI = null!);
+        }
+
         #endregion
 
         #region Sampling Tests
