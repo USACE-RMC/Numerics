@@ -603,8 +603,10 @@ namespace Numerics.Sampling.MCMC
         /// <param name="position">The position to evaluate at. Not retained; a copy is stored.</param>
         /// <param name="chainIndex">The chain index whose memo is consulted.</param>
         /// <returns>
-        /// The gradient. The array is owned by the memo and must be treated as read-only by the caller;
-        /// it stays valid until this chain records <see cref="GRADIENT_CACHE_SIZE"/> further misses.
+        /// The gradient. The array is owned by the memo and must be treated as read-only by the caller.
+        /// It is valid only until the next miss on this chain: a hit does not advance the ring, so a hit
+        /// on the slot the ring is currently pointing at is overwritten by the very next miss. Both
+        /// callers consume the array before evaluating again, which is what makes that safe.
         /// </returns>
         /// <remarks>
         /// <para>
@@ -649,7 +651,9 @@ namespace Numerics.Sampling.MCMC
         /// <b>Copy semantics.</b> Both the position and the gradient are copied into the memo. The
         /// caller's position array is mutated in place by <see cref="LeapfrogInPlace"/>, and a
         /// caller-supplied gradient delegate is free to return the same <see cref="Vector"/> every call,
-        /// so neither may be retained by reference.
+        /// so neither may be retained by reference. The position is copied <i>before</i> the delegate
+        /// runs, so a delegate that writes through its argument cannot pair a mutated position with the
+        /// gradient of the point that was actually evaluated.
         /// </para>
         /// <para>
         /// A gradient whose length does not match the parameter count is returned without being stored,
@@ -681,22 +685,27 @@ namespace Numerics.Sampling.MCMC
                 if (identical) return values[slot];
             }
 
-            // A miss evaluates the delegate. Anything it throws propagates untouched and nothing is
-            // recorded, so the failure paths in BuildTree and TrySingleStepLogAcceptance are unchanged.
-            double[] gradient = GradientFunction(position).Array;
-            if (gradient.Length != D) return gradient;
-
+            // A miss claims a slot and records the position it is about to evaluate at before calling
+            // the delegate, so a delegate that writes through its argument cannot leave the memo
+            // holding a mutated position paired with the gradient of the original point. The slot is
+            // marked empty for the whole window, so a throw or a malformed length leaves nothing that
+            // could be matched later.
             int next = _gradientCacheNextSlot[chainIndex];
             var slotPosition = positions[next];
             var slotValue = values[next];
 
-            // Clear the slot before overwriting it so a partially written entry can never be matched.
             occupied[next] = false;
             for (int j = 0; j < D; j++)
-            {
                 slotPosition[j] = position[j];
+
+            // Anything the delegate throws propagates untouched, so the failure paths in BuildTree and
+            // TrySingleStepLogAcceptance are unchanged.
+            double[] gradient = GradientFunction(position).Array;
+            if (gradient.Length != D) return gradient;
+
+            for (int j = 0; j < D; j++)
                 slotValue[j] = gradient[j];
-            }
+
             occupied[next] = true;
             _gradientCacheNextSlot[chainIndex] = (next + 1) % GRADIENT_CACHE_SIZE;
 
@@ -717,7 +726,8 @@ namespace Numerics.Sampling.MCMC
             double halfEps = epsilon * 0.5;
             double[] invMass = _inverseMassMatrix[chainIndex];
 
-            // Half-step momentum update
+            // Half-step momentum update. grad is the memo's own buffer and must be read only; write
+            // through it and this chain's entry is silently corrupted.
             double[] grad = EvaluateGradient(theta, chainIndex);
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
@@ -732,7 +742,7 @@ namespace Numerics.Sampling.MCMC
                     theta[j] = _upperBounds[j] - Tools.DoubleMachineEpsilon;
             }
 
-            // Half-step momentum update
+            // Half-step momentum update. As above, grad is memo-owned and must be read only.
             grad = EvaluateGradient(theta, chainIndex);
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
@@ -1239,7 +1249,10 @@ namespace Numerics.Sampling.MCMC
             int D = NumberOfParameters;
             double[] invMass = _inverseMassMatrix[chainIndex];
 
-            // Half-step momentum update
+            // Half-step momentum update. new Vector(double[]) wraps without copying, so grad is a live
+            // view onto the memo's own buffer and must be read only. Vector's arithmetic operators all
+            // allocate their result, so the expression below cannot write through it, but Vector's
+            // indexer setter is public: do not accumulate, clamp, or negate in place through grad.
             var grad = new Vector(EvaluateGradient(theta.Array, chainIndex));
             var r = momentum + grad * (epsilon * 0.5);
 
@@ -1257,7 +1270,7 @@ namespace Numerics.Sampling.MCMC
                     q[j] = PriorDistributions[j].Maximum - Tools.DoubleMachineEpsilon;
             }
 
-            // Half-step momentum update
+            // Half-step momentum update. As above, grad wraps the memo's buffer and must be read only.
             grad = new Vector(EvaluateGradient(q.Array, chainIndex));
             r = r + grad * (epsilon * 0.5);
 

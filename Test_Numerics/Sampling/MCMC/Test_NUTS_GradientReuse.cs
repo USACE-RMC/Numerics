@@ -208,9 +208,13 @@ namespace Sampling.MCMC
         public void Test_NUTS_GradientReuse_ReducesGradientEvaluations()
         {
             Assert.AreEqual(AdaptedMetricGradientCalls, CountGradientEvaluations(true),
-                "The adapted-metric gradient evaluation count changed; before the memo it was 8,568.");
+                "The adapted-metric gradient evaluation count changed; before the memo it was 8,568. " +
+                "Check the companion bitwise tests first: if they also moved the trajectory changed and " +
+                "this count followed it, which is a different finding from a change in memo hit rate.");
             Assert.AreEqual(FixedMetricGradientCalls, CountGradientEvaluations(false),
-                "The fixed-metric gradient evaluation count changed; before the memo it was 22,280.");
+                "The fixed-metric gradient evaluation count changed; before the memo it was 22,280. " +
+                "Check the companion bitwise tests first: if they also moved the trajectory changed and " +
+                "this count followed it, which is a different finding from a change in memo hit rate.");
         }
 
         /// <summary>
@@ -238,16 +242,7 @@ namespace Sampling.MCMC
             int count = 0;
             var sampler = BuildSampler(false, (x) => { count++; return Gradient(x); });
             sampler.Sample();
-
-            // Empty chain zero's memo so the probe cannot hit an entry the run left behind.
-            var occupiedField = typeof(NUTS).GetField("_gradientCacheOccupied", BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.IsNotNull(occupiedField, "The private field _gradientCacheOccupied was not found on NUTS.");
-            var occupied = occupiedField!.GetValue(sampler) as bool[][];
-            Assert.IsNotNull(occupied, "The private field _gradientCacheOccupied was not a bool[][].");
-            Array.Clear(occupied![0], 0, occupied[0].Length);
-
-            var evaluate = typeof(NUTS).GetMethod("EvaluateGradient", BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.IsNotNull(evaluate, "The private method EvaluateGradient was not found on NUTS.");
+            ClearMemo(sampler);
 
             double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
             var atPositiveZero = new double[Sd.Length];
@@ -259,28 +254,147 @@ namespace Sampling.MCMC
             }
 
             count = 0;
-            var first = evaluate!.Invoke(sampler, new object[] { atPositiveZero, 0 }) as double[];
-            Assert.IsNotNull(first, "EvaluateGradient did not return a double[].");
-            var reference = (double[])first!.Clone();
+            var reference = (double[])InvokeEvaluateGradient(sampler, atPositiveZero).Clone();
             Assert.AreEqual(1, count, "The first evaluation at a fresh position must reach the gradient delegate.");
 
-            var repeated = evaluate.Invoke(sampler, new object[] { (double[])atPositiveZero.Clone(), 0 }) as double[];
-            Assert.IsNotNull(repeated, "EvaluateGradient did not return a double[].");
+            var repeated = InvokeEvaluateGradient(sampler, (double[])atPositiveZero.Clone());
             Assert.AreEqual(1, count, "Repeating the identical position must be served from the memo.");
-            for (int j = 0; j < Sd.Length; j++)
-            {
-                Assert.AreEqual(BitConverter.DoubleToInt64Bits(reference[j]), BitConverter.DoubleToInt64Bits(repeated![j]),
-                    $"Coordinate {j} came back from the memo with different bits than the evaluation that filled it.");
-            }
+            AssertSameBits(reference, repeated,
+                "came back from the memo with different bits than the evaluation that filled it");
 
-            var flipped = evaluate.Invoke(sampler, new object[] { atNegativeZero, 0 }) as double[];
-            Assert.IsNotNull(flipped, "EvaluateGradient did not return a double[].");
+            var flipped = InvokeEvaluateGradient(sampler, atNegativeZero);
             Assert.AreEqual(2, count,
                 "Negative zero is a different position from positive zero and must not be answered from the memo.");
             for (int j = 0; j < Sd.Length; j++)
             {
-                Assert.AreNotEqual(BitConverter.DoubleToInt64Bits(reference[j]), BitConverter.DoubleToInt64Bits(flipped![j]),
+                Assert.AreNotEqual(BitConverter.DoubleToInt64Bits(reference[j]), BitConverter.DoubleToInt64Bits(flipped[j]),
                     $"Coordinate {j} returned the gradient at positive zero for a query at negative zero.");
+            }
+        }
+
+        /// <summary>
+        /// The memo must store a copy of the queried position, not a reference to the caller's array.
+        /// </summary>
+        /// <remarks>
+        /// The requirement is real and not hypothetical: <see cref="NUTS"/>'s in-place leapfrog mutates
+        /// the very array it passed in, one statement after the opening half-step. A memo holding that
+        /// array by reference would find its key rewritten under it, so the entry would stop matching
+        /// the point it was computed at and start matching a point it was not. This probe reproduces
+        /// that directly — evaluate at a position, mutate the caller's array, and check that the entry
+        /// still answers the original position and does not answer the mutated one.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NUTS_GradientReuse_StoresACopyOfTheQueriedPosition()
+        {
+            int count = 0;
+            var sampler = BuildSampler(false, (x) => { count++; return Gradient(x); });
+            sampler.Sample();
+            ClearMemo(sampler);
+
+            var probe = new double[] { 0.5d, -1.5d, 2.25d, -4d };
+            var original = (double[])probe.Clone();
+
+            count = 0;
+            var reference = (double[])InvokeEvaluateGradient(sampler, probe).Clone();
+            Assert.AreEqual(1, count, "The first evaluation at a fresh position must reach the gradient delegate.");
+
+            // Mutate the caller's array in place, exactly as LeapfrogInPlace does to its position.
+            for (int j = 0; j < probe.Length; j++) probe[j] += 1d;
+
+            var atOriginal = InvokeEvaluateGradient(sampler, (double[])original.Clone());
+            Assert.AreEqual(1, count,
+                "The memo stopped recognising the position it was filled at after the caller's array was mutated; " +
+                "it is holding a reference to that array rather than a copy.");
+            AssertSameBits(reference, atOriginal, "was not returned unchanged from the memo");
+
+            InvokeEvaluateGradient(sampler, probe);
+            Assert.AreEqual(2, count,
+                "The memo answered a position it never evaluated at; its stored key followed the caller's mutation.");
+        }
+
+        /// <summary>
+        /// The memo must store a copy of the gradient the delegate returned, not a reference to the
+        /// <see cref="Vector"/> it came back in.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="NUTS.GradientFunction"/> is a caller-supplied delegate and nothing obliges it to
+        /// allocate a fresh <see cref="Vector"/> per call; returning one reused buffer is a reasonable
+        /// thing for a performance-minded implementation to do. A memo holding that buffer by reference
+        /// would have every entry aliased to the same array, so each entry would return the most recent
+        /// gradient rather than its own. The delegate here does exactly that, and the probe evaluates at
+        /// two distinct positions before re-querying the first.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NUTS_GradientReuse_StoresACopyOfTheReturnedGradient()
+        {
+            int count = 0;
+            var reused = new Vector(Sd.Length);
+            var sampler = BuildSampler(false, (x) =>
+            {
+                count++;
+                for (int j = 0; j < Sd.Length; j++) reused[j] = -x[j] / (Sd[j] * Sd[j]);
+                return reused;
+            });
+            sampler.Sample();
+            ClearMemo(sampler);
+
+            var first = new double[] { 0.5d, -1.5d, 2.25d, -4d };
+            var second = new double[] { 1.5d, -0.5d, 3.25d, -3d };
+
+            count = 0;
+            var atFirst = (double[])InvokeEvaluateGradient(sampler, first).Clone();
+            Assert.AreEqual(1, count, "The first evaluation at a fresh position must reach the gradient delegate.");
+
+            // This overwrites the delegate's one buffer with the gradient at a different position.
+            InvokeEvaluateGradient(sampler, second);
+            Assert.AreEqual(2, count, "A different position must reach the gradient delegate.");
+
+            var repeated = InvokeEvaluateGradient(sampler, (double[])first.Clone());
+            Assert.AreEqual(2, count, "Repeating the first position must be served from the memo.");
+            AssertSameBits(atFirst, repeated,
+                "came back as the gradient at a later position; the memo is aliased to the delegate's reused buffer");
+        }
+
+        /// <summary>
+        /// Empties chain zero's gradient memo so a probe cannot hit an entry a sampling run left behind.
+        /// </summary>
+        /// <param name="sampler">A sampled sampler, so that its memo is allocated.</param>
+        private static void ClearMemo(NUTS sampler)
+        {
+            var field = typeof(NUTS).GetField("_gradientCacheOccupied", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(field, "The private field _gradientCacheOccupied was not found on NUTS.");
+            var occupied = field!.GetValue(sampler) as bool[][];
+            Assert.IsNotNull(occupied, "The private field _gradientCacheOccupied was not a bool[][].");
+            Array.Clear(occupied![0], 0, occupied[0].Length);
+        }
+
+        /// <summary>
+        /// Calls the sampler's private gradient memo for chain zero.
+        /// </summary>
+        /// <param name="sampler">A sampled sampler.</param>
+        /// <param name="position">The position to evaluate at.</param>
+        /// <returns>The gradient the memo returned. This array is owned by the memo.</returns>
+        private static double[] InvokeEvaluateGradient(NUTS sampler, double[] position)
+        {
+            var method = typeof(NUTS).GetMethod("EvaluateGradient", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(method, "The private method EvaluateGradient was not found on NUTS.");
+            var result = method!.Invoke(sampler, new object[] { position, 0 }) as double[];
+            Assert.IsNotNull(result, "EvaluateGradient did not return a double[].");
+            return result!;
+        }
+
+        /// <summary>
+        /// Asserts two gradients agree on every bit of every coordinate.
+        /// </summary>
+        /// <param name="expected">The reference gradient.</param>
+        /// <param name="actual">The gradient to check.</param>
+        /// <param name="what">A description of the failure, completing "Coordinate {j} ...".</param>
+        private static void AssertSameBits(double[] expected, double[] actual, string what)
+        {
+            for (int j = 0; j < expected.Length; j++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected[j]), BitConverter.DoubleToInt64Bits(actual[j]),
+                    $"Coordinate {j} {what}.");
             }
         }
 
