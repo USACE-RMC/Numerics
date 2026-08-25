@@ -282,10 +282,29 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Adaptive Simpson's rule. 
+        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using adaptive numerical integration with the Gauss-Kronrod rule.
         /// </summary>
-        /// <param name="tolerance">The desired tolerance for the solution. Default = ~Sqrt(Machine Epsilon), or 1E-8.</param>
+        /// <param name="tolerance">The desired relative tolerance for the solution. Default = ~Sqrt(Machine Epsilon), or 1E-8.</param>
         /// <returns>Mean, Standard Deviation, Skew, and Kurtosis.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>This overload takes a tolerance, not a step count.</b> There is a sibling overload,
+        /// <see cref="CentralMoments(int)"/>, whose argument is a number of integration steps. The two are
+        /// distinguished only by the type of the single argument, so the choice is invisible at the call
+        /// site: <c>CentralMoments(1E-8)</c> requests a relative tolerance of 1E-8 from this adaptive
+        /// routine, while <c>CentralMoments(1000)</c> selects the fixed-step trapezoidal overload with 1,000
+        /// steps. Writing <c>CentralMoments(1)</c> when a tolerance of 1.0 was meant silently runs the other
+        /// method with a single step. The C++ port team flagged this pair as a foot-gun; the signatures are
+        /// kept for source compatibility.
+        /// </para>
+        /// <para>
+        /// This overload integrates with <see cref="AdaptiveGaussKronrod"/> over the range
+        /// [InverseCDF(1E-16), InverseCDF(1 − 1E-16)], subdividing until the requested relative tolerance is
+        /// met. A moment whose integration fails is returned as <see cref="double.NaN"/> rather than
+        /// throwing. Within this library only <c>NoncentralT</c> uses this overload; every other in-repo
+        /// caller uses the fixed-step one.
+        /// </para>
+        /// </remarks>
         public virtual double[] CentralMoments(double tolerance = 1E-8)
         {
             double u1 = 0, u2 = 0, u3 = 0, u4 = 0;
@@ -315,9 +334,31 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Trapezoidal rule. 
+        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Trapezoidal rule.
         /// </summary>
         ///<param name="steps">Number of integration steps. Default = 300.</param>
+        /// <returns>Mean, Standard Deviation, Skew, and Kurtosis.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>This overload takes a step count, not a tolerance.</b> There is a sibling overload,
+        /// <see cref="CentralMoments(double)"/>, whose argument is an integration tolerance. The two are
+        /// distinguished only by the type of the single argument, so the choice is invisible at the call
+        /// site: <c>CentralMoments(1000)</c> selects this fixed-step routine with 1,000 steps, while
+        /// <c>CentralMoments(1E-8)</c> selects the adaptive overload with a relative tolerance of 1E-8.
+        /// Writing <c>CentralMoments(1)</c> when a tolerance was meant silently runs this method with a
+        /// single step. The C++ port team flagged this pair as a foot-gun; the signatures are kept for
+        /// source compatibility.
+        /// </para>
+        /// <para>
+        /// This overload stratifies [InverseCDF(1E-8), InverseCDF(1 − 1E-8)] into <paramref name="steps"/>
+        /// equal bins and accumulates a trapezoidal sum, so the cost and the accuracy are both fixed by
+        /// <paramref name="steps"/> and there is no convergence check. Note that its integration range is
+        /// narrower than the adaptive overload's, so the two do not agree exactly even when both converge.
+        /// Within this library <c>CompetingRisks</c>, <c>EmpiricalDistribution</c>,
+        /// <c>GeneralizedNormal</c>, <c>KappaFour</c>, <c>Mixture</c> and <c>TruncatedDistribution</c> all
+        /// use this overload; only <c>NoncentralT</c> uses the adaptive one.
+        /// </para>
+        /// </remarks>
         public virtual double[] CentralMoments(int steps = 300)
         {
             double a = InverseCDF(1E-8);

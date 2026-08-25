@@ -82,6 +82,25 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Perform importance sampling.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The resampling list is ordered by <c>Fitness</c>, not by <c>Weight</c>.</b> After the
+        /// normalized posterior weights are computed, the sample list is sorted ascending on
+        /// <c>ParameterSet.Fitness</c>, and the resampling CDF is then accumulated from
+        /// <c>ParameterSet.Weight</c> in that order. The two fields do not always hold the same quantity.
+        /// With no importance distribution supplied the weight is set to the log-likelihood itself, so
+        /// <c>Fitness</c> and <c>Weight</c> coincide and the ordering is monotone in both. When an
+        /// importance distribution is supplied the weight becomes the log-likelihood minus the proposal
+        /// log-density, so the two diverge and the list is not sorted by the quantity the CDF accumulates.
+        /// </para>
+        /// <para>
+        /// Inverse-CDF resampling does not require a sorted CDF to be correct — the CDF is non-decreasing
+        /// regardless, because every increment is clamped non-negative — so this affects which sample each
+        /// plotting position selects, not the validity of the draw. Whether <c>Fitness</c> or <c>Weight</c>
+        /// is the intended sort key is an open question pending review, so the behaviour is deliberately
+        /// left unchanged; do not "fix" the comparator without that decision.
+        /// </para>
+        /// </remarks>
         public override void Sample()
         {
             InitializeChains();
@@ -168,7 +187,11 @@ namespace Numerics.Sampling.MCMC
                 MarkovChains[0][idx] = new ParameterSet(MarkovChains[0][idx].Values, MarkovChains[0][idx].Fitness, w);
             });
 
-            // Sort list in ascending order of posterior weights
+            // Sort the list in ascending order of Fitness (the log-likelihood), which is NOT the same key
+            // the CDF below accumulates: that runs on Weight. The two coincide only when no importance
+            // distribution was supplied, where weight = logLH; with one, weight = logLH - mvn.LogPDF, so
+            // the list is not ordered by the accumulated quantity. See the remarks on Sample(). Which of
+            // the two is the intended key is pending review, so this comparator is deliberately unchanged.
             MarkovChains[0].Sort((x, y) => x.Fitness.CompareTo(y.Fitness));
             var cdf = new double[Iterations];
             cdf[0] = Math.Max(0.0, MarkovChains[0][0].Weight);

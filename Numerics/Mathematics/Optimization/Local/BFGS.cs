@@ -98,6 +98,15 @@ namespace Numerics.Mathematics.Optimization
         {
             int D = NumberOfParameters;
             double EPS = Tools.DoubleMachineEpsilon;
+            // TOLX is declared here to match Numerical Recipes' dfpmin, but it is never compared against
+            // anything in this method: the outer parameter-change convergence test of dfpmin — exit when the
+            // largest relative step falls below TOLX — is NOT implemented. The TOLX that is actually used is
+            // a separate local in LineSearchArmijo, where it sets alamin = TOLX / test; that is the inner
+            // lnsrch step-size floor and is unrelated to outer convergence. Convergence here is therefore
+            // decided solely by CheckConvergence's relative-function-change test, so there is no stagnation
+            // exit: a run that stops improving its parameters while the function value still moves will keep
+            // iterating to MaxIterations. Do not assume such an exit exists. Adding it is deferred to a
+            // separate task behind a measurement gate, since it would change which iterate is returned.
             double TOLX = 4 * EPS, STPMX = 100.0;
             bool cancel = false, check = false;
 
