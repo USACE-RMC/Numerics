@@ -459,13 +459,13 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         protected virtual void ValidateSettings()
         {
-            if (NumberOfChains < 1) throw new ArgumentException(nameof(NumberOfChains), "There must be at least 1 chain.");
-            if (Iterations < 100) throw new ArgumentException(nameof(Iterations), "The number of iterations cannot be less than 100.");
-            if (WarmupIterations < 1) throw new ArgumentException(nameof(WarmupIterations), "The number of warm up iterations cannot be less than 1.");
-            if (WarmupIterations > (int)(0.5 * Iterations)) throw new ArgumentException(nameof(WarmupIterations), "The number of warm up iterations cannot be greater than half the number of iterations.");
-            if (ThinningInterval < 1) throw new ArgumentException(nameof(ThinningInterval), "The thinning interval cannot be less than 1.");
-            if (InitialIterations < NumberOfChains) throw new ArgumentException(nameof(InitialIterations), "The initial population cannot be less than the number of chains.");
-            if (OutputLength < 100) throw new ArgumentException(nameof(OutputLength), "The output length must be at least 100.");
+            if (NumberOfChains < 1) throw new ArgumentException("There must be at least 1 chain.", nameof(NumberOfChains));
+            if (Iterations < 100) throw new ArgumentException("The number of iterations cannot be less than 100.", nameof(Iterations));
+            if (WarmupIterations < 1) throw new ArgumentException("The number of warm up iterations cannot be less than 1.", nameof(WarmupIterations));
+            if (WarmupIterations > (int)(0.5 * Iterations)) throw new ArgumentException("The number of warm up iterations cannot be greater than half the number of iterations.", nameof(WarmupIterations));
+            if (ThinningInterval < 1) throw new ArgumentException("The thinning interval cannot be less than 1.", nameof(ThinningInterval));
+            if (InitialIterations < NumberOfChains) throw new ArgumentException("The initial population cannot be less than the number of chains.", nameof(InitialIterations));
+            if (OutputLength < 100) throw new ArgumentException("The output length must be at least 100.", nameof(OutputLength));
             ValidateCustomSettings();
         }
 

@@ -953,7 +953,7 @@ namespace Numerics.Data
         public TimeSeries MovingAverage(int period, int? minValidCount = null)
         {
             if (period >= Count)
-                throw new ArgumentException(nameof(period), "The period must be less than the length of the time-series.");
+                throw new ArgumentException("The period must be less than the length of the time-series.", nameof(period));
             int minCount = minValidCount ?? period;
             if (minCount < 1 || minCount > period)
                 throw new ArgumentOutOfRangeException(nameof(minValidCount), "minValidCount must be between 1 and period.");
@@ -996,7 +996,7 @@ namespace Numerics.Data
         public TimeSeries MovingSum(int period, int? minValidCount = null)
         {
             if (period >= Count)
-                throw new ArgumentException(nameof(period), "The period must be less than the length of the time-series.");
+                throw new ArgumentException("The period must be less than the length of the time-series.", nameof(period));
             int minCount = minValidCount ?? period;
             if (minCount < 1 || minCount > period)
                 throw new ArgumentOutOfRangeException(nameof(minValidCount), "minValidCount must be between 1 and period.");

@@ -42,7 +42,7 @@ namespace Numerics.Data
         /// <param name="sortOrder">The sort order of the x-values, either ascending or descending. Default = Ascending. </param>
         public Polynomial(int order, IList<double> xValues, IList<double> yValues, SortOrder sortOrder = SortOrder.Ascending) : base(xValues, yValues, sortOrder)
         {
-            if (order >= Count) throw new ArgumentException(nameof(order), "The order must be less than the length of the x value list.");
+            if (order >= Count) throw new ArgumentException("The order must be less than the length of the x value list.", nameof(order));
             Order = order;
             
         }

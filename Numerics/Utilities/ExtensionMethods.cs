@@ -192,7 +192,7 @@ namespace Numerics
         /// <returns>The array after addition.</returns>
         public static double[] Add(this double[] array, double[] values)
         {
-            if (array.Length != values.Length) throw new ArgumentException(nameof(array), "The arrays must be the same length.");
+            if (array.Length != values.Length) throw new ArgumentException("The arrays must be the same length.", nameof(array));
             var result = new double[array.Length];
             for (int i = 0; i < array.Length; i++)
                 result[i] = array[i] + values[i];
@@ -207,7 +207,7 @@ namespace Numerics
         /// <returns>The array after subtraction.</returns>
         public static double[] Subtract(this double[] array, double[] values)
         {
-            if (array.Length != values.Length) throw new ArgumentException(nameof(array), "The arrays must be the same length.");
+            if (array.Length != values.Length) throw new ArgumentException("The arrays must be the same length.", nameof(array));
             var result = new double[array.Length];
             for (int i = 0; i < array.Length; i++)
                 result[i] = array[i] - values[i];
@@ -250,7 +250,7 @@ namespace Numerics
         /// <returns>The array after performing the dot product.</returns>
         public static double DotProduct(this double[] array, double[] values)
         {
-            if (array.Length != values.Length) throw new ArgumentException(nameof(array), "The arrays must be the same length.");
+            if (array.Length != values.Length) throw new ArgumentException("The arrays must be the same length.", nameof(array));
             double result = 0.0;
             for (int i = 0; i < array.Length; i++)
                 result += array[i] * values[i];

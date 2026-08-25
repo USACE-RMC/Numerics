@@ -81,8 +81,8 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateCustomSettings()
         {
-            if (Scale <= 0) throw new ArgumentException(nameof(Scale), "The scale parameter must greater than 0.");
-            if (Beta < 0 || Beta > 1) throw new ArgumentException(nameof(Beta), "Beta must be between 0 and 1.");
+            if (Scale <= 0) throw new ArgumentException("The scale parameter must greater than 0.", nameof(Scale));
+            if (Beta < 0 || Beta > 1) throw new ArgumentException("Beta must be between 0 and 1.", nameof(Beta));
         }
 
         /// <inheritdoc/>

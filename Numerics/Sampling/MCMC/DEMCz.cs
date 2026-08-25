@@ -79,10 +79,10 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateCustomSettings()
         {
-            if (NumberOfChains < 3) throw new ArgumentException(nameof(NumberOfChains), "There must be at least 3 chains.");
-            if (Jump <= 0 || Jump >= 2) throw new ArgumentException(nameof(Jump), "The jump parameter must be between 0 and 2.");
-            if (JumpThreshold < 0 || JumpThreshold >= 1) throw new ArgumentException(nameof(JumpThreshold), "The jump threshold must be between 0 and 1.");
-            if (Noise < 0) throw new ArgumentException(nameof(Noise), "The noise parameter must be greater than 0.");            
+            if (NumberOfChains < 3) throw new ArgumentException("There must be at least 3 chains.", nameof(NumberOfChains));
+            if (Jump <= 0 || Jump >= 2) throw new ArgumentException("The jump parameter must be between 0 and 2.", nameof(Jump));
+            if (JumpThreshold < 0 || JumpThreshold >= 1) throw new ArgumentException("The jump threshold must be between 0 and 1.", nameof(JumpThreshold));
+            if (Noise < 0) throw new ArgumentException("The noise parameter must be greater than 0.", nameof(Noise));            
         }
 
 

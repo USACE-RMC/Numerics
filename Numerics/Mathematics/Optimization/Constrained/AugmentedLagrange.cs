@@ -50,7 +50,7 @@ namespace Numerics.Mathematics.Optimization
             _nu = new double[_constraints.Where((x) => x.Type == ConstraintType.GreaterThanOrEqualTo).ToArray().Length];
 
             // Set up objective functions and optimizer
-            if (optimizer.GetType() == typeof(AugmentedLagrange)) throw new ArgumentException(nameof(optimizer), "The inner optimizer cannot also be an Augmented Lagrange optimizer.");
+            if (optimizer.GetType() == typeof(AugmentedLagrange)) throw new ArgumentException("The inner optimizer cannot also be an Augmented Lagrange optimizer.", nameof(optimizer));
             _primaryObjectiveFunction = objectiveFunction;
             this.Optimizer = optimizer;
             this.Optimizer.ObjectiveFunction = augmentedLagrangianFunction;

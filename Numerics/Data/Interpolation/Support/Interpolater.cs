@@ -33,13 +33,13 @@ namespace Numerics.Data
             Count = xValues.Count;
 
             // Validate 
-            if (yValues.Count != Count) throw new ArgumentException(nameof(xValues), "The x and y lists must be the same length.");
-            if (Count < 2) throw new ArgumentException(nameof(xValues), "The x list is too small. It must have at least 2 values.");
+            if (yValues.Count != Count) throw new ArgumentException("The x and y lists must be the same length.", nameof(xValues));
+            if (Count < 2) throw new ArgumentException("The x list is too small. It must have at least 2 values.", nameof(xValues));
             for (int i = 1; i < xValues.Count; ++i)
             {
-                if (xValues[i] == xValues[i - 1]) throw new ArgumentException(nameof(xValues), "All x values should be unique.");
-                if (sortOrder == SortOrder.Ascending && xValues[i] < xValues[i - 1]) throw new ArgumentException(nameof(xValues), "The x values are not in ascending order.");
-                if (sortOrder == SortOrder.Descending && xValues[i] > xValues[i - 1]) throw new ArgumentException(nameof(xValues), "The x values are not in descending order.");
+                if (xValues[i] == xValues[i - 1]) throw new ArgumentException("All x values should be unique.", nameof(xValues));
+                if (sortOrder == SortOrder.Ascending && xValues[i] < xValues[i - 1]) throw new ArgumentException("The x values are not in ascending order.", nameof(xValues));
+                if (sortOrder == SortOrder.Descending && xValues[i] > xValues[i - 1]) throw new ArgumentException("The x values are not in descending order.", nameof(xValues));
             }
             this.XValues = xValues;
             this.YValues = yValues;

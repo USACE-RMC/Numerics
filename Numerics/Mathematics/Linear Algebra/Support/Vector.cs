@@ -162,7 +162,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="B">Right-side vector.</param>
         public static double Distance(Vector A, Vector B)
         {
-            if (A.Length != B.Length) throw new ArgumentException(nameof(A.Length), "The vectors must be the same length.");
+            if (A.Length != B.Length) throw new ArgumentException("The vectors must be the same length.", nameof(A.Length));
             double d = 0;
             for (int i = 0; i < A.Length; i++)
             {
@@ -179,7 +179,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="B">Right-side vector.</param>
         public static double DotProduct(Vector A, Vector B)
         {
-            if (A.Length != B.Length) throw new ArgumentException(nameof(A.Length), "The vectors must be the same length.");
+            if (A.Length != B.Length) throw new ArgumentException("The vectors must be the same length.", nameof(A.Length));
             double sum = 0;
             for (int i = 0; i < A.Length; i++)
                 sum += A[i] * B[i];
@@ -279,7 +279,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="vector">The right-side vector.</param>
         public Vector Multiply(Vector vector)
         {
-            if (Length != vector.Length) throw new ArgumentException(nameof(Length), "The vectors must be the same length.");
+            if (Length != vector.Length) throw new ArgumentException("The vectors must be the same length.", nameof(Length));
             var result = new Vector(Length);
             for (int i = 0; i < Length; i++)
                 result[i] = _vector[i] * vector[i];
@@ -292,7 +292,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <param name="vector">The right-side array.</param>
         public Vector Multiply(double[] vector)
         {
-            if (Length != vector.Length) throw new ArgumentException(nameof(Length), "The vectors must be the same length.");
+            if (Length != vector.Length) throw new ArgumentException("The vectors must be the same length.", nameof(Length));
             var result = new Vector(Length);
             for (int i = 0; i < Length; i++)
                 result[i] = _vector[i] * vector[i];

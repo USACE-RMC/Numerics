@@ -370,10 +370,10 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateCustomSettings()
         {
-            if (Mass.Length != NumberOfParameters) throw new ArgumentException(nameof(Mass), "The mass vector must be the same length as the number of parameters.");
+            if (Mass.Length != NumberOfParameters) throw new ArgumentException("The mass vector must be the same length as the number of parameters.", nameof(Mass));
             if (_initialStepSize <= 0) throw new ArgumentException("stepSize", "The leapfrog step size must be positive.");
-            if (MaxTreeDepth < 1) throw new ArgumentException(nameof(MaxTreeDepth), "The maximum tree depth must be at least 1.");
-            if (!Tools.IsFinite(TargetAcceptanceRate) || TargetAcceptanceRate <= 0d || TargetAcceptanceRate >= 1d) throw new ArgumentException(nameof(TargetAcceptanceRate), "The target acceptance rate must be greater than 0 and less than 1.");
+            if (MaxTreeDepth < 1) throw new ArgumentException("The maximum tree depth must be at least 1.", nameof(MaxTreeDepth));
+            if (!Tools.IsFinite(TargetAcceptanceRate) || TargetAcceptanceRate <= 0d || TargetAcceptanceRate >= 1d) throw new ArgumentException("The target acceptance rate must be greater than 0 and less than 1.", nameof(TargetAcceptanceRate));
         }
 
         /// <inheritdoc/>

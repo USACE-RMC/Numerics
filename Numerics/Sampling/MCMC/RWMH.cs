@@ -49,9 +49,9 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateCustomSettings()
         {
-            if (ProposalSigma == null) throw new ArgumentException(nameof(ProposalSigma), "The proposal covariance matrix cannot be null.");
-            if (ProposalSigma.NumberOfRows != ProposalSigma.NumberOfColumns) throw new ArgumentException(nameof(ProposalSigma), "The proposal covariance matrix must be square.");
-            if (ProposalSigma.NumberOfRows != NumberOfParameters) throw new ArgumentException(nameof(ProposalSigma), "The proposal covariance matrix must have the same number of rows and columns as the number of parameters.");
+            if (ProposalSigma == null) throw new ArgumentException("The proposal covariance matrix cannot be null.", nameof(ProposalSigma));
+            if (ProposalSigma.NumberOfRows != ProposalSigma.NumberOfColumns) throw new ArgumentException("The proposal covariance matrix must be square.", nameof(ProposalSigma));
+            if (ProposalSigma.NumberOfRows != NumberOfParameters) throw new ArgumentException("The proposal covariance matrix must have the same number of rows and columns as the number of parameters.", nameof(ProposalSigma));
         }
 
         /// <inheritdoc/>

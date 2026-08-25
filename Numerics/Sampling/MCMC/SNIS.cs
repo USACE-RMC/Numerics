@@ -69,14 +69,14 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateSettings()
         {
-            if (NumberOfChains != 1) throw new ArgumentException(nameof(InitialIterations), "There can only be 1 chain with this method.");
-            if (OutputLength < 100) throw new ArgumentException(nameof(OutputLength), "The output length must be at least 100.");
-            if (Iterations < OutputLength) throw new ArgumentException(nameof(Iterations), "The number of iterations cannot be less than the output length.");
-            if (WarmupIterations != 0) throw new ArgumentException(nameof(WarmupIterations), "There are no warmup iterations with this method.");
-            if (ThinningInterval != 1) throw new ArgumentException(nameof(ThinningInterval), "The thinning interval must be 1 for this method.");
-            if (InitialIterations != 1) throw new ArgumentException(nameof(InitialIterations), "The initial population must be 1 for this method.");
+            if (NumberOfChains != 1) throw new ArgumentException("There can only be 1 chain with this method.", nameof(InitialIterations));
+            if (OutputLength < 100) throw new ArgumentException("The output length must be at least 100.", nameof(OutputLength));
+            if (Iterations < OutputLength) throw new ArgumentException("The number of iterations cannot be less than the output length.", nameof(Iterations));
+            if (WarmupIterations != 0) throw new ArgumentException("There are no warmup iterations with this method.", nameof(WarmupIterations));
+            if (ThinningInterval != 1) throw new ArgumentException("The thinning interval must be 1 for this method.", nameof(ThinningInterval));
+            if (InitialIterations != 1) throw new ArgumentException("The initial population must be 1 for this method.", nameof(InitialIterations));
             if (mvn != null && mvn.ParametersValid == false)
-                throw new ArgumentException(nameof(MultivariateNormal), "The multivariate Normal importance distribution is invalid.");
+                throw new ArgumentException("The multivariate Normal importance distribution is invalid.", nameof(MultivariateNormal));
         }
 
         /// <summary>
