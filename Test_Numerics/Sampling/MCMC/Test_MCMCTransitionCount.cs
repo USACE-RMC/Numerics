@@ -1,0 +1,210 @@
+using System.Collections.Generic;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.Optimization;
+using Numerics.Sampling.MCMC;
+
+namespace Sampling.MCMC
+{
+    /// <summary>
+    /// Unit tests for the derived work-estimate properties on <see cref="MCMCSampler"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="MCMCSampler.Iterations"/> does not describe the work a run performs. Two multipliers sit
+    /// between the two figures: <c>Sample()</c> runs ceil(<c>OutputLength</c> / <c>NumberOfChains</c>)
+    /// recorded iterations beyond <c>Iterations</c> to collect the posterior output, and each recorded
+    /// iteration advances the chain <c>ThinningInterval</c> times. <see cref="MCMCSampler.TransitionCount"/>
+    /// and <see cref="MCMCSampler.TotalTransitionCount"/> report the product.
+    /// </para>
+    /// <para>
+    /// The expected values below are computed by hand rather than from the properties' own expressions, and
+    /// <see cref="TransitionCount_MatchesTheTransitionsSampleActuallyPerforms"/> ties the arithmetic to the
+    /// real <c>Sample()</c> loop so that the two cannot drift apart.
+    /// </para>
+    /// </remarks>
+    [TestClass]
+    public class Test_MCMCTransitionCount
+    {
+        /// <summary>
+        /// Builds a minimal, cheap RWMH sampler. The transition counts are pure functions of the settings,
+        /// so the priors and likelihood only have to be well formed.
+        /// </summary>
+        /// <returns>A two-parameter RWMH sampler left at its default settings.</returns>
+        private static RWMH CreateSampler()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(-10d, 10d), new Uniform(0.1d, 10d) };
+            double logLH(double[] x) => new Normal(x[0], x[1]).LogPDF(0d);
+            return new RWMH(priors, logLH, Matrix.Identity(2));
+        }
+
+        /// <summary>
+        /// At the shipped defaults a single chain performs 120,000 transitions and the four chains together
+        /// perform 480,000, against an <see cref="MCMCSampler.Iterations"/> that reads 3,500.
+        /// </summary>
+        [TestMethod]
+        public void TransitionCount_AtTheDefaults()
+        {
+            var sampler = CreateSampler();
+
+            // Guard the defaults the hand-computed values below depend on.
+            Assert.AreEqual(3500, sampler.Iterations);
+            Assert.AreEqual(10000, sampler.OutputLength);
+            Assert.AreEqual(4, sampler.NumberOfChains);
+            Assert.AreEqual(20, sampler.ThinningInterval);
+            Assert.AreEqual(1750, sampler.WarmupIterations);
+
+            // (3500 + ceil(10000 / 4)) * 20 = (3500 + 2500) * 20 = 120,000.
+            Assert.AreEqual(120000L, sampler.TransitionCount);
+            Assert.AreEqual(480000L, sampler.TotalTransitionCount);
+
+            // Warmup is a subset of Iterations, not an addition to it, so it is already inside the figure.
+            Assert.IsLessThanOrEqualTo((int)(0.5 * sampler.Iterations), sampler.WarmupIterations);
+        }
+
+        /// <summary>
+        /// A configuration in which <c>OutputLength / NumberOfChains</c> does not divide evenly, so the
+        /// ceiling in the output-iteration count is exercised.
+        /// </summary>
+        [TestMethod]
+        public void TransitionCount_WhenOutputDoesNotDivideEvenly()
+        {
+            var sampler = CreateSampler();
+            sampler.Iterations = 1000;
+            sampler.OutputLength = 10001;
+            sampler.NumberOfChains = 3;
+            sampler.ThinningInterval = 7;
+
+            // 10001 / 3 = 3333.667, so ceil gives 3334 — one more than truncation would.
+            // (1000 + 3334) * 7 = 4334 * 7 = 30,338.
+            Assert.AreEqual(30338L, sampler.TransitionCount);
+            Assert.AreEqual(91014L, sampler.TotalTransitionCount);
+        }
+
+        /// <summary>
+        /// A second non-default configuration with a different uneven division and a different thinning
+        /// interval.
+        /// </summary>
+        [TestMethod]
+        public void TransitionCount_AtASecondNonDefaultConfiguration()
+        {
+            var sampler = CreateSampler();
+            sampler.Iterations = 250;
+            sampler.OutputLength = 1000;
+            sampler.NumberOfChains = 7;
+            sampler.ThinningInterval = 3;
+
+            // 1000 / 7 = 142.857, so ceil gives 143.
+            // (250 + 143) * 3 = 393 * 3 = 1179.
+            Assert.AreEqual(1179L, sampler.TransitionCount);
+            Assert.AreEqual(8253L, sampler.TotalTransitionCount);
+
+            // A thinning interval of 1 removes that multiplier entirely, leaving the recorded iterations.
+            sampler.ThinningInterval = 1;
+            Assert.AreEqual(393L, sampler.TransitionCount);
+            Assert.AreEqual(2751L, sampler.TotalTransitionCount);
+        }
+
+        /// <summary>
+        /// The counts are <see cref="long"/> so that settings the sampler accepts cannot overflow them.
+        /// </summary>
+        /// <remarks>
+        /// Nothing bounds <see cref="MCMCSampler.Iterations"/> from above, so the product leaves
+        /// <see cref="int"/> range long before the settings become unreasonable. In <see cref="int"/>
+        /// arithmetic the per-chain figure below would have wrapped to a negative number.
+        /// </remarks>
+        [TestMethod]
+        public void TransitionCount_DoesNotOverflowForLargeSettings()
+        {
+            var sampler = CreateSampler();
+            sampler.Iterations = 200000000;
+            sampler.OutputLength = 10000;
+            sampler.NumberOfChains = 4;
+            sampler.ThinningInterval = 20;
+
+            // (200,000,000 + 2,500) * 20 = 4,000,050,000, which exceeds int.MaxValue (2,147,483,647).
+            Assert.AreEqual(4000050000L, sampler.TransitionCount);
+            Assert.AreEqual(16000200000L, sampler.TotalTransitionCount);
+            Assert.IsGreaterThan(int.MaxValue, sampler.TransitionCount);
+        }
+
+        /// <summary>
+        /// Ties <see cref="MCMCSampler.TransitionCount"/> to the transitions <c>Sample()</c> actually
+        /// performs, so the property cannot drift away from the loop it describes.
+        /// </summary>
+        /// <remarks>
+        /// <c>SampleChain</c> is invoked once per recorded iteration per chain and advances the chain
+        /// <c>ThinningInterval</c> times, so the observed call count times the thinning interval must equal
+        /// the advertised per-chain transition count. Chains are sampled serially here so the counters are
+        /// deterministic. The configuration is the smallest one <c>ValidateSettings</c> accepts, to keep the
+        /// run cheap.
+        /// </remarks>
+        [TestMethod]
+        public void TransitionCount_MatchesTheTransitionsSampleActuallyPerforms()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(-5d, 5d), new Uniform(0.5d, 5d) };
+            double logLH(double[] x) => new Normal(x[0], x[1]).LogPDF(0d);
+            var sampler = new CountingRWMH(priors, logLH, Matrix.Identity(2))
+            {
+                Iterations = 100,
+                WarmupIterations = 10,
+                OutputLength = 100,
+                NumberOfChains = 2,
+                ThinningInterval = 3,
+                InitialIterations = 10,
+                ParallelizeChains = false,
+                PRNGSeed = 12345
+            };
+
+            // ceil(100 / 2) = 50 output iterations, so 150 recorded iterations, each of 3 transitions.
+            Assert.AreEqual(450L, sampler.TransitionCount);
+            Assert.AreEqual(900L, sampler.TotalTransitionCount);
+
+            sampler.Sample();
+
+            long observedPerChain = sampler.ChainCallCount[0] * sampler.ThinningInterval;
+            Assert.AreEqual(sampler.TransitionCount, observedPerChain,
+                "TransitionCount must equal the transitions Sample() performs on one chain.");
+
+            long observedTotal = 0;
+            for (int i = 0; i < sampler.NumberOfChains; i++)
+            {
+                Assert.AreEqual(sampler.ChainCallCount[0], sampler.ChainCallCount[i],
+                    "Every chain is advanced the same number of times.");
+                observedTotal += sampler.ChainCallCount[i] * sampler.ThinningInterval;
+            }
+            Assert.AreEqual(sampler.TotalTransitionCount, observedTotal,
+                "TotalTransitionCount must equal the transitions Sample() performs across all chains.");
+        }
+
+        /// <summary>
+        /// An RWMH sampler that records how many times each chain is advanced.
+        /// </summary>
+        private sealed class CountingRWMH : RWMH
+        {
+            /// <summary>
+            /// Initializes a counting sampler.
+            /// </summary>
+            /// <param name="priors">Parameter priors.</param>
+            /// <param name="target">Log-likelihood function.</param>
+            /// <param name="proposalSigma">Proposal covariance.</param>
+            public CountingRWMH(List<IUnivariateDistribution> priors, LogLikelihood target, Matrix proposalSigma)
+                : base(priors, target, proposalSigma)
+            {
+            }
+
+            /// <summary>
+            /// The number of times each chain has been advanced, indexed by chain.
+            /// </summary>
+            public long[] ChainCallCount { get; } = new long[64];
+
+            /// <inheritdoc/>
+            protected override ParameterSet SampleChain(int index, ParameterSet state)
+            {
+                ChainCallCount[index]++;
+                return base.SampleChain(index, state);
+            }
+        }
+    }
+}

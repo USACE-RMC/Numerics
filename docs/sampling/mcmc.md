@@ -91,6 +91,59 @@ List<ParameterSet>[] MarkovChains // Raw MCMC chains
 ParameterSet MAP                  // Maximum a posteriori estimate
 ```
 
+### How much work a run actually does
+
+`Iterations` does not describe the work performed, and at the defaults it under-reports it by a factor
+of about 34. Two multipliers sit in between:
+
+- `Sample()` runs `ceil(OutputLength / NumberOfChains)` recorded iterations *beyond* `Iterations` to
+  collect the posterior output. `OutputLength` defaults to 10,000.
+- Each recorded iteration advances the chain `ThinningInterval` times. Thinning discards intermediate
+  transitions, not recorded draws, so those transitions are all performed.
+
+```text
+transitions per chain = (Iterations + ceil(OutputLength / NumberOfChains)) * ThinningInterval
+                      = (3500 + ceil(10000 / 4)) * 20
+                      = (3500 + 2500) * 20
+                      = 120,000          per chain
+                      = 480,000          across the 4 default chains
+```
+
+Every transition costs at least one log-likelihood evaluation, so 480,000 is the evaluation budget of
+a default run. Note that `WarmupIterations` is a *subset* of `Iterations`, not an addition to it —
+`ValidateSettings` rejects a warmup longer than half of `Iterations` — so it is already inside these
+figures and must not be added again.
+
+Two read-only properties report these directly, so a runtime estimate does not have to reproduce the
+arithmetic:
+
+```cs
+long TransitionCount       // transitions per chain      (120,000 at the defaults)
+long TotalTransitionCount  // transitions over all chains (480,000 at the defaults)
+```
+
+They are `long` because there is no upper bound on `Iterations`, and the product overflows `int` for
+settings the sampler otherwise accepts.
+
+### Thread safety of the likelihood
+
+`ParallelizeChains` defaults to `true`, which means `Sample()` advances all chains concurrently and
+every chain calls the **same** `LogLikelihoodFunction` delegate instance. The log-likelihood — and, for
+gradient-based samplers, the gradient — is therefore invoked from multiple threads at once and must be
+thread-safe or stateless.
+
+A likelihood that closes over mutable state (an autodiff tape, a reused buffer or workspace, a native
+solver handle, a cached factorization, a non-thread-safe PRNG) races under the default setting, and the
+corruption is silent: it shows up as an implausible posterior, not as an exception.
+
+```cs
+sampler.ParallelizeChains = false;  // required if the likelihood is not thread-safe
+```
+
+Setting it to `false` is the supported remedy and the only one. The delegates receive just the
+parameter vector and no chain index, so a callback cannot select a per-chain resource from inside
+itself.
+
 ## Defining the Model
 
 ### Step 1: Define Prior Distributions
