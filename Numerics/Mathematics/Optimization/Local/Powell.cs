@@ -227,13 +227,25 @@ namespace Numerics.Mathematics.Optimization
         /// between two genuinely different points rather than on a constant tail.
         /// </description></item>
         /// <item><description>
-        /// The accepted step length is clamped to the feasible interval before the displacement is applied,
-        /// so a bracket that ran past an endpoint cannot enlarge the recorded displacement or put an
-        /// infeasible direction into the direction set. Clamping the accepted step exactly matches the
-        /// clamping inside the objective, so the returned fitness is the value of the objective at the
-        /// returned point.
+        /// The interval reported by the bracketing search is trimmed back to the feasible interval before
+        /// the minimization runs over it, so the minimization never sees the constant tails at all. This
+        /// is required for correctness, not just for tidiness. <see cref="BrentSearch"/> accepts a trial
+        /// point whose value merely ties the incumbent, and every point on a constant tail ties, so a
+        /// bracket that included one would be collapsed into the tail and the half of it that holds the
+        /// minimum would be discarded. Trimming rather than widening keeps the search local: the interval
+        /// still comes from the outward expansion that started at the current point. It also means the
+        /// accepted step is already inside the feasible interval, so the clamp inside the objective is
+        /// inactive for it and the returned fitness is the objective at the returned point.
         /// </description></item>
         /// </list>
+        /// <para>
+        /// An end of the trimmed interval that is a bound of the feasible interval is evaluated after the
+        /// minimization and taken when it is strictly better. A line minimum that is cut off by a bound sits
+        /// exactly on that end, and <see cref="BrentSearch"/> stops short of an end by its own tolerance and
+        /// never evaluates it, so without this a solution on a face is reported a little inside the face
+        /// instead of on it. The comparison is strict so that a flat stretch reaching the boundary cannot
+        /// pull the iterate out to the boundary for no improvement.
+        /// </para>
         /// <para>
         /// The zero step is evaluated before the search and is kept unless the search strictly improves on
         /// it, so this routine is non-increasing. The enclosing algorithm relies on that: it identifies the
@@ -280,15 +292,42 @@ namespace Numerics.Mathematics.Optimization
                 return Evaluate(x, ref c);
             }
 
-            var brent = new BrentSearch(func, 0d, 1d) { RelativeTolerance = RelativeTolerance, AbsoluteTolerance = AbsoluteTolerance };
-            brent.Bracket(GetBracketingStep(alphaMin, alphaMax));
+            // Bracket the minimum first. The bracketing search steps outward from the current point and can
+            // run past an endpoint of the feasible interval, where the objective above is constant. That
+            // constant is what stops the expansion, but the interval it reports must be trimmed back to the
+            // feasible interval before the minimization runs over it. See the remarks on this method.
+            var bracketing = new BrentSearch(func, 0d, 1d) { RelativeTolerance = RelativeTolerance, AbsoluteTolerance = AbsoluteTolerance };
+            bracketing.Bracket(GetBracketingStep(alphaMin, alphaMax));
+            cancel = c;
+            if (cancel) return double.NaN;
+            double lower = bracketing.LowerBound < alphaMin ? alphaMin : (bracketing.LowerBound > alphaMax ? alphaMax : bracketing.LowerBound);
+            double upper = bracketing.UpperBound < alphaMin ? alphaMin : (bracketing.UpperBound > alphaMax ? alphaMax : bracketing.UpperBound);
+
+            var brent = new BrentSearch(func, lower, upper) { RelativeTolerance = RelativeTolerance, AbsoluteTolerance = AbsoluteTolerance };
             brent.Minimize();
             cancel = c;
             if (cancel) return double.NaN;
             double xmin = brent.BestParameterSet.Values[0];
-            // Keep the accepted step inside the feasible interval, matching the clamping in func above.
-            xmin = xmin < alphaMin ? alphaMin : (xmin > alphaMax ? alphaMax : xmin);
             double fmin = brent.BestParameterSet.Fitness;
+
+            // A line minimum that is cut off by a bound sits exactly on the end of the feasible interval, and
+            // the minimization above stops short of an end by its own tolerance and never evaluates it. Try
+            // an end that is a bound of the feasible interval and take it only when it is strictly better, so
+            // that a step limited by a bound lands on the bound rather than just inside it, without a flat
+            // stretch being able to pull the iterate all the way out to the boundary for nothing.
+            if (upper == alphaMax && upper != 0d)
+            {
+                double atEnd = func(alphaMax);
+                if (atEnd < fmin) { xmin = alphaMax; fmin = atEnd; }
+            }
+            if (lower == alphaMin && lower != 0d)
+            {
+                double atEnd = func(alphaMin);
+                if (atEnd < fmin) { xmin = alphaMin; fmin = atEnd; }
+            }
+            cancel = c;
+            if (cancel) return double.NaN;
+
             // Fall back on the zero step unless the search strictly improved on it. Written this way so a
             // search that returned NaN keeps the current point rather than moving to it.
             if (!(fmin < zeroStep))
@@ -334,7 +373,12 @@ namespace Numerics.Mathematics.Optimization
             const double defaultStep = 0.1;
             if (alphaMax >= defaultStep) return defaultStep;
             if (alphaMin <= -defaultStep) return -defaultStep;
-            return alphaMax >= -alphaMin ? 0.5 * alphaMax : 0.5 * alphaMin;
+            double wider = alphaMax >= -alphaMin ? alphaMax : alphaMin;
+            double half = 0.5 * wider;
+            // Halving underflows to zero once the wider side is the smallest subnormal, and a zero step is
+            // rejected by the bracketing routine. The endpoint itself is nonzero there, and the caller has
+            // already returned for the interval that collapses to a point, so it is a usable step.
+            return half == 0d ? wider : half;
         }
 
         /// <summary>
