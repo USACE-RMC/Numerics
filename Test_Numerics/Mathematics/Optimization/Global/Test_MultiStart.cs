@@ -395,5 +395,29 @@ namespace Mathematics.Optimization
             Assert.AreEqual(1d, solution[0], 1E-6);
             Assert.AreEqual(1d, solution[1], 1E-6);
         }
+
+        /// <summary>
+        /// Test that the public <see cref="MultiStart.InitialValues"/> property still equals what was
+        /// passed to the constructor after a run, and that the caller's own array is left untouched.
+        /// </summary>
+        /// <remarks>
+        /// On the first iteration the solver's working array was re-pointed at <see cref="MultiStart.InitialValues"/>
+        /// itself rather than copied into, so every later uniform draw and the local solver's bounds repair
+        /// wrote straight into the public property's own array. This pins both the public
+        /// <see cref="MultiStart.InitialValues"/> array and the caller's own array against that regression.
+        /// </remarks>
+        [TestMethod]
+        public void Test_InitialValuesAreNotMutatedByARun()
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var callerSnapshot = (double[])initial.Clone();
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            var solver = new MultiStart(TestFunctions.Booth, 2, initial, lower, upper);
+            solver.Minimize();
+
+            CollectionAssert.AreEqual(callerSnapshot, initial, "The caller's own array must not be modified by a run.");
+            CollectionAssert.AreEqual(callerSnapshot, solver.InitialValues, "InitialValues must still equal what was passed to the constructor after a run.");
+        }
     }
 }

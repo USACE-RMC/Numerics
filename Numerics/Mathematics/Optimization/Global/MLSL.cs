@@ -211,10 +211,16 @@ namespace Numerics.Mathematics.Optimization
                 {
                     // On the first iteration, add the user-defined initial starting points
                     // This can often be very close to the true minimum
-                    SampledPoints.Add(new SamplePoint { ParameterSet = new ParameterSet(InitialValues, Evaluate(InitialValues, ref cancel)), Minimized = true });
+                    //
+                    // Evaluate and minimize from a copy of InitialValues rather than the array itself.
+                    // ParameterSet stores its array by reference, and GetLocalOptimizer repairs its
+                    // argument in place, so operating directly on InitialValues would let either path
+                    // silently corrupt the public InitialValues array.
+                    var initial = InitialValues.ToArray();
+                    SampledPoints.Add(new SamplePoint { ParameterSet = new ParameterSet(initial, Evaluate(initial, ref cancel)), Minimized = true });
 
                     // Perform local minimizations from initial values
-                    solver = GetLocalOptimizer(InitialValues, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
+                    solver = GetLocalOptimizer(initial, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
                     solver.Minimize();
                     if (cancel) return;
 

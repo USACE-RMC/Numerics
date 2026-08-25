@@ -155,7 +155,11 @@ namespace Numerics.Mathematics.Optimization
             {
                 if (Iterations == 0)
                 {
-                    values = InitialValues;
+                    // Copy into the already-allocated array rather than re-pointing values at
+                    // InitialValues. Re-pointing would alias the public InitialValues array, and the
+                    // uniform draws below and the bounds repair inside GetLocalOptimizer both write
+                    // through values in place, which would silently corrupt InitialValues.
+                    Array.Copy(InitialValues, values, D);
                 }
                 else
                 {
