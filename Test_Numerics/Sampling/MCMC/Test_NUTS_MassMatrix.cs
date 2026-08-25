@@ -4,6 +4,7 @@ using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.Optimization;
 using Numerics.Sampling.MCMC;
 
 namespace Sampling.MCMC
@@ -281,13 +282,23 @@ namespace Sampling.MCMC
 
         /// <summary>
         /// A window holding at least the minimum number of draws must use its own variance rather
-        /// than the prior-scaled fallback.
+        /// than the prior-scaled fallback, and must therefore produce an anisotropic metric.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// With 14 warmup iterations the single adaptation window closes at iteration 12 with ten
-        /// accumulated draws, which is exactly the minimum. The posterior of this target is many
-        /// orders of magnitude narrower than the prior, so any use of the window's own variance is
-        /// unmistakable.
+        /// accumulated draws, which is exactly the minimum.
+        /// </para>
+        /// <para>
+        /// Ten draws taken early in warmup under an identity metric under-estimate the posterior
+        /// variances badly in absolute terms, so this test cannot pin the metric to the analytic
+        /// truth. What it can pin is the property that separates a window estimate from the blended
+        /// fallback: the additive prior-scaled blend returned the same value on every coordinate to
+        /// within a part in a thousand, because the prior term dominated it, whereas a window estimate
+        /// reflects the four decades of scale in this target. The assertions are that the metric is
+        /// nowhere near the fallback and that it is anisotropic by more than a factor of ten, both of
+        /// which the pre-fix code fails.
+        /// </para>
         /// </remarks>
         [TestMethod]
         public void Test_NUTS_SufficientAdaptationWindow_UsesWindowVariance()
@@ -298,11 +309,85 @@ namespace Sampling.MCMC
 
             double fallback = (2000d * 2000d) / 36.0;
             var inverseMass = ReadMetric(sampler, "_inverseMassMatrix");
+
+            double smallest = double.MaxValue, largest = 0d;
             for (int j = 0; j < inverseMass.Length; j++)
             {
-                Assert.IsTrue(inverseMass[j] > 0d && inverseMass[j] < 1d,
-                    $"Coordinate {j} returned {inverseMass[j]:E4}; a ten-draw window on this target cannot produce a variance of order the prior's {fallback:E4}.");
+                Assert.IsLessThan(1e-3 * fallback, inverseMass[j],
+                    $"Coordinate {j} returned {inverseMass[j]:E4}, within a thousandth of the prior-scaled fallback {fallback:E4}; the window variance was not used.");
+                Assert.IsGreaterThan(0d, inverseMass[j], $"Coordinate {j} returned a non-positive inverse mass.");
+                if (inverseMass[j] < smallest) smallest = inverseMass[j];
+                if (inverseMass[j] > largest) largest = inverseMass[j];
             }
+
+            Assert.IsGreaterThan(10d, largest / smallest,
+                $"The metric spans only a factor of {largest / smallest:F3}. A window estimate on a target whose scales span four decades cannot be that flat; the additive prior-scaled blend was.");
+        }
+
+        /// <summary>
+        /// The relative variance floor must take its scale from the largest measured variance in the
+        /// window, never from a coordinate that fell back to the prior-scaled value.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is a white-box test of the floor reference scale, driven by writing the Welford
+        /// accumulators directly and invoking the update, because the situation it guards against is
+        /// rare enough that provoking it through a real chain would not be reliable.
+        /// </para>
+        /// <para>
+        /// The window is given three coordinates: one whose accumulated sum of squares is exactly
+        /// zero, so it cannot produce a usable variance and must take the fallback; one whose variance
+        /// is a genuine 1e-9; and one whose variance is 1.0. If a fallback were allowed to set the
+        /// window scale, the floor would be 1e-12 times the prior-scaled 1.111e5, which is 1.111e-7,
+        /// and the 1e-9 coordinate would be raised by two orders of magnitude on a scale derived from
+        /// the prior - the failure mode this whole change exists to remove. Taking the scale from the
+        /// measured variances instead puts the floor at 1e-12 and leaves the coordinate alone.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_NUTS_RelativeVarianceFloor_IgnoresFallbackCoordinates()
+        {
+            var target = new DiagonalGaussian(3, 1e-3, 1e0);
+            var sampler = BuildSampler(target, 1000d, adapt: false, warmup: 12, iterations: 100, maxTreeDepth: 4);
+            sampler.Sample();
+
+            // Write a window in which coordinate 0 cannot produce a variance and the other two can.
+            const int windowCount = 100;
+            double[] windowVariance = { 0d, 1e-9, 1.0 };
+            var welfordM2 = GetPrivateField<double[][]>(sampler, "_welfordM2");
+            var welfordMean = GetPrivateField<double[][]>(sampler, "_welfordMean");
+            var welfordCount = GetPrivateField<int[]>(sampler, "_welfordCount");
+            for (int j = 0; j < windowVariance.Length; j++)
+            {
+                welfordM2[0][j] = windowVariance[j] * (windowCount - 1);
+                welfordMean[0][j] = 0d;
+            }
+            welfordCount[0] = windowCount;
+
+            InvokeUpdateMassMatrix(sampler);
+
+            var inverseMass = ReadMetric(sampler, "_inverseMassMatrix");
+            double priorFallback = (2000d * 2000d) / 36.0;
+
+            Assert.AreEqual(priorFallback, inverseMass[0], 1e-9 * priorFallback,
+                "The coordinate with no usable variance should have taken the prior-scaled fallback.");
+            Assert.AreEqual(1e-9, inverseMass[1], 1e-15,
+                $"The genuinely small variance was raised to {inverseMass[1]:E4}; the floor took its scale from a fallback rather than from the measured variances.");
+            Assert.AreEqual(1.0, inverseMass[2], 1e-12,
+                "The largest measured variance should pass through unchanged.");
+        }
+
+        /// <summary>
+        /// Mass-matrix adaptation is enabled by default.
+        /// </summary>
+        [TestMethod]
+        public void Test_NUTS_AdaptMassMatrix_DefaultsToTrue()
+        {
+            var target = new DiagonalGaussian(2, 1e-1, 1e0);
+            var priors = new List<IUnivariateDistribution> { new Uniform(-10d, 10d), new Uniform(-10d, 10d) };
+            var sampler = new NUTS(priors, target.LogLikelihood);
+
+            Assert.IsTrue(sampler.AdaptMassMatrix, "NUTS must adapt the diagonal mass matrix by default.");
         }
 
         /// <summary>
@@ -358,6 +443,34 @@ namespace Sampling.MCMC
                 Assert.AreEqual(1d, inverseMass[j], 0d, $"Coordinate {j} inverse mass was modified with adaptation disabled.");
                 Assert.AreEqual(1d, mass[j], 0d, $"Coordinate {j} mass was modified with adaptation disabled.");
             }
+        }
+
+        /// <summary>
+        /// Reads a private instance field of the sampler.
+        /// </summary>
+        /// <typeparam name="T">The field type.</typeparam>
+        /// <param name="sampler">The sampler.</param>
+        /// <param name="fieldName">The private field name.</param>
+        /// <returns>The field value.</returns>
+        private static T GetPrivateField<T>(NUTS sampler, string fieldName)
+        {
+            var field = typeof(NUTS).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(field, "The private field " + fieldName + " was not found on NUTS.");
+            var value = field!.GetValue(sampler);
+            Assert.IsInstanceOfType(value, typeof(T), "The private field " + fieldName + " had an unexpected type.");
+            return (T)value!;
+        }
+
+        /// <summary>
+        /// Invokes the private mass-matrix update for chain zero at the current state.
+        /// </summary>
+        /// <param name="sampler">A sampled sampler, so that its adaptation state is initialized.</param>
+        private static void InvokeUpdateMassMatrix(NUTS sampler)
+        {
+            var method = typeof(NUTS).GetMethod("UpdateMassMatrix", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(method, "The private method UpdateMassMatrix was not found on NUTS.");
+            var last = sampler.Output[0][sampler.Output[0].Count - 1];
+            method!.Invoke(sampler, new object[] { 0, new ParameterSet((double[])last.Values.Clone(), last.Fitness) });
         }
 
         /// <summary>

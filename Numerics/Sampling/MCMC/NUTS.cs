@@ -837,12 +837,21 @@ namespace Numerics.Sampling.MCMC
         /// must contain at least <see cref="MIN_ADAPT_WINDOW_COUNT"/> draws: the relative standard error of a
         /// sample variance is approximately <c>sqrt(2 / (n - 1))</c>, which is still about 47% at ten draws and
         /// worse below that, so a shorter window is noise rather than an estimate. Second, the variance must be
-        /// finite and strictly positive. Windows failing either condition take the fallback. A coordinate that
-        /// barely moved can still return a positive but degenerate variance, so every retained variance is then
-        /// floored at <see cref="RELATIVE_VARIANCE_FLOOR"/> times the largest variance in the same window. That
-        /// floor is expressed on the window's own scale rather than on the prior range, so it is invariant to a
-        /// global rescaling of the target, and it caps the condition number of the diagonal metric at 1e12,
-        /// well inside double precision.
+        /// finite and strictly positive. Windows failing either condition take the fallback. With the shipped
+        /// buffer sizes the first condition is only reachable at a total warmup of twelve transitions or fewer,
+        /// so in practice it guards the degenerate configuration rather than a routine one.
+        /// </para>
+        /// <para>
+        /// Retained variances are then floored at <see cref="RELATIVE_VARIANCE_FLOOR"/> times the largest
+        /// <i>measured</i> variance in the same window; fallback values never set that scale, because letting
+        /// them do so would put the prior range back into the floor for every other coordinate. Stating the
+        /// guarantee precisely: this bounds the diagonal metric's condition number at 1e12 and prevents a
+        /// coordinate that is numerically degenerate over the window from producing an unbounded mass. It does
+        /// <b>not</b> correct a coordinate that merely under-explored — a variance that comes back at 1e-4 to
+        /// 1e-6 of the truth is four to six orders of magnitude above the floor and passes through untouched,
+        /// yielding a mass that is too large and a step that is too small, which persists until the next window
+        /// re-estimates it. A floor tight enough to catch that case would have to encode an expectation about
+        /// how well the window mixed, which is exactly the prior-scaled assumption this method removes.
         /// </para>
         /// </remarks>
         private void UpdateMassMatrix(int chainIndex, ParameterSet currentState)
@@ -853,7 +862,7 @@ namespace Numerics.Sampling.MCMC
             // Estimate the posterior variance of every coordinate from this window, falling back to the
             // prior-scaled variance only for coordinates whose window estimate is unusable.
             var estimatedVariance = new double[NumberOfParameters];
-            double largestVariance = 0d;
+            double largestWindowVariance = 0d;
             for (int j = 0; j < NumberOfParameters; j++)
             {
                 double variance = _welfordM2[chainIndex][j] / (n - 1);
@@ -867,12 +876,15 @@ namespace Numerics.Sampling.MCMC
                 bool windowIsUsable = n >= MIN_ADAPT_WINDOW_COUNT && Tools.IsFinite(variance) && variance > 0;
                 estimatedVariance[j] = windowIsUsable ? variance : fallbackVariance;
 
-                if (estimatedVariance[j] > largestVariance)
-                    largestVariance = estimatedVariance[j];
+                // Only measured variances set the window's scale. Letting a fallback set it would put
+                // the prior range back into the floor for every other coordinate.
+                if (windowIsUsable && variance > largestWindowVariance)
+                    largestWindowVariance = variance;
             }
 
-            // Bound the metric's condition number against the window's own scale.
-            double varianceFloor = largestVariance * RELATIVE_VARIANCE_FLOOR;
+            // Bound the metric's condition number against the window's own scale. When no coordinate
+            // produced a usable variance there is no such scale, and the floor is inert.
+            double varianceFloor = largestWindowVariance * RELATIVE_VARIANCE_FLOOR;
             for (int j = 0; j < NumberOfParameters; j++)
             {
                 double inverseMass = Math.Max(estimatedVariance[j], varianceFloor);
