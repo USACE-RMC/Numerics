@@ -51,7 +51,15 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the matrix A is not square.</exception>
         /// <exception cref="Exception">Thrown when the matrix A is not positive-definite.</exception>
         /// <remarks>
+        /// <para>
         /// The pivot tolerance is <see cref="DefaultRelativeTolerance(int)"/> evaluated at the dimension of A.
+        /// </para>
+        /// <para>
+        /// <b>Success is not a rank certificate.</b> The pivot test rejects most numerically rank-deficient
+        /// matrices but not all of them — for a covariance estimated from <c>m = n - 1</c> observations, 11% to
+        /// 18% still factorize — so <see cref="IsPositiveDefinite"/> being true does not prove full rank. Use a
+        /// singular value decomposition when the rank genuinely has to be known.
+        /// </para>
         /// </remarks>
         public CholeskyDecomposition(Matrix A)
             : this(A, DefaultRelativeTolerance(A.NumberOfRows))
@@ -89,6 +97,16 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <c>[[2, 0.5, 2], [0.5, 1, 0.5], [2, 0.5, 2]]</c> yields a final pivot of 4.44E-16 rather than zero;
         /// under the absolute test it factorizes, and its log determinant comes out near -34.8 instead of the
         /// log pseudo-determinant 1.2528. See <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// </para>
+        /// <para>
+        /// <b>This test is not a rank certificate.</b> It rejects most numerically rank-deficient matrices but
+        /// not all of them, so <see cref="IsPositiveDefinite"/> being true does not prove the matrix has full
+        /// rank. Measured over 1,000 trials per dimension on a covariance estimated from <c>m = n - 1</c>
+        /// observations of <c>n</c> variables — exactly rank <c>m</c>, and the commonest way rank deficiency
+        /// arises in practice — the test removes roughly two thirds of the matrices the absolute test had
+        /// accepted, while 11% to 18% still factorize. When the rank of a matrix genuinely has to be known,
+        /// use a singular value decomposition; for a multivariate normal that is
+        /// <c>DecompositionMethod.SingularValue</c>, which is the only reliable rank test in this library.
         /// </para>
         /// <para>
         /// When <c>A[i,i]</c> is not a positive finite number the threshold falls back to zero, which is the
@@ -164,24 +182,38 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Returns the default scale-relative pivot tolerance for a matrix of the given dimension.
         /// </summary>
         /// <param name="dimension">The number of rows in the matrix to be decomposed.</param>
-        /// <returns>The tolerance <c>dimension * 2^-52</c>, or zero when the dimension is not positive.</returns>
+        /// <returns>
+        /// The tolerance, approximately <c>dimension * 2^-52</c>, or zero when the dimension is not positive.
+        /// </returns>
         /// <remarks>
         /// <para>
-        /// The value is <c>n * 2^-52 ≈ n * 2.22E-16</c>, expressed here as <c>2 * n *</c>
+        /// The value is approximately <c>n * 2^-52 ≈ n * 2.22E-16</c>, computed as <c>2 * n *</c>
         /// <see cref="Tools.DoubleMachineEpsilon"/> because that constant is the unit roundoff <c>2^-53</c>
-        /// rather than the double-precision spacing <c>2^-52</c>.
+        /// rather than the double-precision spacing <c>2^-52</c>. The library constant is a decimal-truncated
+        /// <c>2^-53</c>, so the computed tolerance exceeds <c>n * 2^-52</c> by about 3.1E-15 relative.
         /// </para>
         /// <para>
         /// This tracks the standard backward-error bound for Cholesky factorization, in which the computed pivot
-        /// differs from the exact one by a quantity of order <c>n</c> unit roundoffs times the corresponding
-        /// diagonal entry. A pivot at or below that level carries no information beyond rounding noise.
+        /// differs from the exact one by at most <c>γ_i * A[i,i]</c> — of order <c>n</c> unit roundoffs times
+        /// the corresponding diagonal entry. A pivot at or below that level carries no information beyond
+        /// rounding noise. Because the noise floor scales with <c>A[i,i]</c> and not with the largest diagonal,
+        /// the test is invariant under the rescaling <c>D*A*D</c> for a positive diagonal <c>D</c>, which is the
+        /// correct invariance for a covariance: changing the units of one variable must not change whether the
+        /// matrix is accepted.
         /// </para>
         /// <para>
-        /// The margin against legitimate matrices is large. For two variables with correlation ρ the pivot ratio
-        /// is <c>1 - ρ²</c>, so a false rejection at <c>n = 2</c> requires <c>1 - ρ² &lt;= 4.44E-16</c>, that is ρ
-        /// within about two ulp of one. Measured across the Numerics test suite (29.8 million factorizations) the
-        /// smallest ratio produced by a genuinely positive-definite matrix is 2.0E-12, some 4,500 times the
-        /// tolerance that applies to it.
+        /// The margin against falsely rejecting a legitimate matrix is large. For two variables with correlation
+        /// ρ the pivot ratio is <c>1 - ρ²</c>, so a false rejection at <c>n = 2</c> requires
+        /// <c>1 - ρ² &lt;= 4.44E-16</c>, that is ρ within about two ulp of one. Measured across the Numerics
+        /// test suite (29.8 million factorizations) the smallest ratio produced by a genuinely positive-definite
+        /// matrix is 2.0E-12, some 4,500 times the tolerance that applies to it.
+        /// </para>
+        /// <para>
+        /// The margin in the other direction is far smaller, and no tolerance of this form can close it. A
+        /// rank-deficient matrix whose accumulated rounding leaves a pivot ratio above the tolerance is still
+        /// accepted, and that is not rare: for a covariance estimated from <c>m = n - 1</c> observations of
+        /// <c>n</c> variables, 11% to 18% of trials still factorize. Raising the tolerance would eat into the
+        /// false-rejection margin without fixing this; determining rank requires a singular value decomposition.
         /// </para>
         /// </remarks>
         public static double DefaultRelativeTolerance(int dimension)

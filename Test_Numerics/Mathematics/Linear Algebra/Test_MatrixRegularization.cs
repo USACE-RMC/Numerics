@@ -89,8 +89,8 @@ namespace Mathematics.LinearAlgebra
         /// <remarks>
         /// This is the case the scale-relative pivot test was introduced for: the third row of the input
         /// equals the first, so the raw matrix is exactly rank two. The base ridge of
-        /// <c>1E-10 * 5 / 3 = 1.667E-10</c> lifts the smallest eigenvalue clear of the tolerance —
-        /// the final pivot ratio is about 8.3E-11 against a tolerance of 6.66E-16 — so the first attempt
+        /// <c>1E-10 * 5 / 3 = 1.666667E-10</c> lifts the smallest eigenvalue clear of the tolerance —
+        /// the final pivot ratio is 1.666668E-10 against a tolerance of 6.66E-16 — so the first attempt
         /// succeeds under both the old absolute test and the new relative one, and the returned matrix is
         /// unchanged.
         /// </remarks>

@@ -280,6 +280,15 @@ namespace Mathematics.LinearAlgebra
         /// let the factorization complete and reported the matrix positive-definite. The pivot ratio is
         /// 2.220446E-16, which the default tolerance of <c>3 * 2^-52 = 6.661338E-16</c> rejects with a
         /// factor of three to spare.
+        /// <para>
+        /// This case being caught must not be read as a guarantee that rank deficiency is caught in general.
+        /// The test rejects most numerically rank-deficient matrices but not all of them: over 1,000 trials
+        /// per dimension on a covariance estimated from <c>m = n - 1</c> observations of <c>n</c> variables,
+        /// it removes about two thirds of the matrices the absolute test accepted, and 11% to 18% still
+        /// factorize. A successful factorization is not a rank certificate;
+        /// <c>DecompositionMethod.SingularValue</c> on <c>MultivariateNormal</c> is the only reliable rank
+        /// test in this library.
+        /// </para>
         /// </remarks>
         [TestMethod]
         public void Test_RejectsExactlyRankDeficientMatrix()
@@ -420,6 +429,113 @@ namespace Mathematics.LinearAlgebra
             {
                 for (int j = 0; j < 3; j++)
                     Assert.AreEqual(withZero.L[i, j], withDefault.L[i, j], 0d);
+            }
+        }
+
+        /// <summary>
+        /// A correlation whose second pivot ratio is exactly <c>3 * 2^-52</c>, straddling the tolerance
+        /// between <c>n = 2</c> and <c>n = 4</c>.
+        /// </summary>
+        /// <remarks>
+        /// The first factor row is exact — <c>L[0,0] = 1</c> and <c>L[1,0] = ρ</c> — and
+        /// <c>1 - fl(ρ²)</c> is exact by Sterbenz, so the pivot is bit-reproducible at
+        /// 6.661338147750939E-16 rather than being an artifact of rounding order.
+        /// </remarks>
+        private const double ThreeUlpCorrelation = 0.99999999999999967d;
+
+        /// <summary>
+        /// Verifies that the tolerance really does scale with the dimension, by presenting the same
+        /// near-singular two-variable block at two different dimensions and getting opposite verdicts.
+        /// </summary>
+        /// <remarks>
+        /// The block's pivot ratio is exactly <c>3 * 2^-52 = 6.661338E-16</c>. At <c>n = 2</c> the tolerance
+        /// is <c>2 * 2^-52 = 4.440892E-16</c> and the block is accepted; padded with two independent unit
+        /// variances to <c>n = 4</c> the tolerance is <c>4 * 2^-52 = 8.881784E-16</c> and the identical block
+        /// is rejected. Nothing about the block changed, only the dimension. Were the <c>n</c> factor dropped
+        /// from <see cref="CholeskyDecomposition.DefaultRelativeTolerance"/> the tolerance would be
+        /// 2.220446E-16 at both sizes and the 4x4 assertion here would fail, so this test pins the scaling as
+        /// behaviour and not merely as a formula.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ToleranceScalesWithDimension()
+        {
+            double rho = ThreeUlpCorrelation;
+            double expectedPivot = 3d * 2d * Tools.DoubleMachineEpsilon;
+
+            // n = 2: tolerance 2 * 2^-52, below the pivot, so the block factorizes.
+            var small = new CholeskyDecomposition(new Matrix(new[,] { { 1d, rho }, { rho, 1d } }));
+            Assert.IsTrue(small.IsPositiveDefinite);
+            Assert.AreEqual(expectedPivot, small.L[1, 1] * small.L[1, 1], 1E-24d);
+            Assert.IsGreaterThan(small.RelativeTolerance, small.L[1, 1] * small.L[1, 1]);
+
+            // n = 4: the same block, padded. Tolerance 4 * 2^-52 now exceeds the pivot.
+            var padded = new Matrix(new[,]
+            {
+                { 1d, rho, 0d, 0d },
+                { rho, 1d, 0d, 0d },
+                { 0d, 0d, 1d, 0d },
+                { 0d, 0d, 0d, 1d }
+            });
+            Assert.IsLessThan(CholeskyDecomposition.DefaultRelativeTolerance(4), expectedPivot);
+            var exception = AssertThrowsAny(() => new CholeskyDecomposition(padded));
+            Assert.IsGreaterThanOrEqualTo(0, exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
+
+            // The same 4x4 is accepted once the tolerance is lowered below the pivot, confirming the pivot
+            // itself — not some other property of the padded matrix — is what the dimension changed.
+            Assert.IsTrue(new CholeskyDecomposition(padded, 2d * Tools.DoubleMachineEpsilon).IsPositiveDefinite);
+        }
+
+        /// <summary>
+        /// Verifies the diagonal guard: when <c>A[i,i]</c> is not a positive finite number the threshold falls
+        /// back to zero, so the outcome is identical to the purely absolute test.
+        /// </summary>
+        /// <remarks>
+        /// The class is public and can be handed anything, so the guard is exercised with a zero matrix, a
+        /// zero on the diagonal behind a healthy leading entry, a negative diagonal, an infinite diagonal and
+        /// a NaN diagonal. Each is compared against the same matrix at <c>relativeTolerance = 0</c> rather
+        /// than against a hard-coded verdict, which is exactly the property the guard is there to provide:
+        /// a non-positive or non-finite diagonal cannot make the relative test behave differently from the
+        /// absolute one. The infinite case is accepted by both, which is pre-existing behaviour, not an
+        /// endorsement.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NonPositiveOrNonFiniteDiagonalFallsBackToTheAbsoluteTest()
+        {
+            var cases = new[]
+            {
+                new[,] { { 0d, 0d }, { 0d, 0d } },
+                new[,] { { 1d, 0d }, { 0d, 0d } },
+                new[,] { { -1d, 0d }, { 0d, 1d } },
+                new[,] { { double.PositiveInfinity, 0d }, { 0d, 1d } },
+                new[,] { { double.NaN, 0d }, { 0d, 1d } }
+            };
+
+            foreach (var entries in cases)
+            {
+                var A = new Matrix(entries);
+                string label = "[[" + entries[0, 0].ToString("R") + ",...]]";
+
+                CholeskyDecomposition withDefault = null, withZero = null;
+                Exception defaultException = null, zeroException = null;
+                try { withDefault = new CholeskyDecomposition(A); }
+                catch (Exception ex) { defaultException = ex; }
+                try { withZero = new CholeskyDecomposition(A, 0d); }
+                catch (Exception ex) { zeroException = ex; }
+
+                Assert.AreEqual(zeroException == null, defaultException == null,
+                    "The relative and absolute tests must agree on " + label);
+                if (defaultException != null)
+                {
+                    // A guarded diagonal takes the original branch, so the message is the original one.
+                    Assert.AreEqual(zeroException.Message, defaultException.Message, label);
+                    Assert.AreEqual("Cholesky Decomposition failed. The input matrix is not positive-definite.",
+                        defaultException.Message, label);
+                }
+                else
+                {
+                    Assert.AreEqual(withZero.L[0, 0], withDefault.L[0, 0], 0d, label);
+                    Assert.AreEqual(withZero.L[1, 1], withDefault.L[1, 1], 0d, label);
+                }
             }
         }
 
