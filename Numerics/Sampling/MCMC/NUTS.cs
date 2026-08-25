@@ -777,32 +777,88 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
+        /// The smallest number of draws an adaptation window must contain before its Welford variance
+        /// is trusted. Shorter windows use the prior-scaled fallback variance instead.
+        /// </summary>
+        private const int MIN_ADAPT_WINDOW_COUNT = 10;
+
+        /// <summary>
+        /// The smallest per-coordinate variance retained in an adapted metric, as a fraction of the
+        /// largest variance in the same window. This caps the diagonal metric's condition number at 1e12.
+        /// </summary>
+        private const double RELATIVE_VARIANCE_FLOOR = 1e-12;
+
+        /// <summary>
         /// Updates the diagonal mass matrix from the accumulated Welford statistics at the end
         /// of an adaptation window. Resets Welford accumulators and dual averaging state so the
         /// step size can re-adapt to the new mass matrix.
         /// </summary>
         /// <param name="chainIndex">The chain index.</param>
         /// <param name="currentState">The current parameter state, used to find a new reasonable step size after the metric change.</param>
+        /// <remarks>
+        /// <para>
+        /// <b>Metric convention.</b> The estimated posterior variance is the <i>inverse</i> mass, not the mass.
+        /// This class draws momentum with standard deviation <c>sqrt(M)</c>, evaluates kinetic energy as
+        /// <c>0.5 * r' * M^-1 * r</c>, and flows position as <c>q += M^-1 * r * epsilon</c>. A coordinate with
+        /// posterior standard deviation <c>s</c> therefore needs <c>M = 1 / s^2</c> for its leapfrog step to
+        /// scale like <c>s</c>. The window variance is stored in <see cref="_inverseMassMatrix"/> and its
+        /// reciprocal in <see cref="_massMatrix"/>, which is the same correspondence Stan uses when it keeps
+        /// the estimated variance in <c>inv_e_metric</c>.
+        /// </para>
+        /// <para>
+        /// <b>Regularization.</b> Stan shrinks the window variance toward a small absolute constant because it
+        /// works in an unconstrained space where the variance is O(1). This sampler works on the natural scale,
+        /// where no absolute constant is meaningful, so the window variance is used directly whenever it is
+        /// usable and the prior-scaled fallback <c>(priorRange / 6)^2</c> is engaged only when it is not.
+        /// Blending the fallback in unconditionally would impose a floor tied to the prior width rather than to
+        /// the posterior, which on a diffuse prior flattens the metric to isotropy and erases the adaptation.
+        /// </para>
+        /// <para>
+        /// <b>Guards.</b> Two conditions decide that a window cannot produce a usable variance. First, the window
+        /// must contain at least <see cref="MIN_ADAPT_WINDOW_COUNT"/> draws: the relative standard error of a
+        /// sample variance is approximately <c>sqrt(2 / (n - 1))</c>, which is still about 47% at ten draws and
+        /// worse below that, so a shorter window is noise rather than an estimate. Second, the variance must be
+        /// finite and strictly positive. Windows failing either condition take the fallback. A coordinate that
+        /// barely moved can still return a positive but degenerate variance, so every retained variance is then
+        /// floored at <see cref="RELATIVE_VARIANCE_FLOOR"/> times the largest variance in the same window. That
+        /// floor is expressed on the window's own scale rather than on the prior range, so it is invariant to a
+        /// global rescaling of the target, and it caps the condition number of the diagonal metric at 1e12,
+        /// well inside double precision.
+        /// </para>
+        /// </remarks>
         private void UpdateMassMatrix(int chainIndex, ParameterSet currentState)
         {
             int n = _welfordCount[chainIndex];
             if (n < 2) return;
 
+            // Estimate the posterior variance of every coordinate from this window, falling back to the
+            // prior-scaled variance only for coordinates whose window estimate is unusable.
+            var estimatedVariance = new double[NumberOfParameters];
+            double largestVariance = 0d;
             for (int j = 0; j < NumberOfParameters; j++)
             {
                 double variance = _welfordM2[chainIndex][j] / (n - 1);
-                // Stan regularization: (n/(n+5)) * var + 1e-3 * (5/(n+5))
-                // Stan operates in unconstrained space where variance ~ O(1), so 1e-3 is fine.
-                // We operate in natural scale, so use a scale-aware fallback instead.
+
                 // Fallback: (prior_range / 6)^2 as a conservative variance estimate.
                 double priorRange = _upperBounds[j] - _lowerBounds[j];
                 double fallbackVariance = (priorRange * priorRange) / 36.0;
                 if (!Tools.IsFinite(fallbackVariance) || fallbackVariance <= 0)
                     fallbackVariance = 1.0;
-                double shrinkage = 5.0;
-                double regularized = (n / (n + shrinkage)) * variance + (shrinkage / (n + shrinkage)) * fallbackVariance;
-                _massMatrix[chainIndex][j] = regularized;
-                _inverseMassMatrix[chainIndex][j] = 1.0 / regularized;
+
+                bool windowIsUsable = n >= MIN_ADAPT_WINDOW_COUNT && Tools.IsFinite(variance) && variance > 0;
+                estimatedVariance[j] = windowIsUsable ? variance : fallbackVariance;
+
+                if (estimatedVariance[j] > largestVariance)
+                    largestVariance = estimatedVariance[j];
+            }
+
+            // Bound the metric's condition number against the window's own scale.
+            double varianceFloor = largestVariance * RELATIVE_VARIANCE_FLOOR;
+            for (int j = 0; j < NumberOfParameters; j++)
+            {
+                double inverseMass = Math.Max(estimatedVariance[j], varianceFloor);
+                _inverseMassMatrix[chainIndex][j] = inverseMass;
+                _massMatrix[chainIndex][j] = 1.0 / inverseMass;
             }
 
             // Reset Welford accumulators for next window
