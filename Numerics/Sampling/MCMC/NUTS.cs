@@ -165,6 +165,25 @@ namespace Numerics.Sampling.MCMC
         private int[] _adaptWindowEnds = null!;
 
         /// <summary>
+        /// The number of recently evaluated positions each chain's gradient memo retains.
+        /// </summary>
+        /// <remarks>
+        /// A doubling extends the trajectory in one direction, so the join a memo has to cover is
+        /// between two consecutive leaves and only one entry is strictly needed. Four leaves room for
+        /// the step-size heuristic, which re-enters the same starting position on every trial step, and
+        /// for the forward and backward endpoints to be resident at the same time, at a cost of
+        /// 8 × <see cref="MCMCSampler.NumberOfParameters"/> doubles per chain.
+        /// </remarks>
+        private const int GRADIENT_CACHE_SIZE = 4;
+
+        // Per-chain gradient memo: positions, the gradient at each, and which slots hold a value.
+        // Keyed by chain because Sample() runs chains under Parallel.For. See EvaluateGradient.
+        private double[][][] _gradientCachePositions = null!;
+        private double[][][] _gradientCacheValues = null!;
+        private bool[][] _gradientCacheOccupied = null!;
+        private int[] _gradientCacheNextSlot = null!;
+
+        /// <summary>
         /// The mass vector for the momentum distribution.
         /// </summary>
         public Vector Mass { get; }
@@ -390,8 +409,24 @@ namespace Numerics.Sampling.MCMC
             _massMatrix = new double[N][];
             _inverseMassMatrix = new double[N][];
 
+            // Allocate the gradient memo empty. Allocating it here is also what resets it, so a
+            // re-run cannot serve an entry from the previous run.
+            _gradientCachePositions = new double[N][][];
+            _gradientCacheValues = new double[N][][];
+            _gradientCacheOccupied = new bool[N][];
+            _gradientCacheNextSlot = new int[N];
+
             for (int i = 0; i < N; i++)
             {
+                _gradientCachePositions[i] = new double[GRADIENT_CACHE_SIZE][];
+                _gradientCacheValues[i] = new double[GRADIENT_CACHE_SIZE][];
+                _gradientCacheOccupied[i] = new bool[GRADIENT_CACHE_SIZE];
+                for (int s = 0; s < GRADIENT_CACHE_SIZE; s++)
+                {
+                    _gradientCachePositions[i][s] = new double[D];
+                    _gradientCacheValues[i][s] = new double[D];
+                }
+
                 // Start with identity mass matrix (or user-provided mass)
                 _massMatrix[i] = new double[D];
                 _inverseMassMatrix[i] = new double[D];
@@ -561,6 +596,114 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
+        /// Evaluates the gradient of the log-likelihood at a position, reusing a value this chain
+        /// computed at the identical position within the last <see cref="GRADIENT_CACHE_SIZE"/>
+        /// evaluations.
+        /// </summary>
+        /// <param name="position">The position to evaluate at. Not retained; a copy is stored.</param>
+        /// <param name="chainIndex">The chain index whose memo is consulted.</param>
+        /// <returns>
+        /// The gradient. The array is owned by the memo and must be treated as read-only by the caller;
+        /// it stays valid until this chain records <see cref="GRADIENT_CACHE_SIZE"/> further misses.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>Why there is anything to reuse.</b> A leapfrog step evaluates the gradient twice, once at
+        /// its opening half-step and once at the position it lands on. Consecutive leaves of a doubling
+        /// chain end to end, so leaf <i>k</i> lands on the position leaf <i>k+1</i> opens from, and
+        /// without a memo leaf <i>k+1</i> recomputes what leaf <i>k</i> already produced and threw away.
+        /// The step-size heuristic re-enters the same starting position on every trial step and repeats
+        /// the same waste. With the default finite-difference gradient each of those evaluations costs
+        /// on the order of 2 × <see cref="MCMCSampler.NumberOfParameters"/> log-likelihood evaluations.
+        /// </para>
+        /// <para>
+        /// <b>Why reuse cannot move a draw.</b> Positions are compared bitwise through
+        /// <see cref="BitConverter.DoubleToInt64Bits(double)"/>, never with <c>==</c> and never within a
+        /// tolerance, so a hit is only possible at the exact point the delegate was called on and
+        /// returns exactly the value a recomputation would produce. Bitwise comparison also keeps
+        /// <c>+0</c> and <c>-0</c> distinct, which <c>==</c> would not, so a sign of zero cannot be
+        /// silently substituted. A tolerance-based memo would change results and is not what this is.
+        /// </para>
+        /// <para>
+        /// <b>Why the metric is not part of the key.</b> <see cref="GradientFunction"/> takes a position
+        /// and nothing else, is fixed at construction, and the default implementation closes only over
+        /// the log-likelihood and the prior bounds. The gradient of the log-density is therefore a
+        /// function of position alone: it does not depend on the mass matrix, the step size, the
+        /// adaptation window, or the chain. An entry recorded under one metric is exactly as valid after
+        /// <see cref="UpdateMassMatrix"/> replaces the metric, which matters because that method re-runs
+        /// <see cref="FindReasonableEpsilon"/> at the end of every adaptation window. The chain index is
+        /// part of the key for thread safety, not for correctness of the value.
+        /// </para>
+        /// <para>
+        /// <b>Assumption.</b> The gradient delegate must be a deterministic function of its argument.
+        /// That is already required for a seeded run to be reproducible, and the sampler is not usable
+        /// without it, but it is the one property this memo depends on.
+        /// </para>
+        /// <para>
+        /// <b>Thread safety.</b> Every array is indexed by chain first, and
+        /// <see cref="MCMCSampler.Sample"/> gives each chain index to exactly one
+        /// <see cref="System.Threading.Tasks.Parallel"/> iteration at a time, so no two threads touch
+        /// one chain's slots. The join at the end of each parallel iteration publishes the writes.
+        /// </para>
+        /// <para>
+        /// <b>Copy semantics.</b> Both the position and the gradient are copied into the memo. The
+        /// caller's position array is mutated in place by <see cref="LeapfrogInPlace"/>, and a
+        /// caller-supplied gradient delegate is free to return the same <see cref="Vector"/> every call,
+        /// so neither may be retained by reference.
+        /// </para>
+        /// <para>
+        /// A gradient whose length does not match the parameter count is returned without being stored,
+        /// so a malformed delegate still fails where and how it failed before.
+        /// </para>
+        /// </remarks>
+        private double[] EvaluateGradient(double[] position, int chainIndex)
+        {
+            int D = NumberOfParameters;
+            var positions = _gradientCachePositions[chainIndex];
+            var values = _gradientCacheValues[chainIndex];
+            var occupied = _gradientCacheOccupied[chainIndex];
+
+            for (int slot = 0; slot < GRADIENT_CACHE_SIZE; slot++)
+            {
+                if (!occupied[slot]) continue;
+
+                var stored = positions[slot];
+                bool identical = true;
+                for (int j = 0; j < D; j++)
+                {
+                    if (BitConverter.DoubleToInt64Bits(stored[j]) != BitConverter.DoubleToInt64Bits(position[j]))
+                    {
+                        identical = false;
+                        break;
+                    }
+                }
+
+                if (identical) return values[slot];
+            }
+
+            // A miss evaluates the delegate. Anything it throws propagates untouched and nothing is
+            // recorded, so the failure paths in BuildTree and TrySingleStepLogAcceptance are unchanged.
+            double[] gradient = GradientFunction(position).Array;
+            if (gradient.Length != D) return gradient;
+
+            int next = _gradientCacheNextSlot[chainIndex];
+            var slotPosition = positions[next];
+            var slotValue = values[next];
+
+            // Clear the slot before overwriting it so a partially written entry can never be matched.
+            occupied[next] = false;
+            for (int j = 0; j < D; j++)
+            {
+                slotPosition[j] = position[j];
+                slotValue[j] = gradient[j];
+            }
+            occupied[next] = true;
+            _gradientCacheNextSlot[chainIndex] = (next + 1) % GRADIENT_CACHE_SIZE;
+
+            return slotValue;
+        }
+
+        /// <summary>
         /// Performs a single leapfrog step in-place on raw arrays, using the per-chain mass matrix.
         /// Used by FindReasonableEpsilon to avoid Vector allocations.
         /// </summary>
@@ -575,7 +718,7 @@ namespace Numerics.Sampling.MCMC
             double[] invMass = _inverseMassMatrix[chainIndex];
 
             // Half-step momentum update
-            double[] grad = GradientFunction(theta).Array;
+            double[] grad = EvaluateGradient(theta, chainIndex);
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
 
@@ -590,7 +733,7 @@ namespace Numerics.Sampling.MCMC
             }
 
             // Half-step momentum update
-            grad = GradientFunction(theta).Array;
+            grad = EvaluateGradient(theta, chainIndex);
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
         }
@@ -1096,7 +1239,7 @@ namespace Numerics.Sampling.MCMC
             double[] invMass = _inverseMassMatrix[chainIndex];
 
             // Half-step momentum update
-            var grad = GradientFunction(theta.Array);
+            var grad = new Vector(EvaluateGradient(theta.Array, chainIndex));
             var r = momentum + grad * (epsilon * 0.5);
 
             // Full-step position update using per-chain inverse mass matrix
@@ -1114,7 +1257,7 @@ namespace Numerics.Sampling.MCMC
             }
 
             // Half-step momentum update
-            grad = GradientFunction(q.Array);
+            grad = new Vector(EvaluateGradient(q.Array, chainIndex));
             r = r + grad * (epsilon * 0.5);
 
             return (q, r);
