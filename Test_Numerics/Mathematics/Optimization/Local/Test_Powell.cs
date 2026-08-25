@@ -385,6 +385,140 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// Test that a minimum lying just inside a bound is found from a start on that bound.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The objective is strictly convex and smooth with its unique minimum at (0.04, 0.5), which is
+        /// inside the box. The start is on the lower bound of the first coordinate, so the first bracketing
+        /// probe is uphill and the bracketing search reverses back through the start and past the bound.
+        /// </para>
+        /// <para>
+        /// Past a bound the objective handed to the line search is constant, and the minimization accepts a
+        /// trial point that merely ties its incumbent, so a bracket carrying that constant region is
+        /// collapsed into it and the half holding the minimum is thrown away. The solver then stops on the
+        /// bound and reports success at a point whose gradient is nowhere near zero. Trimming the bracket
+        /// back to the feasible step interval before minimizing is what prevents that.
+        /// </para>
+        /// <para>
+        /// The assertions are on the solution rather than on the status, because the failure reported
+        /// success. A stop that leaves a feasible coordinate step still reducing the objective is the
+        /// property being ruled out.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_MinimumJustInsideABoundIsFoundFromThatBound()
+        {
+            var initial = new double[] { 0d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            double f(double[] x) => (x[0] - 0.04d) * (x[0] - 0.04d) + (x[1] - 0.5d) * (x[1] - 0.5d);
+            var solver = new Powell(f, 2, initial, lower, upper) { ReportFailure = false, RecordTraces = false, ComputeHessian = false };
+            solver.Minimize();
+
+            var solution = solver.BestParameterSet.Values;
+            Assert.AreEqual(0.04d, solution[0], 1E-6);
+            Assert.AreEqual(0.5d, solution[1], 1E-6);
+            Assert.AreEqual(0d, solver.BestParameterSet.Fitness, 1E-10);
+
+            // No feasible coordinate step may still reduce the objective at the reported point.
+            double at = f(solution);
+            foreach (double h in new[] { 1E-2, 1E-3, 1E-4 })
+                for (int i = 0; i < solution.Length; i++)
+                    foreach (int sign in new[] { 1, -1 })
+                    {
+                        var probe = (double[])solution.Clone();
+                        probe[i] = Math.Max(lower[i], Math.Min(upper[i], solution[i] + sign * h));
+                        Assert.IsGreaterThanOrEqualTo(at - 1E-12, f(probe), $"A feasible step of {sign * h} in parameter {i} still reduces the objective, so the reported point is not a constrained minimum.");
+                    }
+        }
+
+        /// <summary>
+        /// Test that an iterate on the far corner searches back into the box.
+        /// </summary>
+        /// <remarks>
+        /// The start is the upper corner and the minimum is interior, so every improving direction points
+        /// back into the box and the feasible step interval is entirely negative. The bracketing routine
+        /// picks its direction from a single comparison against a first step of a fixed sign, and a first
+        /// step pointing out of the box is clamped back onto the start, which makes that comparison a tie
+        /// and leaves the search facing the wrong way. Choosing the sign of the first step from the feasible
+        /// interval is what prevents that.
+        /// </remarks>
+        [TestMethod]
+        public void Test_IterateOnTheUpperCornerSearchesBackIntoTheBox()
+        {
+            var initial = new double[] { 1d, 1d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            double f(double[] x) => (x[0] - 0.4d) * (x[0] - 0.4d) + (x[1] - 0.4d) * (x[1] - 0.4d);
+            var solver = new Powell(f, 2, initial, lower, upper) { ReportFailure = false, RecordTraces = false, ComputeHessian = false };
+            solver.Minimize();
+
+            var solution = solver.BestParameterSet.Values;
+            Assert.AreEqual(0.4d, solution[0], 1E-6);
+            Assert.AreEqual(0.4d, solution[1], 1E-6);
+            Assert.AreEqual(0d, solver.BestParameterSet.Fitness, 1E-10);
+        }
+
+        /// <summary>
+        /// Test that a line search which finds nothing better than its starting point keeps that point.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The bracketing search hands the minimization an interval that need not contain the zero step, and
+        /// the minimization starts from the middle of the interval it is given, so it can return a point
+        /// worse than the one the line search was asked to improve on. Evaluating the zero step first and
+        /// keeping it unless the search strictly improves on it makes each line search non-increasing.
+        /// </para>
+        /// <para>
+        /// Goldstein-Price over this box is used because it is strongly multimodal, which is what makes a
+        /// line search settle on a point worse than its start. From this start the solver reaches the global
+        /// minimum of 3; without the fallback it stops in a basin four orders of magnitude worse.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_LineSearchNeverKeepsAPointWorseThanItsStart()
+        {
+            var initial = new double[] { -10d, -8d };
+            var lower = new double[] { -10d, -10d };
+            var upper = new double[] { 10d, 10d };
+            var solver = new Powell(TestFunctions.GoldsteinPrice, 2, initial, lower, upper) { ReportFailure = false, RecordTraces = false, ComputeHessian = false };
+            solver.Minimize();
+
+            Assert.AreEqual(3d, solver.BestParameterSet.Fitness, 1E-6);
+            var solution = solver.BestParameterSet.Values;
+            Assert.AreEqual(0d, solution[0], 1E-4);
+            Assert.AreEqual(-1d, solution[1], 1E-4);
+        }
+
+        /// <summary>
+        /// Test that a box whose width is the smallest representable number still runs a line search.
+        /// </summary>
+        /// <remarks>
+        /// The feasible step interval here is a single subnormal wide. Halving it to pick a first bracketing
+        /// step underflows to zero, and a zero step is rejected by the bracketing routine, which fails the
+        /// run on a box that is perfectly legal. Falling back on the interval endpoint itself keeps the step
+        /// nonzero. The interval that collapses to a single point is handled before this and does not reach
+        /// the step selection.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SubnormalWidthBoxStillRunsALineSearch()
+        {
+            var initial = new double[] { 0d };
+            var lower = new double[] { 0d };
+            var upper = new double[] { double.Epsilon };
+            double f(double[] x) => (x[0] - 1d) * (x[0] - 1d);
+            var solver = new Powell(f, 1, initial, lower, upper) { ReportFailure = false, RecordTraces = false, ComputeHessian = false };
+            solver.Minimize();
+
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            var solution = solver.BestParameterSet.Values;
+            Assert.IsGreaterThanOrEqualTo(lower[0], solution[0], "The solution is below its lower bound.");
+            Assert.IsLessThanOrEqualTo(upper[0], solution[0], "The solution is above its upper bound.");
+            Assert.AreEqual(1d, solver.BestParameterSet.Fitness, 1E-300);
+        }
+
+        /// <summary>
         /// Test that infinite bounds leave the search unconstrained.
         /// </summary>
         /// <remarks>
