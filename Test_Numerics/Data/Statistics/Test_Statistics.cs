@@ -369,6 +369,98 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Test LinearMoments on a large, genuinely skewed sample against an exact rational-arithmetic oracle.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the non-degenerate companion to <see cref="Test_ComputeLinearMoments_LargeSample"/>. That
+        /// test uses an evenly spaced sample whose τ₃ and τ₄ are analytically exactly zero at every length, so
+        /// it cannot distinguish a sign error, a b₂-only correction or a partial fix from a complete one. This
+        /// test pins all four moments to non-zero values at two sample lengths.
+        /// </para>
+        /// <para>
+        /// <b>The sample.</b> xᵢ = kᵢ² / 64 with kᵢ = (i · 7919) mod 10007 for i = 1..n. Every value is an exact
+        /// integer divided by 64, a power of two, so the sample is exactly representable in IEEE-754 and the
+        /// test reproduces the oracle's input bit for bit. The generator itself cannot overflow: i · 7919 peaks
+        /// at 11,561,740 and k² at 100,120,036, both far inside <see cref="int.MaxValue"/>. Squaring a
+        /// near-uniform k makes the sample right-skewed, which is what gives it a non-zero τ₃.
+        /// </para>
+        /// <para>
+        /// <b>The oracle.</b> Computed in exact rational arithmetic, where overflow is impossible by
+        /// construction, via the textbook binomial probability-weighted-moment form
+        /// b_r = (1/n) · Σᵢ C(i−1, r) / C(n−1, r) · x₍ᵢ₎ — a different arithmetic route than the
+        /// falling-factorial form the library uses. The values also agree with closed-form theory: this sample
+        /// is a systematic enumeration of a squared uniform, and for the quantile function Q(p) = p² theory
+        /// gives λ₁/λ₂ = 2, τ₃ = 0.2 and τ₄ = 0 exactly. The oracle returns 2.0013, 0.19955 and −2.2E−05,
+        /// converging on those with the expected finite-sample discreteness, so it is not merely
+        /// self-consistent.
+        /// </para>
+        /// <para>
+        /// <b>The tolerance, and why τ₄ needs an absolute floor.</b> The oracle values are exact, so the only
+        /// error present is the library's own double accumulation — but that error is absolute, not relative,
+        /// and τ₄ is the one moment small enough for the difference to matter. τ₄ is recovered as
+        /// 5·(2·(2·b₃ − 3·b₂) + b₀)/λ₂ + 6, an O(1) quantity plus 6, so a τ₄ near zero is the residue of
+        /// cancelling two numbers of order six. Its accuracy is therefore floored near the roundoff of six
+        /// accumulated across n terms, independent of how small τ₄ itself is. Measured against the exact
+        /// oracle, the library agrees to 0 ulp on λ₁, 1.1E-15 relative on λ₂ and 2.5E-14 relative on τ₃, but
+        /// only to 1.9E-14 and 2.7E-14 <i>absolute</i> on τ₄ — which at τ₄ ≈ 2.2E-05 is 8.5E-10 in relative
+        /// terms. This was verified to be arithmetic and not a defect by transcribing the library's formula
+        /// into an independent double-precision evaluation, which reproduces the library's returned value
+        /// digit for digit. The tolerance below is therefore relative 1E-12 with an absolute floor of 1E-13,
+        /// roughly four times the worst measured deviation. That floor costs the test nothing: the overflow
+        /// it guards moved τ₄ by 1.9E-01 and 1.7E+01, twelve to fifteen orders of magnitude above it.
+        /// </para>
+        /// <para>
+        /// <b>What is being guarded.</b> The probability-weighted-moment numerators were formed in 32-bit
+        /// integer arithmetic and wrapped silently on large samples (USACE-RMC/Numerics#146). On this same
+        /// sample the pre-fix code returned τ₄ = −0.185 at n = 1293 against an exact −3.80E−06, and
+        /// τ₄ = −17.01 at n = 1460 against an exact +1.40E−04. τ₄ is bounded roughly in [−0.25, 1] for any real
+        /// distribution, so −17.01 is not an imprecise answer but a meaningless one. n = 1292 is the last
+        /// length whose b₃ numerator fits in an <see cref="int"/> — the pre-fix code is bit-compatible there,
+        /// which is why the test also pins a length above the threshold. n = 1460 is four years of daily data,
+        /// the scenario the issue reports as triggering it in practice.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_ComputeLinearMoments_ExactOracle()
+        {
+            // Exact L-moments {λ₁, λ₂, τ₃, τ₄} keyed by sample length.
+            var oracle = new Dictionary<int, double[]>
+            {
+                { 1292, new[] { 522512.5024550116d, 261084.88504577902d, 0.19954627498563463d, -2.204844394426912E-05d } },
+                { 1460, new[] { 522816.5913848459d, 261222.97693894972d, 0.19969563852408587d, 1.4021596010174597E-04d } }
+            };
+            var names = new[] { "L-mean (λ₁)", "L-scale (λ₂)", "L-skewness (τ₃)", "L-kurtosis (τ₄)" };
+
+            foreach (var testCase in oracle)
+            {
+                int n = testCase.Key;
+                var data = new double[n];
+                for (int i = 1; i <= n; i++)
+                {
+                    int k = (i * 7919) % 10007;
+                    data[i - 1] = k * (double)k / 64d;
+                }
+
+                var lmoms = Numerics.Data.Statistics.Statistics.LinearMoments(data);
+                for (int m = 0; m < 4; m++)
+                {
+                    double expected = testCase.Value[m];
+                    // Relative 1E-12, with an absolute floor of 1E-13 that binds only on τ₄. τ₄ is the
+                    // residue of cancelling two O(6) quantities, so its error is absolute (measured at most
+                    // 2.7E-14) and does not shrink with τ₄ itself. See the remarks above.
+                    double tolerance = Math.Max(Math.Abs(expected) * 1E-12, 1E-13);
+                    Assert.AreEqual(expected, lmoms[m], tolerance,
+                        $"{names[m]} disagrees with the exact oracle at n = {n}.");
+                }
+
+                // τ₄ is bounded roughly in [-0.25, 1] for any real distribution. The pre-fix code returned
+                // -17.01 at n = 1460, so this alone separates a corrupted result from a merely imprecise one.
+                Assert.IsTrue(lmoms[3] > -0.25d && lmoms[3] < 1d, $"L-kurtosis (τ₄) is out of range at n = {n}.");
+            }
+        }
+
+        /// <summary>
         /// Test the Percentile method against R's "quantile()" method from the "stats" package.
         /// </summary>
         [TestMethod]
