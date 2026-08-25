@@ -974,7 +974,8 @@ namespace Numerics.Sampling.MCMC
 
         /// <summary>
         /// The smallest per-coordinate variance retained in an adapted metric, as a fraction of the
-        /// largest variance in the same window. This caps the diagonal metric's condition number at 1e12.
+        /// largest <i>measured</i> variance in the same window; fallback values never set that scale.
+        /// This caps the diagonal metric's condition number at 1e12.
         /// </summary>
         private const double RELATIVE_VARIANCE_FLOOR = 1e-12;
 

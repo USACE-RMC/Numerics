@@ -376,7 +376,7 @@ namespace Data.Statistics
         /// This is the non-degenerate companion to <see cref="Test_ComputeLinearMoments_LargeSample"/>. That
         /// test uses an evenly spaced sample whose τ₃ and τ₄ are analytically exactly zero at every length, so
         /// it cannot distinguish a sign error, a b₂-only correction or a partial fix from a complete one. This
-        /// test pins all four moments to non-zero values at two sample lengths.
+        /// test pins all four moments to non-zero values at three sample lengths.
         /// </para>
         /// <para>
         /// <b>The sample.</b> xᵢ = kᵢ² / 64 with kᵢ = (i · 7919) mod 10007 for i = 1..n. Every value is an exact
