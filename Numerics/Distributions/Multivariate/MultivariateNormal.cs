@@ -147,12 +147,24 @@ namespace Numerics.Distributions
         /// The relative spacing of double-precision numbers, 2⁻⁵² ≈ 2.220446049250313E-16.
         /// </summary>
         /// <remarks>
-        /// This is deliberately <b>not</b> <see cref="Tools.DoubleMachineEpsilon"/>, which is the unit
-        /// roundoff 2⁻⁵³ — exactly half of this value. The zero thresholds of this class are calibrated to
-        /// match <c>scipy.stats.multivariate_normal</c> value for value, and NumPy's
+        /// <para>
+        /// This is deliberately <b>not</b> <see cref="Tools.DoubleMachineEpsilon"/>, which is approximately
+        /// the unit roundoff 2⁻⁵³, or about half of this value. The zero thresholds of this class are
+        /// calibrated to match <c>scipy.stats.multivariate_normal</c> value for value, and NumPy's
         /// <c>np.finfo(float).eps</c>, which scipy multiplies by <see cref="ZeroToleranceFactor"/>, is the
         /// relative spacing 2⁻⁵². Using the unit roundoff instead would halve every threshold below and
         /// silently break that agreement.
+        /// </para>
+        /// <para>
+        /// The literal above is written out rather than derived as <c>2d * Tools.DoubleMachineEpsilon</c>,
+        /// and that matters. <see cref="Tools.DoubleMachineEpsilon"/> is the decimal literal
+        /// 1.11022302462516E-16, which is a truncated 2⁻⁵³ and not 2⁻⁵³ itself: the exact value is
+        /// 1.1102230246251565E-16, so the ratio between the two constants is 1.9999999999999938 rather than
+        /// 2. Doubling the truncated constant would therefore <b>not</b> yield 2⁻⁵² bit-exactly, and the
+        /// thresholds built on it would drift off scipy's by a few ulps — enough to break an exact-agreement
+        /// test without producing any visible symptom. Do not "simplify" this back to a multiple of
+        /// <see cref="Tools.DoubleMachineEpsilon"/>.
+        /// </para>
         /// </remarks>
         private const double RelativeMachineEpsilon = 2.220446049250313E-16;
 
@@ -379,6 +391,19 @@ namespace Numerics.Distributions
         /// scipy's behaviour as well, and it is the price of a scale-invariant threshold.
         /// </para>
         /// <para>
+        /// <b>What that rank drop looks like from the outside.</b> It is silent: no exception is raised and no
+        /// diagnostic is produced. What the caller observes is that <see cref="LogPDF"/> returns negative
+        /// infinity — and <see cref="PDF"/> zero — at essentially every point, because after the drop the
+        /// support is the retained subspace and a general point has a non-negligible component off it. Inside
+        /// a likelihood evaluation or an MCMC loop that reads as total collapse rather than as a
+        /// conditioning problem, and the rank is not exposed publicly, so the only available signal is
+        /// <see cref="IsPositiveDefinite"/> returning false for a covariance the caller believes is full
+        /// rank. The remedy is to remove the scale disparity rather than the threshold: standardize Σ to a
+        /// correlation matrix, fit and evaluate in those units where all variances are of order one, and
+        /// rescale afterwards. With the scales shared, a relative threshold no longer discards directions
+        /// that are small only because of their units.
+        /// </para>
+        /// <para>
         /// <b>Two deliberate departures from scipy.</b> First, a point is tested against the support with a
         /// tolerance proportional to ‖x − μ‖, where scipy uses one proportional to the eigenvalue scale of
         /// Σ. For a large-scale singular covariance scipy therefore admits points that are visibly off the
@@ -422,8 +447,27 @@ namespace Numerics.Distributions
             // decomposition it needs, so it is handed back and reused for the factorization rather than
             // being recomputed: an O(n^3) factorization is the whole cost this selector trades away.
             ValidateParameters(mean, covariance, true, out var singularValues);
+            SetParametersCore(mean, covariance, singularValues);
+        }
 
-            _dimension = mean.Length;      
+        /// <summary>
+        /// Applies already-validated parameters, reusing the decomposition built during validation.
+        /// </summary>
+        /// <param name="mean">The validated mean vector μ (mu) for the distribution.</param>
+        /// <param name="covariance">The validated covariance matrix Σ (sigma) for the distribution.</param>
+        /// <param name="singularValues">The decomposition of <paramref name="covariance"/> produced by
+        /// validation under <see cref="DecompositionMethod.SingularValue"/>; null under
+        /// <see cref="DecompositionMethod.Cholesky"/>, where it is not used.</param>
+        /// <remarks>
+        /// Split out of <see cref="SetParameters"/> so that both the throwing entry point and the
+        /// non-throwing <see cref="TrySetParameters"/> can validate once and factorize once. The
+        /// decomposition is a deterministic function of <paramref name="covariance"/>, so reusing the
+        /// instance built during validation produces exactly the same factorization that recomputing it
+        /// would — the saving is the duplicated O(n³) work, not a change of result.
+        /// </remarks>
+        private void SetParametersCore(double[] mean, double[,] covariance, SingularValueDecomposition? singularValues)
+        {
+            _dimension = mean.Length;
             _mean = mean;
             _covariance = new Matrix(covariance);
             if (_decomposition == DecompositionMethod.Cholesky)
@@ -557,6 +601,20 @@ namespace Numerics.Distributions
         /// scipy's tolerance is about 4.4E+5, so it returns a finite density at (1, −1), a point plainly off
         /// the support. This class returns negative infinity there, which is the exact answer, and that is
         /// deliberate.
+        /// </para>
+        /// <para>
+        /// <b>The absolute floor of the tolerance.</b> Because the scale factor is max(1, ‖x − μ‖), the
+        /// smallest tolerance this test ever applies is
+        /// <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/> = 2.220446049250313E-10.
+        /// It is <b>not</b> an independently chosen constant: it follows the class epsilon, so it is exactly
+        /// one factor of <see cref="ZeroToleranceFactor"/> above the same ε that decides the rank, the null
+        /// space and the pseudo-determinant, and it moves only if that epsilon moves. It was
+        /// 1.11022302462516E-10 while the class used <see cref="Tools.DoubleMachineEpsilon"/> and doubled
+        /// when the constant was aligned with NumPy's relative spacing. The measured margins above —
+        /// on-support residuals at most 6E-16 and off-support residuals at least 0.7 — leave roughly five
+        /// orders of headroom below the tolerance and nine above it, so neither value changes any outcome on
+        /// the reference cases. Do not retune it in isolation; changing it would decouple this test from the
+        /// threshold that produced the null space it is testing against.
         /// </para>
         /// </remarks>
         private bool IsOnSupport(double[] x)
@@ -797,9 +855,14 @@ namespace Numerics.Distributions
             // ones, so the non-throwing contract absorbs both failure modes.
             try
             {
-                if (ValidateParameters(mean, covariance, false) is null)
+                // Validate through the overload that hands back the decomposition, then apply it directly.
+                // Routing through the public SetParameters would validate a second time and build a second
+                // singular value decomposition of the same matrix, doubling the O(n^3) cost on exactly the
+                // path this method exists to serve: proposal and likelihood loops that swap a covariance per
+                // evaluation. The decomposition is deterministic, so the factorization is unchanged.
+                if (ValidateParameters(mean, covariance, false, out var singularValues) is null)
                 {
-                    SetParameters(mean, covariance);
+                    SetParametersCore(mean, covariance, singularValues);
                     _densityValid = true;
                     return true;
                 }
