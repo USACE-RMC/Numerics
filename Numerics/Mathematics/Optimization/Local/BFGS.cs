@@ -88,6 +88,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; }
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <summary>
         /// The function for evaluating the gradient of the objective function.
         /// </summary>

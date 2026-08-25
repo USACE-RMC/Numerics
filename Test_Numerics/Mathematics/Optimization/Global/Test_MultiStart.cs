@@ -342,5 +342,58 @@ namespace Mathematics.Optimization
             bool match2 = Math.Abs(x - validY) < 1E-4 && Math.Abs(y - validX) < 1E-4;
             Assert.IsTrue(match1 || match2);
         }
+
+        /// <summary>
+        /// Test that the reported solution lies inside the declared bounds when the unconstrained optimum
+        /// lies outside them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The objective is a smooth quadratic centred at (20, 20) restricted to the unit square, so the
+        /// constrained solution is the corner (1, 1) and every finite difference taken there steps outside
+        /// the feasible region unless it is clamped.
+        /// </para>
+        /// <para>
+        /// The local solvers are built over this solver's own objective delegate, so their probes are scored
+        /// through <see cref="Optimizer.Evaluate"/> and can be recorded as the incumbent. Both finite
+        /// difference paths matter: the local gradient and the local solver's end-of-run Hessian. The
+        /// objective falls monotonically toward the centre, so any unclamped probe scores better than the
+        /// corner and would be reported as the solution.
+        /// </para>
+        /// <para>
+        /// <see cref="Optimizer.ComputeHessian"/> is deliberately left at its default of true. Switching it
+        /// off would hide the Hessian path, which is the half of this guard that a bounded gradient alone
+        /// does not cover.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_SolutionStaysWithinBounds()
+        {
+            var initial = new double[] { 0.5d, 0.5d };
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            var solver = new MultiStart(x => Math.Pow(x[0] - 20d, 2d) + Math.Pow(x[1] - 20d, 2d), 2, initial, lower, upper)
+            {
+                ReportFailure = false,
+                // Every local start converges on the same corner, so a handful of starts exercises the
+                // guarded path as thoroughly as the default hundred and keeps the test cheap.
+                MaxIterations = 10,
+                // Bookkeeping only, and it dominates the runtime of this test.
+                RecordTraces = false
+            };
+            solver.Minimize();
+
+            var solution = solver.BestParameterSet.Values;
+            Assert.IsNotNull(solution);
+            for (int i = 0; i < solution.Length; i++)
+            {
+                Assert.IsGreaterThanOrEqualTo(lower[i], solution[i], "Parameter " + i + " is below its lower bound.");
+                Assert.IsLessThanOrEqualTo(upper[i], solution[i], "Parameter " + i + " is above its upper bound.");
+            }
+
+            // The constrained minimum is the corner nearest the unconstrained optimum.
+            Assert.AreEqual(1d, solution[0], 1E-6);
+            Assert.AreEqual(1d, solution[1], 1E-6);
+        }
     }
 }

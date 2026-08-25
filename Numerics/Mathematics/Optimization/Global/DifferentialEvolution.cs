@@ -77,6 +77,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; }
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <summary>
         /// The total population size. Default = 10 * D (Storn &amp; Price, 1997).
         /// </summary>

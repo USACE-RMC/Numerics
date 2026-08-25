@@ -82,6 +82,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; }
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <inheritdoc/>
         protected override void Optimize()
         {

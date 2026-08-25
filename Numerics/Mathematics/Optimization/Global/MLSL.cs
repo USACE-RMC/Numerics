@@ -102,6 +102,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; } = null!;
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <summary>
         /// The pseudo random number generator (PRNG) seed.
         /// </summary>

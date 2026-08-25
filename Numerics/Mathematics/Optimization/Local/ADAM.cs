@@ -87,6 +87,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; }
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <summary>
         /// Gets and sets the step size, or learning rate. Default = 0.001.
         /// </summary>

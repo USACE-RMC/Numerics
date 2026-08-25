@@ -178,9 +178,9 @@ namespace Mathematics.Optimization
         /// displace the incumbent.
         /// </para>
         /// <para>
-        /// The end-of-run Hessian pass in <see cref="Optimizer.Minimize"/> is a separate finite-difference
-        /// path that is not given the bounds, so it is switched off here to keep this test scoped to the
-        /// gradient.
+        /// The end-of-run Hessian pass in <see cref="Optimizer.Minimize"/> is a second finite-difference
+        /// path over the same objective at the same corner. It is left enabled, at its default, so this
+        /// test covers both paths rather than only the gradient.
         /// </para>
         /// </remarks>
         [TestMethod]
@@ -196,7 +196,7 @@ namespace Mathematics.Optimization
                 for (int i = 0; i < x.Length; i++)
                     if (x[i] < lower[i] || x[i] > upper[i]) violations.Add("p" + i + "=" + x[i]);
                 return Math.Pow(x[0] - 2d, 2d) + Math.Pow(x[1] + 2d, 2d);
-            }, 2, initial, lower, upper) { ComputeHessian = false };
+            }, 2, initial, lower, upper);
             solver.Minimize();
 
             Assert.IsEmpty(violations, "The objective was evaluated outside the declared bounds: " + string.Join(", ", violations));
