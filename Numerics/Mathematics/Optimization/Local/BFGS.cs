@@ -99,14 +99,25 @@ namespace Numerics.Mathematics.Optimization
             int D = NumberOfParameters;
             double EPS = Tools.DoubleMachineEpsilon;
             // TOLX is declared here to match Numerical Recipes' dfpmin, but it is never compared against
-            // anything in this method: the outer parameter-change convergence test of dfpmin — exit when the
-            // largest relative step falls below TOLX — is NOT implemented. The TOLX that is actually used is
-            // a separate local in LineSearchArmijo, where it sets alamin = TOLX / test; that is the inner
-            // lnsrch step-size floor and is unrelated to outer convergence. Convergence here is therefore
-            // decided solely by CheckConvergence's relative-function-change test, so there is no stagnation
-            // exit: a run that stops improving its parameters while the function value still moves will keep
-            // iterating to MaxIterations. Do not assume such an exit exists. Adding it is deferred to a
-            // separate task behind a measurement gate, since it would change which iterate is returned.
+            // anything in this method: the outer parameter-change convergence test of dfpmin, which exits
+            // when the largest relative parameter step falls below TOLX, is NOT implemented. The only other
+            // TOLX in this file is a separate local in LineSearchArmijo, where it sets alamin = TOLX / test;
+            // that is the inner lnsrch step-size floor and is unrelated to outer convergence. Note that
+            // LineSearchArmijo is currently unreachable: Optimize calls the strong Wolfe LineSearch instead.
+            // Convergence here is therefore decided solely by CheckConvergence's relative-function-change
+            // test, so there is no stagnation exit: a run that stops improving its parameters while the
+            // function value still moves will keep iterating to MaxIterations. Do not assume such an
+            // exit exists.
+            //
+            // Adding the dfpmin test was measured against the full test suite and rejected. It is a large
+            // efficiency win in isolation, removing 98.9% of BFGS function evaluations across the suite
+            // (32.4M to 354k) and turning all 40 MaximumIterationsReached runs into Success with no change
+            // to any individual BFGS optimum. It was rejected because it changes the point the global
+            // searches report: MultiStart and MLSL share their evaluation counter with the BFGS runs they
+            // launch, so the wasted iterations currently act as extra sampling that feeds their best-point
+            // tracking. With the exit in place Test_MultiStart.Test_Eggholder fails, the returned x moving
+            // from within 1E-2 of 512 to 512.0564. The exit cannot be added until that dependence is
+            // addressed separately.
             double TOLX = 4 * EPS, STPMX = 100.0;
             bool cancel = false, check = false;
 
