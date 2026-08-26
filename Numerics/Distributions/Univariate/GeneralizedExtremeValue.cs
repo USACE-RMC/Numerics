@@ -619,6 +619,24 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space, so far-tail densities that underflow <see cref="PDF(double)"/>
+        /// keep a finite log density.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(Xi, Alpha, Kappa, true);
+            if (x < Minimum || x > Maximum) return double.NegativeInfinity;
+            double y = (x - Xi) / Alpha;
+            if (Math.Abs(Kappa) > NearZero)
+                y = -Math.Log(1d - Kappa * y) / Kappa;
+            double lf = -(1d - Kappa) * y - Math.Exp(-y) - Math.Log(Alpha);
+            return double.IsNaN(lf) ? double.NegativeInfinity : lf;
+        }
+
+        /// <inheritdoc/>
         public override double CDF(double x)
         {
             // Validate parameters
