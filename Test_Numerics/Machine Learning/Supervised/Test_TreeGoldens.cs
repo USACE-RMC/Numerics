@@ -158,10 +158,10 @@ namespace MachineLearning
         /// </summary>
         /// <param name="node">The root of the subtree to serialize.</param>
         /// <returns>One pipe-delimited entry per node.</returns>
-        private static string SerializeTree(DecisionNode? node)
+        private static string SerializeTree(DecisionNode node)
         {
             var sb = new StringBuilder();
-            void Walk(DecisionNode? n)
+            void Walk(DecisionNode n)
             {
                 if (n == null) return;
                 sb.Append(n.FeatureIndex).Append(';')
