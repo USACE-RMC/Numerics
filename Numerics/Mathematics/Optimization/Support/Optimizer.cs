@@ -137,8 +137,13 @@ namespace Numerics.Mathematics.Optimization
         public ParameterSet BestParameterSet { get; protected set; } = new ParameterSet();
 
         /// <summary>
-        /// A trace of the parameter set and fitness evaluated until convergence.
+        /// A trace of the best-so-far parameter set and fitness at every function evaluation.
         /// </summary>
+        /// <remarks>
+        /// The trace is read-only: entries recorded between improvements share one values array,
+        /// so the trace stores the search history without one array allocation per function
+        /// evaluation.
+        /// </remarks>
         public List<ParameterSet> ParameterSetTrace { get; protected set; } = new List<ParameterSet>();
 
         /// <summary>
@@ -252,7 +257,7 @@ namespace Numerics.Mathematics.Optimization
             
             // Update trace. This is tracked every evaluation
             if (ParameterSetTrace == null) ParameterSetTrace = new List<ParameterSet>();
-            if (RecordTraces) ParameterSetTrace.Add(BestParameterSet.Clone());
+            if (RecordTraces) ParameterSetTrace.Add(BestParameterSet.Clone(deep: false));
 
             // update evaluation counter
             FunctionEvaluations += 1;
