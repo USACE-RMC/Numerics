@@ -421,6 +421,60 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// An objective with a quadratic well around (0.5, 0.5) and a high plateau everywhere else, so a
+        /// point perturbed out of the well cannot re-attain a fitness recorded inside it.
+        /// </summary>
+        /// <param name="x">The point to evaluate.</param>
+        /// <returns>The squared distance to the well centre inside the well; 1000 outside.</returns>
+        private static double WellInPlateau(double[] x)
+        {
+            double dx = x[0] - 0.5d, dy = x[1] - 0.5d;
+            double r2 = dx * dx + dy * dy;
+            return r2 <= 0.09d ? r2 : 1000d;
+        }
+
+        /// <summary>
+        /// A MultiStart whose bounds repair perturbs every value it is given, which makes any
+        /// write-through of the repair observable as a values/fitness mismatch on the recorded best set.
+        /// </summary>
+        private sealed class PerturbingRepairMultiStart : MultiStart
+        {
+            public PerturbingRepairMultiStart(Func<double[], double> objectiveFunction, int numberOfParameters, IList<double> initialValues, IList<double> lowerBounds, IList<double> upperBounds, LocalMethod method)
+                : base(objectiveFunction, numberOfParameters, initialValues, lowerBounds, upperBounds, method) { }
+
+            protected override double RepairParameter(double value, double lowerBound, double upperBound)
+            {
+                return base.RepairParameter(value + 0.25d, lowerBound, upperBound);
+            }
+        }
+
+        /// <summary>
+        /// Test that the bounds repair before the polish search cannot rewrite the recorded best set.
+        /// </summary>
+        /// <remarks>
+        /// The polish path hands the live array inside <see cref="Optimizer.BestParameterSet"/> to the
+        /// local-search entry point, whose bounds repair must not write through it, because the recorded
+        /// fitness would keep describing the unrepaired point. A repair that changes its input is
+        /// unreachable for a legally constructed solver, whose samples are already inside the box, so the
+        /// repair is forced here through an override that perturbs every value it is given. The
+        /// perturbation kicks the well-bottom best point onto the plateau, where the polish search cannot
+        /// re-attain the recorded fitness, so a write-through cannot be healed by re-recording. The
+        /// invariant is that the best set still satisfies fitness = f(values) exactly.
+        /// </remarks>
+        [TestMethod]
+        public void Test_BoundsRepairDoesNotRewriteTheBestParameterSet()
+        {
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            var solver = new PerturbingRepairMultiStart(WellInPlateau, 2, new double[] { 0.5d, 0.5d }, lower, upper, LocalMethod.NelderMead)
+            { MaxIterations = 25, ReportFailure = false, ComputeHessian = false };
+            solver.Minimize();
+
+            Assert.AreEqual(solver.BestParameterSet.Fitness, WellInPlateau(solver.BestParameterSet.Values), 0d,
+                "The best parameter set's recorded fitness no longer matches its recorded values; the bounds repair wrote through the recorded array.");
+        }
+
+        /// <summary>
         /// A quadratic whose unconstrained minimum lies far outside the unit square used by the local method
         /// tests below, so that the constrained solution is the corner (1, 1) with value 722.
         /// </summary>

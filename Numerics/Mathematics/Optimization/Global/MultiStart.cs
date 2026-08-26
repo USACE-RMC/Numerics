@@ -156,9 +156,8 @@ namespace Numerics.Mathematics.Optimization
                 if (Iterations == 0)
                 {
                     // Copy into the already-allocated array rather than re-pointing values at
-                    // InitialValues. Re-pointing would alias the public InitialValues array, and the
-                    // uniform draws below and the bounds repair inside GetLocalOptimizer both write
-                    // through values in place, which would silently corrupt InitialValues.
+                    // InitialValues: re-pointing would alias the public InitialValues array, and the
+                    // uniform draws below write through values in place.
                     Array.Copy(InitialValues, values, D);
                 }
                 else
@@ -190,9 +189,10 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
-        /// Returns an optimizer for the local search. 
+        /// Returns an optimizer for the local search.
         /// </summary>
-        /// <param name="initialValues"> An array of initial values to evaluate. </param>
+        /// <param name="initialValues"> An array of initial values to evaluate. Not modified; the bounds
+        /// repair is applied to a private copy. </param>
         /// <param name="relativeTolerance">The desired relative tolerance for the solution.</param>
         /// <param name="absoluteTolerance">The desired absolute tolerance for the solution.</param>
         /// <param name="cancel">By ref. Determines if the solver should be canceled.</param>
@@ -201,21 +201,24 @@ namespace Numerics.Mathematics.Optimization
             bool localCancel = false;
             Optimizer? solver = null;
 
-            // Make sure the parameters are within the bounds.
+            // Make sure the parameters are within the bounds, repairing into a local copy rather than
+            // through the argument: the caller may pass the live array inside a recorded ParameterSet,
+            // whose Fitness would not follow an in-place repair of its Values.
+            var repaired = new double[NumberOfParameters];
             for (int i = 0; i < NumberOfParameters; i++)
-                initialValues[i] = RepairParameter(initialValues[i], LowerBounds[i], UpperBounds[i]);
+                repaired[i] = RepairParameter(initialValues[i], LowerBounds[i], UpperBounds[i]);
 
             if (Method == LocalMethod.BFGS)
             {
-                solver = new BFGS((x) => Evaluate(x, ref localCancel), NumberOfParameters, initialValues, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new BFGS((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
             }
             else if (Method == LocalMethod.NelderMead)
             {
-                solver = new NelderMead((x) => Evaluate(x, ref localCancel), NumberOfParameters, initialValues, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new NelderMead((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
             }
             else if (Method == LocalMethod.Powell)
             {
-                solver = new Powell((x) => Evaluate(x, ref localCancel), NumberOfParameters, initialValues, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new Powell((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
             }
             else
             {

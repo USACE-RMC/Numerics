@@ -551,6 +551,66 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// An objective with a quadratic well around (0.5, 0.5) and a high plateau everywhere else, so a
+        /// point perturbed out of the well cannot re-attain a fitness recorded inside it.
+        /// </summary>
+        /// <param name="x">The point to evaluate.</param>
+        /// <returns>The squared distance to the well centre inside the well; 1000 outside.</returns>
+        private static double WellInPlateau(double[] x)
+        {
+            double dx = x[0] - 0.5d, dy = x[1] - 0.5d;
+            double r2 = dx * dx + dy * dy;
+            return r2 <= 0.09d ? r2 : 1000d;
+        }
+
+        /// <summary>
+        /// An MLSL whose bounds repair perturbs every value it is given, which makes any write-through of
+        /// the repair observable as a values/fitness mismatch on a recorded parameter set.
+        /// </summary>
+        private sealed class PerturbingRepairMLSL : MLSL
+        {
+            public PerturbingRepairMLSL(Func<double[], double> objectiveFunction, int numberOfParameters, IList<double> initialValues, IList<double> lowerBounds, IList<double> upperBounds, LocalMethod method)
+                : base(objectiveFunction, numberOfParameters, initialValues, lowerBounds, upperBounds, method) { }
+
+            protected override double RepairParameter(double value, double lowerBound, double upperBound)
+            {
+                return base.RepairParameter(value + 0.25d, lowerBound, upperBound);
+            }
+        }
+
+        /// <summary>
+        /// Test that the bounds repair before a local search cannot rewrite a recorded parameter set.
+        /// </summary>
+        /// <remarks>
+        /// The local-search entry point receives the live array inside a recorded
+        /// <see cref="ParameterSet"/> — the first sampled point, a reduced-sample point, or the best
+        /// parameter set on the polish path — and must not write its bounds repair through it, because the
+        /// recorded fitness would keep describing the unrepaired point. A repair that changes its input is
+        /// unreachable for a legally constructed solver, whose initial values and samples are already
+        /// inside the box, so the repair is forced here through an override that perturbs every value it
+        /// is given. The perturbation kicks any well point onto the plateau, where no later evaluation can
+        /// match a fitness recorded in the well, so a write-through cannot be healed by re-recording. The
+        /// invariant is that every recorded set still satisfies fitness = f(values) exactly.
+        /// </remarks>
+        [TestMethod]
+        public void Test_BoundsRepairDoesNotRewriteRecordedParameterSets()
+        {
+            var lower = new double[] { 0d, 0d };
+            var upper = new double[] { 1d, 1d };
+            var solver = new PerturbingRepairMLSL(WellInPlateau, 2, new double[] { 0.5d, 0.5d }, lower, upper, LocalMethod.NelderMead)
+            { MaxIterations = 20, ReportFailure = false, ComputeHessian = false };
+            solver.Minimize();
+
+            foreach (var point in solver.SampledPoints)
+            {
+                Assert.AreEqual(point.ParameterSet.Fitness, WellInPlateau(point.ParameterSet.Values), 0d,
+                    "A sampled point's recorded fitness no longer matches its recorded values; the bounds repair wrote through the published array.");
+            }
+            Assert.AreEqual(solver.BestParameterSet.Fitness, WellInPlateau(solver.BestParameterSet.Values), 0d,
+                "The best parameter set's recorded fitness no longer matches its recorded values.");
+        }
+
+        /// <summary>
         /// A quadratic whose unconstrained minimum lies far outside the unit square used by the local method
         /// tests below, so that the constrained solution is the corner (1, 1) with value 722.
         /// </summary>
