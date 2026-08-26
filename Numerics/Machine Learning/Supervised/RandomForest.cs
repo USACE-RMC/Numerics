@@ -236,19 +236,21 @@ namespace Numerics.MachineLearning
                 var values = bootResults.GetRow(idx);
                 Array.Sort(values);
 
+                // The mean is accumulated sequentially so the reduction is deterministic on every
+                // host regardless of processor count.
                 if (IsRegression)
                 {
                     // Record percentiles for CIs
                     for (int j = 0; j < percentiles.Length; j++)
                         output[idx, j] = Statistics.Percentile(values, percentiles[j], true);
-                    output[idx, 3] = Statistics.ParallelMean(values);
+                    output[idx, 3] = Statistics.Mean(values);
                 }
                 else
                 {
                     // Record percentiles for CIs
                     for (int j = 0; j < percentiles.Length; j++)
                         output[idx, j] = Math.Floor(Statistics.Percentile(values, percentiles[j], true));
-                    output[idx, 3] = Math.Floor(Statistics.ParallelMean(values));
+                    output[idx, 3] = Math.Floor(Statistics.Mean(values));
                 }
 
             });
