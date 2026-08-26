@@ -493,6 +493,35 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// Test that a line search that fails to improve on its start does not disable a direction of the
+        /// direction set.
+        /// </summary>
+        /// <remarks>
+        /// When the search along the average direction fails to strictly improve on the current point, the
+        /// fallback keeps the current point. Were the direction scaled by that zero step, the zero vector
+        /// would be stored into the direction set by the enclosing direction-set update, its feasible step
+        /// interval would collapse to the single point zero on every later iteration, and the direction
+        /// would be permanently lost. Eggholder from this corner start reaches that state and then stops
+        /// at f = -683.29 with one direction dead, while a direction set that keeps the unscaled direction
+        /// continues to f = -715.98. The assertion sits between the two regimes rather than pinning the
+        /// trajectory, because the objective is chaotic and its trigonometry varies in the last bits
+        /// across target frameworks.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ZeroStepFallbackKeepsTheDirectionSetAlive()
+        {
+            var initial = new double[] { 512d, -128d };
+            var lower = new double[] { -512d, -512d };
+            var upper = new double[] { 512d, 512d };
+            var solver = new Powell(TestFunctions.Eggholder, 2, initial, lower, upper) { ReportFailure = false, RecordTraces = false, ComputeHessian = false };
+            solver.Minimize();
+
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            Assert.IsLessThan(-700d, solver.BestParameterSet.Fitness,
+                "The run stopped early with a dead direction in the direction set.");
+        }
+
+        /// <summary>
         /// Test that a box whose width is the smallest representable number still runs a line search.
         /// </summary>
         /// <remarks>

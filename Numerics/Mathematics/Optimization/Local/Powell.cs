@@ -193,8 +193,11 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Auxiliary line minimization routine.
         /// </summary>
-        /// <param name="startPoint">The initial point. Updated in place to the minimizing point along the direction.</param>
-        /// <param name="direction">The initial direction. Updated in place to the vector displacement actually taken.</param>
+        /// <param name="startPoint">The initial point. Updated in place to the minimizing point along the
+        /// direction when the search strictly improves on the current point; left untouched otherwise.</param>
+        /// <param name="direction">The initial direction. Updated in place to the vector displacement
+        /// actually taken when the search strictly improves on the current point; left untouched
+        /// otherwise.</param>
         /// <param name="cancel">Determines if the solver should be canceled.</param>
         /// <returns>
         /// The fitness at the returned point, or <see cref="double.NaN"/> when the solver was canceled.
@@ -242,17 +245,19 @@ namespace Numerics.Mathematics.Optimization
         /// pull the iterate out to the boundary for no improvement.
         /// </para>
         /// <para>
-        /// The zero step is evaluated before the search and is kept unless the search strictly improves on
-        /// it, so this routine is non-increasing. The enclosing algorithm relies on that: it identifies the
-        /// direction of largest decrease by index, and that index is only defined when some direction did
-        /// decrease.
+        /// The zero step is evaluated before the search and its value is returned unless the search
+        /// strictly improves on it, so this routine is non-increasing. The enclosing algorithm relies on
+        /// that: it identifies the direction of largest decrease by index, and that index is only defined
+        /// when some direction did decrease.
         /// </para>
         /// <para>
-        /// When the feasible interval collapses to the single point zero, the line search cannot move. That
-        /// happens when the direction is identically zero and when the iterate sits on a bound with the
-        /// direction pointing out of the box in every constrained coordinate. In that case the value at the
-        /// current point is returned and the direction is left unchanged, so a blocked direction is retained
-        /// in the direction set and can be retried from a later iterate.
+        /// Both zero-progress paths — a feasible interval collapsed to the single point zero, which
+        /// happens when the direction is identically zero or when the iterate sits on a bound with the
+        /// direction pointing out of the box in every constrained coordinate, and a search that failed to
+        /// strictly improve on the current point — return the zero-step value and leave the point and the
+        /// direction untouched. A blocked direction is therefore retained in the direction set and can be
+        /// retried from a later iterate; scaling it by the zero step would instead store a zero direction
+        /// that no later iteration could use.
         /// </para>
         /// </remarks>
         private double LineMinimization(double[] startPoint, double[] direction, ref bool cancel)
@@ -323,13 +328,13 @@ namespace Numerics.Mathematics.Optimization
             cancel = c;
             if (cancel) return double.NaN;
 
-            // Fall back on the zero step unless the search strictly improved on it. Written this way so a
-            // search that returned NaN keeps the current point rather than moving to it.
-            if (!(fmin < zeroStep))
-            {
-                xmin = 0d;
-                fmin = zeroStep;
-            }
+            // Fall back on the zero step unless the search strictly improved on it, comparing so that a
+            // search that returned NaN keeps the current point. As on the degenerate-interval path above,
+            // the point and the direction are left untouched: scaling the direction by the zero step
+            // would zero it, and a zero direction stored into the enclosing direction set could never
+            // produce progress again.
+            if (!(fmin < zeroStep)) return zeroStep;
+
             for (int j = 0; j < NumberOfParameters; j++)
             {
                 direction[j] *= xmin;
