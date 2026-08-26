@@ -19,16 +19,16 @@ namespace Mathematics.LinearAlgebra
     /// <see cref="MatrixRegularization.MakeSymmetricPositiveDefinite"/> symmetrizes its input, then adds a
     /// trace-scaled ridge of <c>1E-10 * trace / p</c> and retries with the ridge multiplied by ten each time
     /// the factorization is rejected, up to eight attempts. Tightening the Cholesky pivot test could in
-    /// principle make the loop reject a matrix it used to accept, escalate to a larger ridge, and return a
-    /// different matrix to every downstream consumer. These tests pin the returned matrix so that any such
-    /// escalation shows up as a failure rather than as a silent change in a fitted result.
+    /// principle make the loop reject a matrix the absolute test accepts, escalate to a larger ridge, and
+    /// return a different matrix to every downstream consumer. These tests pin the returned matrix so that
+    /// any such escalation shows up as a failure rather than as a silent change in a fitted result.
     /// </para>
     /// <para>
     /// The loop is structurally immune to the scale-relative pivot test at any realistic dimension. For a
     /// positive semi-definite input the ridged matrix has a smallest eigenvalue of at least the ridge, so
     /// every pivot is at least <c>1E-10 * trace / p</c> while no diagonal entry exceeds the trace. The pivot
     /// ratio is therefore at least <c>1E-10 / p</c>, against a tolerance of <c>p * 2^-52</c>. Those two cross
-    /// only near <c>p = 671</c>; below that the first attempt always succeeds, exactly as it does today.
+    /// only near <c>p = 671</c>; below that the first attempt always succeeds.
     /// </para>
     /// </remarks>
     [TestClass]
@@ -87,12 +87,12 @@ namespace Mathematics.LinearAlgebra
         /// Verifies that an exactly rank-deficient input is still resolved by the base ridge.
         /// </summary>
         /// <remarks>
-        /// This is the case the scale-relative pivot test was introduced for: the third row of the input
+        /// This is the motivating case for the scale-relative pivot test: the third row of the input
         /// equals the first, so the raw matrix is exactly rank two. The base ridge of
         /// <c>1E-10 * 5 / 3 = 1.666667E-10</c> lifts the smallest eigenvalue clear of the tolerance —
         /// the final pivot ratio is 1.666668E-10 against a tolerance of 6.66E-16 — so the first attempt
-        /// succeeds under both the old absolute test and the new relative one, and the returned matrix is
-        /// unchanged.
+        /// succeeds under both the absolute and the scale-relative pivot tests, and the returned matrix
+        /// is the same under either.
         /// </remarks>
         [TestMethod]
         public void Test_MakeSymmetricPositiveDefinite_RankDeficientTakesTheBaseRidge()

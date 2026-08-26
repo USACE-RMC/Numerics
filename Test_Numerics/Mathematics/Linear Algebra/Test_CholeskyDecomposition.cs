@@ -298,14 +298,14 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Pins the pre-existing behaviour of the absolute pivot test, reachable by passing a zero tolerance.
+        /// Pins the behaviour of the absolute pivot test, reachable by passing a zero tolerance.
         /// </summary>
         /// <remarks>
         /// With <c>relativeTolerance = 0</c> the test reduces to <c>pivot &lt;= 0</c> exactly, so the rank-two
-        /// covariance still factorizes and still yields the wrong answers it always did: a final factor entry
-        /// of 2.107342425544702E-08 and a log determinant of -34.790890420621793, against a true log
-        /// pseudo-determinant of 1.2527629684953678. This test exists so that the zero-tolerance escape hatch
-        /// is demonstrably identical to the old behaviour, not so that the old behaviour is endorsed.
+        /// covariance factorizes and yields a final factor entry of 2.107342425544702E-08 and a log
+        /// determinant of -34.790890420621793, against a true log pseudo-determinant of
+        /// 1.2527629684953678. This test pins the zero-tolerance escape hatch to the absolute pivot test
+        /// bit for bit.
         /// </remarks>
         [TestMethod]
         public void Test_ZeroToleranceReproducesTheAbsolutePivotTest()

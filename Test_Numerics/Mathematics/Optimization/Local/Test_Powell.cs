@@ -229,10 +229,11 @@ namespace Mathematics.Optimization
         /// </summary>
         /// <remarks>
         /// <para>
-        /// This covers both places the solver used to leave the box. The line search used to hand the step
-        /// length straight to a bracketing routine that expands geometrically without regard for the bounds,
-        /// and the extrapolated point built for the direction-set update is a reflection through the current
-        /// point, which leaves the box readily even when both points forming it are inside.
+        /// This covers both paths that can produce an out-of-box evaluation: the line search drives a
+        /// bracketing routine that expands geometrically without regard for the bounds and must be
+        /// confined to the feasible step interval, and the extrapolated point built for the direction-set
+        /// update is a reflection through the current point, which leaves the box readily even when both
+        /// points forming it are inside.
         /// </para>
         /// <para>
         /// Both matter because this class is used as the local solver inside <see cref="MultiStart"/> and

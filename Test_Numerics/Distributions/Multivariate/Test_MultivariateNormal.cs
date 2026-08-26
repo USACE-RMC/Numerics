@@ -837,8 +837,8 @@ namespace Distributions.Multivariate
         /// is 0.9189385332046727 per deficient dimension, a factor of 2.5066282746310002 on the density.
         /// Cases 2 and 3 are each rank-deficient by exactly one, so that bug would put every one of their
         /// oracle values off by that fixed amount. This test asserts both that the oracle value is
-        /// reproduced and that the value the old constant would have produced is exactly that far away, so
-        /// it fails loudly if the constant ever reverts.
+        /// reproduced and that the value the dimension-based constant would produce is exactly that far
+        /// away, so it fails loudly if the constant ever regresses.
         /// </remarks>
         [TestMethod]
         public void Test_SVD_NormalizingConstantUsesRankNotDimension()
@@ -1088,23 +1088,23 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Verifies that the Cholesky path now rejects both singular reference covariances, and that the
-        /// singular value path returns the correct density for the one that used to slip through.
+        /// Verifies that the Cholesky path rejects both singular reference covariances, and that the
+        /// singular value path returns the correct density for the one the absolute pivot test accepts.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Case 3, the rank-one covariance, always failed cleanly: the Cholesky factorization reaches a
-        /// pivot of exactly zero and throws.
+        /// Case 3, the rank-one covariance, fails cleanly at any tolerance: the Cholesky factorization
+        /// reaches a pivot of exactly zero and throws.
         /// </para>
         /// <para>
-        /// Case 2, the rank-two covariance, did <b>not</b> throw before this was fixed. Its final pivot
-        /// evaluates to 4.440892E-16 rather than exactly zero, so under the purely absolute
-        /// <c>pivot &lt;= 0</c> test the factorization completed with a factor entry of order 1E-8 and
-        /// reported the matrix positive-definite. The resulting log density at the origin was
-        /// +14.638629610696878 against the correct -2.4642585506570285 — wrong by 17.1 nats, a factor of
-        /// about 2.7E+7 on the density — with no exception, no warning and no flag. That silent wrong answer
-        /// is the failure mode issue #145 describes, and it is what the scale-relative pivot test in
-        /// <see cref="CholeskyDecomposition"/> now catches: the pivot ratio is 2.220446E-16 against a
+        /// Case 2, the rank-two covariance, is the hazardous one. Its final pivot evaluates to
+        /// 4.440892E-16 rather than exactly zero, so under a purely absolute <c>pivot &lt;= 0</c> test the
+        /// factorization completes with a factor entry of order 1E-8 and reports the matrix
+        /// positive-definite; the resulting log density at the origin is +14.638629610696878 against the
+        /// correct -2.4642585506570285 — wrong by 17.1 nats, a factor of about 2.7E+7 on the density —
+        /// with no exception, no warning and no flag. That silent wrong answer is the failure mode issue
+        /// #145 describes, and it is what the scale-relative pivot test in
+        /// <see cref="CholeskyDecomposition"/> catches: the pivot ratio is 2.220446E-16 against a
         /// tolerance of 6.661338E-16 at this dimension.
         /// </para>
         /// <para>
@@ -1117,11 +1117,11 @@ namespace Distributions.Multivariate
         [TestMethod]
         public void Test_Cholesky_RejectsSingularCovariances()
         {
-            // Case 3: a clean failure, unchanged — the pivot is exactly zero.
+            // Case 3: the pivot is exactly zero, so any tolerance rejects it.
             var case3Exception = AssertThrowsAny(() => new MultivariateNormal(new[] { 0d, 0d }, Case3Covariance));
             Assert.IsGreaterThanOrEqualTo(0, case3Exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
 
-            // Case 2: now rejected rather than silently factorized.
+            // Case 2: rejected by the scale-relative pivot test.
             var case2Exception = AssertThrowsAny(() => new MultivariateNormal(new[] { 0d, 0d, 0d }, Case2Covariance));
             Assert.IsGreaterThanOrEqualTo(0, case2Exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
 
@@ -1135,7 +1135,8 @@ namespace Distributions.Multivariate
             var singular = new MultivariateNormal(new[] { 0d, 0d, 0d }, Case2Covariance, DecompositionMethod.SingularValue);
             Assert.AreEqual(oracle, singular.LogPDF(new[] { 0d, 0d, 0d }), OracleTolerance);
 
-            // The old behaviour is still reachable through the explicit zero tolerance, and it is still wrong.
+            // A zero tolerance selects the purely absolute pivot test, which accepts this matrix and
+            // returns a wrong determinant.
             var legacy = new CholeskyDecomposition(new Matrix(Case2Covariance), 0d);
             Assert.IsTrue(legacy.IsPositiveDefinite);
             Assert.AreEqual(-34.790890420621793d, legacy.LogDeterminant(), 1E-5d);
@@ -1172,7 +1173,7 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Verifies that the paths the selector deliberately does not govern behave as they do today: the
+        /// Verifies the paths the selector does not govern: the
         /// Genz MVNDST integrator behind <see cref="MultivariateNormal.CDF"/> factorizes the correlation
         /// matrix internally, and <see cref="MultivariateNormal.Conditional"/> and
         /// <see cref="MultivariateNormal.Marginal"/> factorize the sub-covariance with their own Cholesky
@@ -1247,8 +1248,8 @@ namespace Distributions.Multivariate
             Assert.AreEqual(-1.737085713764618d, singular.LogPDF(new[] { 1d, 0d }), OracleTolerance);
             Assert.AreEqual(Math.Exp(-1.612085713764618d), singular.PDF(new[] { 0d, 0d }), 1E-15d);
 
-            // The support is the x-axis, so any point off it has zero density. Before the fix this
-            // returned a finite value, because the zeroed direction was still being sampled and inverted.
+            // The support is the x-axis, so any point off it has zero density; a finite value here would
+            // mean the zeroed direction is still being sampled and inverted.
             Assert.AreEqual(double.NegativeInfinity, singular.LogPDF(new[] { 0d, 1d }));
             Assert.AreEqual(0d, singular.PDF(new[] { 0d, 1d }), 0d);
 

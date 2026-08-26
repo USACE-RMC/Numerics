@@ -165,9 +165,9 @@ namespace Sampling.MCMC
         /// <remarks>
         /// The stated band is recovered sd / true sd in [0.75, 1.30] on all twenty coordinates.
         /// It is wide enough to absorb single-chain Monte Carlo error on 2,000 draws and any
-        /// cross-framework divergence of this chaotic trajectory, and narrow enough that the
-        /// pre-fix sampler fails it: with the additive prior-scaled floor in place the widest
-        /// coordinate returns about 0.33 to 0.37 of its true width.
+        /// cross-framework divergence of this chaotic trajectory, and narrow enough to discriminate:
+        /// with an additive prior-scaled floor in place the widest coordinate returns about 0.33 to
+        /// 0.37 of its true width and fails the band.
         /// </remarks>
         [TestMethod]
         public void Test_NUTS_AdaptedMetric_RecoversKnownScales()
@@ -198,10 +198,10 @@ namespace Sampling.MCMC
         /// a factor of four on the variance, which is a factor of two on the standard deviation.
         /// </para>
         /// <para>
-        /// It fails on all three of the broken arrangements this fix replaces: an additive
-        /// prior-scaled floor drives the whole diagonal to one value, storing the variance in the
-        /// mass instead of the inverse mass reverses the ordering, and doing both leaves a metric
-        /// anti-correlated with the truth.
+        /// It fails under any of the three defective arrangements: an additive prior-scaled floor
+        /// drives the whole diagonal to one value, storing the variance in the mass instead of the
+        /// inverse mass reverses the ordering, and doing both leaves a metric anti-correlated with
+        /// the truth.
         /// </para>
         /// </remarks>
         [TestMethod]
@@ -293,11 +293,11 @@ namespace Sampling.MCMC
         /// Ten draws taken early in warmup under an identity metric under-estimate the posterior
         /// variances badly in absolute terms, so this test cannot pin the metric to the analytic
         /// truth. What it can pin is the property that separates a window estimate from the blended
-        /// fallback: the additive prior-scaled blend returned the same value on every coordinate to
-        /// within a part in a thousand, because the prior term dominated it, whereas a window estimate
+        /// fallback: an additive prior-scaled blend returns the same value on every coordinate to
+        /// within a part in a thousand, because the prior term dominates it, whereas a window estimate
         /// reflects the four decades of scale in this target. The assertions are that the metric is
         /// nowhere near the fallback and that it is anisotropic by more than a factor of ten, both of
-        /// which the pre-fix code fails.
+        /// which an additive prior-scaled blend fails.
         /// </para>
         /// </remarks>
         [TestMethod]

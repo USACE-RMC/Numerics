@@ -536,12 +536,12 @@ namespace Mathematics.Optimization
             CollectionAssert.AreEqual(callerSnapshot, initial, "The caller's own array must not be modified by a run.");
             CollectionAssert.AreEqual(callerSnapshot, solver.InitialValues, "InitialValues must still equal what was passed to the constructor after a run.");
 
-            // Reference identity is the assertion that actually discriminates here. The value
-            // comparisons above cannot detect a regression of this fix: the constructor rejects
-            // out-of-bounds initial values, so the bounds repair inside the local solver is a no-op
-            // for any legally constructed MLSL, and the first sampled point is added with
-            // Minimized = true, which the local-search loop skips. Both aliasing paths are therefore
-            // inert for legal use, and only the aliasing itself is observable.
+            // Reference identity is the assertion that discriminates here. The value comparisons above
+            // are blind to the aliasing: the constructor rejects out-of-bounds initial values, so the
+            // bounds repair inside the local solver is a no-op for any legally constructed MLSL, and the
+            // first sampled point is added with Minimized = true, which the local-search loop skips.
+            // Both aliasing paths are therefore inert for legal use, and only the aliasing itself is
+            // observable.
             //
             // The whole collection is searched rather than element zero, because the run sorts
             // SampledPoints by fitness and rebuilds the list, so the initial point does not stay
@@ -575,10 +575,10 @@ namespace Mathematics.Optimization
         /// that leaves the box scores better than the constrained corner and would be reported.
         /// </para>
         /// <para>
-        /// Both settings of <see cref="MLSL.Polish"/> are covered because the two used to fail differently.
-        /// Without polishing, the reported point was the infeasible probe itself. With polishing, the
-        /// reported point was repaired back to the corner while the fitness recorded at the infeasible probe
-        /// was kept, which produced a feasible-looking point carrying a fitness from somewhere else.
+        /// Both settings of <see cref="MLSL.Polish"/> are covered because the two can fail in different
+        /// ways: without polishing, an unguarded solver reports the infeasible probe itself; with
+        /// polishing, the probe's point is repaired into the box while its fitness is kept, producing a
+        /// feasible-looking point carrying a fitness from somewhere else.
         /// </para>
         /// <para>
         /// The fitness comparison is exact rather than approximate. <see cref="Optimizer.Evaluate"/> stores

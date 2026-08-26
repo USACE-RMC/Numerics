@@ -404,29 +404,30 @@ namespace Data.Statistics
         /// accumulated across n terms, independent of how small τ₄ itself is. Measured against the exact
         /// oracle, the library agrees to 0 ulp on λ₁, 1.1E-15 relative on λ₂ and 2.5E-14 relative on τ₃, but
         /// only to 1.9E-14 and 2.7E-14 <i>absolute</i> on τ₄ — which at τ₄ ≈ 2.2E-05 is 8.5E-10 in relative
-        /// terms. This was verified to be arithmetic and not a defect by transcribing the library's formula
-        /// into an independent double-precision evaluation, which reproduces the library's returned value
-        /// digit for digit. The tolerance below is therefore relative 1E-12 with an absolute floor of 1E-13,
-        /// roughly four times the worst measured deviation. That floor costs the test nothing: the overflow
-        /// it guards moved τ₄ by 1.9E-01 and 1.7E+01, twelve to fifteen orders of magnitude above it.
+        /// terms. The deviation is accumulation arithmetic, not a defect: an independent double-precision
+        /// evaluation of the same formula reproduces the returned value digit for digit. The tolerance
+        /// below is therefore relative 1E-12 with an absolute floor of 1E-13, roughly four times the worst
+        /// measured deviation. The floor costs the test nothing: the overflow it guards moves τ₄ by
+        /// 1.9E-01 and 1.7E+01, twelve to fifteen orders of magnitude above it.
         /// </para>
         /// <para>
-        /// <b>What is being guarded.</b> The probability-weighted-moment numerators were formed in 32-bit
-        /// integer arithmetic and wrapped silently on large samples (USACE-RMC/Numerics#146). On this same
-        /// sample the pre-fix code returned τ₄ = −0.185 at n = 1293 against an exact −3.80E−06, and
-        /// τ₄ = −17.01 at n = 1460 against an exact +1.40E−04. τ₄ is bounded roughly in [−0.25, 1] for any real
+        /// <b>What is being guarded.</b> With the probability-weighted-moment numerators formed in 32-bit
+        /// integer arithmetic, the products wrap silently on large samples (USACE-RMC/Numerics#146): on
+        /// this same sample τ₄ comes back as −0.185 at n = 1293 against an exact −3.80E−06, and as −17.01
+        /// at n = 1460 against an exact +1.40E−04. τ₄ is bounded roughly in [−0.25, 1] for any real
         /// distribution, so −17.01 is not an imprecise answer but a meaningless one.
         /// </para>
         /// <para>
         /// <b>The three lengths are chosen to straddle the overflow threshold.</b> n = 1292 is the last
-        /// length whose b₃ numerator fits in an <see cref="int"/>, so the pre-fix code is bit-compatible
-        /// there; that case pins the correct answer but does not by itself guard the bug. n = 1293 is the
-        /// first length that overflows, so it pins the threshold itself: exact τ₄ is −3.797E−06 against a
-        /// pre-fix −0.185. n = 1460 is four years of daily data, the scenario the issue reports as
-        /// triggering it in practice. n = 1293 is also the clearest evidence that the tolerance floor below
-        /// is the right shape: τ₄ there is six times smaller than at n = 1292, yet the absolute error is
-        /// unchanged in order (1.56E-14 against 1.88E-14), which is what a magnitude-independent
-        /// cancellation floor looks like and is not what a relative error bound would predict.
+        /// length whose b₃ numerator fits in an <see cref="int"/>, so integer arithmetic is exact there;
+        /// that case pins the correct answer but does not by itself guard the bug. n = 1293 is the first
+        /// length that overflows, so it pins the threshold itself: exact τ₄ is −3.797E−06 where the
+        /// wrapped products give −0.185. n = 1460 is four years of daily data, the scenario the issue
+        /// reports as triggering it in practice. n = 1293 is also the clearest evidence that the tolerance
+        /// floor below is the right shape: τ₄ there is six times smaller than at n = 1292, yet the
+        /// absolute error is unchanged in order (1.56E-14 against 1.88E-14), which is what a
+        /// magnitude-independent cancellation floor looks like and is not what a relative error bound
+        /// would predict.
         /// </para>
         /// </remarks>
         [TestMethod]
@@ -463,8 +464,9 @@ namespace Data.Statistics
                         $"{names[m]} disagrees with the exact oracle at n = {n}.");
                 }
 
-                // τ₄ is bounded roughly in [-0.25, 1] for any real distribution. The pre-fix code returned
-                // -17.01 at n = 1460, so this alone separates a corrupted result from a merely imprecise one.
+                // τ₄ is bounded roughly in [-0.25, 1] for any real distribution, while the wrapped
+                // integer products give -17.01 at n = 1460, so this alone separates a corrupted result
+                // from a merely imprecise one.
                 Assert.IsTrue(lmoms[3] > -0.25d && lmoms[3] < 1d, $"L-kurtosis (τ₄) is out of range at n = {n}.");
             }
         }
@@ -516,10 +518,10 @@ namespace Data.Statistics
         /// Test that the Percentile methods reject a null sample and a non-finite percentile.
         /// </summary>
         /// <remarks>
-        /// Every comparison against NaN is false, so a NaN percentile used to pass the range check and
-        /// reach the interpolation index. On .NET Core the float-to-int conversion saturates and the
-        /// method silently returned NaN; on .NET Framework the conversion is undefined and the indexer
-        /// threw. Both infinities were already rejected by the range check.
+        /// Every comparison against NaN is false, so a NaN percentile must be rejected explicitly: without
+        /// the explicit test it passes the range check and reaches the interpolation index, where the
+        /// float-to-int conversion saturates on .NET Core and is undefined on .NET Framework. Both
+        /// infinities are rejected by the range check alone.
         /// </remarks>
         [TestMethod]
         public void Test_Percentile_InvalidArguments()

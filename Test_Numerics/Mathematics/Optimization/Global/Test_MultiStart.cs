@@ -445,10 +445,10 @@ namespace Mathematics.Optimization
         /// that leaves the box scores better than the constrained corner and would be reported.
         /// </para>
         /// <para>
-        /// Both settings of <see cref="MultiStart.Polish"/> are covered because the two used to fail
-        /// differently. Without polishing, the reported point was the infeasible probe itself. With polishing,
-        /// the reported point was repaired back to the corner while the fitness recorded at the infeasible
-        /// probe was kept, which produced a feasible-looking point carrying a fitness from somewhere else.
+        /// Both settings of <see cref="MultiStart.Polish"/> are covered because the two can fail in
+        /// different ways: without polishing, an unguarded solver reports the infeasible probe itself;
+        /// with polishing, the probe's point is repaired into the box while its fitness is kept,
+        /// producing a feasible-looking point carrying a fitness from somewhere else.
         /// </para>
         /// <para>
         /// The fitness comparison is exact rather than approximate. <see cref="Optimizer.Evaluate"/> stores
