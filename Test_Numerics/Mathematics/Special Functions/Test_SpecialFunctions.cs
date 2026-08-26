@@ -367,5 +367,50 @@ namespace Mathematics.SpecialFunctions
             Assert.Throws<ArgumentException>(() => Factorial.NextCombination(new[] { 0, 3 }, 3));
             Assert.Throws<ArgumentOutOfRangeException>(() => Factorial.NextCombination(new[] { 0 }, -1));
         }
+        /// <summary>
+        /// The error function complement and its inverse hold relative accuracy deep in the tail,
+        /// where the complement of the error function itself rounds to zero.
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.4.1 at 50 significant digits: erfc(x)
+        /// directly, and the inverse by root solving erfc(t) = y. Tolerances are measured relative
+        /// bounds of 1E-12 for the complement and 1E-9 for the inverse, which passes through the
+        /// AS241 quantile routine.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Erfc_FarTail()
+        {
+            Assert.AreEqual(0.15729920705028513, Erf.Erfc(1.0), 0.15729920705028513 * 1E-12);
+            Assert.AreEqual(2.1519736712498913E-17, Erf.Erfc(6.0), 2.1519736712498913E-17 * 1E-12);
+            Assert.AreEqual(2.088487583762545E-45, Erf.Erfc(10.0), 2.088487583762545E-45 * 1E-12);
+            Assert.AreEqual(7.212994172451207E-100, Erf.Erfc(15.0), 7.212994172451207E-100 * 1E-12);
+            Assert.AreEqual(1.9999779095030015, Erf.Erfc(-3.0), 1.9999779095030015 * 1E-12);
+
+            Assert.AreEqual(0.4769362762044699, Erf.InverseErfc(0.5), Math.Abs(0.4769362762044699) * 1E-9);
+            Assert.AreEqual(6.062693998163568, Erf.InverseErfc(1E-17), 6.062693998163568 * 1E-9);
+            Assert.AreEqual(15.065574702592645, Erf.InverseErfc(1E-100), 15.065574702592645 * 1E-9);
+            Assert.AreEqual(-1.163087153676674, Erf.InverseErfc(1.9), Math.Abs(-1.163087153676674) * 1E-9);
+        }
+
+        /// <summary>
+        /// The normal distribution keeps relative accuracy in the far lower tail, where the error
+        /// function complement form loses the probability to rounding.
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.4.1 ncdf at 50 significant digits. The
+        /// assertions demand 5E-12 relative accuracy through z = -37, near the underflow edge of
+        /// the double range.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NormalCDF_FarTail()
+        {
+            var d = new Numerics.Distributions.Normal(0, 1);
+            Assert.AreEqual(2.866515718791939E-07, d.CDF(-5.0), 2.866515718791939E-07 * 5E-12);
+            Assert.AreEqual(2.2323931972880437E-17, d.CDF(-8.4), 2.2323931972880437E-17 * 5E-12);
+            Assert.AreEqual(1.776482112077679E-33, d.CDF(-12.0), 1.776482112077679E-33 * 5E-12);
+            Assert.AreEqual(2.7536241186062337E-89, d.CDF(-20.0), 2.7536241186062337E-89 * 5E-12);
+            Assert.AreEqual(5.725571222524577E-300, d.CDF(-37.0), 5.725571222524577E-300 * 5E-12);
+        }
+
     }
 }

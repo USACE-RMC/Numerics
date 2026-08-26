@@ -401,7 +401,9 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, Sigma, true);
-            return 0.5d * (1.0d + Erf.Function((x - Mu) / (Sigma * Tools.Sqrt2)));
+            // Evaluated through the standard normal routine, which holds relative accuracy deep in
+            // both tails where the error function complement form loses the probability entirely
+            return StandardCDF((x - Mu) / Sigma);
         }
 
         private static readonly double[] a = [3.3871328727963666080, 1.3314166789178437745e+2, 1.9715909503065514427e+3, 1.3731693765509461125e+4, 4.5921953931549871457e+4, 6.7265770927008700853e+4, 3.3430575583588128105e+4, 2.5090809287301226727e+3];
