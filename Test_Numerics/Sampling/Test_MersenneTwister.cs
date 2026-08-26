@@ -1,5 +1,7 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Sampling;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Sampling
 {
@@ -48,5 +50,41 @@ namespace Sampling
             }
 
         }
+        /// <summary>
+        /// The array-seeded generator reproduces the canonical reference stream, pinning the
+        /// generator itself in place.
+        /// </summary>
+        /// <remarks>
+        /// Reference values verified against Python numpy 2.4.2, whose legacy RandomState seeds
+        /// with the canonical mt19937ar init_by_array (Matsumoto and Nishimura, 2002):
+        /// numpy.random.RandomState([0x123, 0x234, 0x345, 0x456]) reproduces this stream.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ArraySeed_CanonicalReferenceStream()
+        {
+            var rng = new MersenneTwister(new int[] { 0x123, 0x234, 0x345, 0x456 });
+            var expected = new uint[] { 1067595299U, 955945823U, 477289528U, 4107218783U, 4228976476U, 3344332714U };
+            for (int i = 0; i < expected.Length; i++)
+                Assert.AreEqual(expected[i], rng.GenRandInt32(), $"draw {i}");
+        }
+
+        /// <summary>
+        /// Unseeded generators constructed back to back or concurrently produce distinct streams,
+        /// even inside a single clock tick.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnseededConstruction_DistinctStreams()
+        {
+            int count = 200;
+            var first = new double[count];
+            for (int i = 0; i < count; i++)
+                first[i] = new MersenneTwister().NextDouble();
+            Assert.HasCount(count, first.Distinct().ToList());
+
+            var parallelFirst = new double[count];
+            Parallel.For(0, count, i => { parallelFirst[i] = new MersenneTwister().NextDouble(); });
+            Assert.HasCount(count, parallelFirst.Distinct().ToList());
+        }
+
     }
 }
