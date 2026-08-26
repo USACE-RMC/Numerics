@@ -767,6 +767,27 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// The standard deviation of a series with missing values must equal the sample standard
+        /// deviation of its observed values.
+        /// </summary>
+        /// <remarks>
+        /// Reference values verified against Python pandas 2.3.3 (Series.std(), which skips NaN)
+        /// and exact rational arithmetic. The observed values of { 1, NaN, 2, 3 } have sample
+        /// standard deviation exactly 1, and those of { NaN, 3.1, NaN, 4.7, 2.2, NaN, 5.9, 1.4 }
+        /// have 1.8338484124921557, with pandas within two units in the last place of the exact
+        /// rational value.
+        /// </remarks>
+        [TestMethod]
+        public void Test_StandardDeviation_WithMissingValues()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 01, 01), new double[] { 1, double.NaN, 2, 3 });
+            Assert.AreEqual(1.0, ts.StandardDeviation(), 1E-14);
+
+            var gappy = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 01, 01), new double[] { double.NaN, 3.1, double.NaN, 4.7, 2.2, double.NaN, 5.9, 1.4 });
+            Assert.AreEqual(1.8338484124921557, gappy.StandardDeviation(), 1E-14);
+        }
+
+        /// <summary>
         /// Test the statistics methods of the TimeSeries class
         /// </summary>
         [TestMethod]

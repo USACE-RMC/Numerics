@@ -1402,15 +1402,17 @@ namespace Numerics.Data
                     break;
                 }
             }
+            // The updating formula indexes by the running count of observed values, so missing
+            // values leave the accumulation untouched.
             double n = 1;
             for (int i = startIdx; i < Count; i++)
             {
                 if (!double.IsNaN(this[i].Value))
                 {
-                    t += this[i].Value;
-                    double diff = (i + 1) * this[i].Value - t;
-                    variance += diff * diff / ((i + 1.0d) * i);
                     n += 1;
+                    t += this[i].Value;
+                    double diff = n * this[i].Value - t;
+                    variance += diff * diff / (n * (n - 1d));
                 }
             }
             return Math.Sqrt(variance / (n - 1));
