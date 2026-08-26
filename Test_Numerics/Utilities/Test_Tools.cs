@@ -507,6 +507,28 @@ namespace Utilities
         }
 
         /// <summary>
+        /// Testing min helpers when every candidate is positive infinity.
+        /// </summary>
+        /// <remarks>
+        /// Reference behavior verified against Python numpy 2.4.2: np.min([inf, inf]) returns inf
+        /// and np.argmin([inf, inf]) returns 0.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MinHelpers_AllPositiveInfinity()
+        {
+            List<double> values = new List<double> { double.PositiveInfinity, double.PositiveInfinity };
+            List<int> indicators = new List<int> { 1, 1 };
+
+            Tools.MinMax(values, out double min, out double max);
+
+            Assert.AreEqual(double.PositiveInfinity, min);
+            Assert.AreEqual(double.PositiveInfinity, max);
+            Assert.AreEqual(0, Tools.ArgMin(values));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Min(values));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Min(values, indicators));
+        }
+
+        /// <summary>
         /// Testing max helpers when every candidate is negative infinity.
         /// </summary>
         [TestMethod]
