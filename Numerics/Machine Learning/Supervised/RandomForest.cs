@@ -155,6 +155,11 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Train the Random Forest.
         /// </summary>
+        /// <remarks>
+        /// Every tree draws its seed from the forest generator and trains on a bootstrap of row
+        /// indices into the shared training data, so a seeded forest is deterministic and holds one
+        /// copy of the training data plus one index array per tree.
+        /// </remarks>
         public void Train()
         {
             IsTrained = false;
@@ -165,7 +170,9 @@ namespace Numerics.MachineLearning
             // Estimate trees in parallel
             Parallel.For(0, NumberOfTrees, idx =>
             {
-                DecisionTrees[idx] = BootstrapDecisionTree(seeds[idx]);
+                var rnd = new MersenneTwister(seeds[idx]);
+                var sampleIdxs = rnd.NextIntegers(0, X.NumberOfRows, X.NumberOfRows);
+                DecisionTrees[idx] = new DecisionTree(X, Y, sampleIdxs, seeds[idx]) { MinimumSplitSize = MinimumSplitSize, MaxDepth = MaxDepth, Features = Features, IsRegression = IsRegression };
                 DecisionTrees[idx].Train();
             });
 
@@ -173,31 +180,11 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Returns a bootstrapped decision tree.
-        /// </summary>
-        /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
-        private DecisionTree BootstrapDecisionTree(int seed = -1)
-        {
-            var rnd = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
-            var idxs = rnd.NextIntegers(0, X.NumberOfRows, X.NumberOfRows);
-            var bootX = new Matrix(X.NumberOfRows, X.NumberOfColumns);
-            var bootY = new Vector(Y.Length);
-            for (int i = 0; i < X.NumberOfRows; i++)
-            {
-                for (int j = 0; j < X.NumberOfColumns; j++)
-                {
-                    bootX[i, j] = X[idxs[i], j];
-                }
-                bootY[i] = Y[idxs[i]];
-            }
-            return new DecisionTree(bootX, bootY, seed) { MinimumSplitSize = MinimumSplitSize, MaxDepth = MaxDepth, Features = Features, IsRegression = IsRegression };        
-        }
-
-        /// <summary>
         /// Returns the prediction intervals in a 2D array with columns: lower, median, upper, mean. 
         /// </summary>
         /// <param name="X">The 1D array of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <returns>A 2D array with columns lower, median, upper, and mean; or null when the forest is untrained or the predictor column count differs from <see cref="Dimensions"/>.</returns>
         public double[,]? Predict(double[] X, double alpha = 0.1)
         {
             return Predict(new Matrix(X), alpha);
@@ -208,6 +195,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The 2D array of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <returns>A 2D array with columns lower, median, upper, and mean; or null when the forest is untrained or the predictor column count differs from <see cref="Dimensions"/>.</returns>
         public double[,]? Predict(double[,] X, double alpha = 0.1)
         {
             return Predict(new Matrix(X), alpha);
@@ -218,22 +206,38 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <returns>A 2D array with columns lower, median, upper, and mean; or null when the forest is untrained or the predictor column count differs from <see cref="Dimensions"/>.</returns>
         public double[,]? Predict(Matrix X, double alpha = 0.1)
         {
-            if (!IsTrained) return null!;
+            if (!IsTrained || X.NumberOfColumns != Dimensions) return null!;
 
             var percentiles = new double[] { alpha / 2d, 0.5, 1d - alpha / 2d };
-            var output = new double[X.NumberOfRows, 4]; // lower, median, upper, mean
+            int numberOfRows = X.NumberOfRows;
+            var output = new double[numberOfRows, 4]; // lower, median, upper, mean
 
-            var bootResults = new double[X.NumberOfRows, NumberOfTrees];
+            // Each test row is extracted once and shared across every tree
+            var rows = new double[numberOfRows][];
+            for (int i = 0; i < numberOfRows; i++)
+                rows[i] = X.Row(i);
 
-            // Bootstrap the predictions
-            Parallel.For(0, NumberOfTrees, idx => { bootResults.SetColumn(idx, DecisionTrees[idx].Predict(X)!); });
+            // Bootstrap the predictions. Each tree fills its own row of the jagged buffer, so the
+            // parallel writes land on independent arrays.
+            var bootResults = new double[NumberOfTrees][];
+            Parallel.For(0, NumberOfTrees, idx =>
+            {
+                var tree = DecisionTrees[idx];
+                var predictions = new double[numberOfRows];
+                for (int i = 0; i < numberOfRows; i++)
+                    predictions[i] = tree.PredictRow(rows[i]);
+                bootResults[idx] = predictions;
+            });
 
             // Process results
-            Parallel.For(0, X.NumberOfRows, idx =>
+            Parallel.For(0, numberOfRows, idx =>
             {
-                var values = bootResults.GetRow(idx);
+                var values = new double[NumberOfTrees];
+                for (int t = 0; t < NumberOfTrees; t++)
+                    values[t] = bootResults[t][idx];
                 Array.Sort(values);
 
                 // The mean is accumulated sequentially so the reduction is deterministic on every
