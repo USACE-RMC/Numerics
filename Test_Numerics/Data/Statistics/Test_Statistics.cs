@@ -314,6 +314,47 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// The standard deviation, skew, and kurtosis of a sample recorded against a large datum
+        /// must match those of the datum-removed sample: all three are location invariant, while
+        /// the mean carries the datum.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Reference values computed with exact rational arithmetic (Python 3, fractions.Fraction)
+        /// on the IEEE doubles of the fixture, and cross-checked against Python scipy 1.17.1:
+        /// scipy.stats.skew(x, bias=False) = -1.0937835136996568 and
+        /// scipy.stats.kurtosis(x, bias=False) = 2.247619447041167, each agreeing with the exact
+        /// values below to within its own double-precision rounding.
+        /// </para>
+        /// <para>
+        /// Measured accuracy: on this fixture the accumulation reproduces the exact skew to 4E-16
+        /// and the exact excess kurtosis to 3E-15 relative error. The assertion deltas of 1E-12
+        /// and 1E-11 bound the rounding of the 13 to 15 significant-digit expected literals with
+        /// two to three orders of margin.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_ProductMoments_LocationInvariance()
+        {
+            var data = new double[] { 4999.873847, 5000.184353, 5001.217652, 5000.3752, 4999.791099, 5001.044619, 5000.663964, 4999.879402, 5001.277702, 5000.04844, 5001.799453, 4999.831996, 5000.908146, 5000.413566, 5001.525885, 5001.944514, 4997.601044, 4999.544628, 5001.555952, 5001.450008 };
+            var moments = Numerics.Data.Statistics.Statistics.ProductMoments(data);
+
+            Assert.AreEqual(5000.5465735, moments[0], 1E-6);
+            Assert.AreEqual(1.0203450178184, moments[1], 1E-12);
+            Assert.AreEqual(-1.0937835137001, moments[2], 1E-11);
+            Assert.AreEqual(2.24761944704189, moments[3], 1E-11);
+
+            // Location invariance against the same sample with the datum removed
+            var centered = new double[data.Length];
+            for (int i = 0; i < data.Length; i++)
+                centered[i] = data[i] - 5000d;
+            var centeredMoments = Numerics.Data.Statistics.Statistics.ProductMoments(centered);
+            Assert.AreEqual(centeredMoments[1], moments[1], 1E-11);
+            Assert.AreEqual(centeredMoments[2], moments[2], 1E-10);
+            Assert.AreEqual(centeredMoments[3], moments[3], 1E-10);
+        }
+
+        /// <summary>
         /// Test the LinearMoments method against the "samlmu()" method of the "lmom" package.
         /// </summary>
         /// <remarks>

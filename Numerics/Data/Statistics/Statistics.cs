@@ -468,7 +468,8 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns the first four product moments of a sample {Mean, Standard Deviation, Skew, and Kurtosis}, or returns NaN if data is empty or any entry is NaN.
+        /// Returns the first four product moments of a sample {Mean, Standard Deviation, bias-corrected Skew, and bias-corrected Excess Kurtosis},
+        /// or four NaN values when the sample has fewer than four entries or any entry is NaN.
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
         public static double[] ProductMoments(IList<double> data)
@@ -477,15 +478,20 @@ namespace Numerics.Data.Statistics
             double N = data.Count;
             if (N < 4) return [double.NaN, double.NaN, double.NaN, double.NaN];
 
-            // sums of powers
+            // Sums of powers accumulated about the first value. The shift keeps the higher moments
+            // conditioned on the sample spread rather than on the distance from zero, so the
+            // central moments below are not dominated by cancellation when the mean is large
+            // relative to the spread.
+            double shift = data[0];
             double X1 = 0, X2 = 0, X3 = 0, X4 = 0;
             foreach (var x in data)
             {
-                double x2 = x * x;
-                X1 += x;
-                X2 += x2;
-                X3 += x2 * x;
-                X4 += x2 * x2;
+                double y = x - shift;
+                double y2 = y * y;
+                X1 += y;
+                X2 += y2;
+                X3 += y2 * y;
+                X4 += y2 * y2;
             }
 
             // raw moments
@@ -516,7 +522,7 @@ namespace Numerics.Data.Statistics
             // bias-corrected excess kurtosis
             double K = ((N * N) * (N + 1)) / ((N - 1) * (N - 2) * (N - 3)) * (c4 / S4) - 3d * (N - 1) * (N - 1) / ((N - 2) * (N - 3));
 
-            return [U1, S, G, K];
+            return [shift + U1, S, G, K];
 
         }
 
