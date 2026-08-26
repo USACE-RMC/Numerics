@@ -2,6 +2,7 @@
 using Numerics.MachineLearning;
 using System.Collections.Generic;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling;
 
 namespace MachineLearning
 {
@@ -48,6 +49,35 @@ namespace MachineLearning
                 Assert.AreEqual(trueMean2[i], gmm.Means[1, i], 1E-2);
                 Assert.AreEqual(trueMean3[i], gmm.Means[2, i], 1E-2);
             }
+
+            // The log-likelihood carries the full Gaussian normalizing constant. R mclust
+            // (Mclust, G = 3, VVV) reports -180.185 and Python sklearn 1.8.0
+            // (GaussianMixture(3, covariance_type='full'), score(X) * n) reports -180.18547759250404
+            // for this fixture; the window covers EM stopping differences between implementations.
+            Assert.AreEqual(-180.185, gmm.LogLikelihood, 0.5);
+        }
+
+        /// <summary>
+        /// A training run that exhausts its iteration budget reports the log-likelihood of its
+        /// final iteration rather than a placeholder.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_LogLikelihood_AtIterationCap()
+        {
+            var x = new double[100];
+            var y = new double[100];
+            var rnd = new MersenneTwister(4242);
+            for (int i = 0; i < 100; i++)
+            {
+                double t = i < 50 ? 0.0 : 8.0;
+                x[i] = t + rnd.NextDouble();
+                y[i] = t + rnd.NextDouble();
+            }
+            var gmm = new GaussianMixtureModel(new Matrix(new List<double[]> { x, y }), 2) { MaxIterations = 2 };
+            gmm.Train(12345);
+
+            Assert.IsLessThan(0, gmm.LogLikelihood, "the iteration-capped run must report its final evaluated log-likelihood");
+            Assert.IsFalse(double.IsNaN(gmm.LogLikelihood) || double.IsInfinity(gmm.LogLikelihood));
         }
     }
 }

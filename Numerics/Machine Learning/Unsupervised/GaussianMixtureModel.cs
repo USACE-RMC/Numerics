@@ -220,13 +220,14 @@ namespace Numerics.MachineLearning
             double oldLogLH = double.MinValue, newLogLH = double.MinValue;
             for (Iterations = 1; Iterations <= MaxIterations; Iterations++)
             {
-                // Perform the expectation step
+                // Perform the expectation step. The log-likelihood records every iteration, so a
+                // run that exhausts its iteration budget reports its final evaluated value.
                 newLogLH = EStep();
+                LogLikelihood = newLogLH;
 
                 // Check convergence
                 if (Math.Abs((oldLogLH - newLogLH) / oldLogLH) < Tolerance)
                 {
-                    LogLikelihood = newLogLH;
                     break;
                 }
 
@@ -297,7 +298,9 @@ namespace Numerics.MachineLearning
                     LikelihoodMatrix[i, k] = Math.Exp(LikelihoodMatrix[i, k] - tmp);
                 logLH += tmp;
             }
-            return logLH;
+            // The likelihood matrix omits the constant -D/2 * ln(2*pi) per point because it cancels
+            // in the responsibilities; the reported log-likelihood restores it.
+            return logLH - 0.5 * Dimension * X.NumberOfRows * Math.Log(2.0 * Math.PI);
         }
     
         /// <summary>
