@@ -45,9 +45,19 @@
             EigenVectors = Matrix.Identity(n);
             EigenValues = new Vector(n);
 
-            // Work on a local copy of A (array) for speed
-            var a = this.A.Array; // same storage as this.A
-            const double tol = 1e-12;
+            // Rotate a working copy so the public input matrix keeps the values that were decomposed
+            var work = new Matrix(A.ToArray());
+            var a = work.Array; // same storage as work
+
+            // The convergence threshold follows the scale of the matrix, so a decomposition of c*A
+            // stops at the same relative accuracy as a decomposition of A. The largest element
+            // magnitude is the reference: it dominates every off-diagonal, and rotations can always
+            // drive the off-diagonals below 1E-12 of it before reaching roundoff.
+            double elementMax = 0.0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    elementMax = Math.Max(elementMax, Math.Abs(a[i, j]));
+            double tol = 1e-12 * elementMax;
             const int maxIter = 2000;
 
             for (int iter = 0; iter < maxIter; iter++)
@@ -104,9 +114,9 @@
                 }
             }
 
-            // Extract eigenvalues from diagonal of A
-            for (int i = 0; i < n; i++) 
-                EigenValues[i] = this.A[i, i];
+            // Extract eigenvalues from the diagonal of the rotated working copy
+            for (int i = 0; i < n; i++)
+                EigenValues[i] = a[i, i];
         }
 
         private readonly int n; // Size of A

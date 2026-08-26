@@ -280,5 +280,42 @@ namespace Mathematics.LinearAlgebra
                 for (int j = 0; j < expected.NumberOfColumns; j++)
                     Assert.AreEqual(expected[i, j], actual[i, j], tol);
         }
+        /// <summary>
+        /// The decomposition converges to the same relative accuracy at any matrix scale, and the
+        /// public input matrix keeps the values that were decomposed.
+        /// </summary>
+        /// <remarks>
+        /// Reference eigenvalues computed with Python numpy 2.4.2 numpy.linalg.eigh on the 3x3
+        /// fixture scaled by 1E-9 and by 1E+6. The assertions demand 1E-12 relative accuracy, so a
+        /// convergence threshold that ignores the matrix scale is observable at either extreme.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ScaleInvariantConvergence_And_InputPreserved()
+        {
+            var baseA = new double[,] { { 4, 1, 1 }, { 1, 3, 0 }, { 1, 0, 2 } };
+            var expected = new double[] { 1.4679111137620429, 2.6527036446661385, 4.879385241571816 };
+
+            foreach (double scale in new double[] { 1E-9, 1.0, 1E+6 })
+            {
+                var A = new Matrix(3, 3);
+                for (int i = 0; i < 3; i++)
+                    for (int j = 0; j < 3; j++)
+                        A[i, j] = baseA[i, j] * scale;
+
+                var evd = new EigenValueDecomposition(A);
+
+                // The input matrix is preserved bit for bit
+                for (int i = 0; i < 3; i++)
+                    for (int j = 0; j < 3; j++)
+                        Assert.AreEqual(A[i, j], evd.A[i, j], $"A[{i},{j}] at scale {scale}");
+
+                // Eigenvalues scale linearly and hold 1E-12 relative accuracy
+                var w = new double[] { evd.EigenValues[0], evd.EigenValues[1], evd.EigenValues[2] };
+                Array.Sort(w);
+                for (int i = 0; i < 3; i++)
+                    Assert.AreEqual(expected[i] * scale, w[i], Math.Abs(expected[i] * scale) * 1E-12);
+            }
+        }
+
     }
 }
