@@ -26,9 +26,9 @@ namespace Numerics.Mathematics.Optimization
     /// zero because the current iterate is feasible, so restricting the search never excludes the current point. The
     /// extrapolated point used by the direction-set update is scored only when the reflection that produces it is itself
     /// feasible; an infeasible extrapolation is treated as no improvement and the direction set is left alone for that
-    /// iteration. Projecting the reflection back onto the box instead was measured and rejected, because the projected point
-    /// sits on a face where the objective can be far smaller than at the reflection, which makes the acceptance test fire on a
-    /// point the test was not derived for and admits direction replacements that slow convergence badly on smooth problems.
+    /// iteration. Projecting the reflection back onto the box would score the acceptance test on a face point where the
+    /// objective can be far smaller than at the reflection, admitting direction replacements the test was not derived for
+    /// and slowing convergence badly on smooth problems.
     /// These restrictions matter most when this class is the local solver inside a global optimizer, because the objective
     /// function is then the global solver's own evaluation routine and any point it scores can be recorded as the reported
     /// solution.
@@ -152,12 +152,9 @@ namespace Numerics.Mathematics.Optimization
                 }
                 // Construct the extrapolated point and save the average direction moved.
                 // Save the old starting point.
-                // The reflection through the current point readily leaves the box even when both points are
-                // inside it, and this point is scored through the objective function, so it has to be kept
-                // feasible. It is skipped rather than projected back: projection moves the point onto a face
-                // where the objective can be much smaller than at the reflection, which turns the acceptance
-                // test below into a test on a different point and admits direction replacements the test was
-                // never meant to admit. See the remarks on this class.
+                // The reflection through the current point can leave the box even when both points are
+                // inside it. It is skipped rather than projected back; see the feasible-region remarks on
+                // this class.
                 bool extrapolationIsFeasible = true;
                 for (j = 0; j < D; j++)
                 {
@@ -166,9 +163,7 @@ namespace Numerics.Mathematics.Optimization
                     xi[j] = p[j] - pt[j];
                     pt[j] = p[j];
                 }
-                // Function evaluated at the extrapolated point. An infeasible extrapolation is treated as no
-                // improvement, which is the same outcome the acceptance test reaches for a point that does
-                // not beat the value at the start of this iteration.
+                // An infeasible extrapolation is treated as no improvement.
                 fptt = extrapolationIsFeasible ? Evaluate(ptt, ref cancel) : double.PositiveInfinity;
                 if (cancel == true) return;
                 if (fptt < fp)
@@ -361,9 +356,8 @@ namespace Numerics.Mathematics.Optimization
         /// interval is what prevents that.
         /// </para>
         /// <para>
-        /// The default magnitude is the same 0.1 the routine has always used, and it is kept whenever the
-        /// interval is wide enough to hold it in either sense, so an interior iterate brackets exactly as
-        /// before. Only when the interval is narrower than the default in both senses is the magnitude
+        /// The default magnitude is 0.1, used whenever the interval is wide enough to hold it in either
+        /// sense. Only when the interval is narrower than the default in both senses is the magnitude
         /// reduced, to half of the wider side, which is inside the interval and nonzero because the caller
         /// has already handled the interval that collapses to a point.
         /// </para>

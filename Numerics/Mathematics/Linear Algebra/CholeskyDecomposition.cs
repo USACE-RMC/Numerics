@@ -55,10 +55,8 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// The pivot tolerance is <see cref="DefaultRelativeTolerance(int)"/> evaluated at the dimension of A.
         /// </para>
         /// <para>
-        /// <b>Success is not a rank certificate.</b> The pivot test rejects most numerically rank-deficient
-        /// matrices but not all of them — for a covariance estimated from <c>m = n - 1</c> observations, 11% to
-        /// 18% still factorize — so <see cref="IsPositiveDefinite"/> being true does not prove full rank. Use a
-        /// singular value decomposition when the rank genuinely has to be known.
+        /// Success is not a rank certificate; see <see cref="DefaultRelativeTolerance(int)"/> for the
+        /// limits of the pivot test.
         /// </para>
         /// </remarks>
         public CholeskyDecomposition(Matrix A)
@@ -99,14 +97,11 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// log pseudo-determinant 1.2528. See <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
         /// </para>
         /// <para>
-        /// <b>This test is not a rank certificate.</b> It rejects most numerically rank-deficient matrices but
-        /// not all of them, so <see cref="IsPositiveDefinite"/> being true does not prove the matrix has full
-        /// rank. Measured over 1,000 trials per dimension on a covariance estimated from <c>m = n - 1</c>
-        /// observations of <c>n</c> variables — exactly rank <c>m</c>, and the commonest way rank deficiency
-        /// arises in practice — the test removes roughly two thirds of the matrices the absolute test had
-        /// accepted, while 11% to 18% still factorize. When the rank of a matrix genuinely has to be known,
-        /// use a singular value decomposition; for a multivariate normal that is
-        /// <c>DecompositionMethod.SingularValue</c>, which is the only reliable rank test in this library.
+        /// The test is not a rank certificate: it rejects most numerically rank-deficient matrices but
+        /// not all of them, so <see cref="IsPositiveDefinite"/> being true does not prove the matrix has
+        /// full rank. See <see cref="DefaultRelativeTolerance(int)"/> for the margins in both directions.
+        /// When the rank genuinely has to be known, use a singular value decomposition; for a
+        /// multivariate normal that is <c>DecompositionMethod.SingularValue</c>.
         /// </para>
         /// <para>
         /// When <c>A[i,i]</c> is not a positive finite number the threshold falls back to zero, which is the
@@ -145,7 +140,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                     if (i == j)
                     {
                         // Reject a pivot that is negligible relative to its own diagonal entry. The diagonal
-                        // guard keeps the threshold at zero — today's absolute test — whenever A[i,i] is not a
+                        // guard keeps the threshold at zero (the absolute test) whenever A[i,i] is not a
                         // positive finite number.
                         double diagonal = this.A[i, i];
                         double threshold = diagonal > 0d && !double.IsInfinity(diagonal) ? relativeTolerance * diagonal : 0d;
@@ -204,9 +199,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <para>
         /// The margin against falsely rejecting a legitimate matrix is large. For two variables with correlation
         /// ρ the pivot ratio is <c>1 - ρ²</c>, so a false rejection at <c>n = 2</c> requires
-        /// <c>1 - ρ² &lt;= 4.44E-16</c>, that is ρ within about two ulp of one. Measured across the Numerics
-        /// test suite (29.8 million factorizations) the smallest ratio produced by a genuinely positive-definite
-        /// matrix is 2.0E-12, some 4,500 times the tolerance that applies to it.
+        /// <c>1 - ρ² &lt;= 4.44E-16</c>, that is ρ within about two ulp of one.
         /// </para>
         /// <para>
         /// The margin in the other direction is far smaller, and no tolerance of this form can close it. A

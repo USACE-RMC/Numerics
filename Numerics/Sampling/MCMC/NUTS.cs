@@ -142,8 +142,7 @@ namespace Numerics.Sampling.MCMC
         private bool[] _hasPreviousEnergy = Array.Empty<bool>();
 
         // Dual averaging hyperparameters (Hoffman & Gelman 2014, Section 3.2).
-        // DELTA_TARGET is the default of the settable TargetAcceptanceRate, which is what the
-        // adaptation actually reads.
+        // The adaptation reads TargetAcceptanceRate; DELTA_TARGET is that property's default.
         private const double DELTA_TARGET = 0.80;
         private const double GAMMA = 0.05;
         private const double T0 = 10.0;
@@ -169,10 +168,10 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         /// <remarks>
         /// A doubling extends the trajectory in one direction, so the join a memo has to cover is
-        /// between two consecutive leaves and only one entry is strictly needed. Four leaves room for
-        /// the step-size heuristic, which re-enters the same starting position on every trial step, and
-        /// for the forward and backward endpoints to be resident at the same time, at a cost of
-        /// 8 × <see cref="MCMCSampler.NumberOfParameters"/> doubles per chain.
+        /// between two consecutive leaves and only one entry is strictly needed. A size of four leaves
+        /// room for the step-size heuristic, which re-enters the same starting position on every trial
+        /// step, and for the forward and backward endpoints to be resident at the same time, at a cost
+        /// of 8 × <see cref="MCMCSampler.NumberOfParameters"/> doubles per chain.
         /// </remarks>
         private const int GRADIENT_CACHE_SIZE = 4;
 
@@ -205,8 +204,7 @@ namespace Numerics.Sampling.MCMC
         /// <remarks>
         /// <para>
         /// The default of 0.80 is the value recommended by Hoffman and Gelman (2014) and is what Stan's
-        /// <c>adapt_delta</c> defaults to. Leaving it alone reproduces the sampler's historical behaviour
-        /// exactly.
+        /// <c>adapt_delta</c> defaults to.
         /// </para>
         /// <para>
         /// Raising it toward 0.90 or 0.95 makes dual averaging settle on a shorter step size, which
@@ -222,8 +220,7 @@ namespace Numerics.Sampling.MCMC
         /// step size cannot fix on its own, such as a funnel, rather than an adaptation failure.
         /// </para>
         /// <para>
-        /// The value is validated when sampling starts, not at assignment, which is the convention the
-        /// other settings on this class and on <see cref="MCMCSampler"/> follow.
+        /// The value is validated when sampling starts, not at assignment.
         /// </para>
         /// </remarks>
         public double TargetAcceptanceRate { get; set; } = DELTA_TARGET;
@@ -351,18 +348,15 @@ namespace Numerics.Sampling.MCMC
         /// width, which is what lets one step size serve a posterior whose parameters differ in scale.
         /// </para>
         /// <para>
-        /// The default is <see langword="true"/> because an identity metric forces the step size to track the
-        /// narrowest direction while the trajectory has to span the widest, so on an ill-conditioned posterior
-        /// NUTS saturates <see cref="MaxTreeDepth"/> on nearly every transition. On a 50-parameter Gaussian
-        /// whose standard deviations span <c>1e-3</c> to <c>1e1</c>, adaptation reduces the cost from about
-        /// 4,090 leapfrog steps per transition to 7 and removes every maximum-tree-depth hit. On small,
-        /// well-conditioned fits the metric has little to correct and the adaptation costs up to about 40%
-        /// more leapfrog steps per transition, which is the price of the general case.
+        /// With an identity metric the step size must track the narrowest posterior direction while the
+        /// trajectory has to span the widest, so on an ill-conditioned posterior NUTS saturates
+        /// <see cref="MaxTreeDepth"/> on nearly every transition; adaptation removes that failure mode.
+        /// On small, well-conditioned fits the metric has little to correct and the adaptation can cost
+        /// up to about 40% more leapfrog steps per transition.
         /// </para>
         /// <para>
         /// Set this to <see langword="false"/> to sample with the fixed metric supplied through
-        /// <see cref="Mass"/>. Doing so reproduces the sampler's behaviour exactly as it was before this
-        /// property defaulted to <see langword="true"/>.
+        /// <see cref="Mass"/>.
         /// </para>
         /// </remarks>
         public bool AdaptMassMatrix { get; set; } = true;
@@ -606,58 +600,39 @@ namespace Numerics.Sampling.MCMC
         /// The gradient. The array is owned by the memo and must be treated as read-only by the caller.
         /// It is valid only until the next miss on this chain: a hit does not advance the ring, so a hit
         /// on the slot the ring is currently pointing at is overwritten by the very next miss. Both
-        /// callers consume the array before evaluating again, which is what makes that safe.
+        /// callers consume the array before evaluating again.
         /// </returns>
         /// <remarks>
         /// <para>
-        /// <b>Why there is anything to reuse.</b> A leapfrog step evaluates the gradient twice, once at
-        /// its opening half-step and once at the position it lands on. Consecutive leaves of a doubling
-        /// chain end to end, so leaf <i>k</i> lands on the position leaf <i>k+1</i> opens from, and
-        /// without a memo leaf <i>k+1</i> recomputes what leaf <i>k</i> already produced and threw away.
-        /// The step-size heuristic re-enters the same starting position on every trial step and repeats
-        /// the same waste. With the default finite-difference gradient each of those evaluations costs
-        /// on the order of 2 × <see cref="MCMCSampler.NumberOfParameters"/> log-likelihood evaluations.
+        /// Consecutive leaves of a doubling chain end to end, so each leapfrog step opens from the
+        /// position the previous step landed on and would otherwise recompute its gradient, and the
+        /// step-size heuristic re-enters the same starting position on every trial step. With the
+        /// default finite-difference gradient each avoided evaluation saves on the order of
+        /// 2 × <see cref="MCMCSampler.NumberOfParameters"/> log-likelihood evaluations.
         /// </para>
         /// <para>
-        /// <b>Why reuse cannot move a draw.</b> Positions are compared bitwise through
-        /// <see cref="BitConverter.DoubleToInt64Bits(double)"/>, never with <c>==</c> and never within a
-        /// tolerance, so a hit is only possible at the exact point the delegate was called on and
-        /// returns exactly the value a recomputation would produce. Bitwise comparison also keeps
-        /// <c>+0</c> and <c>-0</c> distinct, which <c>==</c> would not, so a sign of zero cannot be
-        /// silently substituted. A tolerance-based memo would change results and is not what this is.
+        /// Positions are compared bitwise through <see cref="BitConverter.DoubleToInt64Bits(double)"/>,
+        /// never with <c>==</c> and never within a tolerance, so a hit is possible only at the exact
+        /// point the delegate was called on and returns exactly the value a recomputation would produce,
+        /// with <c>+0</c> and <c>-0</c> kept distinct. The memo requires the gradient delegate to be a
+        /// deterministic function of its argument, which a seeded, reproducible run already requires.
         /// </para>
         /// <para>
-        /// <b>Why the metric is not part of the key.</b> <see cref="GradientFunction"/> takes a position
-        /// and nothing else, is fixed at construction, and the default implementation closes only over
-        /// the log-likelihood and the prior bounds. The gradient of the log-density is therefore a
-        /// function of position alone: it does not depend on the mass matrix, the step size, the
-        /// adaptation window, or the chain. An entry recorded under one metric is exactly as valid after
-        /// <see cref="UpdateMassMatrix"/> replaces the metric, which matters because that method re-runs
-        /// <see cref="FindReasonableEpsilon"/> at the end of every adaptation window. The chain index is
-        /// part of the key for thread safety, not for correctness of the value.
+        /// The metric is not part of the key: <see cref="GradientFunction"/> takes a position and
+        /// nothing else, so the gradient does not depend on the mass matrix, the step size, or the
+        /// adaptation window, and an entry recorded under one metric remains valid after
+        /// <see cref="UpdateMassMatrix"/> replaces the metric. The chain index is part of the key for
+        /// thread safety: every array is indexed by chain first, and <see cref="MCMCSampler.Sample"/>
+        /// gives each chain index to exactly one <see cref="System.Threading.Tasks.Parallel"/> iteration
+        /// at a time.
         /// </para>
         /// <para>
-        /// <b>Assumption.</b> The gradient delegate must be a deterministic function of its argument.
-        /// That is already required for a seeded run to be reproducible, and the sampler is not usable
-        /// without it, but it is the one property this memo depends on.
-        /// </para>
-        /// <para>
-        /// <b>Thread safety.</b> Every array is indexed by chain first, and
-        /// <see cref="MCMCSampler.Sample"/> gives each chain index to exactly one
-        /// <see cref="System.Threading.Tasks.Parallel"/> iteration at a time, so no two threads touch
-        /// one chain's slots. The join at the end of each parallel iteration publishes the writes.
-        /// </para>
-        /// <para>
-        /// <b>Copy semantics.</b> Both the position and the gradient are copied into the memo. The
-        /// caller's position array is mutated in place by <see cref="LeapfrogInPlace"/>, and a
-        /// caller-supplied gradient delegate is free to return the same <see cref="Vector"/> every call,
-        /// so neither may be retained by reference. The position is copied <i>before</i> the delegate
-        /// runs, so a delegate that writes through its argument cannot pair a mutated position with the
-        /// gradient of the point that was actually evaluated.
-        /// </para>
-        /// <para>
-        /// A gradient whose length does not match the parameter count is returned without being stored,
-        /// so a malformed delegate still fails where and how it failed before.
+        /// Both the position and the gradient are copied into the memo: the caller's position array is
+        /// mutated in place by <see cref="LeapfrogInPlace"/>, and a caller-supplied gradient delegate is
+        /// free to return the same <see cref="Vector"/> every call, so neither may be retained by
+        /// reference. The position is copied before the delegate runs, so a delegate that writes through
+        /// its argument cannot pair a mutated position with the gradient of a different point. A
+        /// gradient whose length does not match the parameter count is returned without being stored.
         /// </para>
         /// </remarks>
         private double[] EvaluateGradient(double[] position, int chainIndex)
@@ -685,11 +660,9 @@ namespace Numerics.Sampling.MCMC
                 if (identical) return values[slot];
             }
 
-            // A miss claims a slot and records the position it is about to evaluate at before calling
-            // the delegate, so a delegate that writes through its argument cannot leave the memo
-            // holding a mutated position paired with the gradient of the original point. The slot is
-            // marked empty for the whole window, so a throw or a malformed length leaves nothing that
-            // could be matched later.
+            // A miss claims a slot and records the position before the delegate runs, and the slot stays
+            // marked empty for the whole window, so a throw, a malformed length, or a delegate that
+            // writes through its argument leaves nothing that could be matched later.
             int next = _gradientCacheNextSlot[chainIndex];
             var slotPosition = positions[next];
             var slotValue = values[next];
@@ -698,8 +671,6 @@ namespace Numerics.Sampling.MCMC
             for (int j = 0; j < D; j++)
                 slotPosition[j] = position[j];
 
-            // Anything the delegate throws propagates untouched, so the failure paths in BuildTree and
-            // TrySingleStepLogAcceptance are unchanged.
             double[] gradient = GradientFunction(position).Array;
             if (gradient.Length != D) return gradient;
 
@@ -998,42 +969,41 @@ namespace Numerics.Sampling.MCMC
         /// <param name="currentState">The current parameter state, used to find a new reasonable step size after the metric change.</param>
         /// <remarks>
         /// <para>
-        /// <b>Metric convention.</b> The estimated posterior variance is the <i>inverse</i> mass, not the mass.
-        /// This class draws momentum with standard deviation <c>sqrt(M)</c>, evaluates kinetic energy as
-        /// <c>0.5 * r' * M^-1 * r</c>, and flows position as <c>q += M^-1 * r * epsilon</c>. A coordinate with
-        /// posterior standard deviation <c>s</c> therefore needs <c>M = 1 / s^2</c> for its leapfrog step to
-        /// scale like <c>s</c>. The window variance is stored in <see cref="_inverseMassMatrix"/> and its
-        /// reciprocal in <see cref="_massMatrix"/>, which is the same correspondence Stan uses when it keeps
-        /// the estimated variance in <c>inv_e_metric</c>.
+        /// The estimated posterior variance is the <i>inverse</i> mass, not the mass. This class draws
+        /// momentum with standard deviation <c>sqrt(M)</c>, evaluates kinetic energy as
+        /// <c>0.5 * r' * M^-1 * r</c>, and flows position as <c>q += M^-1 * r * epsilon</c>. A coordinate
+        /// with posterior standard deviation <c>s</c> therefore needs <c>M = 1 / s^2</c> for its leapfrog
+        /// step to scale like <c>s</c>. The window variance is stored in <see cref="_inverseMassMatrix"/>
+        /// and its reciprocal in <see cref="_massMatrix"/>, the same correspondence Stan uses when it
+        /// keeps the estimated variance in <c>inv_e_metric</c>.
         /// </para>
         /// <para>
-        /// <b>Regularization.</b> Stan shrinks the window variance toward a small absolute constant because it
-        /// works in an unconstrained space where the variance is O(1). This sampler works on the natural scale,
-        /// where no absolute constant is meaningful, so the window variance is used directly whenever it is
+        /// Stan shrinks the window variance toward a small absolute constant because it works in an
+        /// unconstrained space where the variance is O(1). This sampler works on the natural scale, where
+        /// no absolute constant is meaningful, so the window variance is used directly whenever it is
         /// usable and the prior-scaled fallback <c>(priorRange / 6)^2</c> is engaged only when it is not.
-        /// Blending the fallback in unconditionally would impose a floor tied to the prior width rather than to
-        /// the posterior, which on a diffuse prior flattens the metric to isotropy and erases the adaptation.
+        /// An unconditional blend would impose a floor tied to the prior width rather than the posterior,
+        /// which on a diffuse prior flattens the metric to isotropy and erases the adaptation.
         /// </para>
         /// <para>
-        /// <b>Guards.</b> Two conditions decide that a window cannot produce a usable variance. First, the window
-        /// must contain at least <see cref="MIN_ADAPT_WINDOW_COUNT"/> draws: the relative standard error of a
-        /// sample variance is approximately <c>sqrt(2 / (n - 1))</c>, which is still about 47% at ten draws and
-        /// worse below that, so a shorter window is noise rather than an estimate. Second, the variance must be
-        /// finite and strictly positive. Windows failing either condition take the fallback. With the shipped
-        /// buffer sizes the first condition is only reachable at a total warmup of twelve transitions or fewer,
-        /// so in practice it guards the degenerate configuration rather than a routine one.
+        /// Two conditions decide that a window cannot produce a usable variance. First, the window must
+        /// contain at least <see cref="MIN_ADAPT_WINDOW_COUNT"/> draws: the relative standard error of a
+        /// sample variance is approximately <c>sqrt(2 / (n - 1))</c>, still about 47% at ten draws, so a
+        /// shorter window is noise rather than an estimate. Second, the variance must be finite and
+        /// strictly positive. Windows failing either condition take the fallback. With the shipped buffer
+        /// sizes the first condition is only reachable at a total warmup of twelve transitions or fewer.
         /// </para>
         /// <para>
         /// Retained variances are then floored at <see cref="RELATIVE_VARIANCE_FLOOR"/> times the largest
-        /// <i>measured</i> variance in the same window; fallback values never set that scale, because letting
-        /// them do so would put the prior range back into the floor for every other coordinate. Stating the
-        /// guarantee precisely: this bounds the diagonal metric's condition number at 1e12 and prevents a
-        /// coordinate that is numerically degenerate over the window from producing an unbounded mass. It does
-        /// <b>not</b> correct a coordinate that merely under-explored — a variance that comes back at 1e-4 to
-        /// 1e-6 of the truth is four to six orders of magnitude above the floor and passes through untouched,
-        /// yielding a mass that is too large and a step that is too small, which persists until the next window
-        /// re-estimates it. A floor tight enough to catch that case would have to encode an expectation about
-        /// how well the window mixed, which is exactly the prior-scaled assumption this method removes.
+        /// <i>measured</i> variance in the same window; fallback values never set that scale, because
+        /// letting them do so would put the prior range back into the floor for every other coordinate.
+        /// The floor bounds the diagonal metric's condition number at 1e12 and prevents a coordinate that
+        /// is numerically degenerate over the window from producing an unbounded mass. It does not
+        /// correct a coordinate that merely under-explored: a variance that comes back at 1e-4 to 1e-6 of
+        /// the truth is far above the floor and passes through, yielding a mass that is too large and a
+        /// step that is too small until the next window re-estimates it. A floor tight enough to catch
+        /// that case would have to encode an expectation about how well the window mixed, which is the
+        /// prior-scaled assumption this method avoids.
         /// </para>
         /// </remarks>
         private void UpdateMassMatrix(int chainIndex, ParameterSet currentState)

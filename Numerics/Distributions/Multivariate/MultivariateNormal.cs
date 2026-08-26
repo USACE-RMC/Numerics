@@ -67,8 +67,7 @@ namespace Numerics.Distributions
         /// <param name="dimension">The number of dimensions in the distribution.</param>
         /// <param name="decomposition">The decomposition method used to factorize the covariance matrix.</param>
         /// <remarks>
-        /// See <see cref="Decomposition"/> for what the selector governs. Added for
-        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// See <see cref="Decomposition"/> for what the selector governs.
         /// </remarks>
         public MultivariateNormal(int dimension, DecompositionMethod decomposition)
         {
@@ -84,8 +83,7 @@ namespace Numerics.Distributions
         /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
         /// <param name="decomposition">The decomposition method used to factorize the covariance matrix.</param>
         /// <remarks>
-        /// See <see cref="Decomposition"/> for what the selector governs. Added for
-        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// See <see cref="Decomposition"/> for what the selector governs.
         /// </remarks>
         public MultivariateNormal(double[] mean, DecompositionMethod decomposition)
         {
@@ -102,8 +100,7 @@ namespace Numerics.Distributions
         /// <remarks>
         /// <see cref="DecompositionMethod.SingularValue"/> accepts a singular (collinear) covariance matrix
         /// that <see cref="DecompositionMethod.Cholesky"/> rejects. See <see cref="Decomposition"/> for what
-        /// the selector governs and for the degenerate-density convention. Added for
-        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// the selector governs and for the degenerate-density convention.
         /// </remarks>
         public MultivariateNormal(double[] mean, double[,] covariance, DecompositionMethod decomposition)
         {
@@ -156,16 +153,11 @@ namespace Numerics.Distributions
         /// silently break that agreement.
         /// </para>
         /// <para>
-        /// The literal above is written out rather than derived as <c>2d * Tools.DoubleMachineEpsilon</c>,
-        /// and that matters. <see cref="Tools.DoubleMachineEpsilon"/> is the decimal literal
-        /// 1.11022302462516E-16, which is 2⁻⁵³ rounded to fifteen significant figures and not 2⁻⁵³ itself.
-        /// 2⁻⁵³ is exactly 1.1102230246251565E-16, so the literal is the <i>larger</i> of the two, at
-        /// 1.000000000000003 times 2⁻⁵³, and the ratio between the two class constants is
-        /// 1.9999999999999938 rather than 2. Doubling the rounded constant would therefore
-        /// <b>not</b> yield 2⁻⁵² bit-exactly, and the
-        /// thresholds built on it would drift off scipy's by a few ulps — enough to break an exact-agreement
-        /// test without producing any visible symptom. Do not "simplify" this back to a multiple of
-        /// <see cref="Tools.DoubleMachineEpsilon"/>.
+        /// The literal must be 2⁻⁵² bit-exactly, so it is written out rather than derived as
+        /// <c>2d * Tools.DoubleMachineEpsilon</c>: that constant is the decimal literal
+        /// 1.11022302462516E-16, which is 2⁻⁵³ rounded to fifteen significant figures, so doubling it
+        /// gives 1.9999999999999938 times 2⁻⁵³ rather than 2⁻⁵², and the thresholds built on it would
+        /// drift off scipy's by a few ulps.
         /// </para>
         /// </remarks>
         private const double RelativeMachineEpsilon = 2.220446049250313E-16;
@@ -349,9 +341,8 @@ namespace Numerics.Distributions
         /// <para>
         /// The selector is fixed at construction and is honoured by every re-factorization performed by
         /// <see cref="SetParameters"/>, <see cref="TrySetParameters"/> and <see cref="TrySetCovariance"/>.
-        /// It is deliberately get-only: a setter would have to re-factorize, and between the assignment and
-        /// the next call to <see cref="SetParameters"/> every cached quantity — the normalizing constant and
-        /// the sampling factor — would be stale.
+        /// Every cached quantity — the normalizing constant and the sampling factor — is built for it, so
+        /// selecting a different method requires constructing a new distribution.
         /// </para>
         /// <para>
         /// The selector governs the density (<see cref="PDF"/>, <see cref="LogPDF"/>,
@@ -365,10 +356,10 @@ namespace Numerics.Distributions
         /// decomposition and return distributions that use the default
         /// <see cref="DecompositionMethod.Cholesky"/> selector. Those two helpers therefore <b>throw</b>
         /// when the sub-covariance they need is singular, even on a distribution built with
-        /// <see cref="DecompositionMethod.SingularValue"/> whose own density evaluates perfectly well —
-        /// which is exactly what a caller with collinear gridded cells runs into. Take the marginal or
-        /// conditional mean and covariance and construct the sub-distribution explicitly with the
-        /// <see cref="DecompositionMethod.SingularValue"/> constructor to work around it.
+        /// <see cref="DecompositionMethod.SingularValue"/> whose own density evaluates perfectly well.
+        /// To work around it, take the marginal or conditional mean and covariance and construct the
+        /// sub-distribution explicitly with the <see cref="DecompositionMethod.SingularValue"/>
+        /// constructor.
         /// </para>
         /// <para>
         /// Under <see cref="DecompositionMethod.SingularValue"/> the distribution follows the degenerate
@@ -410,14 +401,11 @@ namespace Numerics.Distributions
         /// tolerance proportional to ‖x − μ‖, where scipy uses one proportional to the eigenvalue scale of
         /// Σ. For a large-scale singular covariance scipy therefore admits points that are visibly off the
         /// support — for Σ = 1E12 · [[1,1],[1,1]] scipy returns a finite density at (1, −1) — where this
-        /// class returns negative infinity. The answer here is the mathematically exact one and is kept.
+        /// class returns negative infinity, the mathematically exact answer.
         /// Second, when Σ is identically zero the support is the single point μ; this class reports
         /// <see cref="PDF"/> = 1 and <see cref="LogPDF"/> = 0 there, the counting-measure density that the
         /// rank-0 case of the convention above implies, while scipy returns zero density even at μ. Every
         /// point other than μ is off the support and scores zero in both.
-        /// </para>
-        /// <para>
-        /// Added for <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
         /// </para>
         /// </remarks>
         public DecompositionMethod Decomposition => _decomposition;
@@ -445,9 +433,8 @@ namespace Numerics.Distributions
         /// </remarks>
         public void SetParameters(double[] mean, double[,] covariance)
         {
-            // Validate parameters. Under the singular value path the validation already builds the
-            // decomposition it needs, so it is handed back and reused for the factorization rather than
-            // being recomputed: an O(n^3) factorization is the whole cost this selector trades away.
+            // Under the singular value path the validation already builds the decomposition it needs,
+            // so it is handed back and reused for the factorization rather than recomputed.
             ValidateParameters(mean, covariance, true, out var singularValues);
             SetParametersCore(mean, covariance, singularValues);
         }
@@ -461,11 +448,9 @@ namespace Numerics.Distributions
         /// validation under <see cref="DecompositionMethod.SingularValue"/>; null under
         /// <see cref="DecompositionMethod.Cholesky"/>, where it is not used.</param>
         /// <remarks>
-        /// Split out of <see cref="SetParameters"/> so that both the throwing entry point and the
-        /// non-throwing <see cref="TrySetParameters"/> can validate once and factorize once. The
-        /// decomposition is a deterministic function of <paramref name="covariance"/>, so reusing the
-        /// instance built during validation produces exactly the same factorization that recomputing it
-        /// would — the saving is the duplicated O(n³) work, not a change of result.
+        /// Shared by the throwing <see cref="SetParameters"/> and the non-throwing
+        /// <see cref="TrySetParameters"/> so that each entry point validates once and factorizes once,
+        /// reusing the decomposition built during validation.
         /// </remarks>
         private void SetParametersCore(double[] mean, double[,] covariance, SingularValueDecomposition? singularValues)
         {
@@ -590,10 +575,9 @@ namespace Numerics.Distributions
         /// <see cref="SingularValueDecomposition.Nullspace"/>. The projection is compared against
         /// <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/>, scaled by the magnitude
         /// of the centred point so that the test stays meaningful for points far from the mean, where the
-        /// roundoff in the projection grows in proportion. On the reference cases of
-        /// <see href="https://github.com/USACE-RMC/Numerics/issues/145"/> an on-support point projects to at
-        /// most 6E-16 while an off-support point projects to more than 0.7, so the test has several orders
-        /// of margin on both sides.
+        /// roundoff in the projection grows in proportion. On representative singular covariances an
+        /// on-support point projects to at most 6E-16 while an off-support point projects to more than
+        /// 0.7, so the test has several orders of margin on both sides.
         /// </para>
         /// <para>
         /// The scaling is by ‖x − μ‖, which is <b>not</b> what
@@ -601,22 +585,16 @@ namespace Numerics.Distributions
         /// eigenvalue magnitude of Σ instead. The two agree whenever Σ is of order one, and diverge for a
         /// large-scale singular Σ, where scipy's tolerance becomes very loose — for Σ = 1E12 · [[1,1],[1,1]]
         /// scipy's tolerance is about 4.4E+5, so it returns a finite density at (1, −1), a point plainly off
-        /// the support. This class returns negative infinity there, which is the exact answer, and that is
-        /// deliberate.
+        /// the support. This class returns negative infinity there, which is the exact answer.
         /// </para>
         /// <para>
-        /// <b>The absolute floor of the tolerance.</b> Because the scale factor is max(1, ‖x − μ‖), the
-        /// smallest tolerance this test ever applies is
+        /// Because the scale factor is max(1, ‖x − μ‖), the smallest tolerance this test ever applies is
         /// <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/> = 2.220446049250313E-10.
-        /// It is <b>not</b> an independently chosen constant: it follows the class epsilon, so it is exactly
-        /// one factor of <see cref="ZeroToleranceFactor"/> above the same ε that decides the rank, the null
-        /// space and the pseudo-determinant, and it moves only if that epsilon moves. It was
-        /// 1.11022302462516E-10 while the class used <see cref="Tools.DoubleMachineEpsilon"/> and doubled
-        /// when the constant was aligned with NumPy's relative spacing. The measured margins above —
-        /// on-support residuals at most 6E-16 and off-support residuals at least 0.7 — leave roughly five
-        /// orders of headroom below the tolerance and nine above it, so neither value changes any outcome on
-        /// the reference cases. Do not retune it in isolation; changing it would decouple this test from the
-        /// threshold that produced the null space it is testing against.
+        /// It is not an independently tunable constant: it follows the class epsilon, exactly one factor
+        /// of <see cref="ZeroToleranceFactor"/> above the same ε that decides the rank, the null space and
+        /// the pseudo-determinant, and moving it separately would decouple this test from the threshold
+        /// that produced the null space it tests against. The margins above leave several orders of
+        /// headroom on both sides of the tolerance.
         /// </para>
         /// </remarks>
         private bool IsOnSupport(double[] x)
@@ -857,11 +835,8 @@ namespace Numerics.Distributions
             // ones, so the non-throwing contract absorbs both failure modes.
             try
             {
-                // Validate through the overload that hands back the decomposition, then apply it directly.
-                // Routing through the public SetParameters would validate a second time and build a second
-                // singular value decomposition of the same matrix, doubling the O(n^3) cost on exactly the
-                // path this method exists to serve: proposal and likelihood loops that swap a covariance per
-                // evaluation. The decomposition is deterministic, so the factorization is unchanged.
+                // Validate through the overload that hands back the decomposition and apply it directly,
+                // so the covariance is validated and factorized exactly once per call.
                 if (ValidateParameters(mean, covariance, false, out var singularValues) is null)
                 {
                     SetParametersCore(mean, covariance, singularValues);

@@ -43,10 +43,8 @@ namespace Numerics.Data
             }
             this.XValues = xValues;
             this.YValues = yValues;
-            // This expression always evaluates to exactly 1 and never scales with the table size, despite
-            // its appearance. The constructor above requires Count >= 2, so Math.Pow(Count, 0.25) >= 1.189
-            // and the (int) truncation is always at least 1, leaving Math.Min(1, >= 1) == 1. The intent was
-            // presumably Math.Max. See the remarks on deltaStart for why this is left as is.
+            // Always exactly 1: the constructor requires Count >= 2, so (int)Math.Pow(Count, 0.25) is at
+            // least 1 and Math.Min(1, ...) is 1. See the remarks on deltaStart.
             deltaStart = Math.Min(1, (int)Math.Pow((double)Count, 0.25));
             SortOrder = sortOrder;
             
@@ -67,25 +65,13 @@ namespace Numerics.Data
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// <b>This is always exactly 1.</b> The constructor assigns
-        /// <c>Math.Min(1, (int)Math.Pow(Count, 0.25))</c>, and because the constructor also requires
-        /// <c>Count &gt;= 2</c> the right-hand term is never below 1, so the minimum is always 1. The
-        /// expression reads as though the window grows with the table size, but it does not, at any
-        /// <see cref="Count"/>.
-        /// </para>
-        /// <para>
-        /// The consequence is confined to <i>which search path runs</i> and never to the value returned.
-        /// Hunt and bisection are required to return the same bracket for the same input, and
-        /// <c>Test_Search</c> cross-checks both against <c>Search.Sequential</c>. A window of 1 simply means
-        /// the hunt search is selected less often than a size-scaled window would select it, which is a
-        /// performance characteristic and not a correctness one. It is therefore left as is deliberately.
-        /// </para>
-        /// <para>
-        /// This field is <see langword="protected"/>, and <see cref="SearchStart"/> and
-        /// <see cref="UseSmartSearch"/> are public and settable, so a consumer that wants different search
-        /// behaviour can override the heuristic rather than depend on this value.
-        /// </para>
+        /// The constructor assigns <c>Math.Min(1, (int)Math.Pow(Count, 0.25))</c>, which is always
+        /// exactly 1: the constructor requires <c>Count &gt;= 2</c>, so the right-hand term is never
+        /// below 1. The window does not grow with the table size, at any <see cref="Count"/>. The value
+        /// affects only which search path runs — hunt and bisection return the same bracket for the same
+        /// input — so it is a performance characteristic rather than a correctness one.
+        /// <see cref="SearchStart"/> and <see cref="UseSmartSearch"/> are public and settable, so a
+        /// consumer that wants different search behaviour can steer the search directly.
         /// </remarks>
         protected int deltaStart = 0;
 

@@ -25,12 +25,6 @@ namespace Numerics.Mathematics.SpecialFunctions
     /// <see cref="FunctionOrderOne(double)"/> is the <b>order-1</b> Debye function D₁. The two are
     /// different functions and are not interchangeable: D₃(1) = 0.6744156 while D₁(1) = 0.7775046.
     /// </para>
-    /// <para>
-    /// The order of <see cref="Function(double)"/> is visible in its own construction. Its small-argument
-    /// branch is 1 - 0.375 x + 0.05 x², which is the D₃ expansion, where the D₁ expansion is
-    /// 1 - 0.25 x + x²/36; its large-argument branch normalizes against π⁴/15 = 6 ζ(4), the D₃ limit
-    /// constant; and its unit test pins Function(1) = 0.6744156, which is D₃(1).
-    /// </para>
     /// <b> References: </b>
     /// <list type="bullet">
     /// <item><description>
@@ -147,10 +141,10 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// until the term falls below 1E-20.
         /// </para>
         /// <para>
-        /// <b> Accuracy. </b> Measured against mpmath at 60 decimal digits, evaluated by two independent routes
-        /// that agree to better than 1E-58, the worst relative error over x in [1E-8, 100] and its negative
-        /// mirror is 3 ulp, or 3.4E-16 absolute, at x near 1.75. At the endpoints D₁(100) = 0.016449340668482266 matches the
-        /// asymptote π²/600 = 0.016449340668482264, and the reflection D₁(-1) - D₁(1) = 0.5 holds exactly.
+        /// <b> Accuracy. </b> Measured against mpmath at 60 decimal digits, the worst relative error over
+        /// x in [1E-8, 100] and its negative mirror is 3 ulp, or 3.4E-16 absolute, at x near 1.75. At the
+        /// endpoints D₁(100) = 0.016449340668482266 matches the asymptote π²/600 = 0.016449340668482264,
+        /// and the reflection D₁(-1) - D₁(1) = 0.5 holds exactly.
         /// </para>
         /// </remarks>
         public static double FunctionOrderOne(double x)

@@ -1267,8 +1267,8 @@ namespace Numerics.Sampling
                     }
                     catch (Exception exception)
                     {
-                        // Count the failed jackknife replicate and keep the first exception so the cause
-                        // survives instead of being discarded silently.
+                        // Count the failed jackknife replicate and keep the first exception as the
+                        // eventual inner exception.
                         failed++;
                         if (firstFailure == null) firstFailure = exception;
                     }
@@ -1314,7 +1314,7 @@ namespace Numerics.Sampling
                 //    value, so the statistic has no jackknife variation. Zero is the correct limit of the
                 //    acceleration there, and BCa degenerates to the bias-corrected interval.
                 // 2. A non-finite second moment. Each leave-one-out statistic is validated as finite
-                //    above, so this can now only arise from overflow while summing finite squared
+                //    above, so this can only arise from overflow while summing finite squared
                 //    differences. Zero is a defensive fallback, not a modelling statement.
                 a[i] = secondMoment > 0d && Tools.IsFinite(secondMoment)
                     ? thirdMoment / (Math.Pow(secondMoment, 1.5) * 6d)

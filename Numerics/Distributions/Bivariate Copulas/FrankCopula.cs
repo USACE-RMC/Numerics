@@ -218,7 +218,7 @@ namespace Numerics.Distributions.Copulas
         /// -1.
         /// </para>
         /// <para>
-        /// <b> Accuracy. </b> The eight pinned pyvinecopulib 0.7.6 oracle points are matched to 3.4E-16.
+        /// <b> Accuracy. </b> Agrees with pyvinecopulib 0.7.6 reference values to 3.4E-16.
         /// Measured against mpmath at 60 decimal digits on a grid over 0.1 &#8804; |θ| &#8804; 100, the worst
         /// absolute error is 1.8E-15, at θ = 0.2. Below |θ| of about 0.01 the leading terms of the expression
         /// cancel against each other and the absolute error grows, reaching 2.0E-13 at θ = 0.001, which is the

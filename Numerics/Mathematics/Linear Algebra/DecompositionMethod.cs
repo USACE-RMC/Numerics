@@ -27,9 +27,6 @@ namespace Numerics.Mathematics.LinearAlgebra
     /// <b> References: </b>
     /// <list type="bullet">
     /// <item> "Numerical Recipes: The Art of Scientific Computing, Third Edition." Press et al., 2017. </item>
-    /// <item> <description>
-    /// <see href = "https://github.com/USACE-RMC/Numerics/issues/145" />
-    /// </description></item>
     /// </list>
     /// </para>
     /// </remarks>

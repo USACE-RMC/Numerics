@@ -294,15 +294,13 @@ namespace Numerics.Distributions
         /// site: <c>CentralMoments(1E-8)</c> requests a relative tolerance of 1E-8 from this adaptive
         /// routine, while <c>CentralMoments(1000)</c> selects the fixed-step bin-expectation overload with 1,000
         /// steps. Writing <c>CentralMoments(1)</c> when a tolerance of 1.0 was meant silently runs the other
-        /// method with a single step. The C++ port team flagged this pair as a foot-gun; the signatures are
-        /// kept for source compatibility.
+        /// method with a single step.
         /// </para>
         /// <para>
         /// This overload integrates with <see cref="AdaptiveGaussKronrod"/> over the range
         /// [InverseCDF(1E-16), InverseCDF(1 − 1E-16)], subdividing until the requested relative tolerance is
         /// met. A moment whose integration fails is returned as <see cref="double.NaN"/> rather than
-        /// throwing. Within this library only <c>NoncentralT</c> uses this overload; every other in-repo
-        /// caller uses the fixed-step one.
+        /// throwing.
         /// </para>
         /// </remarks>
         public virtual double[] CentralMoments(double tolerance = 1E-8)
@@ -346,12 +344,10 @@ namespace Numerics.Distributions
         /// site: <c>CentralMoments(1000)</c> selects this fixed-step routine with 1,000 steps, while
         /// <c>CentralMoments(1E-8)</c> selects the adaptive overload with a relative tolerance of 1E-8.
         /// Writing <c>CentralMoments(1)</c> when a tolerance was meant silently runs this method with a
-        /// single step. The C++ port team flagged this pair as a foot-gun; the signatures are kept for
-        /// source compatibility.
+        /// single step.
         /// </para>
         /// <para>
-        /// <b>What this overload actually computes</b>, which is worth stating precisely because a port
-        /// cannot be written from the word "trapezoidal" alone: it stratifies
+        /// <b>What this overload computes:</b> it stratifies
         /// [InverseCDF(1E-8), InverseCDF(1 − 1E-8)] into <paramref name="steps"/> equal bins, takes each
         /// bin's probability mass ΔFᵢ as a difference of <see cref="CDF(double)"/> values, and accumulates
         /// the discrete expectation Σᵢ xᵢᵏ · ΔFᵢ. It is therefore a bin-probability (midpoint) expectation
@@ -365,9 +361,6 @@ namespace Numerics.Distributions
         /// from −∞, and the final ΔF is 1 − CDF(lower bound of the last bin) — so despite the 1E-8 stratification
         /// endpoints the total probability sums to one and the effective range is <b>not</b> truncated. Cost
         /// and accuracy are both fixed by <paramref name="steps"/> and there is no convergence check.
-        /// Within this library <c>CompetingRisks</c>, <c>EmpiricalDistribution</c>,
-        /// <c>GeneralizedNormal</c>, <c>KappaFour</c>, <c>Mixture</c> and <c>TruncatedDistribution</c> all
-        /// use this overload; only <c>NoncentralT</c> uses the adaptive one.
         /// </para>
         /// </remarks>
         public virtual double[] CentralMoments(int steps = 300)

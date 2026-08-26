@@ -49,21 +49,12 @@ namespace Numerics.Data
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// <b>This is permanently 0.</b> It is initialized to zero here and assigned nowhere else in the
-        /// class, so the correlated test in <see cref="SearchX(double)"/> —
-        /// <c>Math.Abs(start - XSearchStart) &gt; XdeltaStart</c> — reports correlated only when a search
-        /// lands on exactly the same index as the previous one. The equivalent field on
-        /// <c>Interpolater</c> is at least assigned, though it too is always 1.
-        /// </para>
-        /// <para>
-        /// The consequence is confined to <i>which search path runs</i> and never to the value returned.
-        /// Hunt and bisection return the same bracket for the same input, and <c>Test_Search</c> cross-checks
-        /// both against <c>Search.Sequential</c>. A window of 0 simply means bisection is chosen in almost
-        /// every case, which is a performance characteristic and not a correctness one. It is therefore left
-        /// as is deliberately. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
-        /// settable, so a consumer can steer the search directly rather than depend on this heuristic.
-        /// </para>
+        /// This field is never assigned after initialization, so the correlated test in
+        /// <see cref="SearchX(double)"/> reports correlated only when a search lands on exactly the same
+        /// index as the previous one. The value affects only which search path runs — hunt and bisection
+        /// return the same bracket for the same input — so it is a performance characteristic rather than
+        /// a correctness one. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
+        /// settable, so a consumer can steer the search directly.
         /// </remarks>
         private int XdeltaStart = 0;
 
@@ -72,10 +63,9 @@ namespace Numerics.Data
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// Permanently 0 for the same reason as <see cref="XdeltaStart"/>: it is never assigned outside this
-        /// declaration, so <see cref="SearchY(double)"/> reports correlated only on an exact index repeat.
-        /// The effect is confined to which search path runs, never to the bracket returned. See
-        /// <see cref="XdeltaStart"/> for the full note.
+        /// Never assigned after initialization, so <see cref="SearchY(double)"/> reports correlated only
+        /// on an exact index repeat. The effect is confined to which search path runs, never to the
+        /// bracket returned; see <see cref="XdeltaStart"/>.
         /// </remarks>
         private int YdeltaStart = 0;
 

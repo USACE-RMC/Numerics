@@ -165,63 +165,54 @@ namespace Numerics.Sampling.MCMC
         /// </returns>
         /// <remarks>
         /// <para>
-        /// <b>Why this is not <see cref="Iterations"/>.</b> The configured iteration count does not describe
-        /// the work a run actually does, and it under-reports it substantially at the defaults. Two
-        /// multipliers sit between the two numbers. First, <see cref="Sample"/> runs
+        /// The configured <see cref="Iterations"/> under-reports the work a run performs. Two multipliers
+        /// sit between the two numbers: <see cref="Sample"/> runs
         /// ceil(<see cref="OutputLength"/> / <see cref="NumberOfChains"/>) recorded iterations beyond
-        /// <see cref="Iterations"/> in order to collect the posterior output. Second, every recorded
-        /// iteration advances the chain <see cref="ThinningInterval"/> times, because thinning is applied by
-        /// discarding intermediate transitions rather than by discarding recorded draws. Each of those
-        /// transitions costs at least one evaluation of <see cref="LogLikelihoodFunction"/>, so this
-        /// property, not <see cref="Iterations"/>, is what a runtime estimate should be built on.
+        /// <see cref="Iterations"/> to collect the posterior output, and every recorded iteration advances
+        /// the chain <see cref="ThinningInterval"/> times, because thinning discards intermediate
+        /// transitions rather than recorded draws. Each transition costs at least one evaluation of
+        /// <see cref="LogLikelihoodFunction"/>, so this property, not <see cref="Iterations"/>, is what a
+        /// runtime estimate should be built on.
         /// </para>
         /// <para>
-        /// <b>Warmup is already included.</b> <see cref="WarmupIterations"/> is a subset of
-        /// <see cref="Iterations"/>, not an addition to it — <c>ValidateSettings</c> rejects a warmup longer
-        /// than half of <see cref="Iterations"/> — so it must not be added again when reasoning about total
-        /// cost.
+        /// <see cref="WarmupIterations"/> is a subset of <see cref="Iterations"/>, not an addition to it,
+        /// so it must not be added again when reasoning about total cost.
         /// </para>
         /// <para>
-        /// <b>At the defaults</b> (<see cref="Iterations"/> = 3,500, <see cref="OutputLength"/> = 10,000,
+        /// At the defaults (<see cref="Iterations"/> = 3,500, <see cref="OutputLength"/> = 10,000,
         /// <see cref="NumberOfChains"/> = 4, <see cref="ThinningInterval"/> = 20) this is
-        /// (3,500 + 2,500) × 20 = 120,000 transitions per chain, against a user-facing
-        /// <see cref="Iterations"/> that reads 3,500 — a factor of roughly 34.
+        /// (3,500 + 2,500) × 20 = 120,000 transitions per chain, roughly 34 times the configured
+        /// <see cref="Iterations"/>.
         /// </para>
         /// <para>
         /// The type is <see cref="long"/> because the product overflows <see cref="int"/> well inside the
-        /// range of settings the sampler accepts: nothing bounds <see cref="Iterations"/> from above, and at
-        /// the default output length, chain count and thinning interval the per-chain product passes
-        /// <see cref="int.MaxValue"/> at about 1.074E8 iterations. <see cref="TotalTransitionCount"/> passes
-        /// it four times sooner, at about 2.68E7 iterations, because of the multiplication by the default
-        /// four chains.
+        /// range of settings the sampler accepts.
         /// </para>
         /// <para>
-        /// This reports the settings as they are currently configured and does not validate them; the
-        /// settings are checked by <c>ValidateSettings</c> when <see cref="Sample"/> is called. The one
-        /// exception is <see cref="NumberOfChains"/>: a value below one is not a samplable configuration and
-        /// would otherwise divide by zero here, so it reports 0 rather than a framework-dependent number.
+        /// This reports the settings as currently configured and does not validate them; the settings are
+        /// checked by <c>ValidateSettings</c> when <see cref="Sample"/> is called. The one exception is
+        /// <see cref="NumberOfChains"/>: a value below one is not a samplable configuration and would
+        /// otherwise divide by zero here, so it reports 0.
         /// </para>
         /// <para>
-        /// The count describes the base <see cref="Sample"/> loop and the base <c>SampleChain</c>, neither of
-        /// which any chain sampler in this library overrides. It does <b>not</b> describe
-        /// <see cref="SNIS"/>, which replaces <see cref="Sample"/> with a single non-Markovian importance
-        /// sampling pass and never advances a chain.
+        /// The count describes the base <see cref="Sample"/> loop and the base <c>SampleChain</c>, neither
+        /// of which any chain sampler in this library overrides. It does not describe <see cref="SNIS"/>,
+        /// which replaces <see cref="Sample"/> with a single non-Markovian importance sampling pass and
+        /// never advances a chain.
         /// </para>
         /// </remarks>
         public long TransitionCount
         {
             get
             {
-                // NumberOfChains is only validated by ValidateSettings when Sample() runs, but this property
-                // is readable at any time. At zero chains the division below would be Infinity, and casting
-                // Infinity to int saturates to int.MaxValue on .NET Core while being unspecified on .NET
-                // Framework, so the answer would differ by target framework. Report 0 for a configuration
-                // that cannot be sampled instead.
+                // NumberOfChains is only validated when Sample() runs, but this property is readable at
+                // any time. At zero chains the division below would be Infinity, and casting Infinity to
+                // int saturates on .NET Core while being unspecified on .NET Framework, so report 0 for a
+                // configuration that cannot be sampled.
                 if (NumberOfChains < 1) return 0L;
 
-                // OutputIterations is the same member Sample() uses, so the two cannot drift apart. Each
-                // recorded iteration advances the chain ThinningInterval times. The sum is widened to long
-                // before the multiplication so that large settings do not overflow.
+                // OutputIterations is the member Sample() uses, so the two cannot drift apart. The sum is
+                // widened to long before the multiplication so that large settings do not overflow.
                 return ((long)Iterations + OutputIterations) * ThinningInterval;
             }
         }
@@ -231,10 +222,10 @@ namespace Numerics.Sampling.MCMC
         /// in order to collect the posterior output, ceil(<see cref="OutputLength"/> / <see cref="NumberOfChains"/>).
         /// </summary>
         /// <remarks>
-        /// Shared by <see cref="Sample"/> and <see cref="TransitionCount"/> so that the reported work and the
-        /// work actually performed are computed from a single expression rather than two copies of it.
-        /// Callers must ensure <see cref="NumberOfChains"/> is at least one; <see cref="Sample"/> does so via
-        /// <c>ValidateSettings</c> and <see cref="TransitionCount"/> guards it directly.
+        /// Shared by <see cref="Sample"/> and <see cref="TransitionCount"/> so the reported and performed
+        /// work come from a single expression. Callers must ensure <see cref="NumberOfChains"/> is at
+        /// least one; <see cref="Sample"/> does so via <c>ValidateSettings</c> and
+        /// <see cref="TransitionCount"/> guards it directly.
         /// </remarks>
         private int OutputIterations => (int)Math.Ceiling(OutputLength / (double)NumberOfChains);
 
@@ -243,14 +234,12 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         /// <returns><see cref="TransitionCount"/> × <see cref="NumberOfChains"/>.</returns>
         /// <remarks>
-        /// At the defaults this is 120,000 × 4 = 480,000 transitions. Treat it as a <b>lower bound</b> on the
-        /// evaluation count, not as a budget: every transition costs at least one evaluation of
-        /// <see cref="LogLikelihoodFunction"/>, but a gradient-based sampler such as HMC or NUTS spends many
+        /// At the defaults this is 120,000 × 4 = 480,000 transitions. Treat it as a lower bound on the
+        /// evaluation count rather than a budget: every transition costs at least one evaluation of
+        /// <see cref="LogLikelihoodFunction"/>, a gradient-based sampler such as HMC or NUTS spends many
         /// likelihood and gradient evaluations per transition, and chain initialization adds further
-        /// evaluations on top of all of these. See
-        /// <see cref="TransitionCount"/> for why this differs so widely from <see cref="Iterations"/>. When
-        /// <see cref="ParallelizeChains"/> is true these are distributed across worker threads, so this is
-        /// the total work rather than the critical path.
+        /// evaluations on top of these. When <see cref="ParallelizeChains"/> is true the transitions are
+        /// distributed across worker threads, so this is the total work rather than the critical path.
         /// </remarks>
         public long TotalTransitionCount => TransitionCount * NumberOfChains;
 
@@ -299,23 +288,21 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Thread-safety requirement.</b> When this is true — which is the default —
-        /// <see cref="Sample"/> advances all <see cref="NumberOfChains"/> chains inside a
+        /// When this is true — the default — <see cref="Sample"/> advances all
+        /// <see cref="NumberOfChains"/> chains inside a
         /// <see cref="System.Threading.Tasks.Parallel.For(int, int, Action{int})"/>, and every chain calls
         /// the <i>same</i> <see cref="LogLikelihoodFunction"/> delegate instance. The log-likelihood is
         /// therefore invoked concurrently from multiple threads, as is the gradient delegate for
-        /// gradient-based samplers. That delegate must be thread-safe or stateless. A likelihood that closes
-        /// over mutable state — an automatic-differentiation tape, a reused workspace or buffer, a native
-        /// solver handle, a cached factorization, a non-thread-safe PRNG — races by default, and the
-        /// resulting corruption is silent: it surfaces as an implausible posterior rather than as an
+        /// gradient-based samplers, so the delegate must be thread-safe or stateless. A likelihood that
+        /// closes over mutable state — an automatic-differentiation tape, a reused workspace or buffer, a
+        /// native solver handle, a cached factorization, a non-thread-safe PRNG — races by default, and
+        /// the resulting corruption is silent: it surfaces as an implausible posterior rather than as an
         /// exception.
         /// </para>
         /// <para>
-        /// <b>If your likelihood is not thread-safe, set this to false.</b> That is the supported answer, and
-        /// it is the only one. Per-chain resources cannot be selected from inside the callback, because
-        /// neither <see cref="LogLikelihood"/> nor the gradient delegate receives a chain index — they take
-        /// only the parameter vector, so a callback has no way to learn which chain is calling it. Those
-        /// signatures are part of the public API and are not going to change to add one.
+        /// Set this to false when the likelihood is not thread-safe. Per-chain resources cannot be
+        /// selected from inside the callback, because neither <see cref="LogLikelihood"/> nor the
+        /// gradient delegate receives a chain index — they take only the parameter vector.
         /// </para>
         /// </remarks>
         public bool ParallelizeChains { get; set; } = true;
@@ -580,12 +567,11 @@ namespace Numerics.Sampling.MCMC
             }
             
             // Sort temp population by log-likelihood in descending order.
-            // List.Sort is an unstable introspective sort, and the chain starting states are taken from
-            // the front of this list, so ties would decide the starting states and with them the entire
-            // trajectory of every chain. A wide prior can leave many draws at exactly negative infinity.
-            // OrderByDescending is a stable sort using the same default double comparison, so the order
-            // of distinct log-likelihoods is unchanged and ties keep their draw order. Do not replace it
-            // with Sort.
+            // The chain starting states are taken from the front of this list, and a wide prior can
+            // leave many draws tied at exactly negative infinity, so the sort must be stable for ties to
+            // keep their draw order; an unstable sort would make the starting states, and with them every
+            // chain trajectory, implementation-defined. OrderByDescending is stable with the same default
+            // double comparison.
             tempPopulation = tempPopulation.OrderByDescending(x => x.Fitness).ToList();
 
             // Set the initial vectors to the best performing parameter sets

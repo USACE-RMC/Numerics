@@ -245,18 +245,14 @@ namespace Numerics.Mathematics.Optimization
                 // Select the γkN points with the lowest objective function values. 
                 // This resultant set, Rk, is called the reduced sample.
 
-                // List.Sort is an unstable introspective sort, and the reduced sample is truncated
-                // exactly at the sort boundary, so ties would decide which points start local searches
-                // and therefore which optimum is returned. OrderBy is a stable sort, so equally fit
-                // points keep the order in which they were sampled. Do not replace it with Sort.
-                // The ordered result is copied back into the existing list rather than assigned as a
-                // new list, because SampledPoints is public and a caller holding a reference during a
-                // run would otherwise be left with a detached list that stops growing. Do not replace
-                // this with an assignment. The trade-off is that the shared list is transiently empty
-                // here, so a caller enumerating SampledPoints from another thread during a run could
-                // see a partial list or an invalidated enumerator where the previous code handed it a
-                // stable detached snapshot; the sort runs on the optimization thread between the
-                // sequential sample loop and the local searches, so no in-tree caller is affected.
+                // The reduced sample is truncated exactly at the sort boundary, so ties decide which
+                // points start local searches; OrderBy is a stable sort, so equally fit points keep the
+                // order in which they were sampled, where an unstable sort would make the selection
+                // implementation-defined. The ordered result is copied back into the existing list
+                // because SampledPoints is public and a caller holding the reference would otherwise be
+                // left with a detached list that stops growing. The shared list is transiently empty
+                // during the copy-back; the sort runs on the optimization thread between the sequential
+                // sample loop and the local searches.
                 var sorted = SampledPoints.OrderBy(x => x.ParameterSet.Fitness).ToList();
                 SampledPoints.Clear();
                 SampledPoints.AddRange(sorted);

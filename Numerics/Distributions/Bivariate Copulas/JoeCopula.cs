@@ -211,9 +211,9 @@ namespace Numerics.Distributions.Copulas
         /// expanded in inverse powers of k, giving 1 / (θ² k³) * Σ[j ≥ 0] (-1)^j h_j / k^j with
         /// h_j = Σ[i = 0 to j] p^i q^(j - i), p = 2/θ and q = (2 - θ)/θ, and each power is summed over k &gt; K
         /// with the Euler-Maclaurin form of the Hurwitz zeta function. Retaining terms through j = 6 leaves a
-        /// residual below 1E-25, so the accuracy of the result is limited only by double rounding. The seven
-        /// pinned pyvinecopulib 0.7.6 oracle points are matched to 4.5E-16, and against mpmath at 60 decimal
-        /// digits on a grid over θ in [1, 100] the worst absolute error is 1.7E-16.
+        /// residual below 1E-25, so the accuracy of the result is limited only by double rounding. Agrees
+        /// with pyvinecopulib 0.7.6 reference values to 4.5E-16, and against mpmath at 60 decimal digits
+        /// on a grid over θ in [1, 100] the worst absolute error is 1.7E-16.
         /// </para>
         /// <para>
         /// <b> References: </b>
