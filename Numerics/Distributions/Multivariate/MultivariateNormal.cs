@@ -737,8 +737,10 @@ namespace Numerics.Distributions
                 catch (ArgumentException exception)
                 {
                     // A covariance whose bidiagonal reduction does not converge fails validation
-                    // through the same non-throwing contract as every other rejection.
-                    if (throwException) throw; else return exception;
+                    // through the same non-throwing contract as every other rejection, with the
+                    // decomposition failure preserved as the inner exception.
+                    var ex = new ArgumentOutOfRangeException("The covariance matrix decomposition did not converge.", exception);
+                    if (throwException) throw ex; else return ex;
                 }
                 if (!IsSymmetricPositiveSemiDefinite(svd, m))
                 {
