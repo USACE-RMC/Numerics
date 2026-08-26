@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
@@ -336,6 +336,43 @@ namespace Data.Statistics
             true_pval = 2.55425752131444e-05;
             Assert.AreEqual(true_pval, pval, 1E-9);
 
+        }
+
+        /// <summary>
+        /// The Mann-Kendall variance correction uses the size of each tie group, so a heavily tied
+        /// record matches the reference implementation.
+        /// </summary>
+        /// <remarks>
+        /// Reference p-value computed with Python pymannkendall 1.4.3 original_test and confirmed
+        /// by an independent evaluation of the Kendall (1975) variance formula with
+        /// scipy 1.17.1: p = 2.687544409241127E-08 for this fixture of twelve distinct values
+        /// followed by twelve tied values.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MannKendall_HeavyTies()
+        {
+            var sample = new double[] { 8.017, 8.219, 8.759, 9.016, 9.091, 9.452, 10.002, 10.12, 10.597, 10.714, 10.98, 12.68,
+                20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0 };
+            double pValue = HypothesisTests.MannKendallTest(sample);
+            Assert.AreEqual(2.687544409241127E-08, pValue, 2.687544409241127E-08 * 1E-6);
+        }
+
+        /// <summary>
+        /// The Mann-Whitney variance correction uses the size of each tie group, so tied samples
+        /// match the scipy asymptotic test without continuity correction.
+        /// </summary>
+        /// <remarks>
+        /// Reference p-value computed with Python scipy 1.17.1
+        /// scipy.stats.mannwhitneyu(x, y, use_continuity=False, alternative='two-sided',
+        /// method='asymptotic') = 0.03509475123312452.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MannWhitney_HeavyTies()
+        {
+            var sample1 = new double[] { 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 4.0, 5.0, 5.0 };
+            var sample2 = new double[] { 2.0, 2.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 8.0 };
+            double pValue = HypothesisTests.MannWhitneyTest(sample1, sample2);
+            Assert.AreEqual(0.03509475123312452, pValue, 0.03509475123312452 * 1E-6);
         }
 
     }
