@@ -19,8 +19,8 @@ namespace Numerics.MachineLearning
     /// <b> Description: </b>
     /// </para>
     /// <para>
-    /// k-Means clustering is a method of vector quantization, originally from signal processing, 
-    /// that aims to partition n observations into k clusters in which each observation belongs to 
+    /// k-Means clustering is a method of vector quantization, originally from signal processing,
+    /// that aims to partition n observations into k clusters in which each observation belongs to
     /// the cluster with the nearest mean (cluster centers or cluster centroid), serving as a prototype of the cluster.
     /// </para>
     /// <para>
@@ -42,6 +42,8 @@ namespace Numerics.MachineLearning
             this.K = k;
             this.X = new Matrix(X);
             Dimension = this.X.NumberOfColumns;
+            if (k < 1 || k > this.X.NumberOfRows)
+                throw new ArgumentOutOfRangeException(nameof(k), "The number of clusters must be between 1 and the number of data rows.");
             Means = new double[K, Dimension];
             Labels = new int[this.X.NumberOfRows];
         }
@@ -51,11 +53,13 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="X">The 1D array of predictor values.</param>
         /// <param name="k">The number of clusters.</param>
-        public KMeans(double[] X, int k) 
-        { 
+        public KMeans(double[] X, int k)
+        {
             this.K = k;
             this.X = new Matrix(X);
             Dimension = this.X.NumberOfColumns;
+            if (k < 1 || k > this.X.NumberOfRows)
+                throw new ArgumentOutOfRangeException(nameof(k), "The number of clusters must be between 1 and the number of data rows.");
             Means = new double[K, Dimension];
             Labels = new int[this.X.NumberOfRows];
         }
@@ -70,6 +74,8 @@ namespace Numerics.MachineLearning
             this.K = k;
             this.X = new Matrix(X);
             Dimension = this.X.NumberOfColumns;
+            if (k < 1 || k > this.X.NumberOfRows)
+                throw new ArgumentOutOfRangeException(nameof(k), "The number of clusters must be between 1 and the number of data rows.");
             Means = new double[K, Dimension];
             Labels = new int[this.X.NumberOfRows];
         }
@@ -84,6 +90,8 @@ namespace Numerics.MachineLearning
             this.K = k;
             this.X = X;
             Dimension = this.X.NumberOfColumns;
+            if (k < 1 || k > this.X.NumberOfRows)
+                throw new ArgumentOutOfRangeException(nameof(k), "The number of clusters must be between 1 and the number of data rows.");
             Means = new double[K, Dimension];
             Labels = new int[this.X.NumberOfRows];
         }
@@ -94,7 +102,7 @@ namespace Numerics.MachineLearning
         public int K { get; private set; }
 
         /// <summary>
-        /// The matrix of predictor values. 
+        /// The matrix of predictor values.
         /// </summary>
         public Matrix X { get; private set; }
 
@@ -114,7 +122,7 @@ namespace Numerics.MachineLearning
         public int[] Labels { get; private set; }
 
         /// <summary>
-        /// The maximum iterations in the clustering algorithm. Default = 1,000. 
+        /// The maximum iterations in the clustering algorithm. Default = 1,000.
         /// </summary>
         public int MaxIterations { get; set; } = 1000;
 
@@ -131,7 +139,7 @@ namespace Numerics.MachineLearning
         public void Train(int seed = -1, bool kMeansPlusPlus= true)
         {
 
-            // 1. Initialize cluster centers 
+            // 1. Initialize cluster centers
             Means = Initialize(X, K, seed, kMeansPlusPlus);
 
             // 2. Optimize clusters
@@ -160,7 +168,7 @@ namespace Numerics.MachineLearning
                 // Perform M-step
                 // Calculate new centroids from the clusters
                 Means = GetCentroids(Labels);
- 
+
             }
 
         }
@@ -179,7 +187,7 @@ namespace Numerics.MachineLearning
 
             if (kMeansPlusPlus == false)
             {
-                
+
                 var rndIdxs = rnd.NextIntegers(0, X.NumberOfRows, k, false);
                 Array.Sort(rndIdxs);
                 for (int i = 0; i < k; i++)
@@ -223,7 +231,7 @@ namespace Numerics.MachineLearning
 
                     // Following Accord.Net checks:
                     // https://github.com/accord-net/framework/blob/development/Sources/Accord.MachineLearning/Clustering/KMeans/KMeans.cs
-                    
+
                     // Note: the following checks could have been avoided if we added
                     // a small value to each distance, but is kept as this to avoid 022
                     // breaking the random pattern in existing code.
@@ -236,7 +244,7 @@ namespace Numerics.MachineLearning
                     else
                     {
                         // 3. Choose one new data point at random as a new center, using a weighted
-                        //    probability distribution where a point x is chosen with probability 
+                        //    probability distribution where a point x is chosen with probability
                         //    proportional to D(x)^2.
                         var u = rnd.NextDouble();
                         var cdf = new double[X.NumberOfRows];
@@ -250,9 +258,9 @@ namespace Numerics.MachineLearning
                                 break;
                             }
                         }
-                            
+
                     }
-                    for (int j = 0; j < X.NumberOfColumns; j++) 
+                    for (int j = 0; j < X.NumberOfColumns; j++)
                         centroids[c, j] = X[idx, j];
                 }
             }
@@ -267,7 +275,7 @@ namespace Numerics.MachineLearning
         private int[] GetLabels(double[,] centroids)
         {
             // Assign samples to the closest centroids
-            var labels = new int[X.NumberOfRows];       
+            var labels = new int[X.NumberOfRows];
             Parallel.For(0, X.NumberOfRows, idx =>  {  labels[idx] = GetClosestCentroid(X.Row(idx), centroids); });
             return labels;
         }
@@ -293,7 +301,37 @@ namespace Numerics.MachineLearning
             for (int k = 0; k < K; k++)
                 for (int j = 0; j < Dimension; j++)
                     centroids[k, j] /= count[k] > 0 ? count[k] : 1;
-            
+
+            // Relocate each empty cluster to the point farthest from its assigned centroid, one
+            // distinct point per empty cluster, matching the scikit-learn treatment. An empty
+            // cluster otherwise sits at the origin, which is not a property of the data.
+            var consumed = new bool[X.NumberOfRows];
+            for (int k = 0; k < K; k++)
+            {
+                if (count[k] > 0)
+                    continue;
+                int farthest = -1;
+                double maxDistance = -1;
+                for (int i = 0; i < X.NumberOfRows; i++)
+                {
+                    if (consumed[i])
+                        continue;
+                    double distance = 0;
+                    for (int j = 0; j < Dimension; j++)
+                        distance += Tools.Sqr(X[i, j] - centroids[labels[i], j]);
+                    if (distance > maxDistance)
+                    {
+                        maxDistance = distance;
+                        farthest = i;
+                    }
+                }
+                if (farthest < 0)
+                    continue;
+                consumed[farthest] = true;
+                for (int j = 0; j < Dimension; j++)
+                    centroids[k, j] = X[farthest, j];
+            }
+
             return centroids;
         }
 

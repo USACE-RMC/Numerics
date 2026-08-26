@@ -79,5 +79,24 @@ namespace MachineLearning
             Assert.IsLessThan(0, gmm.LogLikelihood, "the iteration-capped run must report its final evaluated log-likelihood");
             Assert.IsFalse(double.IsNaN(gmm.LogLikelihood) || double.IsInfinity(gmm.LogLikelihood));
         }
+        /// <summary>
+        /// A mixture initialized from a degenerate clustering keeps finite parameters: a component
+        /// that receives no responsibility retains its previous state instead of spreading NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_DegenerateFixture_StaysFinite()
+        {
+            var x = new double[12];
+            var y = new double[12];
+            for (int i = 6; i < 12; i++) { x[i] = 10; y[i] = 10; }
+            var gmm = new GaussianMixtureModel(new Matrix(new List<double[]> { x, y }), 3);
+            gmm.Train(12345);
+
+            Assert.IsFalse(double.IsNaN(gmm.LogLikelihood));
+            for (int k = 0; k < 3; k++)
+                for (int d = 0; d < 2; d++)
+                    Assert.IsFalse(double.IsNaN(gmm.Means[k, d]), $"mean [{k},{d}] is NaN");
+        }
+
     }
 }

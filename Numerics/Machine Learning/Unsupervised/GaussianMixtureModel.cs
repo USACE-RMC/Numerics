@@ -314,6 +314,10 @@ namespace Numerics.MachineLearning
                 for (int i = 0; i < X.NumberOfRows; i++)
                     wgt += LikelihoodMatrix[i, k];
                 Weights[k] = wgt / X.NumberOfRows;
+                // A component with no responsibility keeps its previous parameters; updating it
+                // would divide by zero and spread NaN through the model
+                if (wgt <= 0)
+                    continue;
                 for (int d = 0; d < Dimension; d++)
                 {
                     // Compute centroids

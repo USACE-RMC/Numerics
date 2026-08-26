@@ -51,5 +51,43 @@ namespace MachineLearning
             }
         }
 
+        /// <summary>
+        /// A cluster emptied during training relocates to the point farthest from its assigned
+        /// centroid, so a degenerate fixture with fewer distinct points than clusters converges to
+        /// finite centroids and zero inertia.
+        /// </summary>
+        /// <remarks>
+        /// Reference behavior verified against Python scikit-learn 1.8.0 KMeans(3) on the same
+        /// fixture: finite centers and an inertia of exactly zero, since every point coincides
+        /// with a centroid at convergence.
+        /// </remarks>
+        [TestMethod]
+        public void Test_KMeans_EmptyClusterRelocation()
+        {
+            var rows = new double[12, 2];
+            for (int i = 6; i < 12; i++) { rows[i, 0] = 10; rows[i, 1] = 10; }
+            var km = new KMeans(rows, 3);
+            km.Train(12345);
+
+            double inertia = 0;
+            for (int i = 0; i < 12; i++)
+            {
+                Assert.IsFalse(double.IsNaN(km.Means[km.Labels[i], 0]) || double.IsNaN(km.Means[km.Labels[i], 1]));
+                inertia += Math.Pow(rows[i, 0] - km.Means[km.Labels[i], 0], 2) + Math.Pow(rows[i, 1] - km.Means[km.Labels[i], 1], 2);
+            }
+            Assert.AreEqual(0.0, inertia);
+        }
+
+        /// <summary>
+        /// The cluster count is validated against the data size.
+        /// </summary>
+        [TestMethod]
+        public void Test_KMeans_ClusterCountValidation()
+        {
+            var rows = new double[12, 2];
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new KMeans(rows, 0));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new KMeans(rows, 13));
+        }
+
     }
 }
