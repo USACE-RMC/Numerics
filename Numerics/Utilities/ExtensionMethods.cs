@@ -105,7 +105,7 @@ namespace Numerics
                 if (length > maxValue - minValue)
                     throw new ArgumentException("When sampling without replacement, the length must be less than or equal to the range of values.");
 
-                var bins = new List<int>();
+                var bins = new List<int>(maxValue - minValue);
                 for (int i = minValue; i < maxValue; i++)
                     bins.Add(i);
 
