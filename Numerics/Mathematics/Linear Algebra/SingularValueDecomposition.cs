@@ -383,7 +383,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                         }
                         break;
                     }
-                    if (its == 99) throw new ArgumentException("There was no convergence in 100 iterations");
+                    if (its == 29) throw new ArgumentException("There was no convergence in 30 iterations");
                     x = W[l];
                     nm = k - 1;
                     y = W[nm];

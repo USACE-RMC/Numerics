@@ -729,7 +729,17 @@ namespace Numerics.Distributions
             }
             else
             {
-                var svd = new SingularValueDecomposition(m);
+                SingularValueDecomposition svd;
+                try
+                {
+                    svd = new SingularValueDecomposition(m);
+                }
+                catch (ArgumentException exception)
+                {
+                    // A covariance whose bidiagonal reduction does not converge fails validation
+                    // through the same non-throwing contract as every other rejection.
+                    if (throwException) throw; else return exception;
+                }
                 if (!IsSymmetricPositiveSemiDefinite(svd, m))
                 {
                     var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not symmetric positive-semi-definite.");
