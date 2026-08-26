@@ -520,16 +520,23 @@ namespace Data.Statistics
         /// <remarks>
         /// Every comparison against NaN is false, so a NaN percentile must be rejected explicitly: without
         /// the explicit test it passes the range check and reaches the interpolation index, where the
-        /// float-to-int conversion saturates on .NET Core and is undefined on .NET Framework. Both
-        /// infinities are rejected by the range check alone.
+        /// float-to-int conversion produces an out-of-range index whose failure surfaces as an indexer
+        /// exception — also an <see cref="ArgumentOutOfRangeException"/>, but with <c>ParamName</c>
+        /// "index". The assertions therefore check <c>ParamName</c> as well as the exception type, which
+        /// is what distinguishes the contract rejection from the accidental one. Both infinities are
+        /// rejected by the range check alone.
         /// </remarks>
         [TestMethod]
         public void Test_Percentile_InvalidArguments()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NaN));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.PositiveInfinity));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NegativeInfinity));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, new double[] { 0.5d, double.NaN }));
+            var nanScalar = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NaN));
+            Assert.AreEqual("k", nanScalar.ParamName);
+            var positiveInfinity = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.PositiveInfinity));
+            Assert.AreEqual("k", positiveInfinity.ParamName);
+            var negativeInfinity = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NegativeInfinity));
+            Assert.AreEqual("k", negativeInfinity.ParamName);
+            var nanEntry = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, new double[] { 0.5d, double.NaN }));
+            Assert.AreEqual("k", nanEntry.ParamName);
 
             Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(null, 0.5d));
             Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(null, new double[] { 0.5d }));

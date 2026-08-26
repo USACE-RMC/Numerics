@@ -583,9 +583,11 @@ namespace Numerics.Data.Statistics
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when <paramref name="data"/> is empty.</exception>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Thrown when <paramref name="k"/> is not a finite value in [0,1]. Every comparison against NaN
-        /// is false, so NaN is rejected explicitly; without that test it would reach the interpolation
-        /// index, which saturates to zero on .NET Core and is undefined on .NET Framework.
+        /// Thrown when <paramref name="k"/> is not a finite value in [0,1], with <c>ParamName</c> equal
+        /// to <c>k</c>. Every comparison against NaN is false, so NaN is rejected explicitly; without
+        /// that test it reaches the interpolation index, where the float-to-int conversion produces an
+        /// out-of-range index and the failure surfaces as an indexer exception rather than this contract
+        /// exception.
         /// </exception>
         public static double Percentile(IList<double> data, double k, bool dataIsSorted = false)
         {

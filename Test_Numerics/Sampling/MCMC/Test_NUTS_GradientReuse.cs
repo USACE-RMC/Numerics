@@ -313,6 +313,58 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
+        /// The memo must record the position before the delegate runs, so a delegate that writes through
+        /// its argument cannot leave the memo keyed by the mutated position.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="NUTS.GradientFunction"/> receives the caller's position array by reference, and
+        /// nothing prevents an implementation from using it as scratch space during the evaluation. Were
+        /// the position recorded after such a delegate returned, the entry would be keyed by the mutated
+        /// position while holding the gradient of the original one: a later query at the mutated position
+        /// would falsely hit, and a later query at the original position would falsely miss. The delegate
+        /// here computes the gradient of its argument and then overwrites the argument, and the assertions
+        /// observe which keys the memo answers to afterwards.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NUTS_GradientReuse_RecordsThePositionBeforeTheDelegateRuns()
+        {
+            int count = 0;
+            bool hostile = false;
+            var sampler = BuildSampler(false, (x) =>
+            {
+                count++;
+                var g = Gradient(x);
+                if (hostile)
+                {
+                    // Overwrite the argument after computing its gradient, as a delegate that uses its
+                    // argument as scratch space would.
+                    for (int j = 0; j < x.Count; j++) x[j] = 1000d + j;
+                }
+                return g;
+            });
+            sampler.Sample();
+            ClearMemo(sampler);
+            hostile = true;
+
+            var original = new double[] { 0.5d, -1.5d, 2.25d, -4d };
+            var mutated = new double[] { 1000d, 1001d, 1002d, 1003d };
+
+            count = 0;
+            InvokeEvaluateGradient(sampler, (double[])original.Clone());
+            Assert.AreEqual(1, count, "The first evaluation at a fresh position must reach the gradient delegate.");
+
+            InvokeEvaluateGradient(sampler, (double[])original.Clone());
+            Assert.AreEqual(1, count,
+                "A repeat of the original position must be served from the memo; the stored key followed " +
+                "the delegate's in-call mutation of its argument.");
+
+            InvokeEvaluateGradient(sampler, (double[])mutated.Clone());
+            Assert.AreEqual(2, count,
+                "The memo answered the mutated position, which was never evaluated; the position must be " +
+                "recorded before the delegate runs.");
+        }
+
+        /// <summary>
         /// The memo must store a copy of the gradient the delegate returned, not a reference to the
         /// <see cref="Vector"/> it came back in.
         /// </summary>
