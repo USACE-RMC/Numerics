@@ -1,5 +1,4 @@
 ﻿using Numerics.Data.Statistics;
-using Numerics.Distributions;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Sampling;
 using System;
@@ -172,26 +171,22 @@ namespace Numerics.MachineLearning
             int numberOfSamples = xTrain.NumberOfRows;
             int numberOfLabels = IsRegression ? yTrain.Length : yTrain.ToList().Distinct().Count();
 
-            // Find the best split
+            // The feature subset is drawn for every node, split or leaf, so the generator consumes
+            // exactly one draw per node and the draw schedule is independent of the stopping conditions.
             var featureIdxs = Random.NextIntegers(0, Dimensions, Features, false);
+
+            // Leaf conditions that need no split search
+            if (depth >= MaxDepth || numberOfLabels <= 1 || numberOfSamples < MinimumSplitSize)
+            {
+                return CreateLeaf(yTrain);
+            }
+
+            // Find the best split
             int bestIndex = 0; double bestThreshold = 0;
             BestSplit(xTrain, yTrain.ToArray(), featureIdxs, out bestIndex, out bestThreshold);
-
-            // Check stopping criteria
-            if (bestIndex == -1 || depth >= MaxDepth || numberOfLabels <= 1 || numberOfSamples < MinimumSplitSize)
+            if (bestIndex == -1)
             {
-                if (IsRegression)
-                {
-                    // If regression return the average of Y
-                    var avg = Tools.Mean(yTrain.ToArray());
-                    return new DecisionNode() { Value = avg, IsLeafNode = true };
-                }
-                else
-                {
-                    // If classification, return the most common value
-                    var most = yTrain.ToList().GroupBy(i => i).OrderByDescending(grp => grp.Count()).Select(grp => grp.Key).First();
-                    return new DecisionNode() { Value = most, IsLeafNode = true };
-                }
+                return CreateLeaf(yTrain);
             }
 
 
@@ -231,6 +226,27 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
+        /// Creates a leaf node from the response values.
+        /// </summary>
+        /// <param name="yTrain">The training vector of response values.</param>
+        /// <returns>A leaf node holding the mean response for regression or the most common label for classification.</returns>
+        private DecisionNode CreateLeaf(Vector yTrain)
+        {
+            if (IsRegression)
+            {
+                // If regression return the average of Y
+                var avg = Tools.Mean(yTrain.ToArray());
+                return new DecisionNode() { Value = avg, IsLeafNode = true };
+            }
+            else
+            {
+                // If classification, return the most common value
+                var most = yTrain.ToList().GroupBy(i => i).OrderByDescending(grp => grp.Count()).Select(grp => grp.Key).First();
+                return new DecisionNode() { Value = most, IsLeafNode = true };
+            }
+        }
+
+        /// <summary>
         /// Returns the best split feature index and threshold.
         /// </summary>
         /// <param name="xTrain">The matrix of predictor values.</param>
@@ -238,26 +254,39 @@ namespace Numerics.MachineLearning
         /// <param name="indices">The feature indexes to evaluate.</param>
         /// <param name="bestFeatureIndex">Output. The best feature index.</param>
         /// <param name="bestThreshold">Output. The best threshold for splitting the tree.</param>
+        /// <remarks>
+        /// The parent impurity is constant within a node, so it is evaluated once and shared across
+        /// every candidate. Duplicate candidate thresholds produce identical splits, so only the
+        /// first occurrence of each value is evaluated; because ties break toward the earliest
+        /// candidate, the selected split is the same one an exhaustive scan selects.
+        /// </remarks>
         private void BestSplit(Matrix xTrain, double[] yTrain, int[] indices, out int bestFeatureIndex, out double bestThreshold)
         {
             double best = double.MinValue;
             bestFeatureIndex = -1;
             bestThreshold = 0;
 
+            double parentImpurity = IsRegression ? Statistics.PopulationVariance(yTrain) : Entropy(yTrain);
+            var seen = new HashSet<double>();
+
             for (int i = 0; i < indices.Length; i++)
             {
                 var x = xTrain.Column(indices[i]);
-                var thresholds = IsRegression ? x : x.Distinct().ToArray();
-                for (int j = 0; j < thresholds.Count(); j++)
+                seen.Clear();
+                for (int j = 0; j < x.Length; j++)
                 {
+                    if (!seen.Add(x[j]))
+                    {
+                        continue;
+                    }
                     // Test if the split variance reduction or information gain
-                    double performance = IsRegression ? VarianceReduction(x, yTrain, thresholds[j]) : InformationGain(x, yTrain, thresholds[j]);
+                    double performance = IsRegression ? VarianceReduction(x, yTrain, x[j], parentImpurity) : InformationGain(x, yTrain, x[j], parentImpurity);
                     // Keep track of the best value
                     if (performance > best)
                     {
                         best = performance;
                         bestFeatureIndex = indices[i];
-                        bestThreshold = thresholds[j];
+                        bestThreshold = x[j];
                     }
                 }
             }
@@ -270,31 +299,60 @@ namespace Numerics.MachineLearning
         /// <param name="x">The column of x-values.</param>
         /// <param name="y">The column of y-values.</param>
         /// <param name="threshold">The split threshold.</param>
-        private double VarianceReduction(double[] x, double[] y, double threshold)
+        /// <param name="parentVariance">The population variance of the parent node response values.</param>
+        /// <returns>The variance reduction of the split, or double.MinValue when the threshold places every sample in one child.</returns>
+        /// <remarks>
+        /// The child variances are accumulated in sample order with the same recurrence as
+        /// <see cref="Statistics.PopulationVariance(System.Collections.Generic.IList{double})"/>, so
+        /// the reduction is identical to evaluating that method on materialized child arrays.
+        /// </remarks>
+        private double VarianceReduction(double[] x, double[] y, double threshold, double parentVariance)
         {
-            // parent entropy
-            var parentVariance = Statistics.PopulationVariance(y);
+            // Stream both child variances in one pass over the sample
+            int countLeft = 0, countRight = 0;
+            double sumLeft = 0, sumRight = 0, accLeft = 0, accRight = 0;
+            for (int i = 0; i < x.Length; i++)
+            {
+                double v = y[i];
+                if (x[i] <= threshold)
+                {
+                    countLeft++;
+                    if (countLeft == 1)
+                    {
+                        sumLeft = v;
+                    }
+                    else
+                    {
+                        sumLeft += v;
+                        double diff = countLeft * v - sumLeft;
+                        accLeft += diff * diff / (countLeft * (countLeft - 1.0));
+                    }
+                }
+                else
+                {
+                    countRight++;
+                    if (countRight == 1)
+                    {
+                        sumRight = v;
+                    }
+                    else
+                    {
+                        sumRight += v;
+                        double diff = countRight * v - sumRight;
+                        accRight += diff * diff / (countRight * (countRight - 1.0));
+                    }
+                }
+            }
 
-            // create children
-            var leftIdxs = new List<int>();
-            var rightIdxs = new List<int>();
-            Split(x, threshold, out leftIdxs, out rightIdxs);
-
-            if (leftIdxs.Count == 0 || rightIdxs.Count == 0)
+            if (countLeft == 0 || countRight == 0)
                 return double.MinValue;
 
             // calculate the weighted average variance of the children
             var n = (double)y.Length;
-            var nLeft = (double)leftIdxs.Count;
-            var nRight = (double)rightIdxs.Count;
-            var yLeft = new double[leftIdxs.Count];
-            for (int i = 0; i < leftIdxs.Count; i++)
-                yLeft[i] = y[leftIdxs[i]];
-            var yRight = new double[rightIdxs.Count];
-            for (int i = 0; i < rightIdxs.Count; i++)
-                yRight[i] = y[rightIdxs[i]];
-            var varLeft = Statistics.PopulationVariance(yLeft);
-            var varRight = Statistics.PopulationVariance(yRight);
+            var nLeft = (double)countLeft;
+            var nRight = (double)countRight;
+            var varLeft = accLeft / countLeft;
+            var varRight = accRight / countRight;
             var childVariance = nLeft / n * varLeft + nRight / n * varRight;
 
             // Return variance reduction
@@ -307,61 +365,105 @@ namespace Numerics.MachineLearning
         /// <param name="x">The column of x-values.</param>
         /// <param name="y">The column of y-values.</param>
         /// <param name="threshold">The split threshold.</param>
-        private double InformationGain(double[] x, double[] y, double threshold)
+        /// <param name="parentEntropy">The entropy of the parent node response values.</param>
+        /// <returns>The information gain of the split, or double.MinValue when the threshold places every sample in one child.</returns>
+        /// <remarks>
+        /// Label probabilities are the per-child label counts divided by the child size, and entropy
+        /// terms are accumulated in sample order, so each child entropy is identical to evaluating
+        /// <see cref="Entropy(double[])"/> on a materialized child array.
+        /// </remarks>
+        private double InformationGain(double[] x, double[] y, double threshold, double parentEntropy)
         {
-            // parent entropy
-            var parentE = Entropy(y);
-            
-            // create children
-            var leftIdxs = new List<int>();
-            var rightIdxs = new List<int>();
-            Split(x, threshold, out leftIdxs, out rightIdxs);
+            // Count the labels on each side of the threshold
+            var leftCounts = new Dictionary<double, int>();
+            var rightCounts = new Dictionary<double, int>();
+            int countLeft = 0, countRight = 0;
+            for (int i = 0; i < x.Length; i++)
+            {
+                double v = y[i];
+                if (x[i] <= threshold)
+                {
+                    countLeft++;
+                    if (!double.IsNaN(v))
+                    {
+                        leftCounts.TryGetValue(v, out int c);
+                        leftCounts[v] = c + 1;
+                    }
+                }
+                else
+                {
+                    countRight++;
+                    if (!double.IsNaN(v))
+                    {
+                        rightCounts.TryGetValue(v, out int c);
+                        rightCounts[v] = c + 1;
+                    }
+                }
+            }
 
-            if (leftIdxs.Count == 0 || rightIdxs.Count == 0)
+            if (countLeft == 0 || countRight == 0)
                 return double.MinValue;
 
             // calculate the weighted average entropy of children
-            var n = (double)y.Length;
-            var nl = (double)leftIdxs.Count;
-            var nr = (double)rightIdxs.Count;
-            var yl = new double[leftIdxs.Count];
-            for (int i = 0; i < leftIdxs.Count; i++)
-                yl[i] = y[leftIdxs[i]];
-            var yr = new double[rightIdxs.Count];
-            for (int i = 0; i < rightIdxs.Count; i++)
-                yr[i] = y[rightIdxs[i]];
-            var el = Entropy(yl);
-            var er = Entropy(yr);
-            var childrenE = nl / n * el + nr / n * er;
+            double sumLeft = 0, sumRight = 0;
+            for (int i = 0; i < x.Length; i++)
+            {
+                double v = y[i];
+                if (double.IsNaN(v))
+                    continue;
+                if (x[i] <= threshold)
+                {
+                    double p = (double)leftCounts[v] / countLeft;
+                    sumLeft += p * Math.Log(p);
+                }
+                else
+                {
+                    double p = (double)rightCounts[v] / countRight;
+                    sumRight += p * Math.Log(p);
+                }
+            }
 
-            return parentE - childrenE;
+            var n = (double)y.Length;
+            var nl = (double)countLeft;
+            var nr = (double)countRight;
+            var childrenE = nl / n * (-sumLeft) + nr / n * (-sumRight);
+
+            return parentEntropy - childrenE;
         }
 
         /// <summary>
-        /// Computes the entropy for vector of y-values.
+        /// Computes the entropy for a vector of classification labels.
         /// </summary>
         /// <param name="y">The column of y-values.</param>
+        /// <returns>The entropy of the labels.</returns>
+        /// <remarks>
+        /// The empirical probability of each label is its count divided by the sample length, and
+        /// terms are accumulated in sample order. Labels of NaN carry an empirical probability of
+        /// zero and contribute nothing.
+        /// </remarks>
         private double Entropy(double[] y)
         {
-            if (IsRegression == true)
+            var counts = new Dictionary<double, int>();
+            for (int i = 0; i < y.Length; i++)
             {
-                // use kernel density
-                var kde = new KernelDensity(y);
-                return Statistics.Entropy(y, kde.PDF);
-            }
-            else
-            {
-                // Use histogram
-                return Statistics.Entropy(y, (x) => 
+                double v = y[i];
+                if (!double.IsNaN(v))
                 {
-                    double n = 0;
-                    for (int i = 0; i < y.Length; i++)
-                    {
-                        if (x == y[i]){ n++; }
-                    }
-                    return n / y.Length;          
-                });
+                    counts.TryGetValue(v, out int c);
+                    counts[v] = c + 1;
+                }
             }
+
+            double sum = 0;
+            for (int i = 0; i < y.Length; i++)
+            {
+                double v = y[i];
+                if (double.IsNaN(v))
+                    continue;
+                double p = (double)counts[v] / y.Length;
+                sum += p * Math.Log(p);
+            }
+            return -sum;
         }
 
         /// <summary>
