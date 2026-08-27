@@ -476,6 +476,7 @@ In log space, the source code computes this as:
 
 - The step size $\varepsilon$ is **jittered**: each iteration draws $\varepsilon \sim \text{Uniform}(0, \, 2\varepsilon_0)$ where $\varepsilon_0$ is the `StepSize` property. This avoids resonant trajectories.
 - The number of leapfrog steps $L$ is **jittered**: each iteration draws $L \sim \text{UniformDiscrete}(1, \, 2L_0)$ where $L_0$ is the `Steps` property.
+- A trajectory of $L$ steps costs at most $L + 1$ gradient evaluations: the closing half-step of each leapfrog step is fused with the opening half-step of the next, and after a chain's first transition the opening evaluation is served from a per-chain memo of the previous transition's closing evaluation. The gradient delegate receives a private working array, never the chain state itself, so a delegate that writes through its argument cannot corrupt the chain.
 - The mass vector $M$ is diagonal (default: identity). Users can set it via the `mass` constructor parameter.
 - If no gradient function is provided, numerical finite differences are used via `NumericalDerivative.Gradient`, with probes clamped to prior bounds.
 
@@ -551,7 +552,7 @@ This is implemented via log-sum-exp arithmetic for numerical stability.
 
 where:
 
-- $\delta = 0.80$ is the target acceptance rate (`DELTA_TARGET`)
+- $\delta$ is the target acceptance rate (the `TargetAcceptanceRate` property, default 0.80)
 - $\gamma = 0.05$ is the adaptation regularization (`GAMMA`)
 - $t_0 = 10$ prevents early instability (`T0`)
 - $\mu = \log(10 \cdot \varepsilon_0)$ is the bias point, with $\varepsilon_0$ the initial step size

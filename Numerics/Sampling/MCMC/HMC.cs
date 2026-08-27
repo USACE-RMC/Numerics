@@ -21,7 +21,13 @@ namespace Numerics.Sampling.MCMC
     /// <b> Description:</b>
     /// </para>
     /// <para>
-    ///     The optimal acceptance rate for this sampler is 65%, whereas Metropolis-Hastings samplers have an optimal rate of 23.4%. 
+    ///     The optimal acceptance rate for this sampler is 65%, whereas Metropolis-Hastings samplers have an optimal rate of 23.4%.
+    /// </para>
+    /// <para>
+    ///     A trajectory of L leapfrog steps costs at most L + 1 gradient evaluations: the closing
+    ///     half-step of each step is fused with the opening half-step of the next. After a chain's first
+    ///     transition the opening evaluation is served from a per-chain memo of the previous transition's
+    ///     closing evaluation, reducing the cost to L.
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -39,6 +45,12 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         /// <param name="parameters">The list of parameters to evaluate.</param>
         /// <returns>Returns the gradient of the log-likelihood function.</returns>
+        /// <remarks>
+        /// The sampler hands the delegate a private working array, never the chain state itself, so an
+        /// implementation that writes through its argument cannot corrupt the chain. A gradient the
+        /// sampler keeps for reuse is copied out of the returned vector, so an implementation may return
+        /// one reused buffer.
+        /// </remarks>
         public delegate Vector Gradient(IList<double> parameters);
 
         /// <summary>
@@ -103,6 +115,18 @@ namespace Numerics.Sampling.MCMC
         private double[] _lowerBounds;
         private double[] _upperBounds;
 
+        // Per-chain memo of the gradient at the current chain state. A leapfrog trajectory closes with a
+        // gradient evaluation at its final position, and the next transition opens by evaluating the
+        // gradient at that same position when the proposal was accepted, or at the unchanged state when it
+        // was rejected, so the opening evaluation is redundant after the chain's first transition. The
+        // stored arrays are owned by the memo and are copies in both directions: positions are recorded
+        // before the delegate runs and gradients are copied out of the returned vector, so neither a
+        // delegate that writes through its argument nor one that returns a reused buffer can corrupt an
+        // entry. Entries are matched on bit patterns, never with ==, so +0 and -0 are distinct positions.
+        private double[][] _startGradientPositions = null!;
+        private double[][] _startGradientValues = null!;
+        private bool[] _startGradientOccupied = null!;
+
         /// <summary>
         /// The mass vector for the momentum distribution.
         /// </summary>
@@ -164,6 +188,19 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Allocates the per-chain start-gradient memo. A resumed simulation skips this, keeping the
+        /// entries from the run it continues; those entries still describe the chain states the resume
+        /// starts from, so they remain valid.
+        /// </remarks>
+        protected override void InitializeCustomSettings()
+        {
+            _startGradientPositions = new double[NumberOfChains][];
+            _startGradientValues = new double[NumberOfChains][];
+            _startGradientOccupied = new bool[NumberOfChains];
+        }
+
+        /// <inheritdoc/>
         protected override ParameterSet ChainIteration(int index, ParameterSet state)
         {
 
@@ -184,9 +221,13 @@ namespace Numerics.Sampling.MCMC
                 // Get kinetic energy of the current state
                 var logKi = -0.5 * QuadraticForm(phi, _inverseMass);
 
-                // Step 2. Perform leapfrog steps to get proposal vector
-                var xp = new Vector(state.Values);
-                phi += GradientFunction(xp.Array) * _stepSize * 0.5;
+                // Step 2. Perform leapfrog steps to get proposal vector. The trajectory works on a
+                // private copy of the chain state, so the gradient delegate never sees the chain's own
+                // array.
+                var xp = new Vector((double[])state.Values.Clone());
+                phi += StartGradient(index, xp.Array) * _stepSize * 0.5;
+                double[] proposalPosition = null!;
+                Vector proposalGradient = null!;
                 for (int i = 0; i < _steps; i++)
                 {
                     xp += _inverseMass * phi * _stepSize;
@@ -206,7 +247,19 @@ namespace Numerics.Sampling.MCMC
                         }
                     }
 
-                    phi += GradientFunction(xp.Array) * _stepSize * (i == _steps - 1 ? 0.5 : 1.0);
+                    if (i == _steps - 1)
+                    {
+                        // The closing half-step evaluates the gradient at the proposal position. Keep the
+                        // position, recorded before the delegate runs, and the gradient, so an accepted
+                        // proposal seeds the memo for the next transition's opening half-step.
+                        proposalPosition = (double[])xp.Array.Clone();
+                        proposalGradient = GradientFunction(xp.Array);
+                        phi += proposalGradient * _stepSize * 0.5;
+                    }
+                    else
+                    {
+                        phi += GradientFunction(xp.Array) * _stepSize;
+                    }
                 }
                 phi *= -1d;
 
@@ -225,8 +278,11 @@ namespace Numerics.Sampling.MCMC
                 var logU = Math.Log(_chainPRNGs[index].NextDouble());
                 if (logU <= logRatio)
                 {
-                    // The proposal is accepted
+                    // The proposal is accepted. The closing half-step's gradient becomes the opening
+                    // gradient of the next transition, so store it against the accepted position. On the
+                    // reject path the memo already holds the entry for the unchanged state.
                     AcceptCount[index] += 1;
+                    StoreStartGradient(index, proposalPosition, proposalGradient);
                     return new ParameterSet(xp.Array, logLHp);
                 }
                 else
@@ -243,6 +299,74 @@ namespace Numerics.Sampling.MCMC
                 return state;
             }
 
+        }
+
+        /// <summary>
+        /// Returns the gradient at the trajectory start, served from the per-chain memo when the position
+        /// matches the stored entry bit for bit, and evaluated through <see cref="GradientFunction"/>
+        /// otherwise.
+        /// </summary>
+        /// <param name="index">The Markov Chain zero-based index.</param>
+        /// <param name="position">The trajectory start position. The array is the trajectory's private
+        /// working copy, so the delegate may be handed it directly.</param>
+        /// <returns>The gradient at <paramref name="position"/>. On a memo hit the returned vector wraps
+        /// the memo's stored array and must be treated as read-only; every use here only feeds allocating
+        /// vector arithmetic.</returns>
+        /// <remarks>
+        /// A miss records the position before the delegate runs, so a delegate that writes through its
+        /// argument cannot pair a mutated position with another point's gradient; such a mutation only
+        /// produces a harmless later miss. Matching is on <see cref="BitConverter.DoubleToInt64Bits(double)"/>
+        /// rather than <c>==</c>, so a position differing only in the sign of a zero is a distinct
+        /// position, and NaN never matches so a non-finite state can never be served a stale gradient.
+        /// </remarks>
+        private Vector StartGradient(int index, double[] position)
+        {
+            if (_startGradientOccupied[index] && MatchesBitwise(_startGradientPositions[index], position))
+                return new Vector(_startGradientValues[index]);
+
+            var recorded = (double[])position.Clone();
+            var gradient = GradientFunction(position);
+            StoreStartGradient(index, recorded, gradient);
+            return gradient;
+        }
+
+        /// <summary>
+        /// Stores a position and its gradient as the chain's start-gradient memo entry, copying the
+        /// gradient out of the delegate's vector so a reused buffer cannot rewrite the entry later.
+        /// </summary>
+        /// <param name="index">The Markov Chain zero-based index.</param>
+        /// <param name="position">The position the gradient was evaluated at, recorded before the
+        /// delegate ran. The memo takes ownership of this array.</param>
+        /// <param name="gradient">The gradient the delegate returned. A gradient of the wrong length
+        /// clears the entry instead of storing it.</param>
+        private void StoreStartGradient(int index, double[] position, Vector gradient)
+        {
+            if (gradient.Length != NumberOfParameters)
+            {
+                _startGradientOccupied[index] = false;
+                return;
+            }
+            _startGradientPositions[index] = position;
+            _startGradientValues[index] = (double[])gradient.Array.Clone();
+            _startGradientOccupied[index] = true;
+        }
+
+        /// <summary>
+        /// Compares a stored memo position against a query position on the bit patterns of every
+        /// coordinate.
+        /// </summary>
+        /// <param name="stored">The memo's stored position.</param>
+        /// <param name="position">The query position.</param>
+        /// <returns>True when every coordinate matches bit for bit.</returns>
+        private static bool MatchesBitwise(double[] stored, double[] position)
+        {
+            if (stored.Length != position.Length) return false;
+            for (int i = 0; i < stored.Length; i++)
+            {
+                if (BitConverter.DoubleToInt64Bits(stored[i]) != BitConverter.DoubleToInt64Bits(position[i]))
+                    return false;
+            }
+            return true;
         }
 
         /// <summary>
