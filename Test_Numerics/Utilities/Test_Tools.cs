@@ -605,8 +605,10 @@ namespace Utilities
         /// <summary>
         /// Expm1 computes exp(x) - 1 without cancellation: tiny arguments return themselves
         /// exactly, small arguments match the series exp(x) - 1 = x + x^2/2 + x^3/6 to full
-        /// precision, deep negatives saturate at exactly -1, large arguments overflow to positive
-        /// infinity, and the round trip with Log1p closes.
+        /// precision, deep negatives saturate at exactly -1, arguments large enough that the
+        /// exponential itself overflows return positive infinity while the band just below, where
+        /// only the compensation's intermediate product overflows, stays finite, and the round trip
+        /// with Log1p closes.
         /// </summary>
         [TestMethod]
         public void Test_Expm1()
@@ -624,6 +626,13 @@ namespace Utilities
             Assert.AreEqual(double.PositiveInfinity, Tools.Expm1(800d));
             Assert.AreEqual(double.PositiveInfinity, Tools.Expm1(double.PositiveInfinity));
             Assert.IsTrue(double.IsNaN(Tools.Expm1(double.NaN)));
+            // Inside the band where exp(x) is finite but the compensation's intermediate
+            // (u - 1) * x overflows, the exact difference is returned: exp(x) - 1 and exp(x) agree
+            // to the last unit there. Unguarded, these answered positive infinity.
+            Assert.AreEqual(Math.Exp(705d), Tools.Expm1(705d), 0d);
+            Assert.AreEqual(Math.Exp(709d), Tools.Expm1(709d), 0d);
+            // The exponential itself first overflows just above 709.78.
+            Assert.AreEqual(double.PositiveInfinity, Tools.Expm1(709.8d));
 
             foreach (double x in new[] { 1E-12, 0.5d, 3d })
             {

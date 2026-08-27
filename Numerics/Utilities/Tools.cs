@@ -238,8 +238,11 @@ namespace Numerics
         /// <remarks>
         /// Uses the compensated evaluation <c>(u - 1) * x / log(u)</c> with <c>u = exp(x)</c>, which
         /// corrects the rounding of the exponential; when <c>u</c> rounds to one the input itself is
-        /// returned. This is the companion of <see cref="Log1p"/> for log-space probability
-        /// arithmetic such as survival products of many small probabilities.
+        /// returned. For large positive inputs the compensation's intermediate product overflows
+        /// while <c>exp(x) - 1</c> is still finite; there the subtraction is exact to the last unit
+        /// anyway, so the direct difference is returned. This is the companion of
+        /// <see cref="Log1p"/> for log-space probability arithmetic such as survival products of
+        /// many small probabilities.
         /// </remarks>
         public static double Expm1(double x)
         {
@@ -247,7 +250,11 @@ namespace Numerics
             if (u == 1.0) return x;
             if (double.IsPositiveInfinity(u)) return u;
             if (u == 0.0) return -1.0;
-            return (u - 1.0) * x / Math.Log(u);
+            double numerator = (u - 1.0) * x;
+            // The product overflows only for x large enough that 1 is far below one unit in the last
+            // place of u, where exp(x) - 1 carries no cancellation to compensate for.
+            if (double.IsInfinity(numerator)) return u - 1.0;
+            return numerator / Math.Log(u);
         }
 
         /// <summary>

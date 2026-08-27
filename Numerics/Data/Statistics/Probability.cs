@@ -722,6 +722,11 @@ namespace Numerics.Data.Statistics
         /// Thrown when a probability is outside [0, 1], the correlation is outside [0, 1], or the
         /// relative tolerance is outside the quadrature's accepted range of [1E-15, 1].
         /// </exception>
+        /// <exception cref="ArithmeticException">
+        /// Thrown when the quadrature exhausts its function-evaluation budget before meeting the
+        /// requested tolerance, so a result that does not honor <paramref name="relativeTolerance"/>
+        /// is never returned silently.
+        /// </exception>
         public static double UnionSingleFactor(IList<double> probabilities, double rho, double relativeTolerance = 1E-8)
         {
             if (probabilities == null || probabilities.Count == 0)
@@ -776,6 +781,11 @@ namespace Numerics.Data.Statistics
                 ReportFailure = true
             };
             quadrature.Integrate();
+            // ReportFailure rethrows any evaluation exception, so a normal return leaves the status at
+            // Success or at the evaluation-budget stop. The budget stop means the requested tolerance
+            // was not certified, so it must not be returned as if it were.
+            if (quadrature.Status != Mathematics.IntegrationStatus.Success)
+                throw new ArithmeticException("The single-factor union quadrature exhausted its function-evaluation budget before meeting the requested tolerance.");
             return Tools.Clamp(quadrature.Result, 0d, 1d);
         }
 
