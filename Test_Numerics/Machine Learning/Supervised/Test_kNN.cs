@@ -169,6 +169,31 @@ namespace MachineLearning
         }
 
         /// <summary>
+        /// A query whose column count differs from the training matrix must be rejected with a null
+        /// result, matching Predict. GetNeighbors' old guard compared the training matrix against
+        /// itself, so a narrower query silently computed partial-dimension distances and a wider
+        /// query threw an IndexOutOfRangeException from inside the distance helper.
+        /// </summary>
+        [TestMethod]
+        public void Test_GetNeighbors_QueryShapeMismatch_ReturnsNull()
+        {
+            var x1 = new double[] { 0, 1, 0, 1, 2, 0, 100, 101, 100, 101, 102, 100 };
+            var x2 = new double[] { 0, 0, 1, 1, 0, 2, 100, 100, 101, 101, 100, 102 };
+            var xTrain = new Matrix(new List<double[]> { x1, x2 });
+            var yTrain = new Vector(new double[] { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 });
+            var knn = new KNearestNeighbors(xTrain, yTrain, 2);
+
+            // One column instead of two: the 1D overload builds a column of one-feature queries.
+            Assert.IsNull(knn.GetNeighbors(new double[] { 0.5 }));
+            // Predict already rejected the same shape; the two entry points must agree.
+            Assert.IsNull(knn.Predict(new double[] { 0.5 }));
+            // Three columns instead of two.
+            Assert.IsNull(knn.GetNeighbors(new double[,] { { 0.5, 0.5, 0.5 } }));
+            // The matching shape still answers.
+            Assert.IsNotNull(knn.GetNeighbors(new double[,] { { 0.5, 0.5 } }));
+        }
+
+        /// <summary>
         /// Verify that exact distance ties are resolved by the lowest training-row index.
         /// </summary>
         /// <remarks>

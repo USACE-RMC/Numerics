@@ -1512,7 +1512,9 @@ namespace Numerics.Data
                 monthlySummary[index - 1, 4] = Statistics.Statistics.Percentile(monthlyData, 0.75, true);
                 monthlySummary[index - 1, 5] = Statistics.Statistics.Percentile(monthlyData, 0.95, true);
                 monthlySummary[index - 1, 6] = monthlyData[monthlyData.Count - 1];
-                monthlySummary[index - 1, 7] = Statistics.Statistics.ParallelMean(monthlyData);
+                // The mean is accumulated sequentially so the reduction is deterministic on every
+                // host regardless of processor count.
+                monthlySummary[index - 1, 7] = Statistics.Statistics.Mean(monthlyData);
             });
             return monthlySummary;
         }

@@ -242,7 +242,10 @@ namespace Numerics.MachineLearning
         /// <param name="xTest">The test matrix of predictors</param>
         private int[]? kNN(Matrix xTrain, Vector yTrain, Matrix xTest)
         {
-            if (NumberOfFeatures != xTrain.NumberOfColumns) return null!;
+            // The guard must compare the query to the training matrix, matching kNNPredict; a query
+            // with the wrong column count would otherwise compute partial-dimension distances or
+            // index past the end of the training rows.
+            if (xTest.NumberOfColumns != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
             var result = new int[R * K];
             for (int i = 0; i < R; i++)
@@ -388,7 +391,9 @@ namespace Numerics.MachineLearning
                 for (int j = 0; j < percentiles.Length; j++)
                     output[idx, j] = Statistics.Percentile(values, percentiles[j], true);
 
-                output[idx, 3] = Statistics.ParallelMean(values);
+                // The mean is accumulated sequentially so the reduction is deterministic on every
+                // host regardless of processor count.
+                output[idx, 3] = Statistics.Mean(values);
             });
 
             return output;
