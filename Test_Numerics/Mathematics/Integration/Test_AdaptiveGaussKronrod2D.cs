@@ -331,6 +331,35 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
+        /// Far from the origin an axis can be wider than the absolute machine-epsilon floor while
+        /// its width sits at one unit in the last place, where the midpoint rounds onto an endpoint
+        /// and bisection reproduces the region. Every node of such a region rounds onto a single
+        /// representable abscissa, so its error estimate is exactly zero and error-driven refinement
+        /// never asks to split it; the forced minimum-depth pass splits it regardless, and unguarded
+        /// it re-split a bit-identical child once per depth level, burning 882 evaluations per
+        /// wasted split. The region must freeze instead, and a splittable domain at the same offset
+        /// must still converge.
+        /// </summary>
+        [TestMethod]
+        public void Test_LargeOffsetDomain()
+        {
+            // The representable spacing at 1e16 is 2, so this x-domain is one unit in the last place
+            // wide and cannot be bisected. Unguarded, MinDepth = 30 cost about 27,000 evaluations.
+            var ulpWide = new AdaptiveGaussKronrod2D((x, y) => 1d, 1E16, 1E16 + 2d, 0, 1) { MinDepth = 30 };
+            ulpWide.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, ulpWide.Status);
+            Assert.AreEqual(2d, ulpWide.Result, 1E-8);
+            Assert.IsLessThan(2000, ulpWide.FunctionEvaluations);
+
+            // A two-ulp domain bisects once into representable halves and converges to the exact
+            // area at the default settings.
+            var flat = new AdaptiveGaussKronrod2D((x, y) => 1d, 1E16, 1E16 + 4d, 0, 1);
+            flat.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, flat.Status);
+            Assert.AreEqual(4d, flat.Result, 1E-8);
+        }
+
+        /// <summary>
         /// The recorder reports the final composite rule: weights sum to the domain area, weighted
         /// function values reproduce the result, the node count is a whole number of regions, and
         /// attaching a recorder does not change the computed result.

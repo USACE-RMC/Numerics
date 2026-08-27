@@ -266,10 +266,13 @@ namespace Numerics.Mathematics.Integration
         /// error bound meets a tolerance, <see cref="IntegrationStatus.MaximumFunctionEvaluationsReached"/>
         /// when the evaluation budget stops refinement first, and
         /// <see cref="IntegrationStatus.MaximumIterationsReached"/> when every region has reached
-        /// <see cref="MaxDepth"/> (or a machine-epsilon width) without meeting a tolerance - the
-        /// depth-exhausted result is returned rather than silently reported as converged. The
-        /// computation is sequential and deterministic: identical inputs produce bit-identical
-        /// results.
+        /// <see cref="MaxDepth"/> (or a width bisection can no longer reduce) without meeting a
+        /// tolerance - the depth-exhausted result is returned rather than silently reported as
+        /// converged. Refinement is bounded by <see cref="Integrator.MaxFunctionEvaluations"/> and
+        /// <see cref="MaxDepth"/>; the inherited <see cref="Integrator.MinIterations"/> and
+        /// <see cref="Integrator.MaxIterations"/> are not consulted, and
+        /// <see cref="Integrator.Iterations"/> reports the number of region splits. The computation
+        /// is sequential and deterministic: identical inputs produce bit-identical results.
         /// </remarks>
         public override void Integrate()
         {
@@ -367,7 +370,9 @@ namespace Numerics.Mathematics.Integration
 
         /// <summary>
         /// Bisects a region along its dominant-error axis, replacing it with two evaluated children.
-        /// A region whose split axes are both at machine-epsilon width is frozen instead.
+        /// A region is frozen instead when both axes are at machine-epsilon width, or when the chosen
+        /// axis can no longer be bisected in floating point because its midpoint rounds onto an
+        /// endpoint.
         /// </summary>
         /// <param name="regions">The region list; the children are appended.</param>
         /// <param name="heap">The refinable-region heap; the children are pushed.</param>
@@ -394,16 +399,34 @@ namespace Numerics.Mathematics.Integration
                 splitX = true;
             }
 
+            // Far from the origin an axis can be wider than the absolute floor yet sit at one unit
+            // in the last place, where its midpoint rounds onto an endpoint and bisection would
+            // reproduce the region bit for bit - re-splitting an identical child once per depth
+            // level, at a full tensor evaluation per wasted split, until the requested depth is
+            // reached. The chosen axis carries the dominant error indicator, so when it can no
+            // longer be bisected the region's error is irreducible at floating-point resolution and
+            // the region is frozen with its current estimate; splitting the other axis instead could
+            // not reduce the dominant component and would multiply regions without converging.
             Region left, right;
             if (splitX)
             {
                 double mx = 0.5 * (region.Ax + region.Bx);
+                if (mx <= region.Ax || mx >= region.Bx)
+                {
+                    region.Frozen = true;
+                    return;
+                }
                 left = Evaluate(region.Ax, mx, region.Ay, region.By, region.Depth + 1, capture);
                 right = Evaluate(mx, region.Bx, region.Ay, region.By, region.Depth + 1, capture);
             }
             else
             {
                 double my = 0.5 * (region.Ay + region.By);
+                if (my <= region.Ay || my >= region.By)
+                {
+                    region.Frozen = true;
+                    return;
+                }
                 left = Evaluate(region.Ax, region.Bx, region.Ay, my, region.Depth + 1, capture);
                 right = Evaluate(region.Ax, region.Bx, my, region.By, region.Depth + 1, capture);
             }

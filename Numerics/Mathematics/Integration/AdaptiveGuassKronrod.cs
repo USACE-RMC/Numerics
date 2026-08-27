@@ -190,6 +190,11 @@ namespace Numerics.Mathematics.Integration
         public double StandardError { get; private set; }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Refinement is bounded by <see cref="Integrator.MaxFunctionEvaluations"/> and
+        /// <see cref="MaxDepth"/>; the inherited <see cref="Integrator.MinIterations"/> and
+        /// <see cref="Integrator.MaxIterations"/> are not consulted.
+        /// </remarks>
         public override void Integrate()
         {
             _squaredError = 0;
