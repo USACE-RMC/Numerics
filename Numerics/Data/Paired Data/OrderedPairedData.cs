@@ -859,8 +859,21 @@ namespace Numerics.Data
         /// <param name="x">The x value. </param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
+        /// <param name="extrapolation">
+        /// Optional. The sides of the x-range on which an out-of-range lookup extends the boundary
+        /// segment linearly in the configured transform space rather than holding the boundary
+        /// ordinate. Default = None, the historical endpoint hold.
+        /// </param>
         /// <returns> The interpolated value.</returns>
-        public double GetYFromX(double x, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        /// <remarks>
+        /// Sides are defined in value space regardless of the sort orientation: Below is beyond the
+        /// minimum x and Above beyond the maximum. Exactly at an endpoint the boundary ordinate is
+        /// returned unchanged, a single-point table always holds, and a plateau (equal boundary
+        /// ordinates in transform space) extends at slope zero. Extrapolation on an untransformed
+        /// axis is unbounded, so a caller holding a bounded quantity such as a probability must
+        /// clamp the result or use the NormalZ transform, which is bounded by construction.
+        /// </remarks>
+        public double GetYFromX(double x, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
         {
             if (Count == 0) return double.NaN;
             if (OrderX == SortOrder.None)
@@ -868,9 +881,22 @@ namespace Numerics.Data
 
             // First see if value is out of range
             if (Count == 1) return _ordinates[0].Y;
-            if ((OrderX == SortOrder.Ascending && x <= _ordinates[0].X) || (OrderX == SortOrder.Descending && x >= _ordinates[0].X)) return _ordinates[0].Y;
-            if ((OrderX == SortOrder.Ascending && x >= _ordinates[Count - 1].X) || (OrderX == SortOrder.Descending && x <= _ordinates[Count - 1].X)) return _ordinates[Count - 1].Y;
-            
+            if ((OrderX == SortOrder.Ascending && x <= _ordinates[0].X) || (OrderX == SortOrder.Descending && x >= _ordinates[0].X))
+            {
+                // Index 0 is the minimum x when ascending and the maximum when descending.
+                var side = OrderX == SortOrder.Ascending ? ExtrapolationSides.Below : ExtrapolationSides.Above;
+                if ((extrapolation & side) != 0 && x != _ordinates[0].X)
+                    return BaseInterpolate(x, 0, true, xTransform, yTransform);
+                return _ordinates[0].Y;
+            }
+            if ((OrderX == SortOrder.Ascending && x >= _ordinates[Count - 1].X) || (OrderX == SortOrder.Descending && x <= _ordinates[Count - 1].X))
+            {
+                var side = OrderX == SortOrder.Ascending ? ExtrapolationSides.Above : ExtrapolationSides.Below;
+                if ((extrapolation & side) != 0 && x != _ordinates[Count - 1].X)
+                    return BaseInterpolate(x, Count - 2, true, xTransform, yTransform);
+                return _ordinates[Count - 1].Y;
+            }
+
             // Interpolate
             return BaseInterpolate(x, SearchX(x), true, xTransform, yTransform);
         }
@@ -881,8 +907,19 @@ namespace Numerics.Data
         /// <param name="y">The y value. </param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
+        /// <param name="extrapolation">
+        /// Optional. The sides of the y-range on which an out-of-range lookup extends the boundary
+        /// segment linearly in the configured transform space rather than holding the boundary
+        /// ordinate. Default = None, the historical endpoint hold.
+        /// </param>
         /// <returns> The interpolated value.</returns>
-        public double GetXFromY(double y, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        /// <remarks>
+        /// Sides are defined in value space regardless of the sort orientation: Below is beyond the
+        /// minimum y and Above beyond the maximum. Exactly at an endpoint the boundary ordinate is
+        /// returned unchanged, a single-point table always holds, and a plateau (equal boundary
+        /// ordinates in transform space) extends at slope zero.
+        /// </remarks>
+        public double GetXFromY(double y, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
         {
             if (Count == 0) return double.NaN;
             if (OrderY == SortOrder.None)
@@ -890,8 +927,21 @@ namespace Numerics.Data
 
             // First see if value is out of range
             if (Count == 1) return _ordinates[0].X;
-            if ((OrderY == SortOrder.Ascending && y <= _ordinates[0].Y) || (OrderY == SortOrder.Descending && y >= _ordinates[0].Y)) return _ordinates[0].X;
-            if ((OrderY == SortOrder.Ascending && y >= _ordinates[Count - 1].Y) || (OrderY == SortOrder.Descending && y <= _ordinates[Count - 1].Y)) return _ordinates[Count - 1].X;
+            if ((OrderY == SortOrder.Ascending && y <= _ordinates[0].Y) || (OrderY == SortOrder.Descending && y >= _ordinates[0].Y))
+            {
+                // Index 0 is the minimum y when ascending and the maximum when descending.
+                var side = OrderY == SortOrder.Ascending ? ExtrapolationSides.Below : ExtrapolationSides.Above;
+                if ((extrapolation & side) != 0 && y != _ordinates[0].Y)
+                    return BaseInterpolate(y, 0, false, xTransform, yTransform);
+                return _ordinates[0].X;
+            }
+            if ((OrderY == SortOrder.Ascending && y >= _ordinates[Count - 1].Y) || (OrderY == SortOrder.Descending && y <= _ordinates[Count - 1].Y))
+            {
+                var side = OrderY == SortOrder.Ascending ? ExtrapolationSides.Above : ExtrapolationSides.Below;
+                if ((extrapolation & side) != 0 && y != _ordinates[Count - 1].Y)
+                    return BaseInterpolate(y, Count - 2, false, xTransform, yTransform);
+                return _ordinates[Count - 1].X;
+            }
             // Interpolate
             return BaseInterpolate(y, SearchY(y), false, xTransform, yTransform);
         }
@@ -902,12 +952,13 @@ namespace Numerics.Data
         /// <param name="xValues">The list of x-values.</param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
+        /// <param name="extrapolation">Optional. The sides of the x-range on which out-of-range lookups extrapolate. Default = None, the historical endpoint hold.</param>
         /// <returns>An array of interpolated values.</returns>
-        public double[] GetYFromX(IList<double> xValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        public double[] GetYFromX(IList<double> xValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
         {
             var result = new double[xValues.Count];
             for (int i = 0; i < xValues.Count; i++)
-                result[i] = GetYFromX(xValues[i], xTransform, yTransform);
+                result[i] = GetYFromX(xValues[i], xTransform, yTransform, extrapolation);
             return result;
         }
 
@@ -917,12 +968,13 @@ namespace Numerics.Data
         /// <param name="yValues">The list of y-values.</param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
+        /// <param name="extrapolation">Optional. The sides of the y-range on which out-of-range lookups extrapolate. Default = None, the historical endpoint hold.</param>
         /// <returns>An array of interpolated values.</returns>
-        public double[] GetXFromY(IList<double> yValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        public double[] GetXFromY(IList<double> yValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
         {
             var result = new double[yValues.Count];
             for (int i = 0; i < yValues.Count; i++)
-                result[i] = GetXFromY(yValues[i], xTransform, yTransform);
+                result[i] = GetXFromY(yValues[i], xTransform, yTransform, extrapolation);
             return result;
         }
 

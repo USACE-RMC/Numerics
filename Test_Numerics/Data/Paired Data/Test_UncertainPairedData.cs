@@ -237,5 +237,45 @@ namespace Data.PairedData
             bool test4 = (_dataset1 != dataset5);
             Assert.IsFalse(test4);
         }
+
+        /// <summary>
+        /// Sampled quantile-ladder curves extrapolate through the ordered-paired-data mechanism:
+        /// with slope-ordered Normal ordinates (shared standard deviation), every sampled curve is a
+        /// parallel line, so the extrapolated values are exact and remain monotone across the
+        /// quantile ladder. Slope-disordered ladders can cross beyond the data, which the consumer
+        /// validates.
+        /// </summary>
+        [TestMethod]
+        public void Test_CurveSample_Extrapolation_LadderMonotone()
+        {
+            var xs = new List<double> { 1d, 2d, 3d };
+            var dists = new List<UnivariateDistributionBase>
+            {
+                new Normal(10d, 2d),
+                new Normal(20d, 2d),
+                new Normal(30d, 2d)
+            };
+            var uopd = new UncertainOrderedPairedData(xs, dists, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Normal);
+
+            double previous = double.NegativeInfinity;
+            foreach (double p in new[] { 0.1d, 0.5d, 0.9d })
+            {
+                var curve = uopd.CurveSample(p);
+                // Each sampled curve is x -> 10x + 2z(p): at x = 5 the extension is 50 + 2z(p).
+                double expected = 50d + 2d * Normal.StandardZ(p);
+                double value = curve.GetYFromX(5d, Transform.None, Transform.None, ExtrapolationSides.Both);
+                Assert.AreEqual(expected, value, 1E-10);
+                Assert.IsGreaterThan(previous, value);
+                previous = value;
+
+                // The default lookup still holds the endpoint.
+                Assert.AreEqual(30d + 2d * Normal.StandardZ(p), curve.GetYFromX(5d), 1E-10);
+            }
+
+            // The mean curve (y = 10x) extrapolates through the same mechanism on both sides.
+            var mean = uopd.CurveSample();
+            Assert.AreEqual(50d, mean.GetYFromX(5d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-10);
+            Assert.AreEqual(-40d, mean.GetYFromX(-4d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-10);
+        }
     }
 }
