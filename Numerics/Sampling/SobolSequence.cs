@@ -40,7 +40,9 @@ namespace Numerics.Sampling
         /// Constructs a new Sobol Sequence.
         /// </summary>
         /// <param name="dimension">Optional. The spatial dimension. Default = 1.</param>
-        /// <exception cref="ArgumentException"></exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the dimension is less than one or greater than the maximum supported dimension.
+        /// </exception>
         public SobolSequence(int dimension = 1)
         {
             if (dimension < 1 || dimension > MAX_DIMENSION)
@@ -60,7 +62,9 @@ namespace Numerics.Sampling
         /// </summary>
         /// <param name="dimension">The spatial dimension.</param>
         /// <param name="seed">The pseudorandom seed for the scrambling.</param>
-        /// <exception cref="ArgumentException"></exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the dimension is less than one or greater than the maximum supported dimension.
+        /// </exception>
         /// <remarks>
         /// <para>
         /// The randomization applies Matousek's linear matrix scrambling followed by a random
@@ -74,8 +78,7 @@ namespace Numerics.Sampling
         /// <para>
         /// The same seed always reproduces the same sequence. The seeded draw order is part of that
         /// contract: for each dimension in order, the sub-diagonal matrix bits row by row, then the
-        /// shift bits. The parameterless-seed constructor generates the original unrandomized
-        /// sequence and is unaffected.
+        /// shift bits. Constructing without a seed generates the unscrambled sequence.
         /// </para>
         /// <b> References: </b>
         /// <list type="bullet">

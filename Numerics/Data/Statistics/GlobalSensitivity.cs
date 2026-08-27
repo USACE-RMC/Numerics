@@ -217,8 +217,10 @@ namespace Numerics.Data.Statistics
             if (x.Count < bins) throw new ArgumentException("The sample must be at least as long as the bin count.", nameof(x));
             for (int i = 0; i < x.Count; i++)
             {
-                if (!Tools.IsFinite(x[i]) || !Tools.IsFinite(y[i]))
+                if (!Tools.IsFinite(x[i]))
                     throw new ArgumentOutOfRangeException(nameof(x), "Sample values must be finite.");
+                if (!Tools.IsFinite(y[i]))
+                    throw new ArgumentOutOfRangeException(nameof(y), "Sample values must be finite.");
             }
         }
 

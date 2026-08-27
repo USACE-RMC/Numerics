@@ -195,8 +195,11 @@ namespace Data.Statistics
             Assert.Throws<ArgumentException>(() => GlobalSensitivity.FirstOrderSobol(x, new double[] { 1d }, 2));
             Assert.Throws<ArgumentOutOfRangeException>(() => GlobalSensitivity.FirstOrderSobol(x, y, 1));
             Assert.Throws<ArgumentException>(() => GlobalSensitivity.FirstOrderSobol(x, y, 5));
-            Assert.Throws<ArgumentOutOfRangeException>(() => GlobalSensitivity.FirstOrderSobol(new double[] { 1d, double.NaN, 3d, 4d }, y, 2));
-            Assert.Throws<ArgumentOutOfRangeException>(() => GlobalSensitivity.Pawn(x, new double[] { 1d, 2d, double.PositiveInfinity, 4d }, 2));
+            // The finiteness guards name the sample the offending value came from.
+            var nonFiniteInput = Assert.Throws<ArgumentOutOfRangeException>(() => GlobalSensitivity.FirstOrderSobol(new double[] { 1d, double.NaN, 3d, 4d }, y, 2));
+            Assert.AreEqual("x", nonFiniteInput.ParamName);
+            var nonFiniteOutput = Assert.Throws<ArgumentOutOfRangeException>(() => GlobalSensitivity.Pawn(x, new double[] { 1d, 2d, double.PositiveInfinity, 4d }, 2));
+            Assert.AreEqual("y", nonFiniteOutput.ParamName);
             Assert.Throws<ArgumentOutOfRangeException>(() => GlobalSensitivity.BorgonovoDelta(x, y, 2, 1));
             Assert.Throws<ArgumentException>(() => GlobalSensitivity.BorgonovoDelta(x, y, 2, 5));
             Assert.AreEqual(0d, GlobalSensitivity.FirstOrderSobol(x, new double[] { 3d, 3d, 3d, 3d }, 2), 0d);
