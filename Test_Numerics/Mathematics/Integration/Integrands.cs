@@ -119,5 +119,175 @@ namespace Mathematics.Integration
             return result;
         }
 
+        // The six Genz test families in two dimensions over the unit square [0,1]^2, each with its
+        // exact integral in closed form. Reference: Genz, A. (1984). "Testing multidimensional
+        // integration routines." Tools, Methods and Languages for Scientific and Engineering
+        // Computation, 81-94.
+
+        /// <summary>
+        /// Genz oscillatory family: cos(2*pi*w1 + c1*x + c2*y).
+        /// </summary>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The phase shift parameter.</param>
+        public static double GenzOscillatory(double x, double y, double c1, double c2, double w1)
+        {
+            return Math.Cos(2d * Math.PI * w1 + c1 * x + c2 * y);
+        }
+
+        /// <summary>
+        /// Exact integral of the Genz oscillatory family over the unit square:
+        /// (4/(c1*c2)) * sin(c1/2) * sin(c2/2) * cos(2*pi*w1 + c1/2 + c2/2).
+        /// </summary>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The phase shift parameter.</param>
+        public static double GenzOscillatoryExact(double c1, double c2, double w1)
+        {
+            return 4d / (c1 * c2) * Math.Sin(c1 / 2d) * Math.Sin(c2 / 2d) * Math.Cos(2d * Math.PI * w1 + c1 / 2d + c2 / 2d);
+        }
+
+        /// <summary>
+        /// Genz product-peak family: 1 / ((c1^-2 + (x-w1)^2) * (c2^-2 + (y-w2)^2)).
+        /// </summary>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the peak.</param>
+        /// <param name="w2">The y-location of the peak.</param>
+        public static double GenzProductPeak(double x, double y, double c1, double c2, double w1, double w2)
+        {
+            return 1d / ((1d / (c1 * c1) + (x - w1) * (x - w1)) * (1d / (c2 * c2) + (y - w2) * (y - w2)));
+        }
+
+        /// <summary>
+        /// Exact integral of the Genz product-peak family over the unit square: the product of
+        /// c * (atan(c*(1-w)) + atan(c*w)) over both axes.
+        /// </summary>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the peak.</param>
+        /// <param name="w2">The y-location of the peak.</param>
+        public static double GenzProductPeakExact(double c1, double c2, double w1, double w2)
+        {
+            double ix = c1 * (Math.Atan(c1 * (1d - w1)) + Math.Atan(c1 * w1));
+            double iy = c2 * (Math.Atan(c2 * (1d - w2)) + Math.Atan(c2 * w2));
+            return ix * iy;
+        }
+
+        /// <summary>
+        /// Genz corner-peak family: (1 + c1*x + c2*y)^-3.
+        /// </summary>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        public static double GenzCornerPeak(double x, double y, double c1, double c2)
+        {
+            double b = 1d + c1 * x + c2 * y;
+            return 1d / (b * b * b);
+        }
+
+        /// <summary>
+        /// Exact integral of the Genz corner-peak family over the unit square:
+        /// (1/(2*c1*c2)) * (1 - 1/(1+c1) - 1/(1+c2) + 1/(1+c1+c2)).
+        /// </summary>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        public static double GenzCornerPeakExact(double c1, double c2)
+        {
+            return 1d / (2d * c1 * c2) * (1d - 1d / (1d + c1) - 1d / (1d + c2) + 1d / (1d + c1 + c2));
+        }
+
+        /// <summary>
+        /// Genz Gaussian family: exp(-c1^2*(x-w1)^2 - c2^2*(y-w2)^2).
+        /// </summary>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the peak.</param>
+        /// <param name="w2">The y-location of the peak.</param>
+        public static double GenzGaussian(double x, double y, double c1, double c2, double w1, double w2)
+        {
+            return Math.Exp(-c1 * c1 * (x - w1) * (x - w1) - c2 * c2 * (y - w2) * (y - w2));
+        }
+
+        /// <summary>
+        /// Exact integral of the Genz Gaussian family over the unit square: the product of
+        /// sqrt(pi)/(2c) * (erf(c*(1-w)) + erf(c*w)) over both axes.
+        /// </summary>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the peak.</param>
+        /// <param name="w2">The y-location of the peak.</param>
+        public static double GenzGaussianExact(double c1, double c2, double w1, double w2)
+        {
+            double ix = Math.Sqrt(Math.PI) / (2d * c1) * (Numerics.Mathematics.SpecialFunctions.Erf.Function(c1 * (1d - w1)) + Numerics.Mathematics.SpecialFunctions.Erf.Function(c1 * w1));
+            double iy = Math.Sqrt(Math.PI) / (2d * c2) * (Numerics.Mathematics.SpecialFunctions.Erf.Function(c2 * (1d - w2)) + Numerics.Mathematics.SpecialFunctions.Erf.Function(c2 * w2));
+            return ix * iy;
+        }
+
+        /// <summary>
+        /// Genz continuous (C0) family: exp(-c1*|x-w1| - c2*|y-w2|). Continuous with a gradient
+        /// discontinuity along both peak lines.
+        /// </summary>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the ridge.</param>
+        /// <param name="w2">The y-location of the ridge.</param>
+        public static double GenzContinuous(double x, double y, double c1, double c2, double w1, double w2)
+        {
+            return Math.Exp(-c1 * Math.Abs(x - w1) - c2 * Math.Abs(y - w2));
+        }
+
+        /// <summary>
+        /// Exact integral of the Genz continuous family over the unit square: the product of
+        /// (2 - exp(-c*w) - exp(-c*(1-w)))/c over both axes.
+        /// </summary>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the ridge.</param>
+        /// <param name="w2">The y-location of the ridge.</param>
+        public static double GenzContinuousExact(double c1, double c2, double w1, double w2)
+        {
+            double ix = (2d - Math.Exp(-c1 * w1) - Math.Exp(-c1 * (1d - w1))) / c1;
+            double iy = (2d - Math.Exp(-c2 * w2) - Math.Exp(-c2 * (1d - w2))) / c2;
+            return ix * iy;
+        }
+
+        /// <summary>
+        /// Genz discontinuous family: exp(c1*x + c2*y) inside the corner box [0,w1]x[0,w2] and zero
+        /// outside it.
+        /// </summary>
+        /// <param name="x">The x-coordinate.</param>
+        /// <param name="y">The y-coordinate.</param>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the discontinuity.</param>
+        /// <param name="w2">The y-location of the discontinuity.</param>
+        public static double GenzDiscontinuous(double x, double y, double c1, double c2, double w1, double w2)
+        {
+            return x > w1 || y > w2 ? 0d : Math.Exp(c1 * x + c2 * y);
+        }
+
+        /// <summary>
+        /// Exact integral of the Genz discontinuous family over the unit square:
+        /// ((exp(c1*w1)-1)/c1) * ((exp(c2*w2)-1)/c2).
+        /// </summary>
+        /// <param name="c1">The x-direction difficulty parameter.</param>
+        /// <param name="c2">The y-direction difficulty parameter.</param>
+        /// <param name="w1">The x-location of the discontinuity.</param>
+        /// <param name="w2">The y-location of the discontinuity.</param>
+        public static double GenzDiscontinuousExact(double c1, double c2, double w1, double w2)
+        {
+            return (Math.Exp(c1 * w1) - 1d) / c1 * ((Math.Exp(c2 * w2) - 1d) / c2);
+        }
+
     }
 }
