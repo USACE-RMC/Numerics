@@ -960,7 +960,8 @@ namespace Numerics.Data.Statistics
 
         /// <summary>
         /// Estimates the weighted skewness coefficient from the unsorted data array.
-        /// Returns NaN if data is empty or any entry is NaN.
+        /// Returns NaN if data is empty, if any entry is NaN, or if the effective sample size
+        /// implied by the weights does not exceed two, where the bias correction has a pole.
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <param name="weights">The non-negative, finite weight of each data entry.</param>
@@ -981,6 +982,10 @@ namespace Numerics.Data.Statistics
             if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
             WeightedCentralSums(data, weights, total, out _, out double s2, out double s3, out _);
             double n = EffectiveSampleSize(weights, total, weightType);
+            // The effective sample size is continuous, so the correction's pole at n = 2 is reachable
+            // from ordinary weights, e.g. normalized frequency weights; past it the correction flips
+            // sign. The unweighted estimator needs n > 2 for the same reason.
+            if (n <= 2d) return double.NaN;
             double m2 = s2 / total;
             double m3 = s3 / total;
             double g = m3 / Math.Pow(m2, 3.0d / 2.0d);
@@ -991,7 +996,8 @@ namespace Numerics.Data.Statistics
 
         /// <summary>
         /// Estimates the weighted excess kurtosis from the unsorted data array.
-        /// Returns NaN if data is empty or any entry is NaN.
+        /// Returns NaN if data is empty, if any entry is NaN, or if the effective sample size
+        /// implied by the weights does not exceed three, where the small-sample correction has a pole.
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <param name="weights">The non-negative, finite weight of each data entry.</param>
@@ -1013,6 +1019,11 @@ namespace Numerics.Data.Statistics
             if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
             WeightedCentralSums(data, weights, total, out _, out double s2, out _, out double s4);
             double n = EffectiveSampleSize(weights, total, weightType);
+            // The effective sample size is continuous, so the correction's poles at n = 2 and n = 3 are
+            // reachable from ordinary weights, e.g. reliability weights concentrated on two entries;
+            // past them the correction changes sign. The unweighted estimator needs n > 3 for the same
+            // reason.
+            if (n <= 3d) return double.NaN;
             double m2 = s2 / total;
             double m4 = s4 / total;
             double a = n * (n + 1) / ((n - 1) * (n - 2) * (n - 3));
@@ -1147,16 +1158,25 @@ namespace Numerics.Data.Statistics
 
             // Plotting positions p(i) = A(i) / (total - w(i)) are strictly increasing with
             // p(0) = 0 and p(m-1) = 1, so a bracket always exists. Binary search for it.
+            // In exact arithmetic the denominator is the sum of the other positive weights, so it is
+            // positive for m >= 2; in floating point a weight that dominates the total cancels it to
+            // zero, which would poison the search with 0/0. A zero denominator means the point holds
+            // essentially all the mass, so its position collapses to the boundary it sits against.
+            double Position(int i)
+            {
+                double d = total - w[i];
+                return d > 0d ? prefix[i] / d : (i == 0 ? 0d : 1d);
+            }
+
             int lo = 0, hi = m - 1;
             while (hi - lo > 1)
             {
                 int mid = (lo + hi) >> 1;
-                double pMid = prefix[mid] / (total - w[mid]);
-                if (pMid <= k) lo = mid;
+                if (Position(mid) <= k) lo = mid;
                 else hi = mid;
             }
-            double pLo = prefix[lo] / (total - w[lo]);
-            double pHi = prefix[hi] / (total - w[hi]);
+            double pLo = Position(lo);
+            double pHi = Position(hi);
             if (k <= pLo) return x[lo];
             if (k >= pHi) return x[hi];
             double theta = (k - pLo) / (pHi - pLo);

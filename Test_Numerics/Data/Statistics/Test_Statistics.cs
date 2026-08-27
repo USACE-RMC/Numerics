@@ -882,6 +882,48 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// The bias corrections of the weighted higher moments have poles in the effective sample
+        /// size: n = 2 for skewness and n = 3 for kurtosis. The effective sample size is continuous,
+        /// so ordinary weights - normalized frequency weights, or reliability weights concentrated on
+        /// two entries - can land at or past a pole, where the correction is undefined or changes
+        /// sign; the estimators must answer NaN there, matching the weighted variance's convention at
+        /// its own denominator, and stay finite just above the pole.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_HigherMoments_EffectiveSampleSizePoles()
+        {
+            // Frequency weights summing to 1.5: n = 1.5 sits past the skewness pole at n = 2, where
+            // the correction's sign is inverted. Unguarded, this returned -1.03 for a right-skewed
+            // sample.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Skewness(new double[] { 1d, 2d, 6d }, new double[] { 0.5d, 0.5d, 0.5d })));
+            // Frequency weights summing to exactly 2 sit on the pole itself.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Skewness(new double[] { 1d, 6d }, new double[] { 1d, 1d })));
+            // Reliability weights concentrated on two entries: n = 2.06 sits past the kurtosis pole
+            // at n = 3. Unguarded, this returned a large finite value of the wrong sign.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Kurtosis(new double[] { 1d, 2d, 3d, 4d, 5d }, new double[] { 1d, 1d, 0.01d, 0.01d, 0.01d }, Numerics.Data.Statistics.WeightType.Reliability)));
+            // Frequency weights summing to exactly 3 sit on the kurtosis pole itself.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Kurtosis(new double[] { 1d, 2d, 6d }, new double[] { 1d, 1d, 1d })));
+            // Just above the poles both estimators are defined and finite.
+            Assert.IsGreaterThan(0d, Numerics.Data.Statistics.Statistics.Skewness(new double[] { 1d, 2d, 6d }, new double[] { 1d, 1d, 0.5d }));
+            Assert.IsFalse(double.IsNaN(Numerics.Data.Statistics.Statistics.Kurtosis(new double[] { 1d, 2d, 3d, 6d }, new double[] { 1d, 1d, 1d, 0.5d })));
+        }
+
+        /// <summary>
+        /// A weight that dominates the total cancels the plotting-position denominator
+        /// total - w(i) to zero in floating point, which unguarded turns every interior percentile
+        /// into 0/0 = NaN. For two points the exact positions are 0 and 1 regardless of the weights,
+        /// so the percentile must interpolate between the two values, in either dominance order.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedPercentile_ExtremeDominantWeight()
+        {
+            var data = new double[] { 10d, 20d };
+            Assert.AreEqual(15d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.5d, new double[] { 1E300d, 1E-300d }), 0d);
+            Assert.AreEqual(12.5d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.25d, new double[] { 1E300d, 1E-300d }), 0d);
+            Assert.AreEqual(15d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.5d, new double[] { 1E-300d, 1E300d }), 0d);
+        }
+
+        /// <summary>
         /// The multi-percentile overload matches the scalar overload, the sorted-data flag matches
         /// the unsorted call, and an empty percentile list returns an empty array.
         /// </summary>
