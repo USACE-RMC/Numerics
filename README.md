@@ -27,23 +27,23 @@ Or search for [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) in th
 
 | Section | Topics |
 |---------|--------|
-| [Mathematics](docs/mathematics/integration.md) | Integration, differentiation, optimization, root finding, linear algebra, ODE solvers, special functions |
+| [Mathematics](docs/mathematics/integration.md) | Adaptive one- and two-dimensional integration, differentiation, optimization, root finding, linear algebra, ODE solvers, special functions |
 | [Data](docs/data/interpolation.md) | Interpolation, linear regression, time series analysis |
-| [Statistics](docs/statistics/descriptive.md) | Descriptive statistics, goodness-of-fit metrics, hypothesis tests |
-| [Distributions](docs/distributions/univariate.md) | 40+ univariate distributions, parameter estimation, uncertainty analysis, copulas, multivariate distributions |
+| [Statistics](docs/statistics/descriptive.md) | Descriptive and weighted statistics, goodness-of-fit metrics, hypothesis tests, global sensitivity analysis |
+| [Distributions](docs/distributions/univariate.md) | 43 univariate distributions, parameter estimation, uncertainty analysis, copulas, multivariate distributions |
 | [Machine Learning](docs/machine-learning/machine-learning.md) | GLM, decision trees, random forests, KNN, naive Bayes, k-means, GMM |
-| [Sampling](docs/sampling/mcmc.md) | MCMC (RWMH, ARWMH, DE-MCz, HMC, NUTS, Gibbs), random generation, convergence diagnostics |
+| [Sampling](docs/sampling/mcmc.md) | MCMC (RWMH, ARWMH, DE-MCz, HMC, NUTS, Gibbs), random generation, scrambled quasi-random sequences, convergence diagnostics |
 | [References](docs/references.md) | Consolidated bibliography |
 
 ## Prerequisites
 - .NET 8+ runtime (or .NET Framework 4.8.1 on Windows). Install the [.NET SDK](https://dotnet.microsoft.com/download) if you don't already have it.
-  - Microsoft .NET SDK 10.1.326.7603 is available on the App Portal for Corps users 
+  - The Microsoft .NET SDK is available on the App Portal for Corps users.
 
 ## Support
 
 USACE-RMC is committed to maintaining and supporting the library with regular updates, bug fixes, and enhancements.
 
-The repository includes a unit testing library with over 1,000 tests that also serve as usage examples for the classes and methods in the library.
+The repository includes a unit testing library with over 2,300 tests that also serve as usage examples for the classes and methods in the library.
 
 ## Contributing
 
