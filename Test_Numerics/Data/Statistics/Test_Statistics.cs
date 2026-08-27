@@ -739,5 +739,197 @@ namespace Data.Statistics
             Assert.HasCount(original.Length, callbackSamples);
             Assert.AreEqual(original.Length, callbackSamples.Distinct().Count());
         }
+
+        /// <summary>
+        /// Unit weights take arithmetically identical paths to the unweighted statistics, so the
+        /// weighted mean, skewness, kurtosis, and percentile must match bit-for-bit; the unweighted
+        /// variance uses an incremental update formula, so unit weights agree to rounding there.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_UnitWeights_MatchUnweightedExactly()
+        {
+            var data = new double[] { 3d, 1d, 4d, 1.5d, 9d, 2.5d, 6d };
+            var weights = new double[] { 1d, 1d, 1d, 1d, 1d, 1d, 1d };
+
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(data), Numerics.Data.Statistics.Statistics.Mean(data, weights), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Skewness(data), Numerics.Data.Statistics.Statistics.Skewness(data, weights), 0d);
+            // The weighted kurtosis routes through normalized central moments for reliability-weight
+            // scale invariance, so it agrees to rounding rather than bit-for-bit.
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Kurtosis(data), Numerics.Data.Statistics.Statistics.Kurtosis(data, weights), 1E-13 * Math.Abs(Numerics.Data.Statistics.Statistics.Kurtosis(data)));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(data), Numerics.Data.Statistics.Statistics.Variance(data, weights), 1E-13 * Numerics.Data.Statistics.Statistics.Variance(data));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.StandardDeviation(data), Numerics.Data.Statistics.Statistics.StandardDeviation(data, weights), 1E-13);
+
+            // Dyadic percentile levels on a 5-point sample interpolate through identical arithmetic.
+            var five = new double[] { 30d, 10d, 50d, 20d, 40d };
+            var unit = new double[] { 1d, 1d, 1d, 1d, 1d };
+            foreach (double k in new[] { 0d, 0.25d, 0.375d, 0.5d, 0.75d, 1d })
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(five, k), Numerics.Data.Statistics.Statistics.Percentile(five, k, unit), 0d);
+            }
+        }
+
+        /// <summary>
+        /// Under the frequency convention, integer weights must reproduce the unweighted statistics
+        /// of the replicated sample: mean, variance, standard deviation, skewness, and kurtosis.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_IntegerFrequencyWeights_MatchReplicatedSample()
+        {
+            var data = new double[] { 2d, 5d, 7d, 11d };
+            var weights = new double[] { 1d, 3d, 2d, 4d };
+            var replicated = new double[] { 2d, 5d, 5d, 5d, 7d, 7d, 11d, 11d, 11d, 11d };
+
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(replicated), Numerics.Data.Statistics.Statistics.Mean(data, weights), 1E-13 * Math.Abs(Numerics.Data.Statistics.Statistics.Mean(replicated)));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(replicated), Numerics.Data.Statistics.Statistics.Variance(data, weights), 1E-12 * Numerics.Data.Statistics.Statistics.Variance(replicated));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.StandardDeviation(replicated), Numerics.Data.Statistics.Statistics.StandardDeviation(data, weights), 1E-12 * Numerics.Data.Statistics.Statistics.StandardDeviation(replicated));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Skewness(replicated), Numerics.Data.Statistics.Statistics.Skewness(data, weights), 1E-12 * Math.Abs(Numerics.Data.Statistics.Statistics.Skewness(replicated)));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Kurtosis(replicated), Numerics.Data.Statistics.Statistics.Kurtosis(data, weights), 1E-12 * Math.Abs(Numerics.Data.Statistics.Statistics.Kurtosis(replicated)));
+        }
+
+        /// <summary>
+        /// The reliability convention is scale-invariant: any equal weight vector reproduces the
+        /// unweighted variance, skewness, and kurtosis (dyadic weights make the reduction exact),
+        /// while the frequency convention deliberately reads scaled weights as replication.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_ReliabilityEqualWeights_MatchUnweighted()
+        {
+            var data = new double[] { 3d, 1d, 4d, 1.5d, 9d, 2.5d, 6d, 8d };
+            var weights = new double[] { 0.5d, 0.5d, 0.5d, 0.5d, 0.5d, 0.5d, 0.5d, 0.5d };
+
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(data), Numerics.Data.Statistics.Statistics.Variance(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 1E-13 * Numerics.Data.Statistics.Statistics.Variance(data));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Skewness(data), Numerics.Data.Statistics.Statistics.Skewness(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Kurtosis(data), Numerics.Data.Statistics.Statistics.Kurtosis(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 1E-13 * Math.Abs(Numerics.Data.Statistics.Statistics.Kurtosis(data)));
+
+            // Frequency semantics with weight 2 everywhere equal the doubled (replicated) sample.
+            var doubled = new double[] { 2d, 2d, 2d, 2d, 2d, 2d, 2d, 2d };
+            var replicated = new double[16];
+            for (int i = 0; i < data.Length; i++) { replicated[2 * i] = data[i]; replicated[2 * i + 1] = data[i]; }
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(replicated), Numerics.Data.Statistics.Statistics.Variance(data, doubled, Numerics.Data.Statistics.WeightType.Frequency), 1E-12 * Numerics.Data.Statistics.Statistics.Variance(replicated));
+        }
+
+        /// <summary>
+        /// The reliability variance matches the closed form s2 / (W - sum(w^2)/W) on a hand-computed
+        /// three-point fixture: s2 = 1.56, W = 1, sum(w^2) = 0.38, variance = 1.56 / 0.62; the
+        /// weighted mean of the fixture is 2.8.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedVariance_Reliability_ClosedForm()
+        {
+            var data = new double[] { 1d, 2d, 4d };
+            var weights = new double[] { 0.2d, 0.3d, 0.5d };
+            double expected = 1.56d / 0.62d;
+            Assert.AreEqual(expected, Numerics.Data.Statistics.Statistics.Variance(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 1E-14 * expected);
+            Assert.AreEqual(2.8d, Numerics.Data.Statistics.Statistics.Mean(data, weights), 1E-15);
+        }
+
+        /// <summary>
+        /// The weighted percentile pins its plotting-position convention p(i) = A(i)/(A(i)+B(i)):
+        /// at every position knot the integer-weight percentile equals the replicated-sample
+        /// percentile exactly, and the interpolated value between knots follows the convention.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedPercentile_IntegerWeights_KnotExact()
+        {
+            var data = new double[] { 2d, 5d, 7d };
+            var weights = new double[] { 1d, 3d, 2d };
+            var replicated = new double[] { 2d, 5d, 5d, 5d, 7d, 7d };
+
+            // Positions: p0 = 0, p1 = 1/3, p2 = 1.
+            double p1 = 1d / 3d;
+            Assert.AreEqual(2d, Numerics.Data.Statistics.Statistics.Percentile(data, 0d, weights), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(replicated, p1), Numerics.Data.Statistics.Statistics.Percentile(data, p1, weights), 0d);
+            Assert.AreEqual(5d, Numerics.Data.Statistics.Statistics.Percentile(data, p1, weights), 0d);
+            Assert.AreEqual(7d, Numerics.Data.Statistics.Statistics.Percentile(data, 1d, weights), 0d);
+
+            // Between knots the convention interpolates between adjacent positions:
+            // at k = 0.5, theta = (0.5 - 1/3)/(1 - 1/3) = 0.25, giving 5 + 0.25*(7 - 5) = 5.5.
+            Assert.AreEqual(5.5d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.5d, weights), 1E-14);
+        }
+
+        /// <summary>
+        /// Zero-weight entries carry no mass: dropping them and weighting them zero produce
+        /// identical percentiles and moments.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_ZeroWeightEntries_Dropped()
+        {
+            var data = new double[] { 1d, 99d, 2d, 3d };
+            var weights = new double[] { 1d, 0d, 1d, 1d };
+            var kept = new double[] { 1d, 2d, 3d };
+            var keptWeights = new double[] { 1d, 1d, 1d };
+            foreach (double k in new[] { 0d, 0.25d, 0.5d, 0.75d, 1d })
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(kept, k, keptWeights), Numerics.Data.Statistics.Statistics.Percentile(data, k, weights), 0d);
+            }
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(kept, keptWeights), Numerics.Data.Statistics.Statistics.Mean(data, weights), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(kept, keptWeights), Numerics.Data.Statistics.Statistics.Variance(data, weights), 0d);
+        }
+
+        /// <summary>
+        /// Degenerate samples: a single point returns itself at every percentile; a single point
+        /// leaves the variance undefined (NaN), matching the unweighted convention; all mass on one
+        /// point behaves as a single-point sample; and a frequency-weight total at or below one
+        /// leaves the Bessel denominator non-positive, so the variance is NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_DegenerateSamples()
+        {
+            Assert.AreEqual(42d, Numerics.Data.Statistics.Statistics.Percentile(new double[] { 42d }, 0.5d, new double[] { 7d }), 0d);
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Variance(new double[] { 42d }, new double[] { 7d })));
+            Assert.AreEqual(9d, Numerics.Data.Statistics.Statistics.Percentile(new double[] { 9d, 5d }, 0.5d, new double[] { 3d, 0d }), 0d);
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Variance(new double[] { 1d, 2d }, new double[] { 0.3d, 0.3d }, Numerics.Data.Statistics.WeightType.Frequency)));
+        }
+
+        /// <summary>
+        /// The multi-percentile overload matches the scalar overload, the sorted-data flag matches
+        /// the unsorted call, and an empty percentile list returns an empty array.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedPercentile_Overloads_Consistent()
+        {
+            var data = new double[] { 9d, 1d, 5d, 3d, 7d };
+            var weights = new double[] { 0.5d, 1d, 2d, 1.5d, 1d };
+            var ks = new double[] { 0d, 0.2d, 0.4d, 0.6d, 0.8d, 1d };
+            var batch = Numerics.Data.Statistics.Statistics.Percentile(data, ks, weights);
+            for (int i = 0; i < ks.Length; i++)
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(data, ks[i], weights), batch[i], 0d);
+            }
+
+            var sortedData = new double[] { 1d, 3d, 5d, 7d, 9d };
+            var sortedWeights = new double[] { 1d, 1.5d, 2d, 1d, 0.5d };
+            foreach (double k in ks)
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(data, k, weights), Numerics.Data.Statistics.Statistics.Percentile(sortedData, k, sortedWeights, dataIsSorted: true), 0d);
+            }
+
+            Assert.IsEmpty(Numerics.Data.Statistics.Statistics.Percentile(data, new double[0], weights));
+        }
+
+        /// <summary>
+        /// Guard matrix for the weighted statistics: nulls, length mismatches, invalid weights,
+        /// all-zero weights, empty data, and out-of-range percentile levels all throw the
+        /// documented exceptions, and NaN data propagates NaN through the moments.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_GuardMatrix()
+        {
+            var data = new double[] { 1d, 2d };
+            var weights = new double[] { 1d, 1d };
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Mean(null!, weights));
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Mean(data, null!));
+            Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d, -0.5d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d, double.NaN }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d, double.PositiveInfinity }));
+            Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 0d, 0d }));
+            Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Percentile(new double[0], 0.5d, new double[0]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, double.NaN, weights));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, -0.1d, weights));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, 1.1d, weights));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, new double[] { 0.5d, 2d }, weights));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Mean(new double[] { 1d, double.NaN }, weights)));
+        }
     }
 }

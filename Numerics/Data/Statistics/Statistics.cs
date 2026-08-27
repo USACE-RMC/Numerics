@@ -804,9 +804,366 @@ namespace Numerics.Data.Statistics
                 if (p > 0)
                 {
                     sum += p * Math.Log(p);
-                }               
+                }
             }
             return -sum;
         }
+
+        #region Weighted Statistics
+
+        /// <summary>
+        /// Validates a weight vector against its data vector and returns the weight total.
+        /// </summary>
+        /// <param name="data">Sample of data.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <returns>The sum of the weights.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when either vector is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the vectors differ in length.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite.</exception>
+        private static double ValidateWeights(IList<double> data, IList<double> weights)
+        {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (weights == null) throw new ArgumentNullException(nameof(weights));
+            if (data.Count != weights.Count) throw new ArgumentException("The data and weights must have the same length.", nameof(weights));
+            double total = 0;
+            for (int i = 0; i < weights.Count; i++)
+            {
+                if (!Tools.IsFinite(weights[i]) || weights[i] < 0d)
+                    throw new ArgumentOutOfRangeException(nameof(weights), "Weights must be finite and non-negative.");
+                total += weights[i];
+            }
+            return total;
+        }
+
+        /// <summary>
+        /// Computes the weighted mean and the weighted second, third, and fourth central power sums
+        /// with a deterministic, sequential two-pass sweep.
+        /// </summary>
+        /// <param name="data">Sample of data.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="total">The sum of the weights.</param>
+        /// <param name="mean">Output. The weighted mean.</param>
+        /// <param name="s2">Output. The weighted sum of squared deviations.</param>
+        /// <param name="s3">Output. The weighted sum of cubed deviations.</param>
+        /// <param name="s4">Output. The weighted sum of fourth-power deviations.</param>
+        private static void WeightedCentralSums(IList<double> data, IList<double> weights, double total,
+            out double mean, out double s2, out double s3, out double s4)
+        {
+            double sum = 0;
+            for (int i = 0; i < data.Count; i++)
+                sum += weights[i] * data[i];
+            mean = sum / total;
+            s2 = 0;
+            s3 = 0;
+            s4 = 0;
+            for (int i = 0; i < data.Count; i++)
+            {
+                double xm = data[i] - mean;
+                double w = weights[i];
+                double xm2 = xm * xm;
+                s2 += w * xm2;
+                s3 += w * xm2 * xm;
+                s4 += w * xm2 * xm2;
+            }
+        }
+
+        /// <summary>
+        /// Returns the effective sample size implied by the weights under the given interpretation:
+        /// the weight total for frequency weights, or W^2 / sum(w^2) for reliability weights.
+        /// </summary>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="total">The sum of the weights.</param>
+        /// <param name="weightType">The weight interpretation.</param>
+        /// <returns>The effective sample size.</returns>
+        private static double EffectiveSampleSize(IList<double> weights, double total, WeightType weightType)
+        {
+            if (weightType == WeightType.Frequency) return total;
+            double sumSq = 0;
+            for (int i = 0; i < weights.Count; i++)
+                sumSq += weights[i] * weights[i];
+            return total * total / sumSq;
+        }
+
+        /// <summary>
+        /// Estimates the weighted arithmetic mean from the unsorted data array.
+        /// Returns NaN if data is empty or any entry is NaN.
+        /// </summary>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry. Equal weights reproduce the unweighted mean.</param>
+        /// <exception cref="ArgumentNullException">Thrown when either vector is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the vectors differ in length, or when every weight is zero.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite.</exception>
+        public static double Mean(IList<double> data, IList<double> weights)
+        {
+            double total = ValidateWeights(data, weights);
+            if (data.Count == 0) return double.NaN;
+            if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
+            double sum = 0;
+            for (int i = 0; i < data.Count; i++)
+                sum += weights[i] * data[i];
+            return sum / total;
+        }
+
+        /// <summary>
+        /// Estimates the unbiased weighted variance from the unsorted data array.
+        /// Returns NaN if data has less than two entries, if any entry is NaN, or if the
+        /// bias-correction denominator implied by the weights is not positive.
+        /// </summary>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="weightType">Optional. The weight interpretation. Default = Frequency.</param>
+        /// <remarks>
+        /// Frequency weights use the denominator W - 1, so integer weights reproduce the unweighted
+        /// variance of the replicated sample exactly; reliability weights use W - sum(w^2)/W, which
+        /// reduces to N - 1 at equal weights.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when either vector is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the vectors differ in length, or when every weight is zero.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite.</exception>
+        public static double Variance(IList<double> data, IList<double> weights, WeightType weightType = WeightType.Frequency)
+        {
+            double total = ValidateWeights(data, weights);
+            if (data.Count <= 1) return double.NaN;
+            if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
+            WeightedCentralSums(data, weights, total, out _, out double s2, out _, out _);
+            double denominator;
+            if (weightType == WeightType.Frequency)
+            {
+                denominator = total - 1d;
+            }
+            else
+            {
+                double sumSq = 0;
+                for (int i = 0; i < weights.Count; i++)
+                    sumSq += weights[i] * weights[i];
+                denominator = total - sumSq / total;
+            }
+            if (denominator <= 0d) return double.NaN;
+            return s2 / denominator;
+        }
+
+        /// <summary>
+        /// Estimates the unbiased weighted standard deviation from the unsorted data array.
+        /// Returns NaN if data has less than two entries, if any entry is NaN, or if the
+        /// bias-correction denominator implied by the weights is not positive.
+        /// </summary>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="weightType">Optional. The weight interpretation. Default = Frequency.</param>
+        /// <exception cref="ArgumentNullException">Thrown when either vector is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the vectors differ in length, or when every weight is zero.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite.</exception>
+        public static double StandardDeviation(IList<double> data, IList<double> weights, WeightType weightType = WeightType.Frequency)
+        {
+            return Math.Sqrt(Variance(data, weights, weightType));
+        }
+
+        /// <summary>
+        /// Estimates the weighted skewness coefficient from the unsorted data array.
+        /// Returns NaN if data is empty or any entry is NaN.
+        /// </summary>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="weightType">Optional. The weight interpretation. Default = Frequency.</param>
+        /// <remarks>
+        /// The adjusted Fisher-Pearson correction of the unweighted estimator is applied with the
+        /// effective sample size in place of the count: the weight total for frequency weights
+        /// (integer weights reproduce the replicated sample exactly), or W^2 / sum(w^2) for
+        /// reliability weights.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when either vector is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the vectors differ in length, or when every weight is zero.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite.</exception>
+        public static double Skewness(IList<double> data, IList<double> weights, WeightType weightType = WeightType.Frequency)
+        {
+            double total = ValidateWeights(data, weights);
+            if (data.Count == 0) return double.NaN;
+            if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
+            WeightedCentralSums(data, weights, total, out _, out double s2, out double s3, out _);
+            double n = EffectiveSampleSize(weights, total, weightType);
+            double m2 = s2 / total;
+            double m3 = s3 / total;
+            double g = m3 / Math.Pow(m2, 3.0d / 2.0d);
+            double a = Math.Sqrt(n * (n - 1.0));
+            double b = n - 2;
+            return a / b * g;
+        }
+
+        /// <summary>
+        /// Estimates the weighted excess kurtosis from the unsorted data array.
+        /// Returns NaN if data is empty or any entry is NaN.
+        /// </summary>
+        /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="weightType">Optional. The weight interpretation. Default = Frequency.</param>
+        /// <remarks>
+        /// The unweighted small-sample correction is applied with the effective sample size in place
+        /// of the count: the weight total for frequency weights, or W^2 / sum(w^2) for reliability
+        /// weights. The moment ratio is computed from weight-normalized central moments, which makes
+        /// reliability weights scale-invariant; integer frequency weights reproduce the replicated
+        /// sample, and equal weights the unweighted estimator, to floating-point rounding.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when either vector is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the vectors differ in length, or when every weight is zero.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite.</exception>
+        public static double Kurtosis(IList<double> data, IList<double> weights, WeightType weightType = WeightType.Frequency)
+        {
+            double total = ValidateWeights(data, weights);
+            if (data.Count == 0) return double.NaN;
+            if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
+            WeightedCentralSums(data, weights, total, out _, out double s2, out _, out double s4);
+            double n = EffectiveSampleSize(weights, total, weightType);
+            double m2 = s2 / total;
+            double m4 = s4 / total;
+            double a = n * (n + 1) / ((n - 1) * (n - 2) * (n - 3));
+            double b = m4 / (m2 * m2) * ((n - 1) * (n - 1) / n);
+            double c = (n - 1) * (n - 1) / ((n - 2) * (n - 3));
+            return a * b - 3 * c;
+        }
+
+        /// <summary>
+        /// Returns the weighted k-th percentile of values in a sample.
+        /// </summary>
+        /// <param name="data">Sample of data.</param>
+        /// <param name="k">The k-th percentile to find.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry, aligned with the data order.</param>
+        /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
+        /// <returns>The weighted k-th percentile.</returns>
+        /// <remarks>
+        /// <para>
+        /// With the positive-weight points sorted ascending, A(i) the weight strictly below point i
+        /// and B(i) the weight strictly above it, each point sits at the plotting position
+        /// p(i) = A(i) / (A(i) + B(i)) and the percentile interpolates linearly between adjacent
+        /// positions. The construction is reflection-symmetric and strictly monotone, the first and
+        /// last points sit at 0 and 1, and equal weights reproduce the unweighted Type 7 positions
+        /// i / (n - 1) - with unit weights the interpolation is arithmetically identical to
+        /// <see cref="Percentile(IList{double}, double, bool)"/>.
+        /// </para>
+        /// <para>
+        /// Zero-weight entries carry no mass and are excluded. Note that no percentile estimator can
+        /// reproduce the unweighted result at equal weights and, simultaneously, the replicated
+        /// sample at integer weights - replication changes the Type 7 interior positions - so integer
+        /// weights agree with the replicated sample exactly at the plotting positions and to within
+        /// the replicated interpolation gaps between them.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/> or <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="data"/> is empty, the vectors differ in length, or every weight is zero.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="k"/> is not a finite value in [0,1], or a weight is negative or not finite.</exception>
+        public static double Percentile(IList<double> data, double k, IList<double> weights, bool dataIsSorted = false)
+        {
+            double total = ValidateWeights(data, weights);
+            if (data.Count == 0) throw new ArgumentException("Sequence contains no elements.", nameof(data));
+            if (double.IsNaN(k) || k < 0.0 || k > 1.0) throw new ArgumentOutOfRangeException(nameof(k), "k must be in [0,1].");
+            if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
+            PrepareWeightedSample(data, weights, dataIsSorted, out var x, out var w, out var prefix, out double sum);
+            return WeightedPercentile(x, w, prefix, sum, k);
+        }
+
+        /// <summary>
+        /// Returns an array of weighted percentile values of a sample.
+        /// </summary>
+        /// <param name="data">Sample of data.</param>
+        /// <param name="k">The list of k-th percentiles to find.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry, aligned with the data order.</param>
+        /// <param name="dataIsSorted">Boolean value indicating if the data is sorted or not. Assumed false, not sorted, by default.</param>
+        /// <returns>The weighted k-th percentiles.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="data"/>, <paramref name="k"/>, or <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="k"/> has entries and <paramref name="data"/> is empty, the vectors differ in length, or every weight is zero. An empty <paramref name="k"/> returns an empty array.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when any entry of <paramref name="k"/> is not a finite value in [0,1], or a weight is negative or not finite.</exception>
+        public static double[] Percentile(IList<double> data, IList<double> k, IList<double> weights, bool dataIsSorted = false)
+        {
+            double total = ValidateWeights(data, weights);
+            if (k == null) throw new ArgumentNullException(nameof(k));
+            if (k.Count == 0) return Array.Empty<double>();
+            if (data.Count == 0) throw new ArgumentException("Sequence contains no elements.", nameof(data));
+            if (total <= 0d) throw new ArgumentException("The weights must not all be zero.", nameof(weights));
+            PrepareWeightedSample(data, weights, dataIsSorted, out var x, out var w, out var prefix, out double sum);
+            var result = new double[k.Count];
+            for (int i = 0; i < k.Count; i++)
+            {
+                if (double.IsNaN(k[i]) || k[i] < 0.0 || k[i] > 1.0) throw new ArgumentOutOfRangeException(nameof(k), "k must be in [0,1].");
+                result[i] = WeightedPercentile(x, w, prefix, sum, k[i]);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Copies the positive-weight sample points, sorts them by value when required, and builds
+        /// the exclusive prefix-weight vector.
+        /// </summary>
+        /// <param name="data">Sample of data.</param>
+        /// <param name="weights">The non-negative, finite weight of each data entry.</param>
+        /// <param name="dataIsSorted">True when the data (and aligned weights) are already sorted ascending.</param>
+        /// <param name="x">Output. The positive-weight data values, sorted ascending.</param>
+        /// <param name="w">Output. The aligned positive weights.</param>
+        /// <param name="prefix">Output. The weight strictly below each point.</param>
+        /// <param name="total">Output. The positive-weight total.</param>
+        private static void PrepareWeightedSample(IList<double> data, IList<double> weights, bool dataIsSorted,
+            out double[] x, out double[] w, out double[] prefix, out double total)
+        {
+            int m = 0;
+            for (int i = 0; i < weights.Count; i++)
+                if (weights[i] > 0d) m++;
+            x = new double[m];
+            w = new double[m];
+            int j = 0;
+            for (int i = 0; i < data.Count; i++)
+            {
+                if (weights[i] > 0d)
+                {
+                    x[j] = data[i];
+                    w[j] = weights[i];
+                    j++;
+                }
+            }
+            // Ties among equal data values leave the quantile function unchanged, so an unstable
+            // pair sort is safe.
+            if (!dataIsSorted) Array.Sort(x, w);
+            prefix = new double[m];
+            double run = 0;
+            for (int i = 0; i < m; i++)
+            {
+                prefix[i] = run;
+                run += w[i];
+            }
+            total = run;
+        }
+
+        /// <summary>
+        /// Evaluates the weighted percentile from a prepared sorted sample.
+        /// </summary>
+        /// <param name="x">The positive-weight data values, sorted ascending.</param>
+        /// <param name="w">The aligned positive weights.</param>
+        /// <param name="prefix">The weight strictly below each point.</param>
+        /// <param name="total">The positive-weight total.</param>
+        /// <param name="k">The k-th percentile to find.</param>
+        /// <returns>The weighted k-th percentile.</returns>
+        private static double WeightedPercentile(double[] x, double[] w, double[] prefix, double total, double k)
+        {
+            int m = x.Length;
+            if (m == 1 || k == 0.0) return x[0];
+            if (k == 1.0) return x[m - 1];
+
+            // Plotting positions p(i) = A(i) / (total - w(i)) are strictly increasing with
+            // p(0) = 0 and p(m-1) = 1, so a bracket always exists. Binary search for it.
+            int lo = 0, hi = m - 1;
+            while (hi - lo > 1)
+            {
+                int mid = (lo + hi) >> 1;
+                double pMid = prefix[mid] / (total - w[mid]);
+                if (pMid <= k) lo = mid;
+                else hi = mid;
+            }
+            double pLo = prefix[lo] / (total - w[lo]);
+            double pHi = prefix[hi] / (total - w[hi]);
+            if (k <= pLo) return x[lo];
+            if (k >= pHi) return x[hi];
+            double theta = (k - pLo) / (pHi - pLo);
+            return x[lo] + theta * (x[hi] - x[lo]);
+        }
+
+        #endregion
+
     }
 }
