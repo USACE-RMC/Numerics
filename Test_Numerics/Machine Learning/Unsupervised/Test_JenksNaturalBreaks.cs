@@ -61,5 +61,24 @@ namespace MachineLearning
             }
         }
 
+        /// <summary>
+        /// Data with a single distinct value cannot form more than one cluster: every candidate
+        /// split has zero variance, and the dynamic program's walkback previously produced a
+        /// negative class limit that surfaced as an IndexOutOfRangeException from inside the fitted
+        /// algorithm. The degenerate input must be rejected up front, while a single-cluster fit of
+        /// the same data remains valid.
+        /// </summary>
+        [TestMethod]
+        public void Test_Jenks_AllIdenticalValues()
+        {
+            var identical = new double[20];
+            for (int i = 0; i < identical.Length; i++) { identical[i] = 3.5; }
+            Assert.Throws<ArgumentException>(() => new JenksNaturalBreaks(identical, 3));
+
+            var single = new JenksNaturalBreaks(identical, 1);
+            Assert.HasCount(1, single.Clusters);
+            Assert.AreEqual(3.5, single.Breaks[0], 0d);
+        }
+
     }
 }
