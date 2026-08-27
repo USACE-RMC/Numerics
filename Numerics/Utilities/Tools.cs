@@ -227,6 +227,30 @@ namespace Numerics
         }
 
         /// <summary>
+        /// Computes <c>exp(x) - 1</c> with improved numerical accuracy for small <paramref name="x"/>.
+        /// </summary>
+        /// <param name="x">The input value.</param>
+        /// <returns>
+        /// <c>exp(x) - 1</c>. For values of <paramref name="x"/> near zero, this method avoids the
+        /// catastrophic cancellation that occurs in <c>Math.Exp(x) - 1</c>; deeply negative inputs
+        /// return exactly -1 and large inputs overflow to positive infinity.
+        /// </returns>
+        /// <remarks>
+        /// Uses the compensated evaluation <c>(u - 1) * x / log(u)</c> with <c>u = exp(x)</c>, which
+        /// corrects the rounding of the exponential; when <c>u</c> rounds to one the input itself is
+        /// returned. This is the companion of <see cref="Log1p"/> for log-space probability
+        /// arithmetic such as survival products of many small probabilities.
+        /// </remarks>
+        public static double Expm1(double x)
+        {
+            double u = Math.Exp(x);
+            if (u == 1.0) return x;
+            if (double.IsPositiveInfinity(u)) return u;
+            if (u == 0.0) return -1.0;
+            return (u - 1.0) * x / Math.Log(u);
+        }
+
+        /// <summary>
         /// Returns the Euclidean distance between two points ||x - y||.
         /// </summary>
         /// <param name="x1">X of point 1.</param>

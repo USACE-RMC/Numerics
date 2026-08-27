@@ -1,4 +1,5 @@
 ﻿using Numerics.Distributions;
+using Numerics.Mathematics.Integration;
 using Numerics.Mathematics.SpecialFunctions;
 using System;
 using System.Collections.Generic;
@@ -684,6 +685,146 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The probabilities list must be non-null and contain at least one element.");
             if (probabilities.Count == 1) return Tools.Clamp(probabilities[0], 0d, 1d);
             return Tools.Clamp(Tools.Sum(probabilities), 0, 1);
+        }
+
+        /// <summary>
+        /// Returns the probability of union under an equicorrelated single-factor Gaussian
+        /// dependence structure, where the events are conditionally independent given one shared
+        /// standard normal factor.
+        /// </summary>
+        /// <param name="probabilities">List of marginal event probabilities.</param>
+        /// <param name="rho">The common correlation of the underlying Gaussian variates, within [0, 1].</param>
+        /// <param name="relativeTolerance">Optional. The relative tolerance of the quadrature. Default = 1E-8.</param>
+        /// <remarks>
+        /// <para>
+        /// With thresholds b(i) = StandardZ(p(i)) and loading sqrt(rho) on the shared factor z, the
+        /// union is P = Integral of phi(z) * [1 - Product(1 - Phi((b(i) - sqrt(rho)*z)/sqrt(1-rho)))] dz.
+        /// Conditional independence makes each node O(n), rather than the 2^n inclusion-exclusion of
+        /// <see cref="UnionPCM(IList{double}, double[,], double, double)"/> and
+        /// <see cref="UnionMVN(IList{double}, MultivariateNormal)"/>, so the method scales to very wide event
+        /// sets. The integral is evaluated in probability space u = Phi(z) with adaptive
+        /// Gauss-Kronrod quadrature over [1e-16, 1 - 1e-16] (the excluded endpoint slivers bound the
+        /// truncation error by 2e-16), and the conditional survival product is accumulated in log
+        /// space through <see cref="Tools.Log1p"/> and recovered through <see cref="Tools.Expm1"/>,
+        /// so rare-event unions retain relative accuracy. The result is deterministic.
+        /// </para>
+        /// <para>
+        /// The equicorrelated Gaussian correlation matrix is positive semi-definite down to
+        /// -1/(n-1), but a negative correlation has no real single-factor loading, so this method
+        /// requires rho within [0, 1]; use <see cref="UnionPCM(IList{double}, double[,], double, double)"/> or
+        /// <see cref="UnionMVN(IList{double}, MultivariateNormal)"/> for negative dependence. At rho = 1 the comonotone limit, the maximum marginal probability,
+        /// is returned analytically; at rho = 0 the events are independent. Zero-probability events
+        /// carry no mass and any certain event returns one.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">Thrown when the probabilities list is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when a probability is outside [0, 1], the correlation is outside [0, 1], or the
+        /// relative tolerance is outside the quadrature's accepted range of [1E-15, 1].
+        /// </exception>
+        public static double UnionSingleFactor(IList<double> probabilities, double rho, double relativeTolerance = 1E-8)
+        {
+            if (probabilities == null || probabilities.Count == 0)
+                throw new ArgumentException("The probabilities list must be non-null and contain at least one element.");
+            for (int i = 0; i < probabilities.Count; i++)
+            {
+                if (!Tools.IsFinite(probabilities[i]) || probabilities[i] < 0d || probabilities[i] > 1d)
+                    throw new ArgumentOutOfRangeException(nameof(probabilities), "Probabilities must be finite and within [0, 1].");
+            }
+            if (!Tools.IsFinite(rho) || rho < 0d || rho > 1d)
+                throw new ArgumentOutOfRangeException(nameof(rho), "The common correlation must be within [0, 1]. A negative equicorrelation (positive semi-definite down to -1/(n-1)) has no real single-factor loading; use UnionPCM or UnionMVN for negative dependence.");
+
+            // Zero-probability events never occur; certainty and the comonotone limit are analytic.
+            double maxP = 0d;
+            int m = 0;
+            for (int i = 0; i < probabilities.Count; i++)
+            {
+                if (probabilities[i] >= 1d) return 1d;
+                if (probabilities[i] > maxP) maxP = probabilities[i];
+                if (probabilities[i] > 0d) m++;
+            }
+            if (m == 0) return 0d;
+            if (rho == 1d) return maxP;
+
+            var thresholds = new double[m];
+            int j = 0;
+            for (int i = 0; i < probabilities.Count; i++)
+            {
+                if (probabilities[i] > 0d) thresholds[j++] = Normal.StandardZ(probabilities[i]);
+            }
+
+            double sqrtRho = Math.Sqrt(rho);
+            double sqrtComplement = Math.Sqrt(1d - rho);
+            var conditional = new double[m];
+            Func<double, double> integrand = u =>
+            {
+                double z = Normal.StandardZ(u);
+                SingleFactorConditionalCore(thresholds, sqrtRho, sqrtComplement, z, conditional);
+                double logSurvival = 0d;
+                for (int i = 0; i < m; i++)
+                    logSurvival += Tools.Log1p(-conditional[i]);
+                return -Tools.Expm1(logSurvival);
+            };
+            var quadrature = new AdaptiveGaussKronrod(integrand, 1E-16, 1d - 1E-16)
+            {
+                RelativeTolerance = relativeTolerance,
+                // The union can be arbitrarily small, and the quadrature accepts an interval on the
+                // absolute OR the relative criterion - pin the absolute tolerance at the framework
+                // floor so the relative criterion always governs.
+                AbsoluteTolerance = 1E-15,
+                MinDepth = 2,
+                ReportFailure = true
+            };
+            quadrature.Integrate();
+            return Tools.Clamp(quadrature.Result, 0d, 1d);
+        }
+
+        /// <summary>
+        /// Fills a caller-owned buffer with the conditional event probabilities of the
+        /// equicorrelated single-factor Gaussian structure at a given factor value:
+        /// Phi((b(i) - sqrt(rho)*z)/sqrt(1-rho)) for each threshold b(i).
+        /// </summary>
+        /// <param name="normalThresholds">The standard normal thresholds b(i) = StandardZ(p(i)), precomputed by the caller.</param>
+        /// <param name="rho">The common correlation of the underlying Gaussian variates, within [0, 1).</param>
+        /// <param name="z">The shared standard normal factor value.</param>
+        /// <param name="conditional">The caller-owned output buffer, at least as long as the thresholds. Entries beyond the threshold count are left untouched.</param>
+        /// <remarks>
+        /// Conditional on the factor the events are independent, so downstream combination kernels
+        /// built for independent probabilities can run per factor node with an outer quadrature
+        /// around them. The method allocates nothing. At rho = 1 the conditionals degenerate to
+        /// indicators of z against each threshold; handle that comonotone limit analytically rather
+        /// than through this method. Non-finite thresholds propagate through the normal CDF without
+        /// validation - the buffer fill is a hot path.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when either array is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the buffer is shorter than the thresholds.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the correlation is outside [0, 1) or the factor value is not finite.</exception>
+        public static void SingleFactorConditionalProbabilities(double[] normalThresholds, double rho, double z, double[] conditional)
+        {
+            if (normalThresholds == null) throw new ArgumentNullException(nameof(normalThresholds));
+            if (conditional == null) throw new ArgumentNullException(nameof(conditional));
+            if (conditional.Length < normalThresholds.Length)
+                throw new ArgumentException("The conditional buffer must be at least as long as the thresholds.", nameof(conditional));
+            if (!Tools.IsFinite(rho) || rho < 0d || rho >= 1d)
+                throw new ArgumentOutOfRangeException(nameof(rho), "The common correlation must be within [0, 1). At rho = 1 the conditional probabilities degenerate to indicators; handle the comonotone limit analytically.");
+            if (!Tools.IsFinite(z))
+                throw new ArgumentOutOfRangeException(nameof(z), "The factor value must be finite.");
+            SingleFactorConditionalCore(normalThresholds, Math.Sqrt(rho), Math.Sqrt(1d - rho), z, conditional);
+        }
+
+        /// <summary>
+        /// The unguarded conditional-probability fill shared by the union quadrature and the public
+        /// buffer helper.
+        /// </summary>
+        /// <param name="normalThresholds">The standard normal thresholds.</param>
+        /// <param name="sqrtRho">The square root of the common correlation.</param>
+        /// <param name="sqrtComplement">The square root of one minus the common correlation.</param>
+        /// <param name="z">The shared standard normal factor value.</param>
+        /// <param name="conditional">The output buffer.</param>
+        private static void SingleFactorConditionalCore(double[] normalThresholds, double sqrtRho, double sqrtComplement, double z, double[] conditional)
+        {
+            for (int i = 0; i < normalThresholds.Length; i++)
+                conditional[i] = Normal.StandardCDF((normalThresholds[i] - sqrtRho * z) / sqrtComplement);
         }
 
         /// <summary>
