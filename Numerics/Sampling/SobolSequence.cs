@@ -50,8 +50,44 @@ namespace Numerics.Sampling
             Dimension = dimension;
             _direction = new long[dimension, BITS + 1];
             x = new long[dimension];
+            _shift = new long[dimension];
 
             initialize();
+        }
+
+        /// <summary>
+        /// Constructs a new randomized (scrambled) Sobol Sequence with a reproducible seed.
+        /// </summary>
+        /// <param name="dimension">The spatial dimension.</param>
+        /// <param name="seed">The pseudorandom seed for the scrambling.</param>
+        /// <exception cref="ArgumentException"></exception>
+        /// <remarks>
+        /// <para>
+        /// The randomization applies Matousek's linear matrix scrambling followed by a random
+        /// digital shift - the practical realization of Owen-style scrambling. For each dimension a
+        /// random unit lower-triangular bit matrix is applied once to the direction numbers (the
+        /// generator recursion is linear over GF(2), so pre-scrambling the direction numbers
+        /// scrambles every generated point exactly), and a random 52-bit digital shift is applied to
+        /// each emitted coordinate. Both preserve the sequence's dyadic equidistribution, so each
+        /// scrambled dimension remains a base-2 (0,1)-sequence.
+        /// </para>
+        /// <para>
+        /// The same seed always reproduces the same sequence. The seeded draw order is part of that
+        /// contract: for each dimension in order, the sub-diagonal matrix bits row by row, then the
+        /// shift bits. The parameterless-seed constructor generates the original unrandomized
+        /// sequence and is unaffected.
+        /// </para>
+        /// <b> References: </b>
+        /// <list type="bullet">
+        /// <item>Matousek, J. (1998). On the L2-discrepancy for anchored boxes. Journal of Complexity, 14(4), 527-556.</item>
+        /// <item>Owen, A. B. (2021). On dropping the first Sobol' point. arXiv:2008.08051.</item>
+        /// </list>
+        /// </remarks>
+        public SobolSequence(int dimension, int seed) : this(dimension)
+        {
+            Seed = seed;
+            var prng = new MersenneTwister(seed);
+            ScrambleDirections(prng);
         }
 
         /// <summary>
@@ -70,14 +106,19 @@ namespace Numerics.Sampling
         private static int MAX_DIMENSION = 21201;
 
         /// <summary>
-        /// The current index in the sequence. 
+        /// The current index in the sequence.
         /// </summary>
-        private int count; 
+        private int count;
 
         /// <summary>
-        /// Space dimension. 
+        /// Space dimension.
         /// </summary>
         public int Dimension { get; private set; }
+
+        /// <summary>
+        /// The pseudorandom seed of the scrambling, or null for the original unrandomized sequence.
+        /// </summary>
+        public int? Seed { get; }
 
         /// <summary>
         /// The direction vector for each component.
@@ -88,6 +129,11 @@ namespace Numerics.Sampling
         /// The current state.
         /// </summary>
         private long[] x;
+
+        /// <summary>
+        /// The per-dimension digital shift applied at emission; all zero for the unrandomized sequence.
+        /// </summary>
+        private readonly long[] _shift;
 
         /// <summary>
         /// Initialize the Sobol Sequence.
@@ -181,6 +227,74 @@ namespace Numerics.Sampling
         }
 
         /// <summary>
+        /// Applies the seeded linear matrix scramble to the direction numbers and draws the digital
+        /// shifts. For each dimension in order: the sub-diagonal bits of a random unit
+        /// lower-triangular bit matrix, row by row, then the 52 shift bits.
+        /// </summary>
+        /// <param name="prng">The seeded pseudorandom number generator.</param>
+        private void ScrambleDirections(Random prng)
+        {
+            var rowMasks = new long[BITS];
+            for (int d = 0; d < Dimension; d++)
+            {
+                // Row i keeps digit i on the diagonal and mixes a random subset of earlier digits.
+                for (int i = 1; i <= BITS; i++)
+                {
+                    long mask = 1L << (BITS - i);
+                    for (int j = 1; j < i; j++)
+                    {
+                        if (prng.Next(2) == 1) mask |= 1L << (BITS - j);
+                    }
+                    rowMasks[i - 1] = mask;
+                }
+                // The generator XORs direction numbers, and the scramble is linear over GF(2), so
+                // scrambling the direction numbers once scrambles every generated point exactly.
+                for (int c = 1; c <= BITS; c++)
+                {
+                    _direction[d, c] = ApplyLinearScramble(rowMasks, _direction[d, c]);
+                }
+                long shift = 0;
+                for (int i = 1; i <= BITS; i++)
+                {
+                    if (prng.Next(2) == 1) shift |= 1L << (BITS - i);
+                }
+                _shift[d] = shift;
+            }
+        }
+
+        /// <summary>
+        /// Multiplies a direction number's digit vector by the unit lower-triangular bit matrix over GF(2).
+        /// </summary>
+        /// <param name="rowMasks">The matrix rows as digit masks.</param>
+        /// <param name="vector">The direction number.</param>
+        /// <returns>The scrambled direction number.</returns>
+        private static long ApplyLinearScramble(long[] rowMasks, long vector)
+        {
+            long result = 0;
+            for (int i = 1; i <= BITS; i++)
+            {
+                if (Parity(rowMasks[i - 1] & vector)) result |= 1L << (BITS - i);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the bit parity of a value (true when the number of set bits is odd).
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <returns>True for odd parity.</returns>
+        private static bool Parity(long value)
+        {
+            value ^= value >> 32;
+            value ^= value >> 16;
+            value ^= value >> 8;
+            value ^= value >> 4;
+            value ^= value >> 2;
+            value ^= value >> 1;
+            return (value & 1L) != 0;
+        }
+
+        /// <summary>
         /// Returns a double-precision number that is greater than or equal to 0.0, and less than 1.0.
         /// </summary>
         /// <returns>A double-precision number that is greater than or equal to 0.0, and less than 1.0.</returns>
@@ -205,7 +319,9 @@ namespace Numerics.Sampling
             for (int i = 0; i < Dimension; i++)
             {
                 x[i] ^= _direction[i, c];
-                v[i] = (double)x[i] / SCALE;
+                // The digital shift is all zero for the unrandomized sequence, so the emission is
+                // arithmetically identical there.
+                v[i] = (double)(x[i] ^ _shift[i]) / SCALE;
             }
             count++;
             return v;
