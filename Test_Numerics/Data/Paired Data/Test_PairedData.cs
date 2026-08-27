@@ -136,6 +136,30 @@ namespace Data.PairedData
         }
 
         /// <summary>
+        /// Collection mutations keep the range guard and the validity flag honest: removing a
+        /// trailing range works (the old guard rejected index + count == Count as out of range and
+        /// silently removed nothing), a range running past the end still removes nothing, and
+        /// appending a well-ordered point after an invalid pair cannot flip the collection back to
+        /// valid, because appending can never repair an earlier violation.
+        /// </summary>
+        [TestMethod]
+        public void Test_RemoveRangeAndAddValidity()
+        {
+            var opd = new OrderedPairedData(new double[] { 1, 2, 3, 4, 5 }, new double[] { 10, 20, 30, 40, 50 }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            opd.RemoveRange(3, 2);
+            Assert.AreEqual(3, opd.Count);
+            Assert.AreEqual(3d, opd[2].X);
+
+            opd.RemoveRange(2, 5);
+            Assert.AreEqual(3, opd.Count);
+
+            var invalid = new OrderedPairedData(new double[] { 1, 2 }, new double[] { 20, 10 }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.IsFalse(invalid.IsValid);
+            invalid.Add(new Ordinate(3, 30));
+            Assert.IsFalse(invalid.IsValid);
+        }
+
+        /// <summary>
         /// Test the various OrderedPairedData object indexing and manipulation methods
         /// </summary>
         [TestMethod]

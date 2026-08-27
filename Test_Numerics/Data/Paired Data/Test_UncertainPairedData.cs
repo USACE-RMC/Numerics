@@ -219,6 +219,24 @@ namespace Data.PairedData
         }
 
         /// <summary>
+        /// InsertRange validates every newly inserted position against its own neighbors. The old
+        /// loop re-tested the constant first insertion index on every pass, so a violation carried
+        /// by any later inserted ordinate left the collection reported as valid.
+        /// </summary>
+        [TestMethod]
+        public void Test_InsertRange_ValidatesEveryInsertedPosition()
+        {
+            var data = new UncertainOrderedPairedData(new double[] { 1, 10 }, new UnivariateDistributionBase[] { new Deterministic(1), new Deterministic(10) }, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Deterministic);
+            Assert.IsTrue(data.IsValid);
+
+            // The first inserted ordinate is valid at its position; the second breaks the
+            // ascending x-order against its successor.
+            var toInsert = new List<UncertainOrdinate>() { new UncertainOrdinate(2, new Deterministic(2)), new UncertainOrdinate(50, new Deterministic(50)) };
+            data.InsertRange(1, toInsert);
+            Assert.IsFalse(data.IsValid);
+        }
+
+        /// <summary>
         /// Test the overloaded equality operators for the UncertainOrderedPairedData object
         /// </summary>
         [TestMethod]

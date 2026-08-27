@@ -525,6 +525,38 @@ namespace Data.PairedData
         }
 
         /// <summary>
+        /// An extrapolating lookup is pushed through the lookup-axis transform, so the lookup value
+        /// must lie in that transform's domain. A NormalZ lookup axis throws outside the unit
+        /// interval, where the endpoint hold used to answer; a Logarithmic lookup axis answers NaN
+        /// for a negative lookup and treats lookups below 1E-16 as 1E-16. These are the documented
+        /// domain edges of the transforms, pinned here so a change to them is a deliberate one.
+        /// </summary>
+        [TestMethod]
+        public void Test_Extrapolation_LookupAxisTransformDomain()
+        {
+            // Probabilities on the lookup axis: x in (0, 1) transformed by NormalZ.
+            var probX = new OrderedPairedData(new double[] { 0.2d, 0.5d, 0.8d }, new double[] { 1d, 2d, 3d }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.Throws<ArgumentOutOfRangeException>(() => probX.GetYFromX(-0.01d, Transform.NormalZ, Transform.None, ExtrapolationSides.Below));
+            Assert.Throws<ArgumentOutOfRangeException>(() => probX.GetYFromX(1.01d, Transform.NormalZ, Transform.None, ExtrapolationSides.Above));
+            // Without extrapolation the same lookups hold the boundary ordinate.
+            Assert.AreEqual(1d, probX.GetYFromX(-0.01d, Transform.NormalZ, Transform.None, ExtrapolationSides.None), 0d);
+            Assert.AreEqual(3d, probX.GetYFromX(1.01d, Transform.NormalZ, Transform.None, ExtrapolationSides.None), 0d);
+            // The y-axis lookup of GetXFromY has the same domain edge.
+            var probY = new OrderedPairedData(new double[] { 1d, 2d, 3d }, new double[] { 0.2d, 0.5d, 0.8d }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.Throws<ArgumentOutOfRangeException>(() => probY.GetXFromY(-0.01d, Transform.None, Transform.NormalZ, ExtrapolationSides.Below));
+
+            // A negative lookup on a Logarithmic axis is outside the domain and answers NaN.
+            var logs = new OrderedPairedData(new double[] { 1d, 10d, 100d }, new double[] { 2d, 20d, 200d }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.IsTrue(double.IsNaN(logs.GetYFromX(-5d, Transform.Logarithmic, Transform.Logarithmic, ExtrapolationSides.Below)));
+            // Lookups below the 1E-16 floor are treated as 1E-16, so zero and the floor answer
+            // identically, and finitely.
+            double atFloor = logs.GetYFromX(1E-16d, Transform.Logarithmic, Transform.Logarithmic, ExtrapolationSides.Below);
+            double atZero = logs.GetYFromX(0d, Transform.Logarithmic, Transform.Logarithmic, ExtrapolationSides.Below);
+            Assert.AreEqual(atFloor, atZero, 0d);
+            Assert.IsTrue(atZero > 0d && atZero < 1E-12);
+        }
+
+        /// <summary>
         /// GetXFromY extrapolates on the y-range sides with the same semantics as GetYFromX.
         /// </summary>
         [TestMethod]
