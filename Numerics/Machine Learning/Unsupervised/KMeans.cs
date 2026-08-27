@@ -163,7 +163,17 @@ namespace Numerics.MachineLearning
                 }
                 // Stop when the E-step doesn't change the assignment of any data point
                 if (labelsChanged == false)
+                {
+                    // With a single cluster, and for any fit whose first assignment matches the
+                    // zero-initialized labels, the loop exits before a centroid has ever been
+                    // computed, leaving the initializer's seed point as the reported mean. Run the
+                    // M-step once so the reported means are the centroids of the final labels; on a
+                    // later iteration convergence means the labels did not change, so the centroids
+                    // already reflect them and the reported means are untouched.
+                    if (Iterations == 1)
+                        Means = GetCentroids(Labels);
                     break;
+                }
 
                 // Perform M-step
                 // Calculate new centroids from the clusters

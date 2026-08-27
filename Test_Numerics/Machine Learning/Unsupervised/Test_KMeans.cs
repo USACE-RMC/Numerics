@@ -89,5 +89,20 @@ namespace MachineLearning
             Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new KMeans(rows, 13));
         }
 
+        /// <summary>
+        /// A single-cluster fit converges on its first E-step, which previously exited before any
+        /// centroid had been computed, so the reported mean was whatever data point the k-means++
+        /// initializer happened to seed (this fixture reported 10). The M-step must run once so the
+        /// reported mean is the mean of the assigned points.
+        /// </summary>
+        [TestMethod]
+        public void Test_KMeans_SingleCluster_ReportsTheSampleMean()
+        {
+            var km = new KMeans(new double[] { 1, 2, 3, 10, 11, 12 }, 1);
+            km.Train(7);
+            Assert.AreEqual(1, km.Iterations);
+            Assert.AreEqual(6.5, km.Means[0, 0], 1E-12);
+        }
+
     }
 }
