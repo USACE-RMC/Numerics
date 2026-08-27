@@ -245,5 +245,62 @@ namespace Mathematics.Optimization
             Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 0.1);
             Assert.AreEqual(3.0, solver.BestParameterSet.Values[1], 0.1);
         }
+
+        /// <summary>
+        /// Maximization drives the inner search in the requested direction. The augmented objective
+        /// previously entered the inner minimization unscaled, so a maximization reported the
+        /// constrained minimum with a Success status: this construct returned x = -10 at the lower
+        /// bound instead of the constrained maximum at x = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_Maximize_InequalityConstraint()
+        {
+            var constraint = new Constraint((x) => x[0], 1, 1.0, ConstraintType.LesserThanOrEqualTo);
+            Func<double[], double> func = (double[] x) => -Math.Pow(x[0] - 3, 2);
+            var innerSolver = new BFGS(func, 1, new double[] { -5 }, new double[] { -10 }, new double[] { 10 });
+            var solver = new AugmentedLagrange(func, innerSolver, new IConstraint[] { constraint });
+            solver.Maximize();
+
+            Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 1E-3);
+            Assert.AreEqual(-4.0, func(solver.BestParameterSet.Values), 1E-3);
+        }
+
+        /// <summary>
+        /// A maximization whose constraint is inactive at the optimum reaches the unconstrained
+        /// maximum; previously it reported a box corner instead.
+        /// </summary>
+        [TestMethod]
+        public void Test_Maximize_InactiveConstraint()
+        {
+            var constraint = new Constraint((x) => x[0] + x[1], 2, 20.0, ConstraintType.LesserThanOrEqualTo);
+            Func<double[], double> func = (double[] x) => -(Math.Pow(x[0] - 1, 2) + Math.Pow(x[1] - 3, 2));
+            var innerSolver = new BFGS(func, 2, new double[] { 5, 5 }, new double[] { 0, 0 }, new double[] { 10, 10 });
+            var solver = new AugmentedLagrange(func, innerSolver, new IConstraint[] { constraint });
+            solver.Maximize();
+
+            Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 1E-3);
+            Assert.AreEqual(3.0, solver.BestParameterSet.Values[1], 1E-3);
+            Assert.AreEqual(0.0, func(solver.BestParameterSet.Values), 1E-4);
+        }
+
+        /// <summary>
+        /// Maximization subject to an equality constraint lands on the constrained stationary
+        /// point.
+        /// </summary>
+        [TestMethod]
+        public void Test_Maximize_EqualityConstraint()
+        {
+            // The unconstrained maximum sits at (4, 4); its projection onto x + y = 4 is (2, 2),
+            // where the objective is -8.
+            var constraint = new Constraint((x) => x[0] + x[1], 2, 4.0, ConstraintType.EqualTo);
+            Func<double[], double> func = (double[] x) => -(Math.Pow(x[0] - 4, 2) + Math.Pow(x[1] - 4, 2));
+            var innerSolver = new BFGS(func, 2, new double[] { 0, 0 }, new double[] { -10, -10 }, new double[] { 10, 10 });
+            var solver = new AugmentedLagrange(func, innerSolver, new IConstraint[] { constraint });
+            solver.Maximize();
+
+            Assert.AreEqual(2.0, solver.BestParameterSet.Values[0], 1E-3);
+            Assert.AreEqual(2.0, solver.BestParameterSet.Values[1], 1E-3);
+            Assert.AreEqual(-8.0, func(solver.BestParameterSet.Values), 1E-3);
+        }
     }
 }
