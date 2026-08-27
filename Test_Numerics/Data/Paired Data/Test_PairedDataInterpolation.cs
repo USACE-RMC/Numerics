@@ -469,25 +469,25 @@ namespace Data.PairedData
         {
             var asc = new OrderedPairedData(new double[] { 1d, 2d, 4d, 8d }, new double[] { 10d, 20d, 40d, 80d }, true, SortOrder.Ascending, true, SortOrder.Ascending);
             // Below: through (1,10)-(2,20) at x = 0.5 -> 5. Above: through (4,40)-(8,80) at x = 10 -> 100.
-            Assert.AreEqual(5d, asc.GetYFromX(0.5d, extrapolation: ExtrapolationSides.Both), 1E-12);
-            Assert.AreEqual(100d, asc.GetYFromX(10d, extrapolation: ExtrapolationSides.Both), 1E-12);
+            Assert.AreEqual(5d, asc.GetYFromX(0.5d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-12);
+            Assert.AreEqual(100d, asc.GetYFromX(10d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-12);
             // Side selectivity: the unrequested side still holds.
-            Assert.AreEqual(5d, asc.GetYFromX(0.5d, extrapolation: ExtrapolationSides.Below), 1E-12);
-            Assert.AreEqual(80d, asc.GetYFromX(10d, extrapolation: ExtrapolationSides.Below), 0d);
-            Assert.AreEqual(10d, asc.GetYFromX(0.5d, extrapolation: ExtrapolationSides.Above), 0d);
-            Assert.AreEqual(100d, asc.GetYFromX(10d, extrapolation: ExtrapolationSides.Above), 1E-12);
+            Assert.AreEqual(5d, asc.GetYFromX(0.5d, Transform.None, Transform.None, ExtrapolationSides.Below), 1E-12);
+            Assert.AreEqual(80d, asc.GetYFromX(10d, Transform.None, Transform.None, ExtrapolationSides.Below), 0d);
+            Assert.AreEqual(10d, asc.GetYFromX(0.5d, Transform.None, Transform.None, ExtrapolationSides.Above), 0d);
+            Assert.AreEqual(100d, asc.GetYFromX(10d, Transform.None, Transform.None, ExtrapolationSides.Above), 1E-12);
             // Exactly at the endpoints the boundary ordinate is returned unchanged.
-            Assert.AreEqual(10d, asc.GetYFromX(1d, extrapolation: ExtrapolationSides.Both), 0d);
-            Assert.AreEqual(80d, asc.GetYFromX(8d, extrapolation: ExtrapolationSides.Both), 0d);
+            Assert.AreEqual(10d, asc.GetYFromX(1d, Transform.None, Transform.None, ExtrapolationSides.Both), 0d);
+            Assert.AreEqual(80d, asc.GetYFromX(8d, Transform.None, Transform.None, ExtrapolationSides.Both), 0d);
 
             // The same line authored descending extrapolates to the same values: below the minimum
             // x of 1 through (2,40)-(1,80) -> 100 at x = 0.5; above the maximum x of 8 through
             // (8,10)-(4,20) -> 5 at x = 10.
             var desc = new OrderedPairedData(new double[] { 8d, 4d, 2d, 1d }, new double[] { 10d, 20d, 40d, 80d }, true, SortOrder.Descending, true, SortOrder.Ascending);
-            Assert.AreEqual(100d, desc.GetYFromX(0.5d, extrapolation: ExtrapolationSides.Both), 1E-12);
-            Assert.AreEqual(5d, desc.GetYFromX(10d, extrapolation: ExtrapolationSides.Both), 1E-12);
-            Assert.AreEqual(100d, desc.GetYFromX(0.5d, extrapolation: ExtrapolationSides.Below), 1E-12);
-            Assert.AreEqual(10d, desc.GetYFromX(10d, extrapolation: ExtrapolationSides.Below), 0d);
+            Assert.AreEqual(100d, desc.GetYFromX(0.5d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-12);
+            Assert.AreEqual(5d, desc.GetYFromX(10d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-12);
+            Assert.AreEqual(100d, desc.GetYFromX(0.5d, Transform.None, Transform.None, ExtrapolationSides.Below), 1E-12);
+            Assert.AreEqual(10d, desc.GetYFromX(10d, Transform.None, Transform.None, ExtrapolationSides.Below), 0d);
         }
 
         /// <summary>
@@ -531,10 +531,10 @@ namespace Data.PairedData
         public void Test_Extrapolation_GetXFromY()
         {
             var asc = new OrderedPairedData(new double[] { 1d, 2d, 4d, 8d }, new double[] { 10d, 20d, 40d, 80d }, true, SortOrder.Ascending, true, SortOrder.Ascending);
-            Assert.AreEqual(0.5d, asc.GetXFromY(5d, extrapolation: ExtrapolationSides.Both), 1E-12);
-            Assert.AreEqual(10d, asc.GetXFromY(100d, extrapolation: ExtrapolationSides.Both), 1E-12);
-            Assert.AreEqual(1d, asc.GetXFromY(5d, extrapolation: ExtrapolationSides.Above), 0d);
-            Assert.AreEqual(8d, asc.GetXFromY(100d, extrapolation: ExtrapolationSides.Below), 0d);
+            Assert.AreEqual(0.5d, asc.GetXFromY(5d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-12);
+            Assert.AreEqual(10d, asc.GetXFromY(100d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-12);
+            Assert.AreEqual(1d, asc.GetXFromY(5d, Transform.None, Transform.None, ExtrapolationSides.Above), 0d);
+            Assert.AreEqual(8d, asc.GetXFromY(100d, Transform.None, Transform.None, ExtrapolationSides.Below), 0d);
         }
 
         /// <summary>
@@ -545,12 +545,12 @@ namespace Data.PairedData
         public void Test_Extrapolation_PlateauAndSinglePoint()
         {
             var plateau = new OrderedPairedData(new double[] { 1d, 2d, 3d, 4d }, new double[] { 5d, 5d, 10d, 10d }, true, SortOrder.Ascending, false, SortOrder.Ascending);
-            Assert.AreEqual(5d, plateau.GetYFromX(0d, extrapolation: ExtrapolationSides.Both), 0d);
-            Assert.AreEqual(10d, plateau.GetYFromX(6d, extrapolation: ExtrapolationSides.Both), 0d);
+            Assert.AreEqual(5d, plateau.GetYFromX(0d, Transform.None, Transform.None, ExtrapolationSides.Both), 0d);
+            Assert.AreEqual(10d, plateau.GetYFromX(6d, Transform.None, Transform.None, ExtrapolationSides.Both), 0d);
 
             var single = new OrderedPairedData(new double[] { 2d }, new double[] { 7d }, true, SortOrder.Ascending, true, SortOrder.Ascending);
-            Assert.AreEqual(7d, single.GetYFromX(100d, extrapolation: ExtrapolationSides.Both), 0d);
-            Assert.AreEqual(7d, single.GetYFromX(-100d, extrapolation: ExtrapolationSides.Both), 0d);
+            Assert.AreEqual(7d, single.GetYFromX(100d, Transform.None, Transform.None, ExtrapolationSides.Both), 0d);
+            Assert.AreEqual(7d, single.GetYFromX(-100d, Transform.None, Transform.None, ExtrapolationSides.Both), 0d);
         }
 
         /// <summary>

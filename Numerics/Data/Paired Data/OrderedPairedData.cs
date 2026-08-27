@@ -859,21 +859,40 @@ namespace Numerics.Data
         /// <param name="x">The x value. </param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
+        /// <returns> The interpolated value.</returns>
+        /// <remarks>
+        /// Out-of-range lookups hold the boundary ordinate; the four-argument overload can
+        /// extrapolate instead. Sides there are defined in value space regardless of the sort
+        /// orientation: Below is beyond the minimum x and Above beyond the maximum. Exactly at an
+        /// endpoint the boundary ordinate is returned unchanged, a single-point table always
+        /// holds, and a plateau (equal boundary ordinates in transform space) extends at slope
+        /// zero. Extrapolation on an untransformed axis is unbounded, so a caller holding a
+        /// bounded quantity such as a probability must clamp the result or use the NormalZ
+        /// transform, which is bounded by construction.
+        /// </remarks>
+        public double GetYFromX(double x, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        {
+            return GetYFromX(x, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate y from x, extrapolating on the requested sides of the x-range.
+        /// </summary>
+        /// <param name="x">The x value. </param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
         /// <param name="extrapolation">
-        /// Optional. The sides of the x-range on which an out-of-range lookup extends the boundary
-        /// segment linearly in the configured transform space rather than holding the boundary
-        /// ordinate. Default = None, the historical endpoint hold.
+        /// The sides of the x-range on which an out-of-range lookup extends the boundary segment
+        /// linearly in the configured transform space rather than holding the boundary ordinate.
+        /// None reproduces the historical endpoint hold.
         /// </param>
         /// <returns> The interpolated value.</returns>
         /// <remarks>
-        /// Sides are defined in value space regardless of the sort orientation: Below is beyond the
-        /// minimum x and Above beyond the maximum. Exactly at an endpoint the boundary ordinate is
-        /// returned unchanged, a single-point table always holds, and a plateau (equal boundary
-        /// ordinates in transform space) extends at slope zero. Extrapolation on an untransformed
-        /// axis is unbounded, so a caller holding a bounded quantity such as a probability must
-        /// clamp the result or use the NormalZ transform, which is bounded by construction.
+        /// This is a distinct overload rather than an optional parameter so the historical
+        /// three-argument signature keeps binary compatibility with assemblies compiled against
+        /// earlier releases.
         /// </remarks>
-        public double GetYFromX(double x, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
+        public double GetYFromX(double x, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
         {
             if (Count == 0) return double.NaN;
             if (OrderX == SortOrder.None)
@@ -907,19 +926,38 @@ namespace Numerics.Data
         /// <param name="y">The y value. </param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
+        /// <returns> The interpolated value.</returns>
+        /// <remarks>
+        /// Out-of-range lookups hold the boundary ordinate; the four-argument overload can
+        /// extrapolate instead. Sides there are defined in value space regardless of the sort
+        /// orientation: Below is beyond the minimum y and Above beyond the maximum. Exactly at an
+        /// endpoint the boundary ordinate is returned unchanged, a single-point table always
+        /// holds, and a plateau (equal boundary ordinates in transform space) extends at slope
+        /// zero.
+        /// </remarks>
+        public double GetXFromY(double y, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        {
+            return GetXFromY(y, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate x from y, extrapolating on the requested sides of the y-range.
+        /// </summary>
+        /// <param name="y">The y value. </param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
         /// <param name="extrapolation">
-        /// Optional. The sides of the y-range on which an out-of-range lookup extends the boundary
-        /// segment linearly in the configured transform space rather than holding the boundary
-        /// ordinate. Default = None, the historical endpoint hold.
+        /// The sides of the y-range on which an out-of-range lookup extends the boundary segment
+        /// linearly in the configured transform space rather than holding the boundary ordinate.
+        /// None reproduces the historical endpoint hold.
         /// </param>
         /// <returns> The interpolated value.</returns>
         /// <remarks>
-        /// Sides are defined in value space regardless of the sort orientation: Below is beyond the
-        /// minimum y and Above beyond the maximum. Exactly at an endpoint the boundary ordinate is
-        /// returned unchanged, a single-point table always holds, and a plateau (equal boundary
-        /// ordinates in transform space) extends at slope zero.
+        /// This is a distinct overload rather than an optional parameter so the historical
+        /// three-argument signature keeps binary compatibility with assemblies compiled against
+        /// earlier releases.
         /// </remarks>
-        public double GetXFromY(double y, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
+        public double GetXFromY(double y, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
         {
             if (Count == 0) return double.NaN;
             if (OrderY == SortOrder.None)
@@ -952,9 +990,25 @@ namespace Numerics.Data
         /// <param name="xValues">The list of x-values.</param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
-        /// <param name="extrapolation">Optional. The sides of the x-range on which out-of-range lookups extrapolate. Default = None, the historical endpoint hold.</param>
         /// <returns>An array of interpolated values.</returns>
-        public double[] GetYFromX(IList<double> xValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
+        public double[] GetYFromX(IList<double> xValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        {
+            return GetYFromX(xValues, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate y-values from a list of x-values, extrapolating on the requested sides of the x-range.
+        /// </summary>
+        /// <param name="xValues">The list of x-values.</param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
+        /// <param name="extrapolation">The sides of the x-range on which out-of-range lookups extrapolate. None reproduces the historical endpoint hold.</param>
+        /// <returns>An array of interpolated values.</returns>
+        /// <remarks>
+        /// A distinct overload rather than an optional parameter, preserving the historical
+        /// three-argument signature's binary compatibility.
+        /// </remarks>
+        public double[] GetYFromX(IList<double> xValues, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
         {
             var result = new double[xValues.Count];
             for (int i = 0; i < xValues.Count; i++)
@@ -968,9 +1022,25 @@ namespace Numerics.Data
         /// <param name="yValues">The list of y-values.</param>
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
-        /// <param name="extrapolation">Optional. The sides of the y-range on which out-of-range lookups extrapolate. Default = None, the historical endpoint hold.</param>
         /// <returns>An array of interpolated values.</returns>
-        public double[] GetXFromY(IList<double> yValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None, ExtrapolationSides extrapolation = ExtrapolationSides.None)
+        public double[] GetXFromY(IList<double> yValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        {
+            return GetXFromY(yValues, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate x-values from a list of y-values, extrapolating on the requested sides of the y-range.
+        /// </summary>
+        /// <param name="yValues">The list of y-values.</param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
+        /// <param name="extrapolation">The sides of the y-range on which out-of-range lookups extrapolate. None reproduces the historical endpoint hold.</param>
+        /// <returns>An array of interpolated values.</returns>
+        /// <remarks>
+        /// A distinct overload rather than an optional parameter, preserving the historical
+        /// three-argument signature's binary compatibility.
+        /// </remarks>
+        public double[] GetXFromY(IList<double> yValues, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
         {
             var result = new double[yValues.Count];
             for (int i = 0; i < yValues.Count; i++)
