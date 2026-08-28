@@ -178,6 +178,28 @@ namespace Numerics.Distributions
         /// </summary>
         public Transform ProbabilityTransform { get; set; } = Transform.NormalZ;
 
+        /// <summary>
+        /// The extrapolation policy applied to out-of-range lookups, defined in X space:
+        /// Below extends beyond the smallest table X value and Above beyond the largest,
+        /// matching the <see cref="Minimum"/>/<see cref="Maximum"/> semantics regardless of the
+        /// stored probability orientation. Default = None, which reproduces the historical
+        /// endpoint hold exactly.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Extension is linear in the configured transform spaces on the table's boundary
+        /// segments. <see cref="CDF(double)"/> output is always clamped to [0, 1] — a probability
+        /// axis under a None transform extends linearly and can leave the unit interval, while
+        /// the normal-Z transform back-transforms into (0, 1) by itself.
+        /// <see cref="InverseCDF(double)"/> stays monotone and total over the extended tails:
+        /// probabilities at or beyond the 1e-16 floors evaluate the extended lookup at the floor
+        /// rather than holding the endpoint, and the endpoint clamp is applied only on sides
+        /// whose extension is disabled. <see cref="PDF(double)"/> deliberately retains its
+        /// table-span support.
+        /// </para>
+        /// </remarks>
+        public ExtrapolationSides Extrapolation { get; set; } = ExtrapolationSides.None;
+
         /// <inheritdoc/>
         public override int NumberOfParameters
         {
@@ -497,14 +519,16 @@ namespace Numerics.Distributions
         {
             if (_parametersValid == false) ValidateData(opd, _pValues, true);
             double p = 0;
+            // The lookup axis is X, so the X-space extrapolation sides forward unchanged in
+            // either probability orientation; the [0,1] clamp below bounds any extended output.
             if (opd.OrderY == SortOrder.Ascending || opd.OrderY == SortOrder.None)
             {
-                p = opd.GetYFromX(X, XTransform, ProbabilityTransform);
+                p = opd.GetYFromX(X, XTransform, ProbabilityTransform, Extrapolation);
             }
             else
             {
                 // If descending then it is a survival function
-                p = 1d - opd.GetYFromX(X, XTransform, ProbabilityTransform);
+                p = 1d - opd.GetYFromX(X, XTransform, ProbabilityTransform, Extrapolation);
             }
             return p < 0d ? 0d : p > 1d ? 1d : p;
         }
@@ -519,25 +543,44 @@ namespace Numerics.Distributions
 
             double min = Minimum;
             double max = Maximum;
-            if (probability <= 1E-16) return min;
-            if (probability >= 1 - 1E-16) return max;
+            // The far-tail floors stay total under extrapolation: an enabled X side evaluates the
+            // extended lookup at the floor (keeping the normal-Z transform finite and the inverse
+            // monotone) instead of holding the endpoint.
+            if (probability <= 1E-16)
+            {
+                if ((Extrapolation & ExtrapolationSides.Below) == 0) return min;
+                probability = 1E-16;
+            }
+            if (probability >= 1 - 1E-16)
+            {
+                if ((Extrapolation & ExtrapolationSides.Above) == 0) return max;
+                probability = 1 - 1E-16;
+            }
             double x = 0;
             if (opd.OrderY == SortOrder.Ascending || opd.OrderY == SortOrder.None)
             {
-                x = opd.GetXFromY(probability, XTransform, ProbabilityTransform);
+                x = opd.GetXFromY(probability, XTransform, ProbabilityTransform, Extrapolation);
             }
             else
             {
-                // If descending then it is a survival function
-                x = opd.GetXFromY(1d - probability, XTransform, ProbabilityTransform);
+                // If descending then it is a survival function. The lookup runs on the stored
+                // (exceedance) value axis, where the small stored values sit at large X — so the
+                // X-space policy maps to the lookup axis with its sides swapped.
+                var mapped = ExtrapolationSides.None;
+                if ((Extrapolation & ExtrapolationSides.Below) != 0) mapped |= ExtrapolationSides.Above;
+                if ((Extrapolation & ExtrapolationSides.Above) != 0) mapped |= ExtrapolationSides.Below;
+                x = opd.GetXFromY(1d - probability, XTransform, ProbabilityTransform, mapped);
             }
-            return x < min ? min : x > max ? max : x;
+            // Clamp only the sides whose extension is disabled, in X space.
+            if (x < min && (Extrapolation & ExtrapolationSides.Below) == 0) return min;
+            if (x > max && (Extrapolation & ExtrapolationSides.Above) == 0) return max;
+            return x;
         }
 
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new EmpiricalDistribution(XValues, ProbabilityValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
+            return new EmpiricalDistribution(XValues, ProbabilityValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform, Extrapolation = Extrapolation };
         }
 
         /// <summary>
@@ -829,6 +872,12 @@ namespace Numerics.Distributions
             result.SetAttributeValue(nameof(Type), Type.ToString());
             result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
             result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+            // Conditional presence: the attribute is written only when non-default so that every
+            // pre-existing serialized form remains byte-identical.
+            if (Extrapolation != ExtrapolationSides.None)
+            {
+                result.SetAttributeValue(nameof(Extrapolation), Extrapolation.ToString());
+            }
 
             var xValues = new string[XValues.Count];
             var pValues = new string[ProbabilityValues.Count];
@@ -907,6 +956,16 @@ namespace Numerics.Distributions
                     || !Enum.IsDefined(typeof(Transform), probabilityTransform))
                     throw new ArgumentException("The serialized empirical distribution has an invalid probability transform.", nameof(xElement));
                 distribution.ProbabilityTransform = probabilityTransform;
+            }
+
+            // Optional-but-validated (conditional presence): absent reads as None.
+            var extrapolationAttribute = xElement.Attribute(nameof(Extrapolation));
+            if (extrapolationAttribute != null)
+            {
+                if (!Enum.TryParse(extrapolationAttribute.Value, out ExtrapolationSides extrapolation)
+                    || !Enum.IsDefined(typeof(ExtrapolationSides), extrapolation))
+                    throw new ArgumentException("The serialized empirical distribution has an invalid extrapolation policy.", nameof(xElement));
+                distribution.Extrapolation = extrapolation;
             }
             return distribution;
         }

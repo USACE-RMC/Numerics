@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics;
+using Numerics.Data;
 using Numerics.Distributions;
 
 namespace Distributions.Univariate
@@ -561,6 +562,36 @@ namespace Distributions.Univariate
             StringAssert.Contains(exception.Message, "row 0");
             StringAssert.Contains(exception.Message, "value 0");
             StringAssert.Contains(exception.Message, "zero or nonfinite");
+        }
+
+        /// <summary>
+        /// The empirical machinery under the hood is unchanged by the extrapolation property:
+        /// the internal empirical CDF keeps its default far-tail endpoint hold, no extrapolation
+        /// attribute appears in the serialized form, and an extension-enabled empirical child
+        /// governs itself through the mixture's direct CDF.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_EmpiricalUnderTheHood_NoRegression()
+        {
+            var mixture = new Mixture(new[] { 0.4d, 0.6d }, new UnivariateDistributionBase[] { new Normal(10, 2), new Normal(20, 3) });
+            mixture.CreateEmpiricalCDF();
+            // 1 - 1E-17 rounds to exactly 1.0, which takes the container's own support guard —
+            // so the far-tail hold is probed at the guard floor and the last double below one.
+            double low = mixture.InverseCDF(1E-17);
+            double high = mixture.InverseCDF(1d - 1E-16);
+            Assert.IsFalse(double.IsNaN(low) || double.IsInfinity(low));
+            Assert.IsFalse(double.IsNaN(high) || double.IsInfinity(high));
+            Assert.AreEqual(low, mixture.InverseCDF(1E-16), 0d);
+            Assert.DoesNotContain("Extrapolation", mixture.ToXElement().ToString());
+
+            // A policy-carrying empirical child composes through the mixture unchanged.
+            var child = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d })
+            {
+                Extrapolation = ExtrapolationSides.Both
+            };
+            var single = new Mixture(new[] { 1d }, new UnivariateDistributionBase[] { child });
+            Assert.AreEqual(child.CDF(400d), single.CDF(400d), 1E-12);
+            Assert.IsLessThan(1d, single.CDF(400d));
         }
 
     }

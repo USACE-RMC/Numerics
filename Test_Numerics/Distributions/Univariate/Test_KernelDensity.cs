@@ -221,6 +221,21 @@ namespace Distributions.Univariate
             }
         }
 
+        /// <summary>
+        /// Kernel density does not compose the empirical distribution — it carries its own
+        /// lookup table with hard support gates — so the empirical extrapolation property cannot
+        /// reach it: the gates and the serialized form are unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_KernelDensity_EmpiricalUnderTheHood_NoRegression()
+        {
+            var sample = new double[] { 8d, 9d, 10d, 11d, 12d, 10.5d, 9.5d, 10.2d };
+            var kde = new KernelDensity(sample);
+            Assert.AreEqual(0d, kde.CDF(kde.Minimum - 1d));
+            Assert.AreEqual(1d, kde.CDF(kde.Maximum + 1d));
+            Assert.DoesNotContain("Extrapolation", kde.ToXElement().ToString());
+        }
+
 
 
 

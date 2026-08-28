@@ -48,6 +48,20 @@ namespace Numerics.Functions
         /// </summary>
         public Transform YTransform { get; set; } = Transform.None;
 
+        /// <summary>
+        /// The extrapolation policy applied to out-of-range lookups. Default = None, which
+        /// reproduces the historical endpoint hold exactly.
+        /// </summary>
+        /// <remarks>
+        /// One policy governs both lookup directions of the same extended boundary segments:
+        /// <see cref="Function(double)"/> extends on the x-axis sides, and
+        /// <see cref="InverseFunction(double)"/> extends on the y-lookup sides. Extension is
+        /// linear in the configured transform space (see
+        /// <see cref="OrderedPairedData.GetYFromX(double, Transform, Transform, ExtrapolationSides)"/>),
+        /// and the <see cref="AllowNegativeYValues"/> floor still binds on extended forward lookups.
+        /// </remarks>
+        public ExtrapolationSides Extrapolation { get; set; } = ExtrapolationSides.None;
+
         /// <inheritdoc/>
         public int NumberOfParameters => 1;
 
@@ -139,7 +153,7 @@ namespace Numerics.Functions
         {
             // Validate parameters
             if (ParametersValid == false) ValidateParameters(new double[] {0}, true);
-            double y = opd.GetYFromX(x, XTransform, YTransform);
+            double y = opd.GetYFromX(x, XTransform, YTransform, Extrapolation);
             y = AllowNegativeYValues == false && (double.IsNaN(y) || y < 0) ? 0 : y;
             return y;
         }
@@ -150,7 +164,7 @@ namespace Numerics.Functions
             // Validate parameters
             if (ParametersValid == false) ValidateParameters(new double[] { 0 }, true);
             y = AllowNegativeYValues == false && (double.IsNaN(y) || y < 0) ? 0 : y;
-            return opd.GetXFromY(y, XTransform, YTransform);
+            return opd.GetXFromY(y, XTransform, YTransform, Extrapolation);
         }
 
         /// <summary>
@@ -165,6 +179,12 @@ namespace Numerics.Functions
             var result = new XElement(nameof(TabularFunction));
             result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
             result.SetAttributeValue(nameof(YTransform), YTransform.ToString());
+            // Conditional presence: the attribute is written only when non-default so that every
+            // pre-existing serialized form remains byte-identical.
+            if (Extrapolation != ExtrapolationSides.None)
+            {
+                result.SetAttributeValue(nameof(Extrapolation), Extrapolation.ToString());
+            }
             result.SetAttributeValue(nameof(AllowNegativeYValues), AllowNegativeYValues.ToString());
             result.SetAttributeValue(nameof(Minimum), Minimum.ToString("G17", CultureInfo.InvariantCulture));
             result.SetAttributeValue(nameof(Maximum), Maximum.ToString("G17", CultureInfo.InvariantCulture));
@@ -191,6 +211,8 @@ namespace Numerics.Functions
                 function.XTransform = xTransform;
             if (Enum.TryParse(xElement.Attribute(nameof(YTransform))?.Value, out Transform yTransform))
                 function.YTransform = yTransform;
+            if (Enum.TryParse(xElement.Attribute(nameof(Extrapolation))?.Value, out ExtrapolationSides extrapolation))
+                function.Extrapolation = extrapolation;
             if (bool.TryParse(xElement.Attribute(nameof(AllowNegativeYValues))?.Value, out bool allowNegative))
                 function.AllowNegativeYValues = allowNegative;
             if (double.TryParse(xElement.Attribute(nameof(Minimum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double minimum))

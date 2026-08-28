@@ -1241,5 +1241,32 @@ namespace Distributions.Univariate
         }
 
         #endregion
+
+        /// <summary>
+        /// The empirical machinery under the hood is unchanged by the extrapolation property:
+        /// the cumulative incidence functions are built at the default policy, the empirical CDF
+        /// keeps its default far-tail endpoint hold, and no extrapolation attribute appears in
+        /// the serialized form.
+        /// </summary>
+        [TestMethod]
+        public void Test_CompetingRisks_EmpiricalUnderTheHood_NoRegression()
+        {
+            var cr = new CompetingRisks(new UnivariateDistributionBase[] { new Normal(10, 2), new Normal(12, 3) });
+            var cifs = cr.CumulativeIncidenceFunctions();
+            for (int i = 0; i < cifs.Count; i++)
+            {
+                Assert.AreEqual(ExtrapolationSides.None, cifs[i].Extrapolation);
+            }
+
+            cr.CreateEmpiricalCDF();
+            // 1 - 1E-17 rounds to exactly 1.0, which takes the container's own support guard —
+            // so the far-tail hold is probed at the guard floor and the last double below one.
+            double low = cr.InverseCDF(1E-17);
+            double high = cr.InverseCDF(1d - 1E-16);
+            Assert.IsFalse(double.IsNaN(low) || double.IsInfinity(low));
+            Assert.IsFalse(double.IsNaN(high) || double.IsInfinity(high));
+            Assert.AreEqual(low, cr.InverseCDF(1E-16), 0d);
+            Assert.DoesNotContain("Extrapolation", cr.ToXElement().ToString());
+        }
     }
 }

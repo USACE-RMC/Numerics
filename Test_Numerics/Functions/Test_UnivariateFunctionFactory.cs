@@ -139,6 +139,39 @@ namespace Functions
         }
 
         /// <summary>
+        /// The extrapolation attribute is written only when non-default, so every pre-existing
+        /// serialized form stays byte-identical; a non-default value round-trips, and an absent
+        /// attribute reads as None.
+        /// </summary>
+        [TestMethod]
+        public void Test_TabularFunction_Extrapolation_ConditionalPresence()
+        {
+            var table = new UncertainOrderedPairedData(
+                new[] { new UncertainOrdinate(1d, new Normal(10, 2)), new UncertainOrdinate(100d, new Normal(20, 2)) },
+                true, SortOrder.Ascending, false, SortOrder.None, UnivariateDistributionType.Normal);
+
+            // Default: no attribute, and the element is byte-identical to a pre-property form.
+            var original = new TabularFunction(table);
+            var defaultXml = original.ToXElement();
+            Assert.IsNull(defaultXml.Attribute(nameof(TabularFunction.Extrapolation)));
+            string baseline = defaultXml.ToString();
+            original.Extrapolation = ExtrapolationSides.Both;
+            original.Extrapolation = ExtrapolationSides.None;
+            Assert.AreEqual(baseline, original.ToXElement().ToString());
+
+            // Non-default: attribute present by enum name and restored through the factory.
+            original.Extrapolation = ExtrapolationSides.Above;
+            var xml = original.ToXElement();
+            Assert.AreEqual(nameof(ExtrapolationSides.Above), xml.Attribute(nameof(TabularFunction.Extrapolation))?.Value);
+            var restored = (TabularFunction)UnivariateFunctionFactory.CreateFromXElement(xml);
+            Assert.AreEqual(ExtrapolationSides.Above, restored.Extrapolation);
+
+            // Absent attribute reads as the default.
+            var legacy = TabularFunction.FromXElement(defaultXml);
+            Assert.AreEqual(ExtrapolationSides.None, legacy.Extrapolation);
+        }
+
+        /// <summary>
         /// Test that the factory rejects null and unknown serialized forms.
         /// </summary>
         [TestMethod]
