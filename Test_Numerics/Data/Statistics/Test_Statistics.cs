@@ -84,13 +84,15 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Verify that ParallelMean is bitwise identical to the sequential Mean.
+        /// Verify that ParallelMean is bitwise identical to the sequential Mean below the parallel
+        /// threshold.
         /// </summary>
         /// <remarks>
         /// The former PLINQ implementation combined per-partition sums in a machine-dependent
         /// order, so its last bits varied with the processor count (measured up to 29 ULP from the
-        /// sequential sum at n = 100,000). The method now delegates to the sequential mean, so the
-        /// two must agree exactly on a magnitude-spanning sample, not merely to a tolerance.
+        /// sequential sum at n = 100,000) — PLINQ partitions even at n = 16. Samples below the
+        /// fixed sequential threshold now fall through to the sequential mean, so the two must
+        /// agree exactly on a magnitude-spanning sample, not merely to a tolerance.
         /// </remarks>
         [TestMethod]
         public void Test_ParallelMean_MatchesSequentialMeanExactly()
@@ -106,6 +108,56 @@ namespace Data.Statistics
             double parallel = Numerics.Data.Statistics.Statistics.ParallelMean(data);
             double sequential = Numerics.Data.Statistics.Statistics.Mean(data);
             Assert.AreEqual(sequential, parallel, 0d);
+        }
+
+        /// <summary>
+        /// Verify that the large-sample parallel reduction is bit-reproducible and matches the
+        /// fixed-chunk summation order exactly.
+        /// </summary>
+        /// <remarks>
+        /// Above the sequential threshold the mean is computed over a fixed number of chunks —
+        /// never derived from the processor count — each summed sequentially and merged serially
+        /// in chunk order, the same deterministic reduction the bootstrap's jackknife accumulation
+        /// uses. This test recomputes that exact summation tree sequentially and requires bitwise
+        /// agreement, which proves the parallel result is independent of the scheduler: a
+        /// scheduler-ordered accumulator (PLINQ or a shared Tools.ParallelAdd) cannot reproduce a
+        /// fixed tree on a magnitude-spanning sample. Repeated calls must also agree exactly.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ParallelMean_LargeSample_MatchesFixedChunkOrderExactly()
+        {
+            var data = new double[100000];
+            for (int i = 0; i < data.Length; i++)
+            {
+                // Deterministic values spanning several orders of magnitude so any
+                // reassociation of the summation order would change the last bits.
+                data[i] = Math.Pow(10d, (i % 9) - 4) * (1d + i / 99991d);
+            }
+
+            // The fixed-chunk reference: 64 chunks with balanced ranges, summed sequentially and
+            // merged in chunk order — the summation tree ParallelMean must reproduce.
+            const int chunks = 64;
+            var chunkSums = new double[chunks];
+            for (int c = 0; c < chunks; c++)
+            {
+                int start = (int)((long)c * data.Length / chunks);
+                int end = (int)((long)(c + 1) * data.Length / chunks);
+                double sum = 0d;
+                for (int i = start; i < end; i++)
+                    sum += data[i];
+                chunkSums[c] = sum;
+            }
+            double total = 0d;
+            for (int c = 0; c < chunks; c++)
+                total += chunkSums[c];
+            double expected = total / data.Length;
+
+            double first = Numerics.Data.Statistics.Statistics.ParallelMean(data);
+            double second = Numerics.Data.Statistics.Statistics.ParallelMean(data);
+            Assert.AreEqual(expected, first, 0d, "The parallel reduction must follow the fixed chunk order.");
+            Assert.AreEqual(first, second, 0d, "Repeated calls must be bit-identical.");
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(data), first,
+                Math.Abs(first) * 1E-12, "The chunked mean must agree with the sequential mean to rounding.");
         }
 
         /// <summary>

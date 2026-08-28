@@ -136,22 +136,61 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Computes the arithmetic sample mean from the unsorted data array.
+        /// The number of accumulation chunks used by the parallel mean reduction. Fixed, not derived
+        /// from the processor count, so the summation order — and therefore the mean's last bits —
+        /// does not vary with the machine or the thread count. Matches the bootstrap's jackknife
+        /// reduction.
+        /// </summary>
+        private const int ParallelMeanChunks = 64;
+
+        /// <summary>
+        /// The sample size below which the parallel mean falls through to the sequential mean:
+        /// scheduling a parallel loop costs more than summing this few values, and the sequential
+        /// result is then bitwise identical to <see cref="Mean(IList{double})"/>.
+        /// </summary>
+        private const int ParallelMeanSequentialThreshold = 8192;
+
+        /// <summary>
+        /// Computes the arithmetic sample mean from the unsorted data array using a parallel
+        /// reduction with a deterministic summation order.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
         /// <remarks>
-        /// This method delegates to <see cref="Mean(IList{double})"/> and is retained for API
-        /// compatibility. The former PLINQ implementation summed per-partition and combined the
-        /// partial sums, so the result depended on the partition count the runtime chose from the
-        /// processor count; because floating-point addition is not associative, the same data could
-        /// produce different last bits on different machines. A sequential sum is bit-reproducible
-        /// everywhere, and the arrays this method sees are far too small for parallel summation to
-        /// pay for its overhead.
+        /// Large samples are split into a fixed number of chunks with balanced ranges, each chunk is
+        /// summed sequentially into its own slot in parallel, and the chunk sums are combined
+        /// serially in chunk order — the same deterministic reduction the bootstrap's jackknife
+        /// accumulation uses. The summation tree therefore depends only on the sample length, so the
+        /// result is bit-identical on every machine, core count, and scheduler. The former PLINQ
+        /// implementation partitioned by the processor count, so the same data produced different
+        /// last bits on different machines; a shared accumulator such as <c>Tools.ParallelAdd</c>
+        /// would be race-free but commits its additions in thread-scheduler order, which is the same
+        /// non-reproducibility. Samples below the threshold fall through to the sequential
+        /// <see cref="Mean(IList{double})"/>.
         /// </remarks>
         public static double ParallelMean(IList<double> data)
         {
-            return Mean(data);
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            int n = data.Count;
+            if (n == 0) return double.NaN;
+            if (n < ParallelMeanSequentialThreshold) return Mean(data);
+
+            int chunks = Math.Min(ParallelMeanChunks, n);
+            var chunkSums = new double[chunks];
+            Parallel.For(0, chunks, c =>
+            {
+                int start = (int)((long)c * n / chunks);
+                int end = (int)((long)(c + 1) * n / chunks);
+                double sum = 0d;
+                for (int i = start; i < end; i++)
+                    sum += data[i];
+                chunkSums[c] = sum;
+            });
+
+            double total = 0d;
+            for (int c = 0; c < chunks; c++)
+                total += chunkSums[c];
+            return total / n;
         }
 
         /// <summary>
