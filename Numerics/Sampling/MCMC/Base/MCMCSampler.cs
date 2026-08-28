@@ -401,6 +401,12 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The acceptance rate per chain.
         /// </summary>
+        /// <remarks>
+        /// NUTS accepts every transition, so this property is identically 1 for
+        /// <see cref="NUTS"/>; use <see cref="NUTS.HamiltonianAcceptanceRates"/> (or
+        /// <see cref="MCMCResults.AcceptanceRates"/>, which substitutes it) for the statistic
+        /// that dual averaging targets.
+        /// </remarks>
         public double[] AcceptanceRates
         {
             get

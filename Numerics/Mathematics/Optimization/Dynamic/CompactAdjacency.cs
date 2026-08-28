@@ -128,8 +128,10 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Builds the view from caller-supplied per-node incoming-edge lists, preserving each
         /// list's order. The lists are authoritative when supplied (the documented solver
-        /// precedence), so their contents are read as-is; node indices carried by the listed
-        /// edges are still range-checked so a malformed list fails loudly.
+        /// precedence), so their contents are read as-is; only out-of-range node indices carried
+        /// by the listed edges throw. An edge placed in the wrong per-node bucket is not
+        /// detected and silently corrupts routing — bucket consistency is the caller's
+        /// responsibility.
         /// </summary>
         /// <param name="edgesToNodes">The incoming edges for each node; a null entry means the node has none.</param>
         /// <param name="nodeCount">The number of nodes; the array length must equal it.</param>

@@ -184,8 +184,9 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <para>
         /// The value is approximately <c>n * 2^-52 ≈ n * 2.22E-16</c>, computed as <c>2 * n *</c>
         /// <see cref="Tools.DoubleMachineEpsilon"/> because that constant is the unit roundoff <c>2^-53</c>
-        /// rather than the double-precision spacing <c>2^-52</c>. The library constant is a decimal-truncated
-        /// <c>2^-53</c>, so the computed tolerance exceeds <c>n * 2^-52</c> by about 3.1E-15 relative.
+        /// rather than the double-precision spacing <c>2^-52</c>. The library constant is <c>2^-53</c>
+        /// rounded to fifteen significant figures, which sits just above the exact value, so the computed
+        /// tolerance exceeds <c>n * 2^-52</c> by about 3.1E-15 relative.
         /// </para>
         /// <para>
         /// This tracks the standard backward-error bound for Cholesky factorization, in which the computed pivot

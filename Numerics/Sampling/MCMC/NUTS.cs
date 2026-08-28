@@ -185,6 +185,12 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The mass vector for the momentum distribution.
         /// </summary>
+        /// <remarks>
+        /// When <see cref="AdaptMassMatrix"/> is <see langword="true"/> (the default), the supplied
+        /// mass seeds the metric and is replaced at the end of each adaptation window; set
+        /// <see cref="AdaptMassMatrix"/> to <see langword="false"/> to sample with the fixed
+        /// supplied metric.
+        /// </remarks>
         public Vector Mass { get; }
 
         /// <summary>
@@ -352,7 +358,7 @@ namespace Numerics.Sampling.MCMC
         /// trajectory has to span the widest, so on an ill-conditioned posterior NUTS saturates
         /// <see cref="MaxTreeDepth"/> on nearly every transition; adaptation removes that failure mode.
         /// On small, well-conditioned fits the metric has little to correct and the adaptation can cost
-        /// up to about 40% more leapfrog steps per transition.
+        /// up to about 38% more leapfrog steps per transition.
         /// </para>
         /// <para>
         /// Set this to <see langword="false"/> to sample with the fixed metric supplied through
@@ -956,7 +962,8 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The smallest per-coordinate variance retained in an adapted metric, as a fraction of the
         /// largest <i>measured</i> variance in the same window; fallback values never set that scale.
-        /// This caps the diagonal metric's condition number at 1e12.
+        /// This bounds the ratio of the largest measured window variance to any retained variance at
+        /// 1e12; fallback values are outside that ratio.
         /// </summary>
         private const double RELATIVE_VARIANCE_FLOOR = 1e-12;
 
@@ -997,7 +1004,8 @@ namespace Numerics.Sampling.MCMC
         /// Retained variances are then floored at <see cref="RELATIVE_VARIANCE_FLOOR"/> times the largest
         /// <i>measured</i> variance in the same window; fallback values never set that scale, because
         /// letting them do so would put the prior range back into the floor for every other coordinate.
-        /// The floor bounds the diagonal metric's condition number at 1e12 and prevents a coordinate that
+        /// The floor bounds the ratio of the largest <i>measured</i> window variance to any retained
+        /// variance at 1e12 — fallback values are outside that ratio — and prevents a coordinate that
         /// is numerically degenerate over the window from producing an unbounded mass. It does not
         /// correct a coordinate that merely under-explored: a variance that comes back at 1e-4 to 1e-6 of
         /// the truth is far above the floor and passes through, yielding a mass that is too large and a

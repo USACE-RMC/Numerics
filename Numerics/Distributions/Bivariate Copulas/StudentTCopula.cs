@@ -103,8 +103,8 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         /// <remarks>
         /// ν is represented as a <see cref="double"/> so that gradient-free MCMC samplers can
-        /// explore the parameter space smoothly; previously the value was rounded to an integer
-        /// on every <see cref="SetCopulaParameters"/> call, which produced a step-function
+        /// explore the parameter space smoothly. Rounding ν to an integer on every
+        /// <see cref="SetCopulaParameters"/> call would produce a step-function
         /// likelihood surface and unnecessary plateaus in the posterior. Both
         /// <see cref="StudentT"/> and <see cref="MultivariateStudentT"/> accept non-integer
         /// degrees of freedom.

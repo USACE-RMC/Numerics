@@ -303,8 +303,8 @@ namespace Distributions.BivariateCopulas
         /// rounds below 1 by roughly |ln u| ulps, so a requested level of t = 1 − 1E-16 can exceed the
         /// attainable maximum of the objective for u values with |ln u| ≳ 1; the solver must still
         /// complete. The asserted contract is the inverse relationship, not a
-        /// particular value: every call returns a probability in [0, 1] whose conditional CDF
-        /// reproduces the requested level. That phrasing is deliberate — in the far tail under
+        /// particular value: every call returns a probability in [0, 1] whose value is monotone
+        /// in the conditional level. That phrasing is deliberate — in the far tail under
         /// strong dependence the conditional CDF is numerically saturated across a band of v,
         /// so several values satisfy h(v|u) = 1 − 1E-16 to full double precision and the
         /// solver may legitimately return any of them. The asserted contract is therefore

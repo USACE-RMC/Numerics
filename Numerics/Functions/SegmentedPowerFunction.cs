@@ -23,8 +23,9 @@ namespace Numerics.Functions
     /// addition mode the BaRatin continuity derivation collapses each control's offset to its
     /// activation stage (b_k = κ_k), the breakpoints must be strictly ordered
     /// (h₁ &lt; h₂ &lt; …), and discharge is zero at and below the main-channel cease-to-flow
-    /// stage h₁. One segment degenerates to the plain power law
-    /// <see cref="PowerFunction"/> with α = 10^(log₁₀α₁), β = β₁, ξ = h₁.
+    /// stage h₁. One segment degenerates, for the deterministic curve only, to the plain power
+    /// law <see cref="PowerFunction"/> with α = 10^(log₁₀α₁), β = β₁, ξ = h₁; the residual
+    /// spaces differ (log₁₀ here, natural log in <see cref="PowerFunction"/>).
     /// </para>
     /// <para>
     /// The residual is Gaussian in log₁₀ space: with a
@@ -294,11 +295,12 @@ namespace Numerics.Functions
             if (_parametersValid == false)
                 ValidateParameters(_parameters, true);
 
-            // Fold the residual out first: the stochastic curve is the deterministic curve
+            // Reject NaN and negative infinity; positive infinity clamps to the support cap.
             if (double.IsNaN(y) || double.IsNegativeInfinity(y))
                 throw new ArgumentOutOfRangeException(nameof(y), "The inverse value must not be NaN or negative infinity.");
             if (double.IsPositiveInfinity(y)) return Maximum;
 
+            // Fold the residual out first: the stochastic curve is the deterministic curve
             // scaled by 10^z, so the inverse divides before the monotone root find.
             if (IsDeterministic == false && ConfidenceLevel >= 0 && ConfidenceLevel <= 1)
                 y /= Math.Pow(10d, _normal.InverseCDF(ConfidenceLevel));

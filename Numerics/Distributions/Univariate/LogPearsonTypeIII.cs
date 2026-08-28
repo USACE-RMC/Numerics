@@ -695,7 +695,7 @@ namespace Numerics.Distributions
             // Get bounds of mean. The mean is a location parameter on the log scale and is
             // legitimately negative whenever the data are mostly below 1, so the bounds are
             // symmetric about zero from the magnitude of the initial value, matching Normal's
-            // location bounds; the former machine-epsilon floor rejected any sub-unity sample
+            // location bounds. A machine-epsilon floor here would reject any sub-unity sample
             // before a fit could start.
             if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
             lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));

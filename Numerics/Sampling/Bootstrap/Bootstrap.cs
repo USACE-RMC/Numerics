@@ -1204,7 +1204,9 @@ namespace Numerics.Sampling
         /// <returns>The acceleration constant for each statistic.</returns>
         /// <exception cref="InvalidOperationException">
         /// Thrown when <see cref="SampleSizeFunction"/> reports a non-positive sample size, or when every
-        /// leave-one-out replicate produced by <see cref="JackknifeFunction"/> fails.
+        /// leave-one-out replicate fails. Each replicate applies <see cref="JackknifeFunction"/>, then
+        /// <see cref="FitFunction"/>, then <see cref="StatisticFunction"/>, and any of the three can be
+        /// the cause.
         /// </exception>
         /// <remarks>
         /// The jackknife second and third moments are accumulated over a fixed number of chunks and merged

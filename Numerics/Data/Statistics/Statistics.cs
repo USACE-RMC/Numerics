@@ -161,11 +161,11 @@ namespace Numerics.Data.Statistics
         /// summed sequentially into its own slot in parallel, and the chunk sums are combined
         /// serially in chunk order — the same deterministic reduction the bootstrap's jackknife
         /// accumulation uses. The summation tree therefore depends only on the sample length, so the
-        /// result is bit-identical on every machine, core count, and scheduler. The former PLINQ
-        /// implementation partitioned by the processor count, so the same data produced different
-        /// last bits on different machines; a shared accumulator such as <c>Tools.ParallelAdd</c>
-        /// would be race-free but commits its additions in thread-scheduler order, which is the same
-        /// non-reproducibility. Samples below the threshold fall through to the sequential
+        /// result is bit-identical on every machine, core count, and scheduler. A processor-count
+        /// partition would produce different last bits on different machines, and a shared
+        /// accumulator such as <c>Tools.ParallelAdd</c> would be race-free but commit its additions
+        /// in thread-scheduler order — the same non-reproducibility — so both are excluded from this
+        /// reduction. Samples below the threshold fall through to the sequential
         /// <see cref="Mean(IList{double})"/>.
         /// </remarks>
         public static double ParallelMean(IList<double> data)

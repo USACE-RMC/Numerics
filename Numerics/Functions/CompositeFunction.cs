@@ -23,7 +23,8 @@ namespace Numerics.Functions
     /// selected and evaluated at the re-scaled remainder (u − Σ w₍&lt;i₎)/wᵢ — deterministic
     /// composition sampling with no internal random source, so the same u always reproduces the
     /// same curve. Outside [0, 1] (the mean convention shared by the other function types),
-    /// both modes evaluate the weighted average of the children's own mean evaluations.
+    /// both modes evaluate the weighted average of each child evaluated at its own configured
+    /// confidence level.
     /// </para>
     /// <para>
     /// The numeric <see cref="InverseFunction(double)"/> assumes the composed function is

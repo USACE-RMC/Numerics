@@ -189,8 +189,8 @@ namespace Numerics.Sampling.MCMC
             // The list is sorted ascending on Fitness while the CDF below accumulates Weight; the two
             // keys coincide only when no importance distribution is supplied. See the remarks on Sample().
             // OrderBy is a stable sort, so tied fitness values (commonly many -Infinity draws under wide
-            // priors) keep their original draw order and the resampled output is reproducible across
-            // runs and platforms; List<T>.Sort is an unstable introsort whose tie order is not.
+            // priors) keep their draw order; List<T>.Sort's tie order is implementation-defined and
+            // differs between target frameworks, so a seeded run would resample differently per runtime.
             MarkovChains[0] = MarkovChains[0].OrderBy(x => x.Fitness).ToList();
             var cdf = new double[Iterations];
             cdf[0] = Math.Max(0.0, MarkovChains[0][0].Weight);

@@ -284,8 +284,8 @@ namespace Numerics.Data
         {
             // Match Ordinate's equality convention for the shared X coordinate: allow a machine-epsilon
             // slack, and (as Ordinate documents for its own operator) a NaN coordinate compares equal
-            // because the rejection test below is false for NaN. The former exact inequality made the
-            // two classes disagree on the same conceptual coordinate.
+            // because the rejection test below is false for NaN. The tolerance matches Ordinate's
+            // convention so the two classes agree on the same conceptual coordinate.
             if (Math.Abs(left.X - right.X) > Tools.DoubleMachineEpsilon)
                 return false;
             if (left.Y is null && right.Y is null)

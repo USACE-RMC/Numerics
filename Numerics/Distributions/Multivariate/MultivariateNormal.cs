@@ -155,9 +155,9 @@ namespace Numerics.Distributions
         /// <para>
         /// The literal must be 2⁻⁵² bit-exactly, so it is written out rather than derived as
         /// <c>2d * Tools.DoubleMachineEpsilon</c>: that constant is the decimal literal
-        /// 1.11022302462516E-16, which is 2⁻⁵³ rounded to fifteen significant figures, so doubling it
-        /// gives 1.9999999999999938 times 2⁻⁵³ rather than 2⁻⁵², and the thresholds built on it would
-        /// drift off scipy's by a few ulps.
+        /// 1.11022302462516E-16, which slightly exceeds 2⁻⁵³ — it parses to 1.0000000000000031
+        /// times 2⁻⁵³ — so doubling it gives 2.0000000000000062 times 2⁻⁵³, overshooting 2⁻⁵², and
+        /// the thresholds built on it would drift off scipy's by a few ulps.
         /// </para>
         /// </remarks>
         private const double RelativeMachineEpsilon = 2.220446049250313E-16;
@@ -869,9 +869,9 @@ namespace Numerics.Distributions
         /// </remarks>
         public bool TrySetParameters(double[] mean, double[,] covariance)
         {
-            // The Cholesky constructor itself throws on strongly indefinite matrices
-            // (negative pivots) while merely flagging weakly non-positive-definite
-            // ones, so the non-throwing contract absorbs both failure modes.
+            // The Cholesky constructor throws on any rejected pivot — it never returns
+            // with IsPositiveDefinite false — so the non-throwing contract absorbs the
+            // decomposition failure here.
             try
             {
                 // Validate through the overload that hands back the decomposition and apply it directly,
@@ -1342,9 +1342,6 @@ namespace Numerics.Distributions
 
         #region Cumulative Distribution Support
 
-    
-        //****************************************************************************80
-
         /// <summary>
         /// Computes the bivariate normal CDF.
         /// </summary>
@@ -1352,52 +1349,13 @@ namespace Numerics.Distributions
         /// <param name="ak">Upper limit for variable Y.</param>
         /// <param name="r">The correlation coefficient.</param>
         /// <returns>The bivariate normal CDF value.</returns>
+        /// <remarks>
+        /// Original FORTRAN77 version by Thomas Donnelly (ACM Algorithm 462); adapted from the
+        /// MIT-licensed C++ version by John Burkardt.
+        /// Reference: Donnelly, T. (1973). "Algorithm 462: Bivariate Normal Distribution."
+        /// Communications of the ACM, 16(10), 638.
+        /// </remarks>
         public static double bivnor(double ah, double ak, double r)
-
-        //****************************************************************************80
-        //
-        //  Purpose:
-        //
-        //    BIVNOR computes the bivariate normal CDF.
-        //
-        //  Discussion:
-        //
-        //    BIVNOR computes the probability for two normal variates X and Y
-        //    whose correlation is R, that AH <= X and AK <= Y.
-        //
-        //  Licensing:
-        //
-        //    This code is distributed under the MIT license.
-        //
-        //  Modified:
-        //
-        //    13 April 2012
-        //
-        //  Author:
-        //
-        //    Original FORTRAN77 version by Thomas Donnelly.
-        //    C++ version by John Burkardt.
-        //
-        //  Reference:
-        //
-        //    Thomas Donnelly,
-        //    Algorithm 462: Bivariate Normal Distribution,
-        //    Communications of the ACM,
-        //    October 1973, Volume 16, Number 10, page 638.
-        //
-        //  Parameters:
-        //
-        //    Input, double AH, AK, the lower limits of integration.
-        //
-        //    Input, double R, the correlation between X and Y.
-        //
-        //    Output, double BIVNOR, the bivariate normal CDF.
-        //
-        //  Local Parameters:
-        //
-        //    Local, int IDIG, the number of significant digits
-        //    to the right of the decimal point desired in the answer.
-        //
         {
             double a2;
             double ap;

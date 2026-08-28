@@ -50,10 +50,9 @@ namespace Numerics.Data
         /// </summary>
         /// <remarks>
         /// Computed from the collection size on every read as the Numerical Recipes N^0.25 hunt
-        /// heuristic (never below 1), matching the Interpolater's window, so the correlated test in
-        /// <see cref="SearchX(double)"/> can actually select the hunt path; the former constant 0
-        /// reported correlated only when a search landed on exactly the same index as the previous
-        /// one. The value affects only which search path runs — hunt and bisection return the same
+        /// heuristic, matching the Interpolater's window: the window scales as Count^0.25 with a
+        /// floor of 1, so consecutive nearby lookups take the hunt path in
+        /// <see cref="SearchX(double)"/>. The value affects only which search path runs — hunt and bisection return the same
         /// bracket for the same input — so it is a performance characteristic rather than a
         /// correctness one. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
         /// settable, so a consumer can steer the search directly.
@@ -65,9 +64,10 @@ namespace Numerics.Data
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// Computed from the collection size on every read, exactly like <see cref="XdeltaStart"/>;
-        /// the former constant 0 reported correlated only on an exact index repeat. The effect is
-        /// confined to which search path runs, never to the bracket returned.
+        /// Computed from the collection size on every read, exactly like <see cref="XdeltaStart"/>:
+        /// the window scales as Count^0.25 with a floor of 1, so consecutive nearby lookups take
+        /// the hunt path. The effect is confined to which search path runs, never to the bracket
+        /// returned.
         /// </remarks>
         private int YdeltaStart => Math.Max(1, (int)Math.Pow(Count, 0.25));
 
@@ -1623,7 +1623,7 @@ namespace Numerics.Data
             {
                 // The clamp must fire at the exact tail boundary too (i + lookAhead == count):
                 // an unclamped look-ahead there falls through RecursiveTolerance's own range guard
-                // unreduced and overshoots the final ordinate, which silently dropped the curve's
+                // unreduced and overshoots the final ordinate, silently dropping the curve's
                 // last point.
                 if (i + lookAhead >= count)
                     lookAhead = count - i - 1;

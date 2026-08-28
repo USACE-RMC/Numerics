@@ -543,7 +543,9 @@ namespace Numerics.Distributions
             //   P(X ≤ x) = E_W[ Φ_MVN((x−μ)·√(W/ν); 0, Σ) ]   where W ~ χ²(ν)
             //
             // We evaluate this by computing the MVN CDF at K equally-spaced quantiles
-            // of χ²(ν) and averaging. This is deterministic and works for any ν.
+            // of χ²(ν) and averaging. The stratification over χ²(ν) is deterministic and
+            // works for any ν; the inner MVN CDF is a randomized lattice rule above two
+            // dimensions (see the method remarks).
 
             const int K = 200;
             var gamma = new GammaDistribution(2.0, _degreesOfFreedom / 2.0);

@@ -254,7 +254,7 @@ namespace Numerics.Distributions.Copulas
         /// Thrown when Kendall's τ for the sample data lies outside the range the fitting bracket can reach.
         /// </exception>
         /// <remarks>
-        /// Kendall's τ is estimated from the sample data and <see cref="KendallsTauFromTheta(double)"/> is
+        /// Kendall's τ is estimated from the sample data and the closed-form Kendall's τ(θ) relation is
         /// inverted with Brent's method over the bracket returned by
         /// <see cref="ParameterConstraints(IList{double}, IList{double})"/>, which is [0.001, 100] for a
         /// positive τ and [-100, -0.001] for a non-positive one. That bracket reaches |τ| in

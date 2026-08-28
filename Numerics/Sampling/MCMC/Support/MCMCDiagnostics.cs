@@ -57,8 +57,8 @@ namespace Numerics.Sampling.MCMC
         /// Computes a conservative rank-normalized effective sample size for each model parameter.
         /// </summary>
         /// <param name="markovChains">
-        /// The Markov chains to evaluate. When lengths differ, only their common leading
-        /// length is used, matching the historical pooled-output behavior.
+        /// The Markov chains to evaluate. When lengths differ, only the common leading
+        /// length of every chain is used.
         /// </param>
         /// <param name="averageACF">Output. A jagged array of averaged autocorrelation functions, one for each parameter.</param>
         /// <returns>

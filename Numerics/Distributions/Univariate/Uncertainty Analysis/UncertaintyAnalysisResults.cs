@@ -422,9 +422,9 @@ namespace Numerics.Distributions
 
             int B = sampledDistributions.Length;
 
-            // Compute min and max X values across all distributions. The extremes merge once per
-            // worker rather than once per distribution; min and max are order-independent, so the
-            // result is the same however the loop partitions.
+            // Compute min and max X values across all distributions. The extremes merge per
+            // partition; min and max are order-independent, so the result is the same however
+            // the loop partitions.
             double minX = double.MaxValue;
             double maxX = double.MinValue;
             object lockObject = new object();

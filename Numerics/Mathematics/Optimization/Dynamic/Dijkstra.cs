@@ -159,11 +159,11 @@ namespace Numerics.Mathematics.Optimization
         /// <returns>Lookup table of shortest paths from any given node to its nearest destination.</returns>
         /// <remarks>
         /// Costs match the multi-destination <see cref="Solve(IList{Edge}, int[], int, List{Edge}[])"/>
-        /// overload exactly; the routed next node and edge can differ from it only where two
-        /// destinations are exactly equidistant, where this method resolves the tie by
-        /// deterministic heap order rather than destination array order. One pass over the
-        /// network replaces one pass per destination. Duplicate destination indices are
-        /// tolerated.
+        /// overload exactly; the routed next node and edge can differ from it wherever two
+        /// routes have exactly equal cost — whether to the same or to different destinations —
+        /// where this method resolves the tie by deterministic heap order rather than
+        /// destination array order. One pass over the network replaces one pass per
+        /// destination. Duplicate destination indices are tolerated.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the edges or destination indices are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the destination array is empty, the node count cannot be derived, or an edge references a node outside the network.</exception>

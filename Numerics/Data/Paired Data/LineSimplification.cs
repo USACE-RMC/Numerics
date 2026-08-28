@@ -35,10 +35,10 @@ namespace Numerics.Data
             if (ordinates.Count < 2)
                 throw new ArgumentOutOfRangeException("Not enough points to simplify");
 
-            // The output parameter's contract must not depend on which branch runs: the recursion
-            // branch appends while the endpoint branch replaced, so a pre-populated list was
-            // replaced or appended-to depending on the curve. Clearing up front makes the result
-            // the simplified curve alone on every path.
+            // The output parameter's contract must not depend on the caller's list state: both the
+            // recursion branch and the endpoint branch append, so a pre-populated list would keep
+            // its stale contents ahead of the result. Clearing up front makes the result the
+            // simplified curve alone on every path.
             output.Clear();
 
             // Find the point with the maximum distance from line between the start and end

@@ -406,6 +406,12 @@ namespace Numerics.Distributions
         /// <param name="quantiles">The quantiles to evaluate.</param>
         /// <param name="distributions">The bootstrap distributions; null entries represent failed fits.</param>
         /// <returns>The mean CDF values.</returns>
+        /// <remarks>
+        /// The replications are split into <see cref="ReductionChunks"/> chunks (capped at the
+        /// replication count), each summed sequentially and merged in chunk order, so the result
+        /// does not depend on the thread count. Failed fits are excluded from both the sum and
+        /// the divisor.
+        /// </remarks>
         private static double[] MeanCDFs(double[] quantiles, IUnivariateDistribution[] distributions)
         {
             int replications = distributions.Length;
@@ -471,7 +477,8 @@ namespace Numerics.Distributions
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
         public double[] ComputeMinMaxQuantiles(double minProbability, double maxProbability, IUnivariateDistribution[] distributions)
         {
-            // Thread-local extremes merged once per partition rather than a lock per distribution.
+            // The extremes merge once per partition; min and max are order-independent, so the
+            // result does not depend on the partitioning.
             var output = new double[] { double.MaxValue, double.MinValue };
             object lockObject = new object();
             int count = distributions.Length;
@@ -536,8 +543,10 @@ namespace Numerics.Distributions
         /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
         /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
         /// below one when every replicate falls at or below the estimate. When every replicate exceeds
-        /// the estimate the proportion is zero, the bias correction is −∞, and the adjusted limits
-        /// collapse to the smallest replicate.
+        /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
+        /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
+        /// −38.5; the adjusted probability underflows to zero, so the limits collapse to the smallest
+        /// replicate.
         /// </remarks>
         public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
         {
@@ -624,8 +633,10 @@ namespace Numerics.Distributions
         /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
         /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
         /// below one when every replicate falls at or below the estimate. When every replicate exceeds
-        /// the estimate the proportion is zero and the bias correction is −∞; the adjusted limits then
-        /// collapse to the smallest replicate, or are undefined when the acceleration is nonzero.
+        /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
+        /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
+        /// −38.5; the BCa expression stays defined, the adjusted probability underflows to zero, and
+        /// the limits collapse to the smallest replicate.
         /// </remarks>
         public double[,] BCaQuantileCI(IList<double> sampleData, IList<double> probabilities, double alpha = 0.1)
         {
@@ -676,6 +687,10 @@ namespace Numerics.Distributions
         /// <param name="thetaHats">The fitted population quantiles.</param>
         /// <returns>One acceleration constant per probability.</returns>
         /// <exception cref="AggregateException">Thrown when every leave-one-out fit fails.</exception>
+        /// <remarks>
+        /// The jackknife is chunked (<see cref="ReductionChunks"/>) so the moment sums merge in a
+        /// fixed order independent of the thread count.
+        /// </remarks>
         private double[] AccelerationConstants(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
         {
             int sampleCount = sampleData.Count;
@@ -707,6 +722,7 @@ namespace Numerics.Distributions
                     for (int k = 0; k < index; k++) jackknifeSample[k] = sampleData[k];
                     for (int k = index + 1; k < sampleCount; k++) jackknifeSample[k - 1] = sampleData[k];
 
+                    // Cloned per point: a failed Estimate can leave the instance partially set.
                     var distribution = ((UnivariateDistributionBase)Distribution).Clone();
                     try
                     {
@@ -890,6 +906,7 @@ namespace Numerics.Distributions
         /// <param name="thetaHats">The cube-root-transformed fitted population quantiles.</param>
         /// <returns>One jackknife standard error per probability.</returns>
         /// <exception cref="AggregateException">Thrown when every leave-one-out fit fails.</exception>
+        /// <remarks>Chunked as <see cref="AccelerationConstants"/>.</remarks>
         private double[] StandardError(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
         {
             int sampleCount = sampleData.Count;

@@ -100,9 +100,9 @@ namespace Numerics.Mathematics.Optimization
         /// The primary objective enters on the optimizer's scaled convention, exactly as
         /// <see cref="Optimizer.Evaluate"/> applies it, so a maximization negates it here while the
         /// constraint penalties stay direction-neutral and are always added. The inner search then
-        /// always minimizes this function. Without the scale the inner search minimized the raw
-        /// objective regardless of the requested direction, so a maximization reported the
-        /// constrained minimum.
+        /// always minimizes this function. Dropping the scale here would leave the inner search
+        /// minimizing the raw objective regardless of the requested direction, so a maximization
+        /// would report the constrained minimum.
         /// </remarks>
         private double augmentedLagrangianFunction(double[] x)
         {

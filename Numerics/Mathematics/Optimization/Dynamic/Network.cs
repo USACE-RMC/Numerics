@@ -16,9 +16,9 @@ namespace Numerics.Mathematics.Optimization
     /// The network compiles its topology once at construction — the node count, the incoming and
     /// outgoing adjacency, and the destination set are fixed for the instance's lifetime — so
     /// repeated solves pay only the solve itself, and custom-weight solves overlay a positional
-    /// weight vector with no rebuild. The parameterless solve methods allocate their results
-    /// per call and are safe for concurrent use; the overloads that write into a caller-supplied
-    /// table reuse instance scratch buffers and are not thread safe. Weights follow the
+    /// weight vector with no rebuild. The solve and path methods that return their results
+    /// allocate them per call and are safe for concurrent use; the overloads that write into a
+    /// caller-supplied table reuse instance scratch buffers and are not thread safe. Weights follow the
     /// <see cref="Dijkstra"/> conventions: non-negative weights are the correctness
     /// precondition, positive infinity is impassable, and NaN severs its edge.
     /// </para>
@@ -167,7 +167,8 @@ namespace Numerics.Mathematics.Optimization
         /// <remarks>
         /// Each destination is solved independently and the tables merge per node by strictly
         /// smaller cost in destination order, so on an exact cost tie the earlier destination
-        /// wins — the same semantics as the static multi-destination solver.
+        /// wins — the same semantics as the static multi-destination solver. An empty
+        /// destination array returns an all-unreachable table.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the destination indices are null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when a destination index is outside the network.</exception>
@@ -214,8 +215,10 @@ namespace Numerics.Mathematics.Optimization
         /// <returns>A result table with the next node, edge index, and cumulative weight for each node.</returns>
         /// <remarks>
         /// Costs match <see cref="Solve(int[])"/> over the network's destinations exactly; the
-        /// routed next node and edge can differ only where two destinations are exactly
-        /// equidistant. One pass replaces one pass per destination.
+        /// routed next node and edge can differ from it wherever two routes have exactly equal
+        /// cost — whether to the same or to different destinations — where this method resolves
+        /// the tie by deterministic heap order rather than destination array order. One pass
+        /// replaces one pass per destination.
         /// </remarks>
         public float[,] SolveNearest()
         {

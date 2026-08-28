@@ -291,7 +291,7 @@ namespace Numerics.Distributions.Copulas
         /// Thrown when Kendall's τ for the sample data lies outside the range the fitting bracket can reach.
         /// </exception>
         /// <remarks>
-        /// Kendall's τ is estimated from the sample data and <see cref="KendallsTauFromTheta(double)"/> is
+        /// Kendall's τ is estimated from the sample data and the closed-form Kendall's τ(θ) relation is
         /// inverted with Brent's method over the bracket returned by
         /// <see cref="ParameterConstraints(IList{double}, IList{double})"/>, θ in [1, 100]. That bracket reaches
         /// τ in [0, 0.98025359]. The Joe copula models positive dependence only, so a negative τ is not attainable

@@ -273,13 +273,13 @@ namespace Sampling.MCMC
         /// The memo must store a copy of the queried position, not a reference to the caller's array.
         /// </summary>
         /// <remarks>
-        /// The requirement is real and not hypothetical: the trajectory's own working array is what the
-        /// sampler queries with, and the leapfrog loop rewrites that array's successor one statement
-        /// later. A memo holding the queried array by reference would find its key rewritten under it, so
-        /// the entry would stop matching the point it was computed at and start matching a point it was
-        /// not. This probe reproduces that directly: evaluate at a position, mutate the caller's array,
-        /// and check that the entry still answers the original position and does not answer the mutated
-        /// one.
+        /// A gradient delegate that writes through its argument, or a caller that mutates the array it
+        /// passed, must not be able to corrupt the memo key: a memo holding the queried array by
+        /// reference would find its key rewritten under it, so the entry would stop matching the point
+        /// it was computed at and start matching a point it was not. Storing a copy makes the key
+        /// immutable. This probe reproduces the hazard directly: evaluate at a position, mutate the
+        /// caller's array, and check that the entry still answers the original position and does not
+        /// answer the mutated one.
         /// </remarks>
         [TestMethod]
         public void Test_HMC_GradientReuse_StoresACopyOfTheQueriedPosition()

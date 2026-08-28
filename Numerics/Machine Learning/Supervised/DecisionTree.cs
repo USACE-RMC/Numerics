@@ -228,11 +228,11 @@ namespace Numerics.MachineLearning
         private DecisionNode GrowTree(int[] indices, int lo, int hi, int depth)
         {
             int numberOfSamples = hi - lo;
-            // Count distinct responses for BOTH modes so the pure-node guard below can fire. Regression
-            // used to substitute the sample count, which made the guard redundant with the minimum split
-            // size, and a zero-gain split of a pure node still beat the double.MinValue seed — a default
-            // regression tree therefore recursed to one observation per leaf. Counting distinct values
-            // applies scikit-learn's rule: a node is never split once it is pure.
+            // Count distinct responses for BOTH modes so the pure-node guard below can fire —
+            // scikit-learn's rule: a node is never split once it is pure. Substituting the sample
+            // count makes the guard redundant with the minimum split size, and a zero-gain split of
+            // a pure node beats the double.MinValue seed, so a default regression tree recurses to
+            // one observation per leaf.
             int numberOfLabels = CountDistinctLabels(indices, lo, hi);
 
             // The feature subset is drawn for every node, split or leaf, so the generator consumes

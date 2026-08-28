@@ -44,8 +44,8 @@ namespace Numerics.Data
             this.XValues = xValues;
             this.YValues = yValues;
             // Scale the correlated-search window with the table size (Numerical Recipes' N^0.25 hunt
-            // heuristic). Math.Max keeps the window at least 1; the former Math.Min pinned it to
-            // exactly 1 for every table, which starved the hunt path. See the remarks on deltaStart.
+            // heuristic). Math.Max keeps the window at least 1 and lets it grow with the table; a
+            // window pinned to a constant starves the hunt path. See the remarks on deltaStart.
             deltaStart = Math.Max(1, (int)Math.Pow((double)Count, 0.25));
             SortOrder = sortOrder;
             
