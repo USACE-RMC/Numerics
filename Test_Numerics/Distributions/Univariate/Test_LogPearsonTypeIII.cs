@@ -398,8 +398,8 @@ namespace Distributions.Univariate
             var initials = constraints.Item1;
             var lowers = constraints.Item2;
             var uppers = constraints.Item3;
-            Assert.IsTrue(initials[0] < 0d, "Fixture precondition: the log10 mean is negative.");
-            Assert.IsTrue(lowers[0] < uppers[0], "The mean bounds must not be inverted.");
+            Assert.IsLessThan(0d, initials[0], "Fixture precondition: the log10 mean is negative.");
+            Assert.IsLessThan(uppers[0], lowers[0], "The mean bounds must not be inverted.");
             Assert.IsTrue(initials[0] >= lowers[0] && initials[0] <= uppers[0],
                 "The initial mean must sit inside its own bounds.");
             Assert.AreEqual(double.NegativeInfinity, new LogPearsonTypeIII().MinimumOfParameters[0]);

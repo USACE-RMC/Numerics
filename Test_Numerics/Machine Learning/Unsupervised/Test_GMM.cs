@@ -144,7 +144,7 @@ namespace MachineLearning
                 double wgt = 0d;
                 for (int i = 0; i < n; i++)
                     wgt += gmm.LikelihoodMatrix[i, k];
-                Assert.IsTrue(wgt > 0, "Fixture precondition: both components carry responsibility.");
+                Assert.IsGreaterThan(0d, wgt, "Fixture precondition: both components carry responsibility.");
 
                 // Recompute the raw M-step covariance from the responsibilities and stored means.
                 var expected = new double[dims, dims];
