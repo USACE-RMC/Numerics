@@ -28,9 +28,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>2.1.4</Version>
-    <PackageReleaseNotes>Version 2.1.4 adds non-throwing univariate distribution factory creation, preserves valid zero-inflated mixture weights, hardens Box-Cox and Yeo-Johnson fitting and inversion against invalid candidates, and enforces ascending empirical distribution ordinates with expanded regression coverage.</PackageReleaseNotes>
-    <AssemblyVersion>2.1.4.0</AssemblyVersion>
+    <Version>2.2.0</Version>
+    <PackageReleaseNotes>Version 2.2.0 adds weighted statistics, given-data global sensitivity estimators, a two-dimensional adaptive Gauss-Kronrod integrator, seeded Sobol scrambling, conditional copula functions with serialization and factories, composable univariate functions, sided transform-aware paired-data extrapolation, and adaptive NUTS with gradient reuse in NUTS and HMC, corrects validation, tie-correction, optimization, and machine learning edge cases, and pins seeded streams and deterministic reductions with expanded regression coverage.</PackageReleaseNotes>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>
