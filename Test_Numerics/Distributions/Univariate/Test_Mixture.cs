@@ -565,6 +565,23 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies ordinary mixture EM reports an observation outside every component support.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_EM_ObservationOutsideAllComponentSupportsThrowsWithRowContext()
+        {
+            var mixture = new Mixture(
+                new[] { 1.0 },
+                new UnivariateDistributionBase[] { new Weibull(1.0, 2.0) });
+
+            InvalidOperationException exception =
+                Assert.Throws<InvalidOperationException>(() => mixture.MLE(new[] { -1.0, 1.0, 2.0 }));
+            StringAssert.Contains(exception.Message, "row 0");
+            StringAssert.Contains(exception.Message, "value -1");
+            StringAssert.Contains(exception.Message, "zero or nonfinite");
+        }
+
+        /// <summary>
         /// The empirical machinery under the hood is unchanged by the extrapolation property:
         /// the internal empirical CDF keeps its default far-tail endpoint hold, no extrapolation
         /// attribute appears in the serialized form, and an extension-enabled empirical child
