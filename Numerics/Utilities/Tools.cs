@@ -249,7 +249,7 @@ namespace Numerics
             double u = Math.Exp(x);
             if (u == 1.0) return x;
             if (double.IsPositiveInfinity(u)) return u;
-            if (u == 0.0) return -1.0;
+            if (u <= DoubleMachineEpsilon / 2.0) return -1.0;
             double numerator = (u - 1.0) * x;
             // The product overflows only for x large enough that 1 is far below one unit in the last
             // place of u, where exp(x) - 1 carries no cancellation to compensate for.

@@ -641,6 +641,17 @@ namespace Utilities
         }
 
         /// <summary>
+        /// Expm1 saturates exactly at -1 when the exponential is below the binary64
+        /// rounding boundary, without saturating a nearby representable result.
+        /// </summary>
+        [TestMethod]
+        public void Test_Expm1_DeepNegativeRoundingBoundary()
+        {
+            Assert.AreEqual(-1d, Tools.Expm1(-745d), 0d);
+            Assert.AreEqual(-0.9999999999999998d, Tools.Expm1(-36d), 0d);
+        }
+
+        /// <summary>
         /// Log1p pins for the companion helper: tiny arguments return themselves exactly, small
         /// arguments match the series log(1 + x) = x - x^2/2 + x^3/3 to full precision, and the
         /// domain edges produce negative infinity at -1 and NaN below it.
