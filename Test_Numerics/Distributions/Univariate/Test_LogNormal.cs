@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -276,5 +276,49 @@ namespace Distributions.Univariate
             var LogN2 = new LogNormal(1.5, 2.5);
             Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-05);
         }
+        /// <summary>
+        /// Verify the parameter constraints admit a negative log10-space mean.
+        /// </summary>
+        /// <remarks>
+        /// The location parameter is the mean of the log10-transformed data, which is legitimately
+        /// negative whenever the data are mostly below 1. The former constraints floored the lower
+        /// bound at machine epsilon and collapsed the upper bound toward ceil(mu + 1), so a sub-unity
+        /// sample produced an initial value below its own lower bound (and, for mu at or below -1,
+        /// an inverted lower/upper pair) and every downstream consumer reported the inputs invalid.
+        /// The bounds are now symmetric about zero from the magnitude of the initial value, matching
+        /// the Normal distribution's location bounds.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LogNormal_ParameterConstraints_AllowNegativeLogMean()
+        {
+            var shallow = new double[] { 0.12, 0.31, 0.45, 0.08, 0.90, 1.4, 0.25, 0.6, 0.5, 0.75 };
+            var deep = new double[] { 0.004, 0.012, 0.008, 0.02, 0.006, 0.015, 0.003, 0.01, 0.007, 0.011 };
+
+            foreach (var sample in new[] { shallow, deep })
+            {
+                var constraints = new LogNormal().GetParameterConstraints(sample);
+                var initials = constraints.Item1;
+                var lowers = constraints.Item2;
+                var uppers = constraints.Item3;
+                Assert.IsTrue(initials[0] < 0d, "Fixture precondition: the log10 mean is negative.");
+                Assert.IsTrue(lowers[0] < uppers[0], "The mean bounds must not be inverted.");
+                Assert.IsTrue(initials[0] >= lowers[0] && initials[0] <= uppers[0],
+                    "The initial mean must sit inside its own bounds.");
+                Assert.IsTrue(lowers[1] < uppers[1] && initials[1] >= lowers[1] && initials[1] <= uppers[1],
+                    "The standard deviation bounds must contain the initial value.");
+            }
+        }
+
+        /// <summary>
+        /// Verify the parameter minimum metadata and validation admit a negative log10-space mean.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogNormal_NegativeLogMean_IsValid()
+        {
+            Assert.AreEqual(double.NegativeInfinity, new LogNormal().MinimumOfParameters[0]);
+            var dist = new LogNormal();
+            Assert.IsNull(dist.ValidateParameters(new[] { -1.5, 0.3 }, false));
+        }
+
     }
 }

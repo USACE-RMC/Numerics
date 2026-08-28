@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -382,5 +382,28 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.3d, recovered[1], 1E-5);
             Assert.AreEqual(-0.1d, recovered[2], 1E-4);
         }
+        /// <summary>
+        /// Verify the parameter constraints admit a negative log10-space mean.
+        /// </summary>
+        /// <remarks>
+        /// See the matching LogNormal test: the location parameter is the mean of the
+        /// log10-transformed data, negative whenever the data are mostly below 1, and the former
+        /// machine-epsilon lower bound rejected any such sample before a fit could start.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LP3_ParameterConstraints_AllowNegativeLogMean()
+        {
+            var sample = new double[] { 0.12, 0.31, 0.45, 0.08, 0.90, 1.4, 0.25, 0.6, 0.5, 0.75, 0.2, 0.33 };
+            var constraints = new LogPearsonTypeIII().GetParameterConstraints(sample);
+            var initials = constraints.Item1;
+            var lowers = constraints.Item2;
+            var uppers = constraints.Item3;
+            Assert.IsTrue(initials[0] < 0d, "Fixture precondition: the log10 mean is negative.");
+            Assert.IsTrue(lowers[0] < uppers[0], "The mean bounds must not be inverted.");
+            Assert.IsTrue(initials[0] >= lowers[0] && initials[0] <= uppers[0],
+                "The initial mean must sit inside its own bounds.");
+            Assert.AreEqual(double.NegativeInfinity, new LogPearsonTypeIII().MinimumOfParameters[0]);
+        }
+
     }
 }

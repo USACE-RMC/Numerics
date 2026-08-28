@@ -256,7 +256,9 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] MinimumOfParameters
         {
-            get { return [0.0d, 0.0d]; }
+            // The mean of the log10-transformed variable is a location parameter and can be any
+            // finite value; only the log-space standard deviation is bounded below by zero.
+            get { return [double.NegativeInfinity, 0.0d]; }
         }
 
         /// <inheritdoc/>
@@ -454,13 +456,16 @@ namespace Numerics.Distributions
             // Estimate initial values using the method of moments (a.k.a product moments).
             var mom = IndirectMethodOfMoments(sample);
             initialVals = new double[] { mom[0], mom[1] };
-            // Get bounds of mean
-            double real = Math.Exp(initialVals[0] / K);
-            lowerVals[0] = Tools.DoubleMachineEpsilon;
-            upperVals[0] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real) + 1d)), Base));
-            upperVals[0] = double.IsNaN(upperVals[0]) ? 5 : upperVals[0];
+            // Get bounds of mean. The mean is a location parameter on the log scale and is
+            // legitimately negative whenever the data are mostly below 1, so the bounds are
+            // symmetric about zero from the magnitude of the initial value, matching Normal's
+            // location bounds; the former machine-epsilon floor rejected any sub-unity sample
+            // before a fit could start.
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
             // Get bounds of standard deviation
-            real = Math.Exp(initialVals[1] / K);
+            double real = Math.Exp(initialVals[1] / K);
             lowerVals[1] = Tools.DoubleMachineEpsilon;
             upperVals[1] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real) + 1d)), Base));
             upperVals[1] = double.IsNaN(upperVals[1]) ? 4 : upperVals[1];
