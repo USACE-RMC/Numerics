@@ -150,6 +150,16 @@ namespace Numerics.Data
         /// <param name="compareOrdinateIsNext">Boolean identifying if the ordinate to compare is the next or previous ordinate in a series.</param>
         /// <param name="allowDifferentTypes">Allow different distribution types. Default = false.</param>
         /// <returns> A boolean indicating if the ordinate is valid or not given the criteria.</returns>
+        /// <remarks>
+        /// The central-tendency probe here is the MEAN (<see cref="GetOrdinate()"/>), while the
+        /// companion <see cref="OrdinateErrors(UncertainOrdinate, bool, bool, SortOrder, SortOrder, bool, bool)"/>
+        /// probes the MEDIAN. The asymmetry is deliberate: the median always lies between the two
+        /// percentile probes tested above and below it, but for a skewed Y distribution the mean can
+        /// fall outside that interval, so probing the mean here makes the validity test strictly more
+        /// demanding. The observable consequence is that a skewed pair can report invalid while the
+        /// median-based error probe returns no matching message. Do not align the two probes without
+        /// re-deriving the monotonicity guarantees for skewed distributions.
+        /// </remarks>
         public bool OrdinateValid(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes = false)
         {
             //
@@ -190,6 +200,13 @@ namespace Numerics.Data
         /// <param name="compareOrdinateIsNext">Boolean identifying if the ordinate to compare is the next or previous ordinate in a series.</param>
         /// <param name="allowDifferentTypes">Allow different distribution types. Default = false.</param>
         /// <returns>A list of error messages given the criteria.</returns>
+        /// <remarks>
+        /// The central-tendency probe here is the MEDIAN (<c>GetOrdinate(0.5)</c>), while
+        /// <see cref="OrdinateValid(UncertainOrdinate, bool, bool, SortOrder, SortOrder, bool, bool)"/>
+        /// probes the MEAN. See the remarks on that method for why the asymmetry is deliberate: the
+        /// median is always bracketed by the percentile probes, whereas the mean of a skewed Y
+        /// distribution need not be, so the validity test is intentionally the stricter of the two.
+        /// </remarks>
         public List<string> OrdinateErrors(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes = false)
         {
             var result = new List<string>();
@@ -265,8 +282,11 @@ namespace Numerics.Data
         /// <returns>True if two objects are numerically equal; otherwise, False.</returns>
         public static bool operator ==(UncertainOrdinate left, UncertainOrdinate right)
         {
-            //if (left == null || right == null) return false;
-            if (left.X != right.X)
+            // Match Ordinate's equality convention for the shared X coordinate: allow a machine-epsilon
+            // slack, and (as Ordinate documents for its own operator) a NaN coordinate compares equal
+            // because the rejection test below is false for NaN. The former exact inequality made the
+            // two classes disagree on the same conceptual coordinate.
+            if (Math.Abs(left.X - right.X) > Tools.DoubleMachineEpsilon)
                 return false;
             if (left.Y is null && right.Y is null)
                 return true;

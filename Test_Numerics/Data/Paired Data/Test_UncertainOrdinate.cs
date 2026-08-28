@@ -201,5 +201,36 @@ namespace Data.PairedData
             Assert.AreEqual(X, x);
             Assert.IsTrue(distribution == dist);
         }
+
+        /// <summary>
+        /// Verify the equality operator compares X with the same machine-epsilon tolerance as Ordinate.
+        /// </summary>
+        /// <remarks>
+        /// The operator used to compare X with exact inequality while Ordinate's operator allows a
+        /// DoubleMachineEpsilon slack and (per its own documented convention) treats a NaN coordinate
+        /// as equal to anything. Before the alignment, an X pair differing by exactly one machine
+        /// epsilon compared unequal here and equal on Ordinate, and a NaN X compared unequal to
+        /// everything. Both classes now share one convention for the same conceptual X coordinate.
+        /// </remarks>
+        [TestMethod]
+        public void Test_EqualityOperator_XComparisonMatchesOrdinateConvention()
+        {
+            var distribution = new Normal(10, 2);
+
+            // A difference of exactly DoubleMachineEpsilon is within Ordinate's tolerance
+            // (its test rejects only strictly greater differences).
+            var left = new UncertainOrdinate(0d, distribution);
+            var right = new UncertainOrdinate(Numerics.Tools.DoubleMachineEpsilon, distribution);
+            Assert.IsTrue(left == right);
+            Assert.IsFalse(left != right);
+
+            // A difference clearly above the tolerance still compares unequal.
+            var far = new UncertainOrdinate(1d, distribution);
+            Assert.IsFalse(left == far);
+
+            // Ordinate's documented NaN convention: a NaN coordinate is equal in this test.
+            var nan = new UncertainOrdinate(double.NaN, distribution);
+            Assert.IsTrue(nan == left);
+        }
     }
 }
