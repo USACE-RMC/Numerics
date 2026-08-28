@@ -355,8 +355,11 @@ namespace Numerics.MachineLearning
                     Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar);
                 }
 
-                // Ensure the full covariance matrix remains symmetric positive-definite
-                MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
+                // Ensure the full covariance matrix remains symmetric positive-definite. The helper is
+                // pure — it returns a symmetrized copy with a trace-scaled ridge — so its result must be
+                // assigned; a discarded call leaves the repair a no-op and the next E-step's Cholesky
+                // factorization protected only by the diagonal floor above.
+                Sigmas[k] = MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
             }
         }
 

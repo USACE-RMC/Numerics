@@ -98,5 +98,84 @@ namespace MachineLearning
                     Assert.IsFalse(double.IsNaN(gmm.Means[k, d]), $"mean [{k},{d}] is NaN");
         }
 
+        /// <summary>
+        /// Verify that the M-step's symmetric positive-definite repair is actually applied to the
+        /// stored covariance matrices.
+        /// </summary>
+        /// <remarks>
+        /// MatrixRegularization.MakeSymmetricPositiveDefinite is pure — it returns a symmetrized copy
+        /// with a trace-scaled ridge — and the M-step used to discard that return value, so the repair
+        /// its own comment promised was a silent no-op and only the diagonal floor protected the next
+        /// E-step's Cholesky factorization. This test recomputes the M-step covariance externally from
+        /// the public responsibilities after a single EM iteration and asserts the stored matrices carry
+        /// the repair's base ridge (1E-10 of the mean diagonal) exactly; the pre-fix code reproduced the
+        /// external value WITHOUT the ridge and failed these assertions by exactly that amount.
+        /// </remarks>
+        [TestMethod]
+        public void Test_GMM_MStep_PositiveDefiniteRepairIsApplied()
+        {
+            var data = new double[,]
+            {
+                { 1.0, 2.1 }, { 1.2, 1.9 }, { 0.8, 2.3 }, { 1.1, 2.0 }, { 0.9, 1.8 }, { 1.3, 2.2 },
+                { 8.0, 9.1 }, { 8.2, 8.9 }, { 7.8, 9.3 }, { 8.1, 9.0 }, { 7.9, 8.8 }, { 8.3, 9.2 }
+            };
+            var gmm = new GaussianMixtureModel(data, 2) { MaxIterations = 1 };
+            gmm.Train(seed: 42);
+
+            int n = data.GetLength(0);
+            int dims = data.GetLength(1);
+
+            // Per-dimension population variance of the whole sample, matching the M-step's floor.
+            var colVar = new double[dims];
+            for (int d = 0; d < dims; d++)
+            {
+                double colMean = 0;
+                for (int i = 0; i < n; i++)
+                    colMean += data[i, d];
+                colMean /= n;
+                double v = 0;
+                for (int i = 0; i < n; i++)
+                    v += (data[i, d] - colMean) * (data[i, d] - colMean);
+                colVar[d] = v / n;
+            }
+
+            for (int k = 0; k < 2; k++)
+            {
+                double wgt = 0d;
+                for (int i = 0; i < n; i++)
+                    wgt += gmm.LikelihoodMatrix[i, k];
+                Assert.IsTrue(wgt > 0, "Fixture precondition: both components carry responsibility.");
+
+                // Recompute the raw M-step covariance from the responsibilities and stored means.
+                var expected = new double[dims, dims];
+                for (int d = 0; d < dims; d++)
+                {
+                    for (int j = 0; j < dims; j++)
+                    {
+                        double sum = 0;
+                        for (int i = 0; i < n; i++)
+                            sum += gmm.LikelihoodMatrix[i, k] * (data[i, d] - gmm.Means[k, d]) * (data[i, j] - gmm.Means[k, j]);
+                        expected[d, j] = sum / wgt;
+                    }
+                }
+                // Apply the diagonal floor, then the repair's base ridge (the first Cholesky attempt
+                // succeeds for these well-separated clusters, so exactly one base ridge is added).
+                double trace = 0;
+                for (int d = 0; d < dims; d++)
+                {
+                    expected[d, d] = System.Math.Max(expected[d, d], 1E-6 * colVar[d]);
+                    trace += expected[d, d];
+                }
+                double baseRidge = 1e-10 * trace / dims;
+                for (int d = 0; d < dims; d++)
+                    expected[d, d] += baseRidge;
+
+                for (int d = 0; d < dims; d++)
+                    for (int j = 0; j < dims; j++)
+                        Assert.AreEqual(expected[d, j], gmm.Sigmas[k][d, j], 0d,
+                            $"Sigma[{k}][{d},{j}] must carry the positive-definite repair.");
+            }
+        }
+
     }
 }
