@@ -79,6 +79,60 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
+        /// Runs the same heavy-tail integrand driven by seeded scrambled Sobol points.
+        /// </summary>
+        /// <param name="gamma">The power-transform tail-focus parameter γ.</param>
+        /// <param name="seed">The scrambled-Sobol driving seed.</param>
+        /// <returns>The integral estimate, the total weight handed out, and the call count.</returns>
+        private static (double Result, double WeightSum, long Calls) RunSobol(double gamma, int seed)
+        {
+            double weightSum = 0d;
+            long calls = 0;
+            var vegas = new Vegas((x, w) =>
+            {
+                weightSum += w;
+                calls++;
+                return 21d * Math.Pow(1d - x[0], 20d);
+            }, 1, new[] { 0d }, new[] { 1d })
+            {
+                UseSobolSequence = true,
+                SobolSeed = seed,
+                TailFocusParameter = gamma,
+                IndependentEvaluations = 10,
+                FunctionCalls = 10000,
+            };
+            vegas.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, vegas.Status, $"γ = {gamma}: the seeded-Sobol integration must succeed.");
+            return (vegas.Result, weightSum, calls);
+        }
+
+        /// <summary>
+        /// Test that the seeded scrambled-Sobol driver keeps the tail-focused integral unbiased
+        /// and the handed weights on the domain measure at every γ — the Jacobian identity is
+        /// driver-independent — while restoring reproducibility: identical seeds reproduce the
+        /// estimate bit-for-bit and distinct seeds diverge (the property the unrandomized
+        /// sequence, being seed-independent, cannot honor).
+        /// </summary>
+        [TestMethod]
+        public void Test_SobolSeed_UnbiasedWeightsAndReproducibleAtEveryGamma()
+        {
+            foreach (double gamma in new[] { 1d, 4d, 10d })
+            {
+                var run = RunSobol(gamma, 12345);
+                Assert.AreEqual(1d, run.Result, 0.03d, $"γ = {gamma}: the seeded-Sobol tail-focused integral must stay unbiased.");
+                double volumePerBatch = run.WeightSum / (run.Calls / 10000d);
+                Assert.AreEqual(1d, volumePerBatch, 0.1d,
+                    $"γ = {gamma}: the seeded-Sobol weights must sum to the domain volume per evaluation batch.");
+            }
+
+            var first = RunSobol(4d, 12345);
+            var repeat = RunSobol(4d, 12345);
+            var other = RunSobol(4d, 54321);
+            Assert.AreEqual(first.Result, repeat.Result, 0d, "Identical Sobol seeds must reproduce bit-for-bit.");
+            Assert.AreNotEqual(first.Result, other.Result, "Distinct Sobol seeds must diverge.");
+        }
+
+        /// <summary>
         /// Test that the tail-focus parameter and the rare-event configuration reject
         /// non-finite or non-positive values, leaving the configured state unchanged.
         /// </summary>

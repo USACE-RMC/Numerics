@@ -86,6 +86,7 @@ namespace Numerics.Mathematics.Integration
         private double _chiSquared;
         private double _tailFocusParameter = 1d;
         private SobolSequence _sobol = null!;
+        private int? _sobolSeed;
 
         // Constants
 
@@ -146,9 +147,28 @@ namespace Numerics.Mathematics.Integration
         public Random Random { get; set; }
 
         /// <summary>
-        /// Determines whether to use a Sobol sequence or a pseudo-Random number generator. 
+        /// Determines whether to use a Sobol sequence or a pseudo-Random number generator.
         /// </summary>
         public bool UseSobolSequence { get; set; } = true;
+
+        /// <summary>
+        /// The seed for Matousek-scrambled Sobol driving points, or null (the default) for the
+        /// unrandomized sequence — the seeded scrambling restores a caller's reproducibility
+        /// contract that the unrandomized sequence, being seed-independent, cannot honor.
+        /// Assigning rebuilds the driving sequence from its start, so set it before
+        /// integrating; the sequence then continues across warm-up and recording calls exactly
+        /// as the unrandomized one does. Applies only while <see cref="UseSobolSequence"/> is
+        /// true.
+        /// </summary>
+        public int? SobolSeed
+        {
+            get { return _sobolSeed; }
+            set
+            {
+                _sobolSeed = value;
+                _sobol = value.HasValue ? new SobolSequence(Dimensions, value.Value) : new SobolSequence(Dimensions);
+            }
+        }
 
         /// <summary>
         /// Determines whether to check convergence and exit when integrating.
