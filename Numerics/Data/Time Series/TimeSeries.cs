@@ -2103,6 +2103,37 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Returns the smoothed series a peaks-over-threshold analysis operates on.
+        /// </summary>
+        /// <param name="smoothingFunction">The smoothing function type.</param>
+        /// <param name="period">The time period to perform smoothing over. If time interval is 1-hour, and period is 12. The smoothing will be computed over a moving 12 hour block.</param>
+        /// <returns>The smoothed series, or a clone of this series when no smoothing applies.</returns>
+        /// <remarks>
+        /// This is the exact preprocessing <see cref="PeaksOverThresholdSeries"/> applies before
+        /// comparing values to the threshold, exposed so threshold-selection diagnostics can operate
+        /// on the same series the extraction thresholds — plotting diagnostics computed from the raw
+        /// series would sit on a different value scale than the threshold whenever smoothing is
+        /// configured. Moving average and moving sum with a period of 1 are identity clones;
+        /// differencing applies at every period.
+        /// </remarks>
+        public TimeSeries SmoothedSeries(SmoothingFunctionType smoothingFunction, int period = 1)
+        {
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            {
+                return period == 1 ? Clone() : MovingAverage(period);
+            }
+            if (smoothingFunction == SmoothingFunctionType.MovingSum)
+            {
+                return period == 1 ? Clone() : MovingSum(period);
+            }
+            if (smoothingFunction == SmoothingFunctionType.Difference)
+            {
+                return Difference(period);
+            }
+            return Clone();
+        }
+
+        /// <summary>
         /// Returns a peaks-over-threshold (POT) series.
         /// </summary>
         /// <param name="threshold">The threshold value.</param>
@@ -2127,21 +2158,9 @@ namespace Numerics.Data
         public TimeSeries PeaksOverThresholdSeries(double threshold, int minStepsBetweenEvents = 1, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             // Create smoothed time series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.Difference)
-            {
-                smoothedSeries = Difference(period);
-            }
+            TimeSeries smoothedSeries = SmoothedSeries(smoothingFunction, period);
 
-            // First, create the cluster indexes. 
+            // First, create the cluster indexes.
             int i = 0, idx, idxMax;
             var clusters = new List<int[]>();
 

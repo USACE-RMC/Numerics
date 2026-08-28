@@ -1571,5 +1571,54 @@ namespace Data.TimeSeriesAnalysis
 
         #endregion
 
+        /// <summary>
+        /// Verify SmoothedSeries reproduces the exact preprocessing PeaksOverThresholdSeries applies.
+        /// </summary>
+        /// <remarks>
+        /// The smoothing branch was extracted from PeaksOverThresholdSeries so threshold-selection
+        /// diagnostics can operate on the same series the extraction thresholds; this test pins the
+        /// branch behavior — moving average and moving sum smooth for periods above 1 and clone at
+        /// a period of 1, differencing applies at every period, and None clones — and that the
+        /// smoothed values genuinely differ from the raw values when smoothing is configured.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SmoothedSeries_MatchesPeaksOverThresholdPreprocessing()
+        {
+            var series = new TimeSeries(TimeInterval.OneDay, new DateTime(2020, 1, 1), new double[] { 5, 9, 2, 14, 7, 11, 3, 16, 8, 12 });
+
+            // Moving average over 3 steps matches the direct transform and differs from the raw values.
+            var smoothed = series.SmoothedSeries(SmoothingFunctionType.MovingAverage, 3);
+            var direct = series.MovingAverage(3);
+            Assert.AreEqual(direct.Count, smoothed.Count);
+            bool anyDifferent = false;
+            for (int i = 0; i < direct.Count; i++)
+            {
+                Assert.AreEqual(direct[i].Value, smoothed[i].Value, 0d);
+                if (!double.IsNaN(smoothed[i].Value) && smoothed[i].Value != series[i].Value)
+                    anyDifferent = true;
+            }
+            Assert.IsTrue(anyDifferent, "Smoothing must change the diagnostic value scale.");
+
+            // A period of 1 is an identity clone for moving average and moving sum.
+            var identity = series.SmoothedSeries(SmoothingFunctionType.MovingAverage, 1);
+            for (int i = 0; i < series.Count; i++)
+                Assert.AreEqual(series[i].Value, identity[i].Value, 0d);
+
+            // Moving sum and differencing route to their transforms.
+            var movingSum = series.SmoothedSeries(SmoothingFunctionType.MovingSum, 3);
+            var directSum = series.MovingSum(3);
+            for (int i = 0; i < directSum.Count; i++)
+                Assert.AreEqual(directSum[i].Value, movingSum[i].Value, 0d);
+            var difference = series.SmoothedSeries(SmoothingFunctionType.Difference, 1);
+            var directDifference = series.Difference(1);
+            for (int i = 0; i < directDifference.Count; i++)
+                Assert.AreEqual(directDifference[i].Value, difference[i].Value, 0d);
+
+            // None clones the series.
+            var none = series.SmoothedSeries(SmoothingFunctionType.None);
+            for (int i = 0; i < series.Count; i++)
+                Assert.AreEqual(series[i].Value, none[i].Value, 0d);
+        }
+
     }
 }
