@@ -49,25 +49,27 @@ namespace Numerics.Data
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// This field is never assigned after initialization, so the correlated test in
-        /// <see cref="SearchX(double)"/> reports correlated only when a search lands on exactly the same
-        /// index as the previous one. The value affects only which search path runs — hunt and bisection
-        /// return the same bracket for the same input — so it is a performance characteristic rather than
-        /// a correctness one. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
+        /// Computed from the collection size on every read as the Numerical Recipes N^0.25 hunt
+        /// heuristic (never below 1), matching the Interpolater's window, so the correlated test in
+        /// <see cref="SearchX(double)"/> can actually select the hunt path; the former constant 0
+        /// reported correlated only when a search landed on exactly the same index as the previous
+        /// one. The value affects only which search path runs — hunt and bisection return the same
+        /// bracket for the same input — so it is a performance characteristic rather than a
+        /// correctness one. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
         /// settable, so a consumer can steer the search directly.
         /// </remarks>
-        private int XdeltaStart = 0;
+        private int XdeltaStart => Math.Max(1, (int)Math.Pow(Count, 0.25));
 
         /// <summary>
         /// The maximum distance between consecutive y-search results for which those searches are still
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// Never assigned after initialization, so <see cref="SearchY(double)"/> reports correlated only
-        /// on an exact index repeat. The effect is confined to which search path runs, never to the
-        /// bracket returned; see <see cref="XdeltaStart"/>.
+        /// Computed from the collection size on every read, exactly like <see cref="XdeltaStart"/>;
+        /// the former constant 0 reported correlated only on an exact index repeat. The effect is
+        /// confined to which search path runs, never to the bracket returned.
         /// </remarks>
-        private int YdeltaStart = 0;
+        private int YdeltaStart => Math.Max(1, (int)Math.Pow(Count, 0.25));
 
         /// <summary>
         /// Determines which search method to use. If values are correlated, use the Hunt method. 

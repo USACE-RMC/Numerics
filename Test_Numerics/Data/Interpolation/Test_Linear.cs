@@ -82,6 +82,33 @@ namespace Data.Interpolation
         }
 
         /// <summary>
+        /// Verify that correlated smart searches, which now genuinely reach the hunt path, return the
+        /// same interpolated values as cold bisection searches.
+        /// </summary>
+        /// <remarks>
+        /// The correlated-search window scales as Count^0.25 (5 for this 1000-point table), so a sweep
+        /// stepping about one index per query keeps the correlated flag set after the first call and the
+        /// smart instance answers from the hunt path. The former Math.Min typo pinned the window to 1,
+        /// which left the hunt branch effectively unreachable; hunt and bisection must return the same
+        /// bracket, so the two instances must agree exactly.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SmartSearch_HuntPathMatchesColdBisection()
+        {
+            var values = new double[1000];
+            for (int i = 1; i <= 1000; i++)
+                values[i - 1] = i;
+
+            var smart = new Linear(values, values);
+            for (double x = 500.3; x <= 540.0; x += 1.7)
+            {
+                double huntValue = smart.Interpolate(x);
+                double coldValue = new Linear(values, values).Interpolate(x);
+                Assert.AreEqual(coldValue, huntValue, 0d);
+            }
+        }
+
+        /// <summary>
         /// Test the most basic implementation of the linear class and its interpolation function with one value
         /// </summary>
         [TestMethod]

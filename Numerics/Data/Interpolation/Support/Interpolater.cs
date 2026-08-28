@@ -43,9 +43,10 @@ namespace Numerics.Data
             }
             this.XValues = xValues;
             this.YValues = yValues;
-            // Always exactly 1: the constructor requires Count >= 2, so (int)Math.Pow(Count, 0.25) is at
-            // least 1 and Math.Min(1, ...) is 1. See the remarks on deltaStart.
-            deltaStart = Math.Min(1, (int)Math.Pow((double)Count, 0.25));
+            // Scale the correlated-search window with the table size (Numerical Recipes' N^0.25 hunt
+            // heuristic). Math.Max keeps the window at least 1; the former Math.Min pinned it to
+            // exactly 1 for every table, which starved the hunt path. See the remarks on deltaStart.
+            deltaStart = Math.Max(1, (int)Math.Pow((double)Count, 0.25));
             SortOrder = sortOrder;
             
         }
@@ -65,10 +66,9 @@ namespace Numerics.Data
         /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
         /// <remarks>
-        /// The constructor assigns <c>Math.Min(1, (int)Math.Pow(Count, 0.25))</c>, which is always
-        /// exactly 1: the constructor requires <c>Count &gt;= 2</c>, so the right-hand term is never
-        /// below 1. The window does not grow with the table size, at any <see cref="Count"/>. The value
-        /// affects only which search path runs — hunt and bisection return the same bracket for the same
+        /// The constructor assigns <c>Math.Max(1, (int)Math.Pow(Count, 0.25))</c>, the Numerical
+        /// Recipes N^0.25 hunt heuristic, so the window grows with the table size. The value affects
+        /// only which search path runs — hunt and bisection return the same bracket for the same
         /// input — so it is a performance characteristic rather than a correctness one.
         /// <see cref="SearchStart"/> and <see cref="UseSmartSearch"/> are public and settable, so a
         /// consumer that wants different search behaviour can steer the search directly.

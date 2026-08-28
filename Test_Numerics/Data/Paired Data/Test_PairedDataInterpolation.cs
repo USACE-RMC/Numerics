@@ -45,6 +45,31 @@ namespace Data.PairedData
         }
 
         /// <summary>
+        /// Verify that correlated smart searches, which now genuinely reach the hunt path, return the
+        /// same bracket indexes as direct bisection searches.
+        /// </summary>
+        /// <remarks>
+        /// The correlated-search window scales as Count^0.25 (5 for this 1000-point collection), so a
+        /// sweep stepping about one index per query keeps the correlated flag set after the first call
+        /// and <see cref="OrderedPairedData.SearchX(double)"/> answers from the hunt path. The former
+        /// never-assigned window of 0 reported correlated only on an exact index repeat, which left the
+        /// hunt branch effectively unreachable; hunt and bisection must return the same bracket.
+        /// </remarks>
+        [TestMethod()]
+        public void Test_SmartSearch_HuntPathMatchesBisection()
+        {
+            var opd = new OrderedPairedData(true, SortOrder.Ascending, false, SortOrder.Ascending);
+            for (int i = 1; i <= 1000; i++)
+                opd.Add(new Ordinate(i, i));
+
+            for (double value = 500.3; value <= 540.0; value += 1.7)
+            {
+                Assert.AreEqual(opd.BisectionSearchX(value), opd.SearchX(value));
+                Assert.AreEqual(opd.BisectionSearchY(value), opd.SearchY(value));
+            }
+        }
+
+        /// <summary>
         /// Test the bisection search method within the OrderedPairedData class
         /// </summary>
         [TestMethod()]
