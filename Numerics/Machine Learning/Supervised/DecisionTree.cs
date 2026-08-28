@@ -228,7 +228,12 @@ namespace Numerics.MachineLearning
         private DecisionNode GrowTree(int[] indices, int lo, int hi, int depth)
         {
             int numberOfSamples = hi - lo;
-            int numberOfLabels = IsRegression ? numberOfSamples : CountDistinctLabels(indices, lo, hi);
+            // Count distinct responses for BOTH modes so the pure-node guard below can fire. Regression
+            // used to substitute the sample count, which made the guard redundant with the minimum split
+            // size, and a zero-gain split of a pure node still beat the double.MinValue seed — a default
+            // regression tree therefore recursed to one observation per leaf. Counting distinct values
+            // applies scikit-learn's rule: a node is never split once it is pure.
+            int numberOfLabels = CountDistinctLabels(indices, lo, hi);
 
             // The feature subset is drawn for every node, split or leaf, so the generator consumes
             // exactly one draw per node and the draw schedule is independent of the stopping conditions.
@@ -259,12 +264,13 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Counts the distinct classification labels within an index range.
+        /// Counts the distinct response values within an index range — class labels for classification,
+        /// response values for regression.
         /// </summary>
         /// <param name="indices">The training row indices.</param>
         /// <param name="lo">The inclusive start of the range.</param>
         /// <param name="hi">The exclusive end of the range.</param>
-        /// <returns>The number of distinct labels, counting NaN labels as one label.</returns>
+        /// <returns>The number of distinct values, counting NaN responses as one value.</returns>
         private int CountDistinctLabels(int[] indices, int lo, int hi)
         {
             var labels = new HashSet<double>();
