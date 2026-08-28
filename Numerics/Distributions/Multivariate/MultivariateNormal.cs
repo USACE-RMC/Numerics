@@ -440,6 +440,33 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Sets the mean vector μ (mu) while keeping the current covariance matrix and its factorization.
+        /// </summary>
+        /// <param name="mean">The mean vector μ (mu) for the distribution. Its length must equal <see cref="Dimension"/>.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the mean is null, contains a
+        /// non-finite value, or its length does not match the current dimension.</exception>
+        /// <remarks>
+        /// A translation of the distribution changes no covariance-derived quantity — the factorization,
+        /// the log determinant, and the normalizing constant all depend on Σ alone — so a caller that
+        /// moves the distribution around a fixed covariance (for example a random walk proposal) can
+        /// avoid refactorizing an unchanged matrix on every step. The mean checks here are the same ones
+        /// <see cref="SetParameters(double[], double[,])"/> applies.
+        /// </remarks>
+        public void SetMean(double[] mean)
+        {
+            if (mean == null)
+                throw new ArgumentOutOfRangeException(nameof(mean), "Mean vector must not be null.");
+            if (mean.Length != Dimension)
+                throw new ArgumentOutOfRangeException(nameof(mean), "Mean length must match covariance dimension.");
+            for (int i = 0; i < mean.Length; i++)
+            {
+                if (double.IsNaN(mean[i]) || double.IsInfinity(mean[i]))
+                    throw new ArgumentOutOfRangeException(nameof(mean), "Mean values must be finite.");
+            }
+            _mean = mean;
+        }
+
+        /// <summary>
         /// Applies already-validated parameters, reusing the decomposition built during validation.
         /// </summary>
         /// <param name="mean">The validated mean vector μ (mu) for the distribution.</param>

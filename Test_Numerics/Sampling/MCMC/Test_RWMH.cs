@@ -69,12 +69,82 @@ namespace Sampling.MCMC
             Assert.AreEqual(11488.50, results.ParameterResults[0].SummaryStatistics.LowerCI, 0.05 * 11488.50);
             Assert.AreEqual(12671.08, results.ParameterResults[0].SummaryStatistics.Median, 0.05 * 12671.08);
             Assert.AreEqual(13801.45, results.ParameterResults[0].SummaryStatistics.UpperCI, 0.05 * 13801.45);
-            // Sigma 
+            // Sigma
             Assert.AreEqual(4844.09, results.ParameterResults[1].SummaryStatistics.Mean, 0.05 * 4844.09);
             Assert.AreEqual(519.08, results.ParameterResults[1].SummaryStatistics.StandardDeviation, 0.05 * 519.08);
             Assert.AreEqual(4077.80, results.ParameterResults[1].SummaryStatistics.LowerCI, 0.05 * 4077.80);
             Assert.AreEqual(4796.63, results.ParameterResults[1].SummaryStatistics.Median, 0.05 * 4796.63);
             Assert.AreEqual(5771.81, results.ParameterResults[1].SummaryStatistics.UpperCI, 0.05 * 5771.81);
+        }
+
+        /// <summary>
+        /// Pins seeded RWMH draws bitwise so the proposal distribution's mean-only update path can be
+        /// proven equivalent to the former full re-parameterization.
+        /// </summary>
+        /// <remarks>
+        /// The proposal covariance is fixed for a whole RWMH run, yet every chain iteration used to call
+        /// <c>MultivariateNormal.SetParameters</c> with it, re-running an O(D^3) Cholesky factorization
+        /// of an unchanged matrix on every transition. The refactor factorizes each chain's proposal once
+        /// and translates only the mean per iteration, which must not change a single drawn value. The
+        /// expected literals below were captured from the pre-refactor implementation (seed 12345,
+        /// 2 chains, 200 iterations, 100 warmup, Randomize initialization) and every one must reproduce
+        /// exactly — no tolerance.
+        /// </remarks>
+        [TestMethod]
+        public void Test_RWMH_MeanOnlyProposalUpdate_ReproducesReferenceDrawsExactly()
+        {
+            double[] sample = new double[] { 6290d, 2700d, 13100d, 16900d, 14600d, 9600d, 7740d, 8490d, 8130d, 12000d, 17200d, 15000d, 12400d, 6960d, 6500d, 5840d, 10400d, 18800d, 21400d, 22600d, 14200d, 11000d, 12800d, 15700d, 4740d, 6950d, 11800d, 12100d, 20600d, 14600d, 14600d, 8900d, 10600d, 14200d, 14100d, 14100d, 12500d, 7530d, 13400d, 17600d, 13400d, 19200d, 16900d, 15500d, 14500d, 21900d, 10400d, 7460d };
+
+            var normDist = new Normal();
+            var constraints = normDist.GetParameterConstraints(sample);
+            var muPrior = new Uniform(constraints.Item2[0], constraints.Item3[0]);
+            var sigmaPrior = new Uniform(constraints.Item2[1], constraints.Item3[1]);
+            var priors = new List<IUnivariateDistribution> { muPrior, sigmaPrior };
+
+            double logLH(double[] x)
+            {
+                var dist = new Normal(x[0], x[1]);
+                return dist.LogLikelihood(sample);
+            }
+
+            var proposal = new Matrix(2);
+            proposal[0, 0] = 500d * 500d;
+            proposal[1, 1] = 300d * 300d;
+
+            var sampler = new RWMH(priors, logLH, proposal)
+            {
+                Initialize = MCMCSampler.InitializationType.Randomize,
+                PRNGSeed = 12345,
+                NumberOfChains = 2,
+                Iterations = 200,
+                WarmupIterations = 100,
+                ThinningInterval = 1,
+                OutputLength = 100,
+            };
+            sampler.Sample();
+
+            Assert.AreEqual(11934.435149791721, sampler.Output[0][0].Values[0], 0d);
+            Assert.AreEqual(4526.5732644023383, sampler.Output[0][0].Values[1], 0d);
+            Assert.AreEqual(-474.22548961374116, sampler.Output[0][0].Fitness, 0d);
+            Assert.AreEqual(12095.33865486568, sampler.Output[0][1].Values[0], 0d);
+            Assert.AreEqual(4982.8206043145146, sampler.Output[0][1].Values[1], 0d);
+            Assert.AreEqual(12317.827258667343, sampler.Output[0][2].Values[0], 0d);
+            Assert.AreEqual(5032.5525299089159, sampler.Output[0][2].Values[1], 0d);
+            Assert.AreEqual(12178.391385589634, sampler.Output[0][sampler.Output[0].Count - 1].Values[0], 0d);
+            Assert.AreEqual(4339.4907777225499, sampler.Output[0][sampler.Output[0].Count - 1].Values[1], 0d);
+            Assert.AreEqual(178, sampler.AcceptCount[0]);
+
+            Assert.AreEqual(20109.085873154781, sampler.Output[1][0].Values[0], 0d);
+            Assert.AreEqual(28890.963429995856, sampler.Output[1][0].Values[1], 0d);
+            Assert.AreEqual(21498.176703183646, sampler.Output[1][2].Values[0], 0d);
+            Assert.AreEqual(28440.722339269822, sampler.Output[1][2].Values[1], 0d);
+            Assert.AreEqual(19608.601940250355, sampler.Output[1][sampler.Output[1].Count - 1].Values[0], 0d);
+            Assert.AreEqual(25961.674646968706, sampler.Output[1][sampler.Output[1].Count - 1].Values[1], 0d);
+            Assert.AreEqual(209, sampler.AcceptCount[1]);
+
+            Assert.AreEqual(12729.094200262518, sampler.MAP.Values[0], 0d);
+            Assert.AreEqual(4543.2396366299008, sampler.MAP.Values[1], 0d);
+            Assert.AreEqual(-473.59481939858011, sampler.MAP.Fitness, 0d);
         }
 
     }

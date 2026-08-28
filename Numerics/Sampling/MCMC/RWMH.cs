@@ -57,16 +57,21 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void InitializeCustomSettings()
         {
-            // Set up multivariate Normal distributions for each chain
-            mvn = new MultivariateNormal[NumberOfChains];
-            for (int i = 0; i < NumberOfChains; i++)
-            {
-                mvn[i] = new MultivariateNormal(NumberOfParameters);
-            }
             // Set up proposal matrix
             if (Initialize == InitializationType.MAP && _mapSuccessful && _MVN != null)
             {
                 ProposalSigma = new Matrix(_MVN.Covariance);
+            }
+            // Set up multivariate Normal distributions for each chain. The proposal covariance is
+            // fixed for the whole run, so each chain's proposal is factorized exactly once here and
+            // ChainIteration then translates only the mean, keeping the factorization. A covariance
+            // that fails the factorization therefore throws here, before sampling starts, instead of
+            // from inside the first chain iteration.
+            mvn = new MultivariateNormal[NumberOfChains];
+            for (int i = 0; i < NumberOfChains; i++)
+            {
+                mvn[i] = new MultivariateNormal(NumberOfParameters);
+                mvn[i].SetParameters(new double[NumberOfParameters], ProposalSigma.Array);
             }
         }
 
@@ -76,8 +81,10 @@ namespace Numerics.Sampling.MCMC
             // Update the sample count
             SampleCount[index] += 1;
 
-            // Get proposal vector
-            mvn[index].SetParameters(state.Values, ProposalSigma.Array);
+            // Get proposal vector. The proposal covariance was factorized once at initialization, so
+            // only the mean moves with the chain state — a translation changes nothing the
+            // factorization derives from the covariance.
+            mvn[index].SetMean(state.Values);
             var xp = mvn[index].InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
 
             for (int i = 0; i < NumberOfParameters; i++)
