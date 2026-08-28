@@ -94,6 +94,11 @@ namespace Numerics.Sampling.MCMC
         /// clamped non-negative, so the ordering affects which sample each plotting position selects
         /// rather than the validity of the draw.
         /// </para>
+        /// <para>
+        /// The sort is stable, so draws with tied fitness — commonly many -Infinity values under wide
+        /// priors — keep their original draw order and a seeded run resamples the same output on every
+        /// run and platform.
+        /// </para>
         /// </remarks>
         public override void Sample()
         {
@@ -183,7 +188,10 @@ namespace Numerics.Sampling.MCMC
 
             // The list is sorted ascending on Fitness while the CDF below accumulates Weight; the two
             // keys coincide only when no importance distribution is supplied. See the remarks on Sample().
-            MarkovChains[0].Sort((x, y) => x.Fitness.CompareTo(y.Fitness));
+            // OrderBy is a stable sort, so tied fitness values (commonly many -Infinity draws under wide
+            // priors) keep their original draw order and the resampled output is reproducible across
+            // runs and platforms; List<T>.Sort is an unstable introsort whose tie order is not.
+            MarkovChains[0] = MarkovChains[0].OrderBy(x => x.Fitness).ToList();
             var cdf = new double[Iterations];
             cdf[0] = Math.Max(0.0, MarkovChains[0][0].Weight);
 
