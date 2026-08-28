@@ -104,12 +104,12 @@ namespace MachineLearning
         /// </summary>
         /// <remarks>
         /// MatrixRegularization.MakeSymmetricPositiveDefinite is pure — it returns a symmetrized copy
-        /// with a trace-scaled ridge — and the M-step used to discard that return value, so the repair
-        /// its own comment promised was a silent no-op and only the diagonal floor protected the next
-        /// E-step's Cholesky factorization. This test recomputes the M-step covariance externally from
-        /// the public responsibilities after a single EM iteration and asserts the stored matrices carry
-        /// the repair's base ridge (1E-10 of the mean diagonal) exactly; the pre-fix code reproduced the
-        /// external value WITHOUT the ridge and failed these assertions by exactly that amount.
+        /// with a trace-scaled ridge — so the M-step must store that return value for the repair to
+        /// reach the covariance the next E-step's Cholesky factorization consumes. This test recomputes
+        /// the M-step covariance externally from the public responsibilities after a single EM iteration
+        /// and asserts the stored matrices carry the repair's base ridge (1E-10 of the mean diagonal)
+        /// exactly; a covariance stored WITHOUT the ridge would miss these assertions by exactly that
+        /// amount.
         /// </remarks>
         [TestMethod]
         public void Test_GMM_MStep_PositiveDefiniteRepairIsApplied()

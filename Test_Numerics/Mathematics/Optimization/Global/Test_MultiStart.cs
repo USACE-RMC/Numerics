@@ -401,10 +401,10 @@ namespace Mathematics.Optimization
         /// passed to the constructor after a run, and that the caller's own array is left untouched.
         /// </summary>
         /// <remarks>
-        /// On the first iteration the solver's working array was re-pointed at <see cref="MultiStart.InitialValues"/>
-        /// itself rather than copied into, so every later uniform draw and the local solver's bounds repair
-        /// wrote straight into the public property's own array. This pins both the public
-        /// <see cref="MultiStart.InitialValues"/> array and the caller's own array against that regression.
+        /// The solver's working array is a private copy of <see cref="MultiStart.InitialValues"/>:
+        /// uniform draws overwrite only that copy, no sampled point may alias the public array, and
+        /// the local-search entry point must not modify its argument. This pins both the public
+        /// <see cref="MultiStart.InitialValues"/> array and the caller's own array.
         /// </remarks>
         [TestMethod]
         public void Test_InitialValuesAreNotMutatedByARun()

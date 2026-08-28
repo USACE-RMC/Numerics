@@ -114,12 +114,11 @@ namespace MachineLearning
         /// splitting further.
         /// </summary>
         /// <remarks>
-        /// Regression growth used to set the label count to the SAMPLE count, so the pure-node guard
-        /// only fired on single-row nodes, and a zero-gain split of a pure node still beat the
-        /// double.MinValue seed: this twelve-point, two-value fixture grew a 23-node right-leaning
-        /// chain with one observation per leaf. Counting distinct responses for both modes applies
-        /// scikit-learn's rule — a node is never split once it is pure — so the same fixture now
-        /// stops at the root split with two pure leaves.
+        /// Regression growth counts DISTINCT responses, not sample rows, when testing node purity,
+        /// applying scikit-learn's rule that a node is never split once it is pure. On this
+        /// twelve-point, two-value fixture the tree therefore stops at the root split with two pure
+        /// leaves — three nodes in total — rather than chaining zero-gain splits of pure nodes down
+        /// to one observation per leaf.
         /// </remarks>
         [TestMethod]
         public void Test_DecisionTree_Regression_PureNodeBecomesLeaf()

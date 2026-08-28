@@ -1043,6 +1043,41 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// Test that the mean column of MonthlySummaryStatistics() is the sequential arithmetic
+        /// mean of each month's values, reproduced bit-for-bit by Statistics.Mean.
+        /// </summary>
+        /// <remarks>
+        /// The summary sorts each month's values ascending before reducing them, so the oracle
+        /// applies the same order. Sequential accumulation makes the reduction deterministic on
+        /// every host regardless of processor count, and the delta of zero detects any
+        /// reassociation of the summation order.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MonthlySummaryStats_MeanColumnIsSequentialMean()
+        {
+            // Three years of monthly values spanning several orders of magnitude so a change in
+            // summation order would alter the last bits of the mean.
+            var values = new double[36];
+            for (int i = 0; i < values.Length; i++)
+            {
+                values[i] = Math.Pow(10d, (i % 5) - 2) * (1d + i / 35d);
+            }
+            var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2021, 01, 01), values);
+
+            var summary = ts.MonthlySummaryStatistics();
+            for (int month = 1; month <= 12; month++)
+            {
+                var monthlyData = new List<double>();
+                for (int j = 0; j < ts.Count; j++)
+                {
+                    if (ts[j].Index.Month == month) { monthlyData.Add(ts[j].Value); }
+                }
+                monthlyData.Sort();
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(monthlyData), summary[month - 1, 7], 0d);
+            }
+        }
+
+        /// <summary>
         /// Test the monthly frequency method
         /// </summary>
         [TestMethod]

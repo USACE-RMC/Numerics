@@ -319,7 +319,6 @@ namespace Mathematics.Integration
                 UseSobolSequence = false,
                 Random = new Numerics.Sampling.MersenneTwister(12345),
                 FunctionCalls = 20000,
-                MaxIterations = 10,
             };
 
             vegas.Integrate();
@@ -358,6 +357,5 @@ namespace Mathematics.Integration
             Assert.AreEqual(2d / 3d, untouched, 0.01d);
             Assert.AreEqual(2d / 3d, seeded, 0.01d);
         }
-}
-
+    }
 }

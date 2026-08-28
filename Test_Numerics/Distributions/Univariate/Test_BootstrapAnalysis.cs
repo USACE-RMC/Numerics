@@ -401,5 +401,61 @@ namespace Distributions.Univariate
             CollectionAssert.AreEqual(expected, actual);
         }
 
+        /// <summary>
+        /// Test that Quantiles dimensions its output by the supplied distributions array — not by
+        /// the replication count — with orientation [replication, ordinate], writes a NaN row for
+        /// each null entry, and fills every non-null entry's row with that distribution's own
+        /// InverseCDF at the requested probabilities.
+        /// </summary>
+        [TestMethod]
+        public void Test_Quantiles_SuppliedDistributions_DimensionsNaNRowsAndValues()
+        {
+            var probabilities = new double[] { 0.1d, 0.5d, 0.9d };
+            var parent = new Normal(0d, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 200);
+            IUnivariateDistribution[] fits = { new Normal(0d, 1d), null!, new Normal(1d, 2d) };
+
+            double[,] result = boot.Quantiles(probabilities, fits);
+
+            Assert.AreEqual(3, result.GetLength(0));
+            Assert.AreEqual(probabilities.Length, result.GetLength(1));
+            for (int j = 0; j < probabilities.Length; j++)
+            {
+                Assert.IsTrue(double.IsNaN(result[1, j]), $"The null entry's row must be NaN at column {j}.");
+                Assert.IsTrue(Tools.IsFinite(result[0, j]));
+                Assert.IsTrue(Tools.IsFinite(result[2, j]));
+                Assert.AreEqual(fits[0].InverseCDF(probabilities[j]), result[0, j], 0d);
+                Assert.AreEqual(fits[2].InverseCDF(probabilities[j]), result[2, j], 0d);
+            }
+        }
+
+        /// <summary>
+        /// Test that Probabilities dimensions its output by the supplied distributions array — not
+        /// by the replication count — with orientation [replication, ordinate], writes a NaN row
+        /// for each null entry, and fills every non-null entry's row with that distribution's own
+        /// CDF at the requested quantiles.
+        /// </summary>
+        [TestMethod]
+        public void Test_Probabilities_SuppliedDistributions_DimensionsNaNRowsAndValues()
+        {
+            var quantiles = new double[] { -1d, 0.5d, 2d };
+            var parent = new Normal(0d, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 200);
+            IUnivariateDistribution[] fits = { new Normal(0d, 1d), null!, new Normal(1d, 2d) };
+
+            double[,] result = boot.Probabilities(quantiles, fits);
+
+            Assert.AreEqual(3, result.GetLength(0));
+            Assert.AreEqual(quantiles.Length, result.GetLength(1));
+            for (int j = 0; j < quantiles.Length; j++)
+            {
+                Assert.IsTrue(double.IsNaN(result[1, j]), $"The null entry's row must be NaN at column {j}.");
+                Assert.IsTrue(Tools.IsFinite(result[0, j]));
+                Assert.IsTrue(Tools.IsFinite(result[2, j]));
+                Assert.AreEqual(fits[0].CDF(quantiles[j]), result[0, j], 0d);
+                Assert.AreEqual(fits[2].CDF(quantiles[j]), result[2, j], 0d);
+            }
+        }
+
     }
 }

@@ -1,6 +1,9 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
 using Numerics.Distributions;
+using Numerics.Sampling;
 using Numerics.Sampling.MCMC;
 
 namespace Sampling.MCMC
@@ -127,6 +130,56 @@ namespace Sampling.MCMC
             Assert.IsTrue(foundZeroWeight);
             Assert.IsTrue(foundPositiveWeight);
             Assert.AreEqual(1d, sum, 1e-12);
+        }
+
+        /// <summary>
+        /// This test verifies that the resampling sort is stable — draws tied at the same fitness
+        /// keep their original draw order — and that an identically-seeded run reproduces the
+        /// output exactly, element for element.
+        /// </summary>
+        /// <remarks>
+        /// The fixture yields two tied-fitness runs: half the draws sit at a log-likelihood of
+        /// exactly negative infinity and the rest at exactly zero, so the sorted chain is fully
+        /// determined by the tie-breaking rule. The oracle reproduces the sampler's parameter
+        /// draws from the same master PRNG seed and requires the sorted chain to be the
+        /// negative-infinity run followed by the finite run, each in original draw order. An
+        /// unstable sort would reorder the tied draws and change which samples the resampling
+        /// plotting positions select.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SNIS_TiedFitnessDraws_KeepDrawOrderAndReproduceExactly()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(0d, 1d) };
+            double logLH(double[] x) => x[0] < 0.5d ? 0d : double.NegativeInfinity;
+
+            var first = new SNIS(priors, logLH) { Iterations = 100, OutputLength = 100, PRNGSeed = 12345 };
+            var second = new SNIS(priors, logLH) { Iterations = 100, OutputLength = 100, PRNGSeed = 12345 };
+            first.Sample();
+            second.Sample();
+
+            Assert.HasCount(first.Output[0].Count, second.Output[0]);
+            for (int i = 0; i < first.Output[0].Count; i++)
+            {
+                Assert.AreEqual(first.Output[0][i].Values[0], second.Output[0][i].Values[0], 0d);
+            }
+
+            // Reproduce the sampler's parameter draws: the master PRNG is seeded with PRNGSeed and
+            // each draw is the prior inverse CDF of its uniform matrix, in draw-index order.
+            var prior = new Uniform(0d, 1d);
+            var rnds = new MersenneTwister(12345).NextDoubles(100, 1);
+            var draws = new double[100];
+            for (int i = 0; i < draws.Length; i++)
+                draws[i] = prior.InverseCDF(rnds[i, 0]);
+
+            // The stable ascending sort on Fitness places the negative-infinity run first and the
+            // zero-fitness run second, each preserving its original draw order.
+            var expected = draws.Where(d => !(d < 0.5d)).Concat(draws.Where(d => d < 0.5d)).ToArray();
+            Assert.IsTrue(draws.Any(d => !(d < 0.5d)));
+            Assert.IsTrue(draws.Any(d => d < 0.5d));
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.AreEqual(expected[i], first.MarkovChains[0][i].Values[0], 0d);
+            }
         }
 
     }

@@ -78,17 +78,17 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
-        /// Pins seeded RWMH draws bitwise so the proposal distribution's mean-only update path can be
-        /// proven equivalent to the former full re-parameterization.
+        /// Pins seeded RWMH draws bitwise: a fixed seed and configuration must reproduce every drawn
+        /// value, fitness, and accept count exactly, on every platform.
         /// </summary>
         /// <remarks>
-        /// The proposal covariance is fixed for a whole RWMH run, yet every chain iteration used to call
-        /// <c>MultivariateNormal.SetParameters</c> with it, re-running an O(D^3) Cholesky factorization
-        /// of an unchanged matrix on every transition. The refactor factorizes each chain's proposal once
-        /// and translates only the mean per iteration, which must not change a single drawn value. The
-        /// expected literals below were captured from the pre-refactor implementation (seed 12345,
-        /// 2 chains, 200 iterations, 100 warmup, Randomize initialization) and every one must reproduce
-        /// exactly — no tolerance.
+        /// The proposal covariance is fixed for a whole RWMH run, so each chain's proposal is
+        /// factorized once at initialization and only its mean moves with the chain state — a
+        /// translation changes nothing the factorization derives from the covariance, so the drawn
+        /// values are identical to re-parameterizing the proposal at every step. The expected
+        /// literals below are a golden master captured at seed 12345, 2 chains, 200 iterations,
+        /// 100 warmup, Randomize initialization, and every one must reproduce exactly — no
+        /// tolerance.
         /// </remarks>
         [TestMethod]
         public void Test_RWMH_MeanOnlyProposalUpdate_ReproducesReferenceDrawsExactly()

@@ -16,11 +16,12 @@ namespace Sampling.MCMC
     {
         /// <summary>
         /// Confirms that rejected transitions before the warmup boundary advance the
-        /// running covariance sample count in the corrected ARWMH implementation.
+        /// ARWMH running covariance sample count.
         /// </summary>
         /// <remarks>
-        /// Adaptive Metropolis covariance is defined from the realized chain history;
-        /// a rejected proposal therefore contributes the repeated retained state.
+        /// Adaptive Metropolis covariance is defined from the realized chain history, so every
+        /// realized transition, accepted or rejected, contributes one observation to the running
+        /// covariance; a rejected proposal contributes the repeated retained state.
         /// </remarks>
         [TestMethod]
         public void ARWMH_RejectedWarmupTransitionsEnterCovariance()
@@ -46,8 +47,9 @@ namespace Sampling.MCMC
         /// </summary>
         /// <remarks>
         /// Continued Adaptive Metropolis updating is consistent with the original
-        /// Haario-Saksman-Tamminen construction. This test separates that intended
-        /// behavior from the omitted repeated states before the boundary.
+        /// Haario-Saksman-Tamminen construction. Together with the pre-warmup test above, this
+        /// pins the schedule on both sides of the boundary: every realized transition enters the
+        /// running covariance before the boundary and after it alike.
         /// </remarks>
         [TestMethod]
         public void ARWMH_RejectedPostWarmupTransitionsContinueEnteringCovariance()
@@ -262,7 +264,7 @@ namespace Sampling.MCMC
         private static int GetArwmhCovarianceSampleCount(ARWMH sampler)
         {
             FieldInfo field = typeof(ARWMH).GetField("sigma", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.IsNotNull(field, "The ARWMH running covariance field must be available for characterization.");
+            Assert.IsNotNull(field, "The ARWMH running covariance field must be accessible.");
             var covariance = field.GetValue(sampler) as RunningCovarianceMatrix[];
             Assert.IsNotNull(covariance);
             return covariance[0].N;

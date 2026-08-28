@@ -68,14 +68,16 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Test the ParallelMean method with the direct equation. Should also be the same as the arithmetic mean in this case.
+        /// Test the ParallelMean method against the sequential arithmetic mean, accumulated explicitly in index order.
         /// </summary>
         [TestMethod]
         public void Test_ParallelMean()
         {
-            // basic equation for parallel mean
-            var parallel = _sample1.AsParallel();
-            var valid = parallel.Sum() / parallel.Count();
+            // Sequential arithmetic mean: sum in index order, then divide by the count.
+            double sum = 0d;
+            for (int i = 0; i < _sample1.Length; i++)
+                sum += _sample1[i];
+            var valid = sum / _sample1.Length;
 
             double test = Numerics.Data.Statistics.Statistics.ParallelMean(_sample1);
             double regMean = Numerics.Data.Statistics.Statistics.Mean(_sample1);
@@ -88,11 +90,10 @@ namespace Data.Statistics
         /// threshold.
         /// </summary>
         /// <remarks>
-        /// The former PLINQ implementation combined per-partition sums in a machine-dependent
-        /// order, so its last bits varied with the processor count (measured up to 29 ULP from the
-        /// sequential sum at n = 100,000) — PLINQ partitions even at n = 16. Samples below the
-        /// fixed sequential threshold now fall through to the sequential mean, so the two must
-        /// agree exactly on a magnitude-spanning sample, not merely to a tolerance.
+        /// The summation tree depends only on the sample length, never on the processor count.
+        /// Samples below the fixed sequential threshold fall through to the sequential mean, so
+        /// the two must agree exactly on a magnitude-spanning sample, not merely to a tolerance —
+        /// a partition-ordered parallel reduction would differ in the last bits.
         /// </remarks>
         [TestMethod]
         public void Test_ParallelMean_MatchesSequentialMeanExactly()
@@ -742,12 +743,11 @@ namespace Data.Statistics
         /// Verify that a tie run reaching the final sorted element records its length in the ties array.
         /// </summary>
         /// <remarks>
-        /// The tie-length write used to happen only when a run closed at a later, distinct value inside
-        /// the loop, so a run containing the largest values never closed and its length was silently
-        /// dropped: for this fixture the buggy code returned ties[6] = 0 instead of 2, while the rank
-        /// averaging itself was already correct. Hand-computed oracle: sorted data are
-        /// {1, 2, 3, 3, 5, 5, 5}; the {3, 3} run closes at sorted position 3 with length - 1 = 1, and
-        /// the trailing {5, 5, 5} run ends at sorted position 6 with length - 1 = 2.
+        /// A trailing tie run closes at the end of the sorted array rather than at a later, distinct
+        /// value, and its length is recorded like any interior run's: for this fixture ties[6] == 2.
+        /// Hand-computed oracle: sorted data are {1, 2, 3, 3, 5, 5, 5}; the {3, 3} run closes at
+        /// sorted position 3 with length - 1 = 1, and the trailing {5, 5, 5} run ends at sorted
+        /// position 6 with length - 1 = 2.
         /// </remarks>
         [TestMethod]
         public void Test_RanksInPlace_Ties_TrailingRunIsRecorded()

@@ -130,6 +130,21 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
+        /// Zero chains is not a samplable configuration, so both counts report zero rather than
+        /// dividing by zero. The properties are readable at any time; the configuration itself is
+        /// only rejected by <c>ValidateSettings</c> when <c>Sample()</c> runs.
+        /// </summary>
+        [TestMethod]
+        public void TransitionCount_AtZeroChains_ReportsZero()
+        {
+            var sampler = CreateSampler();
+            sampler.NumberOfChains = 0;
+
+            Assert.AreEqual(0L, sampler.TransitionCount);
+            Assert.AreEqual(0L, sampler.TotalTransitionCount);
+        }
+
+        /// <summary>
         /// Ties <see cref="MCMCSampler.TransitionCount"/> to the transitions <c>Sample()</c> actually
         /// performs, so the property cannot drift away from the loop it describes.
         /// </summary>

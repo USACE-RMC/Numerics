@@ -170,9 +170,10 @@ namespace MachineLearning
 
         /// <summary>
         /// A query whose column count differs from the training matrix must be rejected with a null
-        /// result, matching Predict. GetNeighbors' old guard compared the training matrix against
-        /// itself, so a narrower query silently computed partial-dimension distances and a wider
-        /// query threw an IndexOutOfRangeException from inside the distance helper.
+        /// result, matching Predict. GetNeighbors validates the QUERY matrix against the training
+        /// matrix; without that guard a narrower query would silently compute partial-dimension
+        /// distances and a wider query would throw an IndexOutOfRangeException from inside the
+        /// distance helper.
         /// </summary>
         [TestMethod]
         public void Test_GetNeighbors_QueryShapeMismatch_ReturnsNull()

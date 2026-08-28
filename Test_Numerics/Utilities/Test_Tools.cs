@@ -619,7 +619,7 @@ namespace Utilities
             // Series references: 1e-8 + 0.5e-16 + 1.667e-25 and its negative-argument mirror.
             Assert.AreEqual(1.0000000050000000167E-8, Tools.Expm1(1E-8), 1E-24);
             Assert.AreEqual(-9.9999999500000002E-9, Tools.Expm1(-1E-8), 1E-24);
-            // Deep negatives: a subnormal exponential still resolves, and full underflow is exact.
+            // Deep negatives saturate at -1: within 1E-15 at -746, and full underflow returns exactly -1.
             Assert.AreEqual(-1d, Tools.Expm1(-746d), 1E-15);
             Assert.AreEqual(-1d, Tools.Expm1(-800d), 0d);
             Assert.AreEqual(-1d, Tools.Expm1(double.NegativeInfinity), 0d);

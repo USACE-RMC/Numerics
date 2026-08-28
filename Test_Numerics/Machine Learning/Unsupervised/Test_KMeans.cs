@@ -90,10 +90,9 @@ namespace MachineLearning
         }
 
         /// <summary>
-        /// A single-cluster fit converges on its first E-step, which previously exited before any
-        /// centroid had been computed, so the reported mean was whatever data point the k-means++
-        /// initializer happened to seed (this fixture reported 10). The M-step must run once so the
-        /// reported mean is the mean of the assigned points.
+        /// A single-cluster fit converges on its first E-step, so the M-step must run before that
+        /// convergence exit: the reported mean is the mean of the assigned points, not whichever
+        /// data point the k-means++ initializer happened to seed.
         /// </summary>
         [TestMethod]
         public void Test_KMeans_SingleCluster_ReportsTheSampleMean()

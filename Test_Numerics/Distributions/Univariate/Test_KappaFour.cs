@@ -107,7 +107,10 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Verifies the zero-kappa density against the analytical CDF derivative.
+        /// Pins the implemented zero-kappa closed form: the density must equal
+        /// exp(-(x - xi) / alpha) / alpha * F(x)^(1 - h), evaluated with the distribution's own
+        /// CDF. The independent evidence for the zero-kappa branch lives in the companion
+        /// normalization and continuity tests.
         /// </summary>
         [TestMethod]
         public void Test_K4_ZeroKappa_PDFMatchesAnalyticalDerivative()

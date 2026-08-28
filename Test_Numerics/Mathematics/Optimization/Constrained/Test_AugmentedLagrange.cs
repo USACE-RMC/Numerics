@@ -154,8 +154,8 @@ namespace Mathematics.Optimization
             Assert.AreEqual(0d, solver.Mu[0]);
         }
         /// <summary>
-        /// Tests AugmentedLagrange with mixed constraint types (equality + lesser-than + greater-than).
-        /// This previously caused IndexOutOfRangeException due to incorrect multiplier array indexing.
+        /// Tests AugmentedLagrange with mixed constraint types (equality + lesser-than + greater-than),
+        /// which exercises the per-type multiplier array indexing.
         /// </summary>
         /// <remarks>
         /// Minimize x² + y² subject to:
@@ -247,10 +247,9 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// Maximization drives the inner search in the requested direction. The augmented objective
-        /// previously entered the inner minimization unscaled, so a maximization reported the
-        /// constrained minimum with a Success status: this construct returned x = -10 at the lower
-        /// bound instead of the constrained maximum at x = 1.
+        /// Maximization drives the inner search in the requested direction: this construct's
+        /// constrained maximum is x = 1 with objective -4, and an unscaled inner minimization
+        /// would report the constrained minimum at the lower bound x = -10 instead.
         /// </summary>
         [TestMethod]
         public void Test_Maximize_InequalityConstraint()
@@ -263,11 +262,13 @@ namespace Mathematics.Optimization
 
             Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 1E-3);
             Assert.AreEqual(-4.0, func(solver.BestParameterSet.Values), 1E-3);
+            Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-3,
+                "While maximizing, the stored fitness is the negated objective at the stored point.");
         }
 
         /// <summary>
         /// A maximization whose constraint is inactive at the optimum reaches the unconstrained
-        /// maximum; previously it reported a box corner instead.
+        /// maximum at (1, 3) rather than a box corner.
         /// </summary>
         [TestMethod]
         public void Test_Maximize_InactiveConstraint()
@@ -281,6 +282,8 @@ namespace Mathematics.Optimization
             Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 1E-3);
             Assert.AreEqual(3.0, solver.BestParameterSet.Values[1], 1E-3);
             Assert.AreEqual(0.0, func(solver.BestParameterSet.Values), 1E-4);
+            Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-4,
+                "While maximizing, the stored fitness is the negated objective at the stored point.");
         }
 
         /// <summary>
@@ -301,6 +304,8 @@ namespace Mathematics.Optimization
             Assert.AreEqual(2.0, solver.BestParameterSet.Values[0], 1E-3);
             Assert.AreEqual(2.0, solver.BestParameterSet.Values[1], 1E-3);
             Assert.AreEqual(-8.0, func(solver.BestParameterSet.Values), 1E-3);
+            Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-3,
+                "While maximizing, the stored fitness is the negated objective at the stored point.");
         }
     }
 }

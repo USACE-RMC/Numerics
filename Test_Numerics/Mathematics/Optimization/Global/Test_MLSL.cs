@@ -518,10 +518,10 @@ namespace Mathematics.Optimization
         /// the constructor after a run, and that the caller's own array is left untouched.
         /// </summary>
         /// <remarks>
-        /// On the first iteration, <see cref="MLSL.InitialValues"/> itself was stored by reference into a
-        /// <see cref="ParameterSet"/> and handed straight to the local solver's in-place bounds repair, so
-        /// either path could silently corrupt the public property's own array. This pins both the public
-        /// <see cref="MLSL.InitialValues"/> array and the caller's own array against that regression.
+        /// Every <see cref="ParameterSet"/> a run records owns its own values array: no sampled
+        /// point may alias <see cref="MLSL.InitialValues"/> itself, and the local-search entry
+        /// point must not modify its argument. This pins both the public
+        /// <see cref="MLSL.InitialValues"/> array and the caller's own array.
         /// </remarks>
         [TestMethod]
         public void Test_InitialValuesAreNotMutatedByARun()
@@ -537,11 +537,10 @@ namespace Mathematics.Optimization
             CollectionAssert.AreEqual(callerSnapshot, solver.InitialValues, "InitialValues must still equal what was passed to the constructor after a run.");
 
             // Reference identity is the assertion that discriminates here. The value comparisons above
-            // are blind to the aliasing: the constructor rejects out-of-bounds initial values, so the
-            // bounds repair inside the local solver is a no-op for any legally constructed MLSL, and the
-            // first sampled point is added with Minimized = true, which the local-search loop skips.
-            // Both aliasing paths are therefore inert for legal use, and only the aliasing itself is
-            // observable.
+            // are blind to aliasing: the constructor rejects out-of-bounds initial values, the local
+            // solver repairs bounds into a private copy rather than its argument, and the first sampled
+            // point is added with Minimized = true, which the local-search loop skips — so an aliased
+            // array would still hold the right values, and only the aliasing itself is observable.
             //
             // The whole collection is searched rather than element zero, because the run sorts
             // SampledPoints by fitness and rebuilds the list, so the initial point does not stay
