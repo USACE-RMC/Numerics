@@ -33,7 +33,7 @@ where $\pi$ is the target (posterior) distribution. This guarantee is asymptotic
 
 ## Gelman-Rubin Statistic (R̂)
 
-The Gelman-Rubin diagnostic compares within-chain and between-chain variance [[1]](#1). Values near 1.0 indicate convergence.
+The Gelman-Rubin diagnostic compares within-chain and between-chain variance [[1]](#1). Values near 1.0 indicate convergence. The ***Numerics*** implementation computes the rank-normalized split-$\hat{R}$ with folding of Vehtari et al. (2021) [[4]](#4), which is robust to heavy tails and sensitive to both location and scale differences between chains.
 
 ### Computing R̂
 
@@ -60,9 +60,9 @@ for (int i = 0; i < rHat.Length; i++)
 {
     Console.WriteLine($"  Parameter {i}: R̂ = {rHat[i]:F4}");
     
-    if (rHat[i] < 1.1)
+    if (rHat[i] < 1.01)
         Console.WriteLine("    ✓ Converged");
-    else if (rHat[i] < 1.2)
+    else if (rHat[i] < 1.05)
         Console.WriteLine("    ⚠ Marginal - run longer");
     else
         Console.WriteLine("    ✗ Not converged - investigate");
@@ -73,20 +73,22 @@ for (int i = 0; i < rHat.Length; i++)
 
 | R̂ Value | Interpretation | Action |
 |---------|---------------|--------|
-| R̂ < 1.01 | Excellent convergence | Proceed |
-| R̂ < 1.1 | Good convergence | Safe to use |
-| 1.1 ≤ R̂ < 1.2 | Marginal | Run longer |
-| R̂ ≥ 1.2 | Poor convergence | Investigate |
+| R̂ < 1.01 | Converged (recommended threshold for the rank-normalized statistic [[4]](#4)) | Proceed |
+| 1.01 ≤ R̂ < 1.05 | Marginal | Run longer |
+| R̂ ≥ 1.05 | Poor convergence | Investigate |
 
 **Formula:**
+
+Each retained chain is split in half, and the pooled draws are replaced by normal scores of their ranks. The classic statistic is then computed on the transformed split chains:
 
 ```math
 \hat{R} = \sqrt{\frac{\hat{V}}{W}}
 ```
-Where $W$ is the mean within-chain variance, $B$ is the between-chain variance, and:
+Where $W$ is the mean within-chain variance and $B$ is the between-chain variance, both computed from the rank-normalized split chains, and:
 ```math
 \hat{V} = \frac{n-1}{n}W + \frac{1}{n}B
 ```
+The same statistic is also computed on draws folded around the pooled median, and the reported value is the maximum of the two (see the derivation below).
 
 ### Mathematical Derivation
 
@@ -132,7 +134,19 @@ This is a weighted average that has a key property: $\hat{V}$ **overestimates** 
 
 Since $\hat{V} \geq W$ in general, we have $\hat{R} \geq 1$. At perfect convergence $\hat{R} = 1$; values substantially above 1 indicate that the chains have not mixed and further sampling is needed.
 
-**Split-$\hat{R}$.** Modern practice [[4]](#4) recommends splitting each chain in half before computing $\hat{R}$, which doubles the number of chains from $m$ to $2m$. This helps detect non-stationarity *within* individual chains -- for example, a chain that drifted during the first half but settled during the second half. The ***Numerics*** implementation does not perform split-$\hat{R}$ automatically; to use this approach, split each chain manually before passing them to `GelmanRubin()`.
+**Split-$\hat{R}$.** Following Vehtari et al. (2021) [[4]](#4), each retained chain is split in half automatically, doubling the number of chains from $m$ to $2m$. This helps detect non-stationarity *within* individual chains -- for example, a chain that drifted during the first half but settled during the second half. Pass whole chains to `GelmanRubin()`; chains that are split beforehand end up split a second time.
+
+**Rank normalization.** Before the variance comparison, the pooled draws are replaced by their normal scores: each draw's average rank $r$ is mapped through the standard normal inverse CDF using Blom's offset,
+
+```math
+z = \Phi^{-1}\!\left(\frac{r - 3/8}{S + 1/4}\right)
+```
+
+where $S$ is the pooled draw count. Rank normalization makes the diagnostic robust to heavy tails and well-defined even for parameters without finite mean or variance [[4]](#4).
+
+**Folding.** The computation is repeated on draws folded around the pooled median, $\zeta_{jt} = |\theta_{jt} - \text{median}(\theta)|$, which is sensitive to scale differences between chains that the location-based statistic misses. The reported diagnostic is the maximum of the rank-normalized split-$\hat{R}$ and the folded rank-normalized split-$\hat{R}$.
+
+**Edge cases.** `GelmanRubin()` returns `NaN` for a parameter when independent-chain comparison is unavailable or degenerate: fewer than two chains, fewer than four retained draws per chain, or constant or non-finite draws.
 
 ### Common Causes of High R̂
 
@@ -144,7 +158,7 @@ Since $\hat{V} \geq W$ in general, we have $\hat{R} \geq 1$. At perfect converge
 
 ## Effective Sample Size (ESS)
 
-ESS quantifies number of independent samples, accounting for autocorrelation [[2]](#2).
+ESS quantifies number of independent samples, accounting for autocorrelation [[2]](#2). The ***Numerics*** implementation computes the rank-normalized ESS of Vehtari et al. (2021) [[4]](#4): the value reported for each parameter is the minimum of the bulk ESS and the tail ESS values at the 5th and 95th percentiles, so it is conservative for both central and tail summaries.
 
 ### Computing ESS
 
@@ -164,6 +178,8 @@ Console.WriteLine($"Efficiency: {ess / samples.Length:P1}");
 if (ess < 100)
     Console.WriteLine("⚠ Warning: Low ESS - run longer or thin more");
 ```
+
+The single-series overload treats the input as one chain and splits it into two half-chains, so disagreement between the first and second half lowers the estimate. Constant or non-finite draws, or fewer than 6 draws per chain, return `NaN`.
 
 ### ESS Across All Parameters
 
@@ -235,23 +251,34 @@ Solving for ESS:
 
 The quantity $\tau = 1 + 2\sum_{k=1}^{\infty}\rho_k$ is called the **integrated autocorrelation time**. It represents how many MCMC iterations correspond to one independent draw: $\text{ESS} = N/\tau$.
 
-**Truncation strategy.** In practice, the infinite sum must be truncated. The ***Numerics*** implementation uses a simple truncation rule: the sum is cut off at the first lag $k$ where $\rho_k < 0$. This works because for a well-behaved MCMC chain, the autocorrelation function decays monotonically toward zero and oscillations below zero represent noise rather than genuine correlation.
+**Truncation strategy.** In practice, the infinite sum must be truncated. The ***Numerics*** implementation uses Geyer's (1992) [[3]](#3) **initial positive sequence estimator**, which sums consecutive *pairs* of autocorrelations $(\rho_{2k} + \rho_{2k+1})$ and truncates at the first pair whose sum is not positive. For a reversible Markov chain these pair sums are theoretically positive, so a non-positive pair sum marks the point where the estimates are dominated by noise. The estimate is then regularized with Geyer's **initial monotone sequence** rule: any pair sum that exceeds the preceding pair sum is replaced by that preceding value, enforcing the theoretical monotone decay. Together these rules produce a stable estimate of the integrated autocorrelation time.
 
-Geyer (1992) [[3]](#3) proposed a more robust alternative called the **initial positive sequence estimator**, which sums consecutive *pairs* of autocorrelations $(\rho_{2k} + \rho_{2k+1})$ and stops when a pair sum becomes negative. This approach is theoretically guaranteed to produce a non-negative variance estimate. The ***Numerics*** implementation uses the simpler first-negative truncation, which is adequate for chains with good mixing behavior.
-
-**Multi-chain ESS.** When $M$ chains of length $N$ are available, the implementation computes the autocorrelation sum $\rho_m$ for each chain $m$ separately, then averages across chains:
+**Multi-chain ESS.** When $M$ chains of length $N$ are available, each chain is first split in half, so $2M$ split chains enter the computation while the total draw count $S = N \cdot M$ is unchanged. Lag autocovariances $\hat{\gamma}_k$ are estimated for each split chain with an FFT and averaged across the split chains, and the multi-chain variance estimate combines within-chain and between-chain variability:
 
 ```math
-\bar{\rho} = \frac{1}{M}\sum_{m=1}^{M}\rho_m \qquad \text{where} \quad \rho_m = \sum_{k=1}^{K_m}\hat{\rho}_k^{(m)}
+\widehat{\text{var}}^{+} = \frac{n-1}{n}\,W + \frac{1}{n}\,B
 ```
 
-Here $K_m$ is the truncation point for chain $m$ (the first lag at which the autocorrelation is negative). The total effective sample size is then:
+where $n$ is the split-chain length and $W$ and $B$ are the within-chain and between-chain variances defined as in the Gelman-Rubin derivation. The combined autocorrelation at lag $k$,
 
 ```math
-\text{ESS} = \frac{N \cdot M}{1 + 2\bar{\rho}}
+\hat{\rho}_k = 1 - \frac{W - \bar{\gamma}_k}{\widehat{\text{var}}^{+}}
 ```
 
-This is capped at $N \cdot M$ (the total number of samples) since the effective sample size cannot exceed the actual number of draws.
+where $\bar{\gamma}_k$ is the averaged lag-$k$ autocovariance, is truncated with Geyer's rules above to obtain the integrated autocorrelation time $\hat{\tau}$, and:
+
+```math
+\text{ESS} = \frac{S}{\hat{\tau}}
+```
+
+The integrated autocorrelation time is bounded below by $1/\log_{10}(S)$ to keep the estimate stable, but the ESS is **not** capped at $S$: when chains are negatively autocorrelated (antithetic behavior), $\hat{\tau} < 1$ and the rank-normalized ESS can exceed the number of draws.
+
+**Bulk and tail ESS.** The scalar ESS reported for each parameter is a conservative summary of three components [[4]](#4):
+
+- **Bulk ESS** measures sampling efficiency in the body of the distribution. It is computed from the split chains after the same rank-normal transformation used for $\hat{R}$.
+- **Tail ESS** measures efficiency in the tails. It is the ESS of the indicator variables $I(\theta_t \leq \hat{q}_{0.05})$ and $I(\theta_t \leq \hat{q}_{0.95})$, where $\hat{q}_{0.05}$ and $\hat{q}_{0.95}$ are the pooled 5th and 95th percentiles.
+
+The reported value is the minimum of the three, so slow tail exploration is not hidden by a healthy bulk estimate.
 
 ### ESS Requirements
 
@@ -426,9 +453,9 @@ double[] rhat = MCMCDiagnostics.GelmanRubin(chains, sampler.WarmupIterations);
 bool converged = true;
 for (int i = 0; i < nParams; i++)
 {
-    string status = rhat[i] < 1.1 ? "✓" : "✗";
+    string status = rhat[i] < 1.01 ? "✓" : "✗";
     Console.WriteLine($"  {status} θ{i}: R̂ = {rhat[i]:F4}");
-    if (rhat[i] >= 1.1) converged = false;
+    if (rhat[i] >= 1.01) converged = false;
 }
 
 // Step 4: Check ESS
@@ -506,11 +533,11 @@ for (int param = 0; param < nParams; param++)
 
 ## Troubleshooting Convergence Issues
 
-### Problem: High R̂ (> 1.1)
+### Problem: High R̂ (> 1.01)
 
 **Diagnosis:**
 ```cs
-if (rhat.Max() > 1.1)
+if (rhat.Max() > 1.01)
 {
     Console.WriteLine("Convergence issue detected");
     Console.WriteLine("Possible causes:");
@@ -627,7 +654,7 @@ sampler.WarmupIterations = Math.Max(2000, sampler.Iterations / 2);
 
 ```cs
 // Always check before using samples
-bool ready = (rhat.Max() < 1.1) && (ess.Min() > 100);
+bool ready = (rhat.Max() < 1.01) && (ess.Min() > 100);
 
 if (!ready)
 {
@@ -660,7 +687,7 @@ Console.WriteLine($"  ESS range: [{ess.Min():F0}, {ess.Max():F0}]");
 ```cs
 int iteration = 1;
 int totalIterations = sampler.Iterations;
-while (rhat.Max() > 1.05 || ess.Min() < 200)
+while (rhat.Max() > 1.01 || ess.Min() < 200)
 {
     totalIterations += 5000;
     Console.WriteLine($"\nIteration {iteration}: Restarting with {totalIterations} iterations...");
@@ -689,7 +716,7 @@ while (rhat.Max() > 1.05 || ess.Min() < 200)
 
 | Diagnostic | Target | Action if Not Met |
 |------------|--------|------------------|
-| **R̂** | < 1.1 | Increase warmup, run longer |
+| **R̂** | < 1.01 | Increase warmup, run longer |
 | **ESS** | > 100 (per param) | Increase iterations, improve mixing |
 | **Visual traces** | Stationary | Check initialization, try different sampler |
 | **ACF** | Drops quickly | Increase thinning, better sampler |

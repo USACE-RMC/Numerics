@@ -62,7 +62,7 @@ All optimizers in ***Numerics*** inherit from the `Optimizer` base class and sha
 - `Iterations`: Number of iterations performed
 - `FunctionEvaluations`: Number of function evaluations
 - `Status`: Optimization status (Success, Failure, etc.)
-- `ParameterSetTrace`: Full trace of parameter evaluations
+- `ParameterSetTrace`: Read-only trace of the best-so-far parameter set and fitness at every function evaluation (entries recorded between improvements share one values array)
 - `Hessian`: Numerically differentiated Hessian matrix (if computed)
 
 ### Methods
@@ -453,10 +453,11 @@ Console.WriteLine($"Constrained optimum: [{constrained.BestParameterSet.Values[0
 
 ## Shortest Path (Dijkstra)
 
-The `Dijkstra`, `Network`, `Edge`, and `BinaryHeap<T>` types solve destination-rooted shortest
-paths over directed networks [9] — the routing kernel for agent-based evacuation modeling, where
-every agent needs its route to the nearest destination and edge costs (travel times) change as
-conditions evolve.
+The `Dijkstra`, `Network`, and `Edge` types solve destination-rooted shortest paths over
+directed networks [9] — the routing kernel for agent-based evacuation modeling, where every
+agent needs its route to the nearest destination and edge costs (travel times) change as
+conditions evolve. The solvers run on an internal indexed binary min-heap sized at the node
+count; the public `BinaryHeap<T>` is a separate standalone utility.
 
 ### The result table
 
@@ -524,12 +525,15 @@ for (int t = 0; t < timeSteps; t++)
 }
 
 // Detour routing around blocked segments, splicing onto the precomputed table when possible.
-List<int>? detour = network.GetPath(blockedEdgeIndices, agentNodeIndex, table);
+List<int> detour = network.GetPath(blockedEdgeIndices, agentNodeIndex, table);
 ```
 
 `Network.GetPath` finds the cheapest route to the nearest destination that avoids every edge
 bearing an excluded edge index; when the precomputed table's recorded route is untouched by the
-exclusions it is returned directly, with no solve.
+exclusions it is returned directly, with no solve. The table-based overload never returns null:
+it returns an empty list when the start node is unreachable, is already a destination, or no
+detour exists. The two-argument overload (without a table), by contrast, returns null when
+every destination is unreachable.
 
 ## Practical Example: Calibrating a Hydrological Model
 

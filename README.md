@@ -31,8 +31,9 @@ Or search for [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) in th
 | [Data](docs/data/interpolation.md) | Interpolation, linear regression, time series analysis |
 | [Statistics](docs/statistics/descriptive.md) | Descriptive and weighted statistics, goodness-of-fit metrics, hypothesis tests, global sensitivity analysis |
 | [Distributions](docs/distributions/univariate.md) | 43 univariate distributions, parameter estimation, uncertainty analysis, copulas, multivariate distributions |
+| [Functions](docs/functions/index.md) | Uncertain univariate function forms, composition, posterior ensembles, link functions |
 | [Machine Learning](docs/machine-learning/machine-learning.md) | GLM, decision trees, random forests, KNN, naive Bayes, k-means, GMM |
-| [Sampling](docs/sampling/mcmc.md) | MCMC (RWMH, ARWMH, DE-MCz, HMC, NUTS, Gibbs), random generation, scrambled quasi-random sequences, convergence diagnostics |
+| [Sampling](docs/sampling/mcmc.md) | MCMC (RWMH, ARWMH, DE-MCz, DE-MCzs, HMC, NUTS, Gibbs), random generation, scrambled quasi-random sequences, convergence diagnostics |
 | [References](docs/references.md) | Consolidated bibliography |
 
 ## Prerequisites

@@ -320,7 +320,7 @@ where:
 
 - $d$ is the number of parameters (`NumberOfParameters`)
 - $\beta = 0.05$ by default (the `Beta` property)
-- $\hat{\Sigma}_t$ is the empirical covariance matrix computed as a running covariance of accepted samples (and current states after warmup)
+- $\hat{\Sigma}_t$ is the empirical covariance matrix computed as a running covariance of every realized chain state (accepted proposals and repeated retained states alike)
 - $I_d$ is the $d$-dimensional identity matrix
 - The scale factor $s = 2.38^2/d$ is the `Scale` property
 
@@ -905,7 +905,7 @@ if (results.MarkovChains != null)
 | `StandardDeviation` | `double` | Posterior standard deviation |
 | `LowerCI` | `double` | Lower confidence interval (default 5th percentile) |
 | `UpperCI` | `double` | Upper confidence interval (default 95th percentile) |
-| `Rhat` | `double` | Gelman-Rubin convergence diagnostic |
+| `Rhat` | `double` | Gelman-Rubin convergence diagnostic (rank-normalized split-R̂; target < 1.01) |
 | `ESS` | `double` | Effective sample size |
 | `N` | `int` | Total sample count |
 
@@ -1006,7 +1006,7 @@ Do you have gradient information (or a smooth, differentiable log-posterior)?
 
 ```cs
 // Visual inspection of traces
-// Check R-hat < 1.1 for all parameters
+// Check R-hat < 1.01 for all parameters
 // Effective sample size > 100 per parameter
 ```
 

@@ -37,16 +37,19 @@ parameter vector is `[h₁, log₁₀α₁, β₁, h₂, log₁₀α₂, β₂, 
 a fitted posterior `ParameterSet.Values` applies directly through `SetParameters`. Breakpoints
 must be strictly ordered, exponents positive (the monotonicity constraint behind the
 numeric Brent inverse), discharge is zero at and below the cease-to-flow stage `h₁`, and one
-segment degenerates to the plain `PowerFunction`.
+segment degenerates deterministically to the plain `PowerFunction` (the stochastic residual
+spaces differ: log₁₀ here versus natural log in `PowerFunction`).
 
 ```cs
 using Numerics.Functions;
 
 // Two controls: main channel from stage 1, overbank activating at stage 3.
 var rating = new SegmentedPowerFunction(new[] { 1.0, 1.5, 2.0, 3.0, 1.2, 1.5, 0.1 });
-double q = rating.Function(5.0);            // deterministic (mean) discharge
-rating.IsDeterministic = false;
-rating.ConfidenceLevel = 0.75;              // multiplies by 10^(z·σ)
+double q = rating.Function(5.0);            // deterministic (median) curve: ConfidenceLevel
+                                            // defaults to -1, and any value outside [0, 1]
+                                            // selects the deterministic curve
+rating.ConfidenceLevel = 0.75;              // 75th-percentile curve via the log₁₀-space
+                                            // residual: multiplies by 10^(z·σ)
 double q75 = rating.Function(5.0);
 ```
 
@@ -57,7 +60,7 @@ double q75 = rating.Function(5.0);
 driving every child co-monotonically. The **mixture** mode composes with a single uniform: the
 draw selects a child by cumulative weight and re-scales the remainder as the child's own draw
 — deterministic composition sampling with no internal random source. Outside [0, 1] both modes
-evaluate the weighted average of the child means.
+evaluate the weighted average of each child evaluated at its own configured confidence level.
 
 ## Serialization and the factory
 

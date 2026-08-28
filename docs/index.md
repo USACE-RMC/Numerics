@@ -152,6 +152,8 @@ var results = sampler.Output;
 | [Uncertainty Analysis](distributions/uncertainty-analysis.md) | Bootstrap and confidence intervals |
 | [Copulas](distributions/copulas.md) | Dependency modeling with copulas |
 | [Multivariate Distributions](distributions/multivariate.md) | Multivariate Normal, Student-t, Dirichlet, Multinomial |
+| **Functions** | |
+| [Univariate Functions](functions/index.md) | Uncertain univariate function forms, composition, posterior ensembles, and link functions |
 | **Machine Learning** | |
 | [Machine Learning](machine-learning/machine-learning.md) | Supervised and unsupervised learning algorithms |
 | **Sampling** | |
@@ -165,6 +167,7 @@ var results = sampler.Output;
 | Namespace | Description |
 |-----------|-------------|
 | `Numerics.Distributions` | Probability distributions and copulas |
+| `Numerics.Functions` | Uncertain univariate functions, posterior ensembles, and link functions |
 | `Numerics.Data.Statistics` | Statistical functions and tests |
 | `Numerics.Data` | Interpolation methods, linear regression, time series data structures |
 | `Numerics.Mathematics` | Base namespace for mathematical operations (includes NumericalDerivative) |

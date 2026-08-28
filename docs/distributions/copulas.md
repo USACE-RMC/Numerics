@@ -363,7 +363,7 @@ where $u$ and $v$ are non-exceedance probabilities. Every copula exposes it dire
 | Student-t | $T_{\nu+1}\!\left(\dfrac{x_2 - \rho x_1}{s}\right)$, with $x_i = T_\nu^{-1}(\cdot)$, $s = \sqrt{\frac{(1-\rho^2)(\nu + x_1^2)}{\nu+1}}$ |
 | Independence | $v$ |
 
-The scalar `InverseConditionalCDF(u, t)` inverts the h-function in $v$ without allocating, and the array form `InverseCDF(u, t)` returns the pair `[u, v]` on top of it — the conditional-simulation surface. The base-class `ConditionalCDF` also provides a central-finite-difference fallback over `CDF` for external copula subclasses that predate the analytic surface.
+The scalar `InverseConditionalCDF(u, t)` inverts the h-function in $v$ without allocating the array that `InverseCDF` returns (the Student-t copula is the exception: it allocates two Student's t distribution objects per call), and the array form `InverseCDF(u, t)` returns the pair `[u, v]` on top of it — the conditional-simulation surface. The base-class `ConditionalCDF` also provides a central-finite-difference fallback over `CDF`, so an external subclass that implements only `CDF` still gets a correct approximation.
 
 ```cs
 // Observed flow
