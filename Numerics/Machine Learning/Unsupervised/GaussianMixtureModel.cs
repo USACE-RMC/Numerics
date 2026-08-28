@@ -154,6 +154,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
         /// <param name="kMeansPlusPlus">Determines whether to use random initialization or to use the k-Means++ method. Default is to use k-Means++.</param>
+        /// <exception cref="InvalidOperationException">Thrown when a component covariance cannot be factorized.</exception>
         public void Train(int seed = -1, bool kMeansPlusPlus = true)
         {
             // 1. Initialize clusters from k-Means
@@ -254,7 +255,17 @@ namespace Numerics.MachineLearning
             for (int k = 0; k < K; k++)
             {
                 // Decompose the covariance in the outer loop
-                var cholesky = new CholeskyDecomposition(Sigmas[k]);
+                CholeskyDecomposition cholesky;
+                try
+                {
+                    cholesky = new CholeskyDecomposition(Sigmas[k]);
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException(
+                        $"Gaussian mixture component {k + 1} covariance could not be factorized.",
+                        exception);
+                }
                 logDet[k] = cholesky.LogDeterminant();
                 for (int i = 0; i < X.NumberOfRows; i++)
                 {

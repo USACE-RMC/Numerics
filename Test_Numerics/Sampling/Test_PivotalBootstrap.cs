@@ -37,6 +37,25 @@ namespace Sampling
         }
 
         /// <summary>
+        /// Verifies that an explicitly unregularized singular parent covariance remains a loud
+        /// pivotal-transform failure with workflow context and the decomposition cause retained.
+        /// </summary>
+        [TestMethod]
+        public void Transform_UnregularizedSingularParentReportsContextualFailure()
+        {
+            var parent = Fit(new[] { 10d, 20d }, new double[,] { { 1d, 1d }, { 1d, 1d } });
+            var raw = Fit(new[] { 8d, 17d }, new double[,] { { 1d, 0d }, { 0d, 1d } });
+            var boot = CreatePivotalBootstrap(parent);
+            boot.RegularizePivotalCovariances = false;
+
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => boot.TransformPivotalBootstrap(new[] { raw }));
+
+            StringAssert.Contains(exception.Message, "parent link-space covariance");
+            Assert.IsNotNull(exception.InnerException);
+        }
+
+        /// <summary>
         /// Verifies a full covariance matrix is used in the two-covariance transform.
         /// </summary>
         [TestMethod]

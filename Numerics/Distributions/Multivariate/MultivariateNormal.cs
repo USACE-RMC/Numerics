@@ -747,10 +747,13 @@ namespace Numerics.Distributions
             
             if (_decomposition == DecompositionMethod.Cholesky)
             {
-                var chol = new CholeskyDecomposition(m);
-                if (!chol.IsPositiveDefinite)
+                try
                 {
-                    var ex = new ArgumentOutOfRangeException(nameof(Covariance), "Covariance matrix is not positive-definite.");
+                    _ = new CholeskyDecomposition(m);
+                }
+                catch (Exception exception)
+                {
+                    var ex = new ArgumentOutOfRangeException("Covariance matrix is not positive-definite.", exception);
                     if (throwException) throw ex; else return ex;
                 }
             }

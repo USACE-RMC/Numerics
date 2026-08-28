@@ -656,7 +656,8 @@ namespace Numerics.Sampling
         /// </summary>
         /// <param name="rawFits">Raw bootstrap fits and covariances to transform.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="rawFits"/> is null.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted or when
+        /// the parent link-space covariance cannot be factorized.</exception>
         public void TransformPivotalBootstrap(IEnumerable<BootstrapFit> rawFits)
         {
             if (rawFits == null)
@@ -673,7 +674,8 @@ namespace Numerics.Sampling
         /// <param name="requestedReplicates">The number of raw replicates requested or supplied.</param>
         /// <param name="failedRawReplicates">The number of raw replicates that failed before transformation.</param>
         /// <param name="resamplingTime">The elapsed raw resampling and fitting time.</param>
-        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted or when
+        /// the parent link-space covariance cannot be factorized.</exception>
         private void TransformPivotalBootstrap(BootstrapFit[] rawFits, int requestedReplicates, int failedRawReplicates, TimeSpan resamplingTime)
         {
             BootstrapFit parentFit = CreateOriginalFit();
@@ -693,7 +695,17 @@ namespace Numerics.Sampling
             ValidateTransformedValues(parentEta, "The parent link transformation produced a non-finite value.");
 
             Matrix parentLinkCovariance = LinkCovariance(parentFit, linkController);
-            var parentCholesky = new CholeskyDecomposition(parentLinkCovariance);
+            CholeskyDecomposition parentCholesky;
+            try
+            {
+                parentCholesky = new CholeskyDecomposition(parentLinkCovariance);
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    "The parent link-space covariance could not be factorized for the pivotal transformation.",
+                    exception);
+            }
             var pivotalParameterSets = new List<ParameterSet>(acceptedRawFits.Length);
             var jitterRng = new MersenneTwister(PRNGSeed);
             int invalid = 0;

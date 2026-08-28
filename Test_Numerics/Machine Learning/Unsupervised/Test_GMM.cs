@@ -99,6 +99,26 @@ namespace MachineLearning
         }
 
         /// <summary>
+        /// A singular initial component covariance remains a loud training failure, but the
+        /// public workflow identifies the component and preserves the factorization context.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_SingularInitialComponentReportsContextualFailure()
+        {
+            var data = new double[,]
+            {
+                { 0d, 0d }, { 1d, 1d }, { 2d, 2d },
+                { 10d, 10d }, { 11d, 11d }, { 12d, 12d }
+            };
+            var gmm = new GaussianMixtureModel(data, 2);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => gmm.Train(12345));
+
+            StringAssert.Contains(exception.Message, "component");
+            Assert.IsNotNull(exception.InnerException);
+        }
+
+        /// <summary>
         /// Verify that the M-step's symmetric positive-definite repair is actually applied to the
         /// stored covariance matrices.
         /// </summary>

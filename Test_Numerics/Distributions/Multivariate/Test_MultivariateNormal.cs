@@ -26,17 +26,19 @@ namespace Distributions.Multivariate
         /// Asserts the action throws an ArgumentOutOfRangeException (net481-compatible).
         /// </summary>
         /// <param name="action">The action expected to throw.</param>
-        private static void AssertThrowsOutOfRange(Action action)
+        /// <returns>The captured exception.</returns>
+        private static ArgumentOutOfRangeException AssertThrowsOutOfRange(Action action)
         {
             try
             {
                 action();
             }
-            catch (ArgumentOutOfRangeException)
+            catch (ArgumentOutOfRangeException exception)
             {
-                return;
+                return exception;
             }
             Assert.Fail("Expected an ArgumentOutOfRangeException.");
+            throw new InvalidOperationException("Unreachable after Assert.Fail.");
         }
 
 
@@ -68,6 +70,27 @@ namespace Distributions.Multivariate
             // TrySetParameters also moves the mean.
             Assert.IsTrue(mvn.TrySetParameters(new[] { 0d, 0d }, new[,] { { 1d, 0d }, { 0d, 1d } }));
             Assert.AreEqual(-Math.Log(2d * Math.PI), mvn.LogPDF(new[] { 0d, 0d }), 1E-12);
+        }
+
+        /// <summary>
+        /// Verifies that Cholesky rejection follows the validation throw flag and preserves
+        /// the decomposition failure as diagnostic context.
+        /// </summary>
+        [TestMethod]
+        public void Test_ValidateParameters_CholeskyRejectionHonorsThrowFlag()
+        {
+            var mean = new[] { 0d, 0d };
+            var singularCovariance = new[,] { { 1d, 1d }, { 1d, 1d } };
+            var mvn = new MultivariateNormal(mean, new[,] { { 1d, 0d }, { 0d, 1d } });
+
+            ArgumentOutOfRangeException returned = mvn.ValidateParameters(mean, singularCovariance, false);
+            Assert.IsNotNull(returned);
+            Assert.IsNotNull(returned.InnerException);
+            StringAssert.Contains(returned.Message, "positive-definite");
+
+            var thrown = AssertThrowsOutOfRange(() => mvn.ValidateParameters(mean, singularCovariance, true));
+            Assert.IsNotNull(thrown.InnerException);
+            StringAssert.Contains(thrown.Message, "positive-definite");
         }
 
         /// <summary>
