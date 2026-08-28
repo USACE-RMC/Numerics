@@ -104,12 +104,11 @@ namespace Numerics.Mathematics.Optimization
         {
             int D = NumberOfParameters;
             double EPS = Tools.DoubleMachineEpsilon;
-            // TOLX is Numerical Recipes' dfpmin outer parameter-change tolerance: the loop below exits
-            // when the largest relative parameter step falls below it, so a line search that returns
-            // the starting point (a stagnated warm start) terminates immediately instead of repeating
-            // the identical non-progressing iteration until MaxIterations. (The TOLX local in
-            // LineSearchArmijo is dfpmin's unrelated inner step-size floor, and that routine is not
-            // called by Optimize, which uses the strong Wolfe LineSearch.)
+            // TOLX is Numerical Recipes' dfpmin outer parameter-change tolerance: after an accepted
+            // line-search step, the loop below exits when the largest relative parameter step falls
+            // below it. A line search that cannot satisfy the strong Wolfe conditions reports
+            // LineSearchFailed separately. (The TOLX local in LineSearchArmijo is dfpmin's unrelated
+            // inner step-size floor, and that routine is not called by Optimize.)
             double TOLX = 4 * EPS, STPMX = 100.0;
             bool cancel = false, check = false;
 
@@ -142,6 +141,11 @@ namespace Numerics.Mathematics.Optimization
                 // Perform line search
                 LineSearch(p, fp, g, xi, pnew, ref fret, stpmax, ref check, ref cancel);
                 if (cancel) return;
+                if (check)
+                {
+                    UpdateStatus(OptimizationStatus.LineSearchFailed);
+                    return;
+                }
 
                 // Check convergence.
                 if (CheckConvergence(fp, fret))
@@ -151,7 +155,6 @@ namespace Numerics.Mathematics.Optimization
                 }
 
                 // The new function evaluation occurs in line search; save the function value in fp for the next line search.
-                // It is usually safe to ignore the value of check.
                 fp = fret;
                 for (int i = 0; i < D; i++)
                 {
@@ -333,6 +336,7 @@ namespace Numerics.Mathematics.Optimization
         private void LineSearch(double[] x0, double f0, double[] g0, double[] p, double[] x, ref double f, double stpmax, ref bool check, ref bool cancel)
         {
             const double c1 = 1e-4, c2 = 0.9;
+            check = false;
             double alpha = 1.0, alphaPrev = 0.0;
             double fPrev = f0;
             double slope0 = Tools.SumProduct(g0, p);
@@ -360,7 +364,7 @@ namespace Numerics.Mathematics.Optimization
 
                 if (f > f0 + c1 * alpha * slope0 || (iter > 0 && f >= fPrev))
                 {
-                    Zoom(x0, f0, slope0, p, alphaPrev, alpha, ref f, x, ref cancel);
+                    Zoom(x0, f0, slope0, p, alphaPrev, alpha, ref f, x, ref check, ref cancel);
                     return;
                 }
 
@@ -379,7 +383,7 @@ namespace Numerics.Mathematics.Optimization
 
                 if (slope >= 0)
                 {
-                    Zoom(x0, f0, slope0, p, alpha, alphaPrev, ref f, x, ref cancel);
+                    Zoom(x0, f0, slope0, p, alpha, alphaPrev, ref f, x, ref check, ref cancel);
                     return;
                 }
 
@@ -403,9 +407,10 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="alphaHigh">The upper bound of the step size interval.</param>
         /// <param name="f">The objective function value at the final accepted point.</param>
         /// <param name="x">The parameter vector at the final accepted step size.</param>
+        /// <param name="check">Returns true if the zoom search exhausts its attempts without finding an acceptable step.</param>
         /// <param name="cancel">Set to true if cancellation is requested or a cancel condition occurs during evaluation.</param>
 
-        private void Zoom(double[] x0, double f0, double slope0, double[] p, double alphaLow, double alphaHigh, ref double f, double[] x, ref bool cancel)
+        private void Zoom(double[] x0, double f0, double slope0, double[] p, double alphaLow, double alphaHigh, ref double f, double[] x, ref bool check, ref bool cancel)
         {
             const double c1 = 1e-4, c2 = 0.9;
             double[] g = new double[p.Length];
@@ -448,6 +453,7 @@ namespace Numerics.Mathematics.Optimization
             }
 
             Array.Copy(x0, x, x.Length);
+            check = true;
         }
 
     }

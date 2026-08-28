@@ -63,7 +63,8 @@ namespace Numerics.Mathematics.Optimization
         public bool RecordTraces { get; set; } = true;
 
         /// <summary>
-        /// Determines whether to compute a numerically differentiated Hessian matrix when the optimization was successful. 
+        /// Determines whether to compute a numerically differentiated Hessian matrix when the optimization was successful
+        /// or a line search failed after producing a usable best parameter set.
         /// </summary>
         public bool ComputeHessian { get; set; } = true;
 
@@ -198,7 +199,7 @@ namespace Numerics.Mathematics.Optimization
             try
             {               
                 Optimize();
-                if (Status == OptimizationStatus.Success && ComputeHessian)
+                if ((Status == OptimizationStatus.Success || Status == OptimizationStatus.LineSearchFailed) && ComputeHessian)
                 {
                     Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values, ParameterLowerBounds!, ParameterUpperBounds!));
                 }
@@ -226,7 +227,7 @@ namespace Numerics.Mathematics.Optimization
             try
             {
                 Optimize();
-                if (Status == OptimizationStatus.Success && ComputeHessian)
+                if ((Status == OptimizationStatus.Success || Status == OptimizationStatus.LineSearchFailed) && ComputeHessian)
                 {
                     Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values, ParameterLowerBounds!, ParameterUpperBounds!));
                 }
