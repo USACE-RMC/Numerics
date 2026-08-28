@@ -136,16 +136,22 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Computes the arithmetic sample mean from the unsorted data array by first enabling parallelization of the array.
+        /// Computes the arithmetic sample mean from the unsorted data array.
         /// Returns NaN if data is empty or any entry is NaN.
         /// </summary>
         /// <param name="data">Sample of data, no sorting is assumed.</param>
+        /// <remarks>
+        /// This method delegates to <see cref="Mean(IList{double})"/> and is retained for API
+        /// compatibility. The former PLINQ implementation summed per-partition and combined the
+        /// partial sums, so the result depended on the partition count the runtime chose from the
+        /// processor count; because floating-point addition is not associative, the same data could
+        /// produce different last bits on different machines. A sequential sum is bit-reproducible
+        /// everywhere, and the arrays this method sees are far too small for parallel summation to
+        /// pay for its overhead.
+        /// </remarks>
         public static double ParallelMean(IList<double> data)
         {
-            if (data.Count == 0) return double.NaN;
-
-            double sum = data.AsParallel().Sum();
-            return sum / data.Count;
+            return Mean(data);
         }
 
         /// <summary>
@@ -730,7 +736,10 @@ namespace Numerics.Data.Statistics
         /// Returns the rank of each entry of the unsorted data array.
         /// </summary>
         /// <param name="data">The array of sample of data, no sorting is assumed.</param>
-        /// <param name="ties">Output. The number of ties in the data.</param>
+        /// <param name="ties">Output. A sparse array of tie-run lengths: the entry at a tie run's last
+        /// position in the sorted order holds the run length minus one, and every other entry is zero.
+        /// A group of k equal values therefore reports k - 1, so the number of tied groups is the count
+        /// of entries greater than zero, not greater than one.</param>
         public static double[] RanksInPlace(double[] data, out double [] ties)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -760,7 +769,7 @@ namespace Numerics.Data.Statistics
                 if (i == previousIndex + 1)
                 {
                     ranks[index[previousIndex]] = i;
-                    t = 0;      
+                    t = 0;
                 }
                 else
                 {
@@ -773,6 +782,13 @@ namespace Numerics.Data.Statistics
             }
 
             RanksTies(ranks, index, previousIndex, work.Length);
+            // The loop records a run's length only when the run closes at a later, distinct value, so a
+            // tie run containing the largest values never closes inside the loop and its length would be
+            // silently dropped without this trailing write.
+            if (t > 0)
+            {
+                ties[work.Length - 1] = t;
+            }
             return ranks;
         }
 

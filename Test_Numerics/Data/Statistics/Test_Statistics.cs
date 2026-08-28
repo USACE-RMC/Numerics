@@ -84,6 +84,31 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Verify that ParallelMean is bitwise identical to the sequential Mean.
+        /// </summary>
+        /// <remarks>
+        /// The former PLINQ implementation combined per-partition sums in a machine-dependent
+        /// order, so its last bits varied with the processor count (measured up to 29 ULP from the
+        /// sequential sum at n = 100,000). The method now delegates to the sequential mean, so the
+        /// two must agree exactly on a magnitude-spanning sample, not merely to a tolerance.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ParallelMean_MatchesSequentialMeanExactly()
+        {
+            var data = new double[1000];
+            for (int i = 0; i < data.Length; i++)
+            {
+                // Deterministic values spanning several orders of magnitude so any
+                // reassociation of the summation order would change the last bits.
+                data[i] = Math.Pow(10d, (i % 7) - 3) * (1d + i / 997d);
+            }
+
+            double parallel = Numerics.Data.Statistics.Statistics.ParallelMean(data);
+            double sequential = Numerics.Data.Statistics.Statistics.Mean(data);
+            Assert.AreEqual(sequential, parallel, 0d);
+        }
+
+        /// <summary>
         /// Test the GeometricMean method against R's "geometric.mean()" method from the "psych" package.
         /// </summary>
         /// <remarks>
@@ -658,6 +683,36 @@ namespace Data.Statistics
             for (int i = 0; i < valid.Length; i++)
             {
                 Assert.AreEqual(valid[i], ties[i]);
+            }
+        }
+
+        /// <summary>
+        /// Verify that a tie run reaching the final sorted element records its length in the ties array.
+        /// </summary>
+        /// <remarks>
+        /// The tie-length write used to happen only when a run closed at a later, distinct value inside
+        /// the loop, so a run containing the largest values never closed and its length was silently
+        /// dropped: for this fixture the buggy code returned ties[6] = 0 instead of 2, while the rank
+        /// averaging itself was already correct. Hand-computed oracle: sorted data are
+        /// {1, 2, 3, 3, 5, 5, 5}; the {3, 3} run closes at sorted position 3 with length - 1 = 1, and
+        /// the trailing {5, 5, 5} run ends at sorted position 6 with length - 1 = 2.
+        /// </remarks>
+        [TestMethod]
+        public void Test_RanksInPlace_Ties_TrailingRunIsRecorded()
+        {
+            var data = new double[] { 1.0, 3.0, 3.0, 2.0, 5.0, 5.0, 5.0 };
+            var ranks = Numerics.Data.Statistics.Statistics.RanksInPlace(data, out var ties);
+
+            var validRanks = new double[] { 1.0, 3.5, 3.5, 2.0, 6.0, 6.0, 6.0 };
+            for (int i = 0; i < validRanks.Length; i++)
+            {
+                Assert.AreEqual(validRanks[i], ranks[i]);
+            }
+
+            var validTies = new double[] { 0, 0, 0, 1, 0, 0, 2 };
+            for (int i = 0; i < validTies.Length; i++)
+            {
+                Assert.AreEqual(validTies[i], ties[i]);
             }
         }
 
