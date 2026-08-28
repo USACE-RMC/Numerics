@@ -3,7 +3,7 @@ message: "If you use this software, please cite our article in the Journal of Op
 type: software
 title: "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, and Risk Assessment"
 version: "2.2.0"
-date-released: "2026-08-27"
+date-released: "2026-08-28"
 license: 0BSD
 repository-code: "https://github.com/USACE-RMC/Numerics"
 url: "https://github.com/USACE-RMC/Numerics"

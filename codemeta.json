@@ -6,7 +6,7 @@
   "description": "A free and open-source .NET library providing numerical methods, probability distributions, statistical analysis, and Bayesian inference tools for quantitative risk assessment in water resources engineering.",
   "version": "2.2.0",
   "dateCreated": "2023-09-28",
-  "dateModified": "2026-08-27",
+  "dateModified": "2026-08-28",
   "license": "https://spdx.org/licenses/0BSD",
   "codeRepository": "https://github.com/USACE-RMC/Numerics",
   "issueTracker": "https://github.com/USACE-RMC/Numerics/issues",
