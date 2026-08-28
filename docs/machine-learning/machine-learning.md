@@ -1,6 +1,6 @@
-# Machine Learning
+﻿# Machine Learning
 
-[← Previous: Multivariate Distributions](../distributions/multivariate.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
+[← Previous: Univariate Functions](../functions/index.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
 
 The ***Numerics*** library provides machine learning algorithms for both supervised and unsupervised learning tasks. These implementations are designed for engineering and scientific applications including classification, regression, and clustering.
 
@@ -1029,4 +1029,4 @@ Console.WriteLine($"  KNN (k=3): {(double)knnCorrect / y_test.Length:P1}");
 
 ---
 
-[← Previous: Multivariate Distributions](../distributions/multivariate.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)
+[← Previous: Univariate Functions](../functions/index.md) | [Back to Index](../index.md) | [Next: Random Generation →](../sampling/random-generation.md)

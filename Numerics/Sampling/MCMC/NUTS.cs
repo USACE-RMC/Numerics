@@ -1042,8 +1042,9 @@ namespace Numerics.Sampling.MCMC
                     largestWindowVariance = variance;
             }
 
-            // Bound the metric's condition number against the window's own scale. When no coordinate
-            // produced a usable variance there is no such scale, and the floor is inert.
+            // Floor every retained variance at 1e-12 of the largest measured window variance, so the
+            // ratio of measured variances is bounded; fallback values sit outside that ratio. When no
+            // coordinate produced a usable variance there is no such scale, and the floor is inert.
             double varianceFloor = largestWindowVariance * RELATIVE_VARIANCE_FLOOR;
             for (int j = 0; j < NumberOfParameters; j++)
             {

@@ -1343,12 +1343,13 @@ namespace Numerics.Distributions
         #region Cumulative Distribution Support
 
         /// <summary>
-        /// Computes the bivariate normal CDF.
+        /// Computes the bivariate normal upper-orthant probability P(X ≥ ah, Y ≥ ak) for standard
+        /// normal variates X and Y with correlation r.
         /// </summary>
-        /// <param name="ah">Upper limit for variable X.</param>
-        /// <param name="ak">Upper limit for variable Y.</param>
+        /// <param name="ah">The lower limit of integration for variable X.</param>
+        /// <param name="ak">The lower limit of integration for variable Y.</param>
         /// <param name="r">The correlation coefficient.</param>
-        /// <returns>The bivariate normal CDF value.</returns>
+        /// <returns>The probability that X ≥ ah and Y ≥ ak.</returns>
         /// <remarks>
         /// Original FORTRAN77 version by Thomas Donnelly (ACM Algorithm 462); adapted from the
         /// MIT-licensed C++ version by John Burkardt.

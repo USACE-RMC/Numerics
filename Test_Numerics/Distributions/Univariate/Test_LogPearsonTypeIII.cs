@@ -387,8 +387,8 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// See the matching LogNormal test: the location parameter is the mean of the
-        /// log10-transformed data, negative whenever the data are mostly below 1, and the former
-        /// machine-epsilon lower bound rejected any such sample before a fit could start.
+        /// log10-transformed data, negative whenever the data are mostly below 1; a machine-epsilon
+        /// lower bound would reject any such sample before a fit could start.
         /// </remarks>
         [TestMethod]
         public void Test_LP3_ParameterConstraints_AllowNegativeLogMean()

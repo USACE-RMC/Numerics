@@ -113,7 +113,7 @@ namespace Distributions.Univariate
         /// normalization and continuity tests.
         /// </summary>
         [TestMethod]
-        public void Test_K4_ZeroKappa_PDFMatchesAnalyticalDerivative()
+        public void Test_K4_ZeroKappa_PDFMatchesClosedForm()
         {
             const double xi = 2.5d;
             const double alpha = 1.75d;

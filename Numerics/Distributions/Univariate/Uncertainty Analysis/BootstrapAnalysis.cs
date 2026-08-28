@@ -635,8 +635,10 @@ namespace Numerics.Distributions
         /// below one when every replicate falls at or below the estimate. When every replicate exceeds
         /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
         /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
-        /// −38.5; the BCa expression stays defined, the adjusted probability underflows to zero, and
-        /// the limits collapse to the smallest replicate.
+        /// −38.5. The BCa expression stays defined; for small accelerations the adjusted probability
+        /// underflows to zero and the limits collapse to the smallest replicate, while an acceleration
+        /// negative enough to flip the denominator's sign (below about −0.026 at that floor) drives the
+        /// adjusted probability toward one instead.
         /// </remarks>
         public double[,] BCaQuantileCI(IList<double> sampleData, IList<double> probabilities, double alpha = 0.1)
         {

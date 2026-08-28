@@ -281,12 +281,12 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// The location parameter is the mean of the log10-transformed data, which is legitimately
-        /// negative whenever the data are mostly below 1. The former constraints floored the lower
-        /// bound at machine epsilon and collapsed the upper bound toward ceil(mu + 1), so a sub-unity
-        /// sample produced an initial value below its own lower bound (and, for mu at or below -1,
-        /// an inverted lower/upper pair) and every downstream consumer reported the inputs invalid.
-        /// The bounds are now symmetric about zero from the magnitude of the initial value, matching
-        /// the Normal distribution's location bounds.
+        /// negative whenever the data are mostly below 1. Flooring the lower bound at machine
+        /// epsilon with an upper bound near ceil(mu + 1) would put a sub-unity sample's initial
+        /// value below its own lower bound (and invert the pair for mu at or below -1), so every
+        /// downstream consumer would report the inputs invalid. The bounds are symmetric about zero
+        /// from the magnitude of the initial value, matching the Normal distribution's location
+        /// bounds.
         /// </remarks>
         [TestMethod]
         public void Test_LogNormal_ParameterConstraints_AllowNegativeLogMean()

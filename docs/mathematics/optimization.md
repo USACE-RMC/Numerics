@@ -525,7 +525,7 @@ for (int t = 0; t < timeSteps; t++)
 }
 
 // Detour routing around blocked segments, splicing onto the precomputed table when possible.
-List<int> detour = network.GetPath(blockedEdgeIndices, agentNodeIndex, table);
+var detour = network.GetPath(blockedEdgeIndices, agentNodeIndex, table);
 ```
 
 `Network.GetPath` finds the cheapest route to the nearest destination that avoids every edge

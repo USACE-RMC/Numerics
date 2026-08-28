@@ -1,6 +1,6 @@
 ﻿# Univariate Functions
 
-[Back to Index](../index.md)
+[← Previous: Multivariate Distributions](../distributions/multivariate.md) | [Back to Index](../index.md) | [Next: Machine Learning →](../machine-learning/machine-learning.md)
 
 The `Numerics.Functions` namespace provides the uncertain-function toolkit: univariate
 functional forms with optional stochastic residuals, sampled by confidence level, plus
@@ -97,3 +97,7 @@ IUnivariateFunction pDraw = ensemble.Sample(0.37);        // min(⌊u·N⌋, N �
 The sibling `Link Functions` family (`ILinkFunction`: identity, log, logit, probit,
 complementary log-log, Fisher-z, Yeo-Johnson) serves regression and machine-learning
 transformations and has its own factory, `LinkFunctionFactory`.
+
+---
+
+[← Previous: Multivariate Distributions](../distributions/multivariate.md) | [Back to Index](../index.md) | [Next: Machine Learning →](../machine-learning/machine-learning.md)

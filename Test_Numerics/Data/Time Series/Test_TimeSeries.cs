@@ -672,9 +672,9 @@ namespace Data.TimeSeriesAnalysis
         public void Test_PeaksOverThreshold_MovingSum_NaN()
         {
             // One legitimate 2-day exceedance (5 + 6 = 11). The trailing 8.0 sits at the very end
-            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0].
-            // Pre-fix: [NaN, 8.0] silently became 8.0 -> spurious extra event above threshold 7.
-            // Post-fix: that window is NaN -> excluded. Only [5, 6] = 11 remains.
+            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0] —
+            // a NaN window carries no event, so nothing above threshold 7 may come from it and
+            // only [5, 6] = 11 remains.
             var values = new double[] { 0.1, 0.2, 5.0, 6.0, 0.1, 0.0, 0.1, 0.2, 0.0, double.NaN, 8.0 };
             var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), values);
 
@@ -1487,8 +1487,9 @@ namespace Data.TimeSeriesAnalysis
             }
             double avgLag1 = sumLag1 / trials;
 
-            // Post-fix: avgLag1 should be > 0.4 (close to phiTrue=0.7, allow shrinkage).
-            // Pre-fix: avgLag1 is dominated by KNN-neighbor random walk near a fixed point, NOT phi.
+            // The resampler must recover the AR(1) persistence: avgLag1 above 0.4 (near
+            // phiTrue = 0.7 with shrinkage), not the near-zero autocorrelation of a
+            // KNN-neighbor random walk about a fixed point.
             Assert.IsTrue(avgLag1 > 0.4 && avgLag1 < 0.95,
                 $"KNN should recover lag-1 autocorrelation in the AR(1) regime; expected ~{phiTrue}, got {avgLag1:F3}.");
         }
@@ -1612,9 +1613,9 @@ namespace Data.TimeSeriesAnalysis
         /// Clear should empty the series and raise a single reset event.
         /// </summary>
         /// <remarks>
-        /// Clear used to remove elements one at a time, costing two full equality scans per
-        /// element (O(n²) on large downloads). This locks in the single-reset contract of the
-        /// rewritten implementation.
+        /// Clearing must raise a single Reset rather than per-element notifications;
+        /// element-by-element removal costs two full equality scans per element
+        /// (O(n²) on large downloads).
         /// </remarks>
         [TestMethod]
         public void Test_Clear_EmptiesSeriesAndRaisesSingleReset()
@@ -1634,8 +1635,8 @@ namespace Data.TimeSeriesAnalysis
         /// Clearing a large series should complete quickly.
         /// </summary>
         /// <remarks>
-        /// Guards against reintroducing the element-by-element removal that made clearing a
-        /// century of daily data take seconds to minutes.
+        /// Clearing a century of daily data must complete immediately; element-by-element
+        /// removal takes seconds to minutes at this size.
         /// </remarks>
         [TestMethod]
         [Timeout(5000, CooperativeCancellation = true)]
@@ -1653,8 +1654,8 @@ namespace Data.TimeSeriesAnalysis
         /// ordinate appears earlier in the series.
         /// </summary>
         /// <remarks>
-        /// RemoveAt used to delegate to Remove(item), which removed the first equal element, so
-        /// removing a duplicate by index silently deleted the wrong ordinate.
+        /// RemoveAt must remove by position: delegating to Remove(item) removes the first equal
+        /// element, silently deleting the wrong ordinate when duplicates exist.
         /// </remarks>
         [TestMethod]
         public void Test_RemoveAt_WithDuplicateOrdinates_RemovesRequestedIndex()
