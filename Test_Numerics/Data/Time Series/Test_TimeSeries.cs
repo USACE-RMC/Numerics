@@ -228,6 +228,56 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// Verifies that the indexed log transform skips out-of-range indexes like its sibling overloads.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogTransform_Indexed_SkipsOutOfRangeIndexes()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 10, 100, 1000 });
+            ts.LogTransform(new[] { 1, 7, -1 });
+            Assert.AreEqual(10d, ts[0].Value, 1E-6);
+            Assert.AreEqual(2d, ts[1].Value, 1E-6);
+            Assert.AreEqual(1000d, ts[2].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed log transform still marks in-range non-positive values as missing.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogTransform_Indexed_MarksNonPositiveInRangeValuesMissing()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { -5, 100, 1000 });
+            ts.LogTransform(new[] { 0, 1 });
+            Assert.IsTrue(double.IsNaN(ts[0].Value));
+            Assert.AreEqual(2d, ts[1].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed inverse skips out-of-range indexes like its sibling overloads.
+        /// </summary>
+        [TestMethod]
+        public void Test_Inverse_Indexed_SkipsOutOfRangeIndexes()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 2, 4, 8 });
+            ts.Inverse(new[] { 0, 5, -2 });
+            Assert.AreEqual(0.5, ts[0].Value, 1E-6);
+            Assert.AreEqual(4d, ts[1].Value, 1E-6);
+            Assert.AreEqual(8d, ts[2].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed inverse still marks in-range zero and missing values as missing.
+        /// </summary>
+        [TestMethod]
+        public void Test_Inverse_Indexed_MarksZeroInRangeValuesMissing()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 0, 4, 8 });
+            ts.Inverse(new[] { 0, 2 });
+            Assert.IsTrue(double.IsNaN(ts[0].Value));
+            Assert.AreEqual(0.125, ts[2].Value, 1E-6);
+        }
+
+        /// <summary>
         /// Test the CumulativeSum method
         /// </summary>
         [TestMethod]
@@ -241,6 +291,17 @@ namespace Data.TimeSeriesAnalysis
             var newTS = ts.CumulativeSum();
             Equal(newTS, values);
 
+        }
+
+        /// <summary>
+        /// Verifies that the cumulative sum preserves the source series' time interval.
+        /// </summary>
+        [TestMethod]
+        public void Test_Cumulative_PreservesTimeInterval()
+        {
+            var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), new double[] { 22, 16, 33, 5, 12, 36, 48, 10, 18, 15, 22, 13 });
+            var newTS = ts.CumulativeSum();
+            Assert.AreEqual(ts.TimeInterval, newTS.TimeInterval);
         }
 
         /// <summary>
@@ -285,6 +346,22 @@ namespace Data.TimeSeriesAnalysis
             Assert.AreEqual(0, missing);
             Assert.AreEqual(11.9, ts[10].Value, 1E-6);
             Assert.AreEqual(8.9, ts[11].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed interpolation matches its non-indexed twin at the series start instead of reading before the first ordinate.
+        /// </summary>
+        [TestMethod]
+        public void Test_InterpolateMissingData_Indexed_MatchesTwinAtSeriesStart()
+        {
+            var indexed = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1, double.NaN, double.NaN });
+            var plain = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1, double.NaN, double.NaN });
+            indexed.InterpolateMissingData(1, new[] { 1 });
+            plain.InterpolateMissingData(1);
+            for (int i = 0; i < plain.Count; i++)
+            {
+                Assert.AreEqual(plain[i].Value, indexed[i].Value);
+            }
         }
 
         /// <summary>

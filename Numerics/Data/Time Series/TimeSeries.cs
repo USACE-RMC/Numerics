@@ -407,12 +407,14 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the calculation to.</param>
         /// <param name="baseValue">The log base value.</param>
+        /// <remarks>Out-of-range indexes are skipped.</remarks>
         public void LogTransform(IList<int> indexes, double baseValue = 10)
         {
             SuppressCollectionChanged = true;
             for (int i = 0; i < indexes.Count; i++)
             {
-                if (indexes[i] >= 0 && indexes[i] < Count && this[indexes[i]].Value > 0 && (!double.IsNaN(this[indexes[i]].Value))) { this[indexes[i]].Value = Math.Log(this[indexes[i]].Value, baseValue); }
+                if (indexes[i] < 0 || indexes[i] >= Count) { continue; }
+                if (this[indexes[i]].Value > 0 && (!double.IsNaN(this[indexes[i]].Value))) { this[indexes[i]].Value = Math.Log(this[indexes[i]].Value, baseValue); }
                 else { this[indexes[i]].Value = double.NaN; }
             }
             SuppressCollectionChanged = false;
@@ -456,15 +458,17 @@ namespace Numerics.Data
 
         /// <summary>
         /// Specified values in the time-series are replaced by their inverse (1/x). Missing values are kept as missing. If the value is 0.0, the value is set to Double.NaN.
-        /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the inverse calculation to.</param>
         /// </summary>
+        /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the inverse calculation to.</param>
+        /// <remarks>Out-of-range indexes are skipped.</remarks>
         public void Inverse(IList<int> indexes)
         {
             SuppressCollectionChanged = true;
             for (int i = 0; i < indexes.Count; i++)
             {
-                if (indexes[i] >= 0 && indexes[i] < Count && this[indexes[i]].Value != 0 && !double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = 1d / this[indexes[i]].Value; }
-                else if (this[indexes[i]].Value == 0 || double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = double.NaN; }
+                if (indexes[i] < 0 || indexes[i] >= Count) { continue; }
+                if (this[indexes[i]].Value != 0 && !double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = 1d / this[indexes[i]].Value; }
+                else { this[indexes[i]].Value = double.NaN; }
             }
             SuppressCollectionChanged = false;
             RaiseCollectionChangedReset();
@@ -475,7 +479,7 @@ namespace Numerics.Data
         /// </summary>
         public TimeSeries CumulativeSum()
         {
-            var timeSeries = new TimeSeries();
+            var timeSeries = new TimeSeries(TimeInterval);
             double sum = 0d;
             for (int i = 0; i < Count; i++)
             {
@@ -650,7 +654,7 @@ namespace Numerics.Data
                             break;
                         }
                         // the extrapolation case
-                        if (j == Count - 1)
+                        if (j == Count - 1 && idx >= 2)
                         {
                             x1 = this[idx - 2].Index.ToOADate();
                             x2 = this[idx - 1].Index.ToOADate();
