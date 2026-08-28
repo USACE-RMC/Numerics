@@ -104,16 +104,12 @@ namespace Numerics.Mathematics.Optimization
         {
             int D = NumberOfParameters;
             double EPS = Tools.DoubleMachineEpsilon;
-            // TOLX matches Numerical Recipes' dfpmin but is not consumed here: dfpmin's outer
-            // parameter-change exit, which stops when the largest relative parameter step falls below
-            // TOLX, is not implemented. Convergence is decided solely by CheckConvergence's relative
-            // function-change test, so a run whose parameters stagnate while the function value still
-            // moves iterates to MaxIterations. Implementing the exit would change the points the global
-            // searches report: MultiStart and MLSL share their evaluation budget with the local runs
-            // they launch, and the additional iterations act as extra sampling for their best-point
-            // tracking. (The TOLX local in LineSearchArmijo is dfpmin's unrelated inner step-size
-            // floor, and that routine is not called by Optimize, which uses the strong Wolfe
-            // LineSearch.)
+            // TOLX is Numerical Recipes' dfpmin outer parameter-change tolerance: the loop below exits
+            // when the largest relative parameter step falls below it, so a line search that returns
+            // the starting point (a stagnated warm start) terminates immediately instead of repeating
+            // the identical non-progressing iteration until MaxIterations. (The TOLX local in
+            // LineSearchArmijo is dfpmin's unrelated inner step-size floor, and that routine is not
+            // called by Optimize, which uses the strong Wolfe LineSearch.)
             double TOLX = 4 * EPS, STPMX = 100.0;
             bool cancel = false, check = false;
 
@@ -155,7 +151,7 @@ namespace Numerics.Mathematics.Optimization
                 }
 
                 // The new function evaluation occurs in line search; save the function value in fp for the next line search.
-                // It is usually safe to ignore the value of check. 
+                // It is usually safe to ignore the value of check.
                 fp = fret;
                 for (int i = 0; i < D; i++)
                 {
@@ -163,7 +159,23 @@ namespace Numerics.Mathematics.Optimization
                     p[i] = pnew[i];
                 }
 
-                // Save the old gradient, and get the new gradient. 
+                // Numerical Recipes dfpmin: exit when the largest relative parameter step falls below
+                // TOLX. Without this test a stalled line search leaves xi and dg at zero, the inverse
+                // Hessian update is skipped, the search direction never changes, and the loop repeats
+                // the identical iteration until the evaluation budget is exhausted.
+                double test = 0.0;
+                for (int i = 0; i < D; i++)
+                {
+                    double temp = Math.Abs(xi[i]) / Math.Max(Math.Abs(p[i]), 1.0);
+                    if (temp > test) test = temp;
+                }
+                if (test < TOLX)
+                {
+                    UpdateStatus(OptimizationStatus.Success);
+                    return;
+                }
+
+                // Save the old gradient, and get the new gradient.
                 for (int i = 0; i < D; i++) 
                     dg[i] = g[i];
                 g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p, LowerBounds, UpperBounds);
