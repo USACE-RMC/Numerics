@@ -1243,6 +1243,7 @@ namespace Numerics.Data.Statistics
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <returns>An array of exclusive probabilities for all possible combinations of the events, assuming independence.</returns>
         /// <exception cref="ArgumentException">Thrown if the probabilities array is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the number of event combinations exceeds the signed 32-bit array limit.</exception>
         public static double[] IndependentExclusive(IList<double> probabilities)
         {
             // Validation Checks
@@ -1250,6 +1251,8 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
 
             int n = probabilities.Count;
+            if (n >= 31)
+                throw new ArgumentOutOfRangeException(nameof(probabilities), "The event count is too large; the number of combinations exceeds the signed 32-bit array limit.");
             int f = (int)Math.Pow(2, n) - 1; // Number of non-empty subsets
             var result = new double[f];
             int t = 0;
@@ -1709,6 +1712,7 @@ namespace Numerics.Data.Statistics
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <returns>An array of exclusive probabilities for each event combination, assuming perfect positive dependence.</returns>
         /// <exception cref="ArgumentException">Thrown if the probabilities array is null, empty, or if any event combination is not valid.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the number of event combinations exceeds the signed 32-bit array limit.</exception>
         public static double[] PositivelyDependentExclusive(IList<double> probabilities)
         {
             // Validation Checks
@@ -1716,6 +1720,8 @@ namespace Numerics.Data.Statistics
                 throw new ArgumentException("The probabilities array must have a length greater than 0.", nameof(probabilities));
 
             int n = probabilities.Count;
+            if (n >= 31)
+                throw new ArgumentOutOfRangeException(nameof(probabilities), "The event count is too large; the number of combinations exceeds the signed 32-bit array limit.");
             int f = (int)Math.Pow(2, n) - 1;
             var result = new double[f];
             int t = 0;

@@ -333,6 +333,58 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Verifies dense convenience methods reject dimensions whose combination count exceeds
+        /// the signed 32-bit array limit before attempting exponential allocation or recursion.
+        /// </summary>
+        [TestMethod]
+        public void Test_DenseExclusiveConvenienceMethods_RejectInt32OverflowDimension()
+        {
+            var probabilities = new double[31];
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => Probability.IndependentExclusive(probabilities));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => Probability.PositivelyDependentExclusive(probabilities));
+        }
+
+        /// <summary>
+        /// Verifies PCM enumeration remains convergence-driven beyond the dense matrix limit and
+        /// returns only finite probabilities without imposing a combination cap.
+        /// </summary>
+        [TestMethod]
+        public void Test_LazyPCM_BeyondDenseDimensionLimit_ConvergesToProbabilities()
+        {
+            const int dimension = 32;
+            var probabilities = new double[dimension];
+            for (int i = 0; i < dimension; i++) probabilities[i] = 5E-6d + i * 1E-8d;
+            double[,] correlation = CorrelationMatrix(dimension, 0.1d);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => Factorial.AllCombinations(dimension));
+
+            double union = Probability.UnionPCMLazy(
+                probabilities, correlation, out var unionStatus);
+            Assert.AreEqual(Probability.ExclusiveEnumerationStatus.Converged, unionStatus);
+            Assert.IsTrue(!double.IsNaN(union) && !double.IsInfinity(union) &&
+                union >= 0d && union <= 1d, $"UnionPCM returned {union:R}.");
+
+            var eventProbabilities = new List<double>();
+            var eventIndicators = new List<int[]>();
+            var exclusiveStatus = Probability.ExclusivePCMLazy(
+                probabilities, correlation, eventProbabilities, eventIndicators);
+
+            Assert.AreEqual(Probability.ExclusiveEnumerationStatus.Converged, exclusiveStatus);
+            Assert.HasCount(eventProbabilities.Count, eventIndicators);
+            Assert.IsLessThan((double)int.MaxValue, eventProbabilities.Count);
+            foreach (double probability in eventProbabilities)
+            {
+                Assert.IsTrue(!double.IsNaN(probability) && !double.IsInfinity(probability) &&
+                    probability >= 0d && probability <= 1d,
+                    $"ExclusivePCM returned {probability:R}.");
+            }
+        }
+
+        /// <summary>
         /// Pins every new lazy API's default convergence tolerances at 1E-4.
         /// </summary>
         [TestMethod]
