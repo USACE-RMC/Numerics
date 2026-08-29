@@ -124,6 +124,22 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// A constant whose relative automatic bandwidth is subnormal uses the absolute
+        /// degenerate fallback, avoiding an infinite density caused by reciprocal overflow.
+        /// </summary>
+        [TestMethod]
+        public void ConstantWithSubnormalDerivedBandwidth_UsesAbsoluteDegenerateBandwidth()
+        {
+            double[] constantSample = { 1E-300, 1E-300, 1E-300, 1E-300 };
+
+            var distribution = new KernelDensity(constantSample);
+
+            Assert.AreEqual(KernelDensity.DegenerateAbsoluteBandwidth, distribution.Bandwidth, 0d);
+            Assert.IsTrue(Tools.IsFinite(distribution.PDF(1E-300)));
+            Assert.IsGreaterThan(0d, distribution.PDF(1E-300));
+        }
+
+        /// <summary>
         /// Verifies that a weighted constant sample yields the near-point-mass bandwidth from the
         /// constant's magnitude, independent of the weights.
         /// </summary>
@@ -149,6 +165,18 @@ namespace Distributions.Univariate
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 new KernelDensity(new[] { -1d, 0d, 1d }, KernelDensity.KernelType.Gaussian, 0d));
+        }
+
+        /// <summary>
+        /// The automatic-bandwidth floor does not alter a positive explicit bandwidth.
+        /// </summary>
+        [TestMethod]
+        public void ExplicitSubnormalBandwidth_RemainsAsSupplied()
+        {
+            var distribution = new KernelDensity(
+                new[] { -1d, 0d, 1d }, KernelDensity.KernelType.Gaussian, double.Epsilon);
+
+            Assert.AreEqual(double.Epsilon, distribution.Bandwidth, 0d);
         }
 
         /// <summary>

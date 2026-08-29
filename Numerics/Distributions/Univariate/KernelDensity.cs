@@ -568,9 +568,15 @@ namespace Numerics.Distributions
 
         /// <summary>
         /// The absolute bandwidth assigned when a zero-dispersion sample supplies no usable
-        /// magnitude (an all-zero or subnormal constant).
+        /// magnitude, or its relative automatic bandwidth would be subnormal.
         /// </summary>
         public const double DegenerateAbsoluteBandwidth = 1E-9;
+
+        /// <summary>
+        /// The smallest positive normal IEEE 754 double, used only to floor automatically
+        /// derived bandwidths before reciprocal evaluation can overflow.
+        /// </summary>
+        private const double SmallestNormalBandwidth = 2.2250738585072014E-308;
 
         /// <summary>
         /// Produces a finite, strictly positive automatic bandwidth when the sample dispersion is zero or non-finite.
@@ -584,10 +590,11 @@ namespace Numerics.Distributions
         /// supports no spread estimate, so the density must not invent one from the constant's
         /// magnitude: the bandwidth is the magnitude times <see cref="DegenerateRelativeBandwidth"/>,
         /// a near-point mass at the observed value, falling back to
-        /// <see cref="DegenerateAbsoluteBandwidth"/> when the constant is zero or so small the product
-        /// underflows. A non-finite dispersion on a genuinely spread sample arises only from variance
-        /// overflow; the largest absolute observation then supplies the scale for the standard
-        /// bandwidth rule, with guards against overflow and underflow.
+        /// <see cref="DegenerateAbsoluteBandwidth"/> when the constant is zero or the derived
+        /// relative bandwidth is subnormal or non-finite. A non-finite dispersion on a genuinely
+        /// spread sample arises only from variance overflow; the largest absolute observation then
+        /// supplies the scale for the standard bandwidth rule, with guards against overflow and
+        /// underflow.
         /// </remarks>
         private static double EnsurePositiveBandwidth(double dispersion, double factor, IList<double> sample)
         {
@@ -607,7 +614,9 @@ namespace Numerics.Distributions
                 {
                     double magnitude = Math.Abs(sample[0]);
                     double degenerate = magnitude * DegenerateRelativeBandwidth;
-                    return degenerate > 0d && Tools.IsFinite(degenerate) ? degenerate : DegenerateAbsoluteBandwidth;
+                    return degenerate >= SmallestNormalBandwidth && Tools.IsFinite(degenerate)
+                        ? degenerate
+                        : DegenerateAbsoluteBandwidth;
                 }
             }
 
