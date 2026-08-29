@@ -160,6 +160,25 @@ namespace Data.PairedData
         }
 
         /// <summary>
+        /// An empty collection is valid immediately after construction, so its first valid add or
+        /// insert preserves a usable collection state.
+        /// </summary>
+        [TestMethod]
+        public void Test_EmptyConstructor_InitializesValidCollection()
+        {
+            var added = new OrderedPairedData(false, SortOrder.Ascending, false, SortOrder.Ascending);
+            Assert.IsTrue(added.IsValid);
+            Assert.AreEqual(0, added.Count);
+
+            added.Add(new Ordinate(1d, 10d));
+            Assert.IsTrue(added.IsValid);
+
+            var inserted = new OrderedPairedData(false, SortOrder.Ascending, false, SortOrder.Ascending);
+            inserted.Insert(0, new Ordinate(1d, 10d));
+            Assert.IsTrue(inserted.IsValid);
+        }
+
+        /// <summary>
         /// Test the various OrderedPairedData object indexing and manipulation methods
         /// </summary>
         [TestMethod]

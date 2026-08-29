@@ -215,6 +215,7 @@ namespace Numerics.Data
             StrictY = strictOnY;
             OrderX = xOrder;
             OrderY = yOrder;
+            Validate();
         }
 
         /// <summary>
