@@ -73,6 +73,30 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Test that a probability ladder explicitly configured without a sort order serializes
+        /// and restores that order rather than inferring one from its endpoints.
+        /// </summary>
+        [TestMethod]
+        public void Test_EmpiricalDistribution_NoneProbabilityOrder_RoundTrip()
+        {
+            var original = new EmpiricalDistribution(
+                new[] { 1d, 2d, 3d },
+                new[] { 0.1d, 0.9d, 0.4d },
+                SortOrder.Ascending,
+                SortOrder.None);
+
+            XElement element = original.ToXElement();
+            Assert.AreEqual(nameof(SortOrder.None),
+                element.Attribute(nameof(EmpiricalDistribution.ProbabilityOrder))?.Value);
+
+            var restored = EmpiricalDistribution.FromXElement(element);
+            Assert.AreEqual(SortOrder.None, restored.ProbabilityOrder);
+            Assert.HasCount(original.ProbabilityValues.Count, restored.ProbabilityValues);
+            for (int i = 0; i < original.ProbabilityValues.Count; i++)
+                Assert.AreEqual(original.ProbabilityValues[i], restored.ProbabilityValues[i], 0d);
+        }
+
+        /// <summary>
         /// Test the kernel density round-trip: the sample, kernel type, bandwidth, transforms,
         /// and the optional per-sample weights restore exactly, through both the direct
         /// FromXElement and the distribution factory.
@@ -114,7 +138,7 @@ namespace Distributions.Univariate
         {
             var empirical = new EmpiricalDistribution(new[] { 1d, 2d }, new[] { 0d, 1d });
             XElement invalidOrder = empirical.ToXElement();
-            invalidOrder.SetAttributeValue("ProbabilityOrder", "999");
+            invalidOrder.SetAttributeValue(nameof(EmpiricalDistribution.ProbabilityOrder), "999");
             Assert.Throws<ArgumentException>(() => UnivariateDistributionFactory.CreateDistribution(invalidOrder));
 
             XElement invalidTransform = empirical.ToXElement();

@@ -888,12 +888,9 @@ namespace Numerics.Distributions
             result.SetAttributeValue(nameof(XValues), string.Join("|", xValues));
             result.SetAttributeValue(nameof(ProbabilityValues), string.Join("|", pValues));
 
-            // The stored probability ladder may run ascending (non-exceedance) or descending
-            // (exceedance); record the order so deserialization restores the same convention.
-            var order = SortOrder.Ascending;
-            if (ProbabilityValues.Count > 1 && ProbabilityValues[0] > ProbabilityValues[ProbabilityValues.Count - 1])
-                order = SortOrder.Descending;
-            result.SetAttributeValue("ProbabilityOrder", order.ToString());
+            // Preserve the configured order, including None for ladders that intentionally use
+            // linear search rather than a monotonic smart-search contract.
+            result.SetAttributeValue(nameof(ProbabilityOrder), ProbabilityOrder.ToString());
             return result;
         }
 
@@ -929,11 +926,10 @@ namespace Numerics.Distributions
                     throw new ArgumentException("The serialized empirical distribution contains an invalid table value.", nameof(xElement));
             }
 
-            var orderAttribute = xElement.Attribute("ProbabilityOrder");
+            var orderAttribute = xElement.Attribute(nameof(ProbabilityOrder));
             if (orderAttribute == null
                 || !Enum.TryParse(orderAttribute.Value, out SortOrder order)
-                || !Enum.IsDefined(typeof(SortOrder), order)
-                || (order != SortOrder.Ascending && order != SortOrder.Descending))
+                || !Enum.IsDefined(typeof(SortOrder), order))
                 throw new ArgumentException("The serialized empirical distribution has an invalid probability order.", nameof(xElement));
 
             var distribution = new EmpiricalDistribution(xValues, pValues, SortOrder.Ascending, order);
