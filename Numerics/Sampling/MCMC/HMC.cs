@@ -183,7 +183,7 @@ namespace Numerics.Sampling.MCMC
         protected override void ValidateCustomSettings()
         {
             if (Mass.Length != NumberOfParameters) throw new ArgumentException("The mass vector must be the same length as the number of parameters.", nameof(Mass));
-            if (StepSize < 0) throw new ArgumentException("The leapfrog step size must be positive.", nameof(StepSize));
+            if (StepSize <= 0) throw new ArgumentException("The leapfrog step size must be positive.", nameof(StepSize));
             if (Steps < 1) throw new ArgumentException("The number of leapfrog steps must be at least one.", nameof(Steps));
         }
 
