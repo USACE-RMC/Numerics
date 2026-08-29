@@ -349,10 +349,10 @@ namespace Numerics.Utilities
         /// </para>
         /// </remarks>
         public void ResetCancel()    
-        { 
-            _cancellationTokenSource = new CancellationTokenSource();
+        {
             lock (_subProgReporterLock)
             {
+                _cancellationTokenSource = new CancellationTokenSource();
                 foreach (var subProg in _subProgReporterCollection)
                 {
                     subProg._cancellationTokenSource = _cancellationTokenSource;
@@ -379,9 +379,9 @@ namespace Numerics.Utilities
             child._previousProgress = 0d;
             child.ProgressReported += (reporter, prog, progDelta) => ReportProgress(_previousProgress + progDelta * fractionOfTotal);
             child.MessageReported += msg => ReportMessage(msg);
-            child._cancellationTokenSource = _cancellationTokenSource;
             lock (_subProgReporterLock)
             {
+                child._cancellationTokenSource = _cancellationTokenSource;
                 _subProgReporterCollection.Add(child);
             }
             var invokeChildCreatedHandlers = new SendOrPostCallback(state => ChildReporterCreated?.Invoke(child));

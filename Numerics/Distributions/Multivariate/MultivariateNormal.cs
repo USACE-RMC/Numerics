@@ -195,8 +195,9 @@ namespace Numerics.Distributions
         /// dimensions carries a small stochastic error and only reproduces when the generator is
         /// seeded. The default is the fixed <see cref="DefaultMVNUNISeed"/>; assign a seeded
         /// generator to tie results to a caller's own seed and to decorrelate the quadrature error
-        /// across instances. Not thread-safe — MVNDST advances the generator, so an instance shared
-        /// across threads must be cloned per thread.
+        /// across instances. Not thread-safe — MVNDST advances the generator, so every concurrently
+        /// evaluated instance must own a distinct generator. <see cref="Clone"/> preserves this
+        /// generator by reference and therefore does not provide that isolation.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the assigned generator is null.</exception>
         public Random MVNUNI
@@ -2850,6 +2851,11 @@ namespace Numerics.Distributions
         /// <summary>
         /// Creates a copy of the distribution.
         /// </summary>
+        /// <remarks>
+        /// Distribution parameters and numerical work arrays are copied, but <see cref="MVNUNI"/>
+        /// is shared by reference. This preserves a caller-supplied random stream across clones;
+        /// callers evaluating clones concurrently must assign a distinct generator to each clone.
+        /// </remarks>
         public override MultivariateDistribution Clone()
         {
             var mvn = new MultivariateNormal()

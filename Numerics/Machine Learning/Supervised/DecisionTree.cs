@@ -348,6 +348,11 @@ namespace Numerics.MachineLearning
         /// Classification splits maximize the information gain of the per-sample entropy, in which
         /// each label's term is weighted by its own empirical probability.
         /// </para>
+        /// <para>
+        /// Rows with equal predictor values retain their order in the current node. Candidate
+        /// thresholds are evaluated in ascending order, so the smallest threshold wins an exact
+        /// within-feature gain tie; the first sampled feature wins an exact cross-feature tie.
+        /// </para>
         /// <para><b> References: </b></para>
         /// <list type="bullet">
         /// <item><description>
@@ -363,6 +368,8 @@ namespace Numerics.MachineLearning
 
             var keys = _keyScratch;
             var vals = _valScratch;
+            var order = _partitionScratch;
+            var sortedVals = _rightAccScratch;
 
             for (int f = 0; f < featureIdxs.Length; f++)
             {
@@ -381,13 +388,26 @@ namespace Numerics.MachineLearning
                     {
                         keys[valid] = key;
                         vals[valid] = Y[indices[i]];
+                        order[valid] = valid;
                         valid++;
                     }
                 }
                 if (valid == 0)
                     continue;
 
-                Array.Sort(keys, vals, 0, valid);
+                Array.Sort(keys, order, 0, valid);
+                int runStart = 0;
+                while (runStart < valid)
+                {
+                    int runEnd = runStart + 1;
+                    while (runEnd < valid && keys[runEnd] == keys[runStart])
+                        runEnd++;
+                    Array.Sort(order, runStart, runEnd - runStart);
+                    runStart = runEnd;
+                }
+                for (int i = 0; i < valid; i++)
+                    sortedVals[i] = vals[order[i]];
+                Array.Copy(sortedVals, vals, valid);
 
                 double performance;
                 double threshold;

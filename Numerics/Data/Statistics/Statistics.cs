@@ -167,6 +167,11 @@ namespace Numerics.Data.Statistics
         /// in thread-scheduler order — the same non-reproducibility — so both are excluded from this
         /// reduction. Samples below the threshold fall through to the sequential
         /// <see cref="Mean(IList{double})"/>.
+        /// For samples at or above the threshold, indexed elements are read concurrently. The
+        /// caller must not mutate <paramref name="data"/> during the call, and custom
+        /// <see cref="IList{T}"/> implementations must support concurrent indexed reads. This
+        /// method owns its internal <see cref="Parallel.For(int, int, Action{int})"/> scheduling;
+        /// parallel options from an outer operation are not inherited.
         /// </remarks>
         public static double ParallelMean(IList<double> data)
         {

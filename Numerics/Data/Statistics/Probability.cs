@@ -591,6 +591,12 @@ namespace Numerics.Data.Statistics
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <param name="indicators">An 2D array of indicators, 0 means the event did not occur, 1 means the event did occur.</param>
         /// <param name="multivariateNormal">The multivariate normal distribution for computing the joint probability.</param>
+        /// <remarks>
+        /// Rows are evaluated serially in indicator order because dimensions above two advance the
+        /// randomized-lattice generator assigned to <paramref name="multivariateNormal"/>. This
+        /// makes a fresh seeded batch reproducible and avoids concurrent access to a shared random
+        /// generator.
+        /// </remarks>
         public static double[] JointProbabilitiesMVN(IList<double> probabilities, int[,] indicators, MultivariateNormal multivariateNormal)
         {
             // Validate input parameters
@@ -603,7 +609,7 @@ namespace Numerics.Data.Statistics
 
             var result = new double[indicators.GetLength(0)];
 
-            Parallel.For(0, indicators.GetLength(0), idx =>
+            for (int idx = 0; idx < indicators.GetLength(0); idx++)
             {
                 if (idx < probabilities.Count)
                 {
@@ -611,9 +617,9 @@ namespace Numerics.Data.Statistics
                 }
                 else
                 {
-                    result[idx] = JointProbabilityMVN(probabilities, indicators.GetRow(idx), (MultivariateNormal)multivariateNormal.Clone());
-                }           
-            });
+                    result[idx] = JointProbabilityMVN(probabilities, indicators.GetRow(idx), multivariateNormal);
+                }
+            }
             return result;
         }
 

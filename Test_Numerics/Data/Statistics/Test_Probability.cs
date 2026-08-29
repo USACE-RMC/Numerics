@@ -85,6 +85,52 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// A seeded MVN batch must consume randomized-lattice draws in indicator-row order and
+        /// reproduce bit for bit from a fresh distribution with the same seed.
+        /// </summary>
+        [TestMethod]
+        public void Test_JointProbabilitiesMVN_SeededBatchUsesIndexOrder()
+        {
+            var probabilities = new[] { 0.2, 0.35, 0.5, 0.65 };
+            var correlation = new double[,]
+            {
+                { 1.0, 0.2, 0.1, 0.05 },
+                { 0.2, 1.0, 0.15, 0.1 },
+                { 0.1, 0.15, 1.0, 0.25 },
+                { 0.05, 0.1, 0.25, 1.0 }
+            };
+            var indicators = new int[128, 4];
+            for (int i = 0; i < indicators.GetLength(0); i++)
+                for (int j = 0; j < indicators.GetLength(1); j++)
+                    indicators[i, j] = 1;
+
+            var expectedMvn = new MultivariateNormal(new double[4], correlation) { MVNUNI = new MersenneTwister(12345) };
+            var expected = new double[indicators.GetLength(0)];
+            for (int i = 0; i < expected.Length; i++)
+            {
+                expected[i] = i < probabilities.Length
+                    ? probabilities[i]
+                    : Probability.JointProbabilityMVN(probabilities, indicators.GetRow(i), expectedMvn);
+            }
+
+            var firstMvn = new MultivariateNormal(new double[4], correlation) { MVNUNI = new MersenneTwister(12345) };
+            var clone = (MultivariateNormal)firstMvn.Clone();
+            Assert.AreSame(firstMvn.MVNUNI, clone.MVNUNI, "Clone must preserve the caller-supplied generator by reference.");
+            var first = Probability.JointProbabilitiesMVN(probabilities, indicators, firstMvn);
+            var secondMvn = new MultivariateNormal(new double[4], correlation) { MVNUNI = new MersenneTwister(12345) };
+            var second = Probability.JointProbabilitiesMVN(probabilities, indicators, secondMvn);
+
+            bool repeats = true;
+            bool usesIndexOrder = true;
+            for (int i = 0; i < expected.Length; i++)
+            {
+                repeats &= BitConverter.DoubleToInt64Bits(first[i]) == BitConverter.DoubleToInt64Bits(second[i]);
+                usesIndexOrder &= BitConverter.DoubleToInt64Bits(first[i]) == BitConverter.DoubleToInt64Bits(expected[i]);
+            }
+            Assert.IsTrue(repeats && usesIndexOrder, $"repeatable={repeats}, indexOrdered={usesIndexOrder}");
+        }
+
+        /// <summary>
         /// Test joint probability of ABCD using assuming independence using the Product of Conditional Marginals (PCM). 
         /// </summary>
         [TestMethod]
