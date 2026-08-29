@@ -396,7 +396,7 @@ namespace Numerics.Mathematics.Optimization
         /// <exception cref="ArgumentNullException">Thrown when the edge indices or table are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the table dimensions are not [<see cref="NodeCount"/>, 3].</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
-        public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
+        public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
         {
             if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
             ValidateResultTable(existingResultsTable);
