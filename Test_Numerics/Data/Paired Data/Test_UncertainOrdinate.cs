@@ -203,14 +203,12 @@ namespace Data.PairedData
         }
 
         /// <summary>
-        /// Verify the equality operator compares X with the same machine-epsilon tolerance as Ordinate.
+        /// Verify the equality operator compares finite X values with the established
+        /// machine-epsilon tolerance and never treats NaN as equal.
         /// </summary>
         /// <remarks>
-        /// The operator used to compare X with exact inequality while Ordinate's operator allows a
-        /// DoubleMachineEpsilon slack and (per its own documented convention) treats a NaN coordinate
-        /// as equal to anything. Before the alignment, an X pair differing by exactly one machine
-        /// epsilon compared unequal here and equal on Ordinate, and a NaN X compared unequal to
-        /// everything. Both classes now share one convention for the same conceptual X coordinate.
+        /// Finite X coordinates retain the epsilon comparison introduced when this type was aligned
+        /// with Ordinate. NaN coordinates are invalid and do not identify any ordinate.
         /// </remarks>
         [TestMethod]
         public void Test_EqualityOperator_XComparisonMatchesOrdinateConvention()
@@ -228,9 +226,12 @@ namespace Data.PairedData
             var far = new UncertainOrdinate(1d, distribution);
             Assert.IsFalse(left == far);
 
-            // Ordinate's documented NaN convention: a NaN coordinate is equal in this test.
+            // An invalid NaN coordinate must not compare equal to a finite coordinate.
             var nan = new UncertainOrdinate(double.NaN, distribution);
-            Assert.IsTrue(nan == left);
+            var otherNan = new UncertainOrdinate(double.NaN, distribution);
+            Assert.IsFalse(nan == left);
+            Assert.IsFalse(left == nan);
+            Assert.IsFalse(nan == otherNan);
         }
     }
 }

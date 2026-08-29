@@ -280,12 +280,15 @@ namespace Numerics.Data
         /// <param name="left">First uncertain ordinate to compare.</param>
         /// <param name="right">Second uncertain ordinate to compare.</param>
         /// <returns>True if two objects are numerically equal; otherwise, False.</returns>
+        /// <remarks>
+        /// Finite X values compare within <see cref="Tools.DoubleMachineEpsilon"/>. An ordinate with
+        /// a NaN X value never compares equal, including to another ordinate whose X value is NaN.
+        /// </remarks>
         public static bool operator ==(UncertainOrdinate left, UncertainOrdinate right)
         {
-            // Match Ordinate's equality convention for the shared X coordinate: allow a machine-epsilon
-            // slack, and (as Ordinate documents for its own operator) a NaN coordinate compares equal
-            // because the rejection test below is false for NaN. The tolerance matches Ordinate's
-            // convention so the two classes agree on the same conceptual coordinate.
+            if (double.IsNaN(left.X) || double.IsNaN(right.X))
+                return false;
+            // Retain the established machine-epsilon comparison for finite X coordinates.
             if (Math.Abs(left.X - right.X) > Tools.DoubleMachineEpsilon)
                 return false;
             if (left.Y is null && right.Y is null)

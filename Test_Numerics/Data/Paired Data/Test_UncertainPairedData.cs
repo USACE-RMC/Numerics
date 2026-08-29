@@ -219,6 +219,25 @@ namespace Data.PairedData
         }
 
         /// <summary>
+        /// A NaN X query must not match or remove a finite ordinate through the collection's
+        /// equality-based membership operations.
+        /// </summary>
+        [TestMethod]
+        public void Test_NaNOrdinate_DoesNotMatchCollectionMember()
+        {
+            var pairedData = new UncertainOrderedPairedData(
+                new[] { 1d }, new UnivariateDistributionBase[] { new Deterministic(1d) },
+                false, SortOrder.Ascending, false, SortOrder.Ascending,
+                UnivariateDistributionType.Deterministic);
+            var nan = new UncertainOrdinate(double.NaN, new Deterministic(1d));
+
+            Assert.AreEqual(-1, pairedData.IndexOf(nan));
+            Assert.IsFalse(pairedData.Contains(nan));
+            Assert.IsFalse(pairedData.Remove(nan));
+            Assert.AreEqual(1, pairedData.Count);
+        }
+
+        /// <summary>
         /// InsertRange validates every newly inserted position against its own neighbors. The old
         /// loop re-tested the constant first insertion index on every pass, so a violation carried
         /// by any later inserted ordinate left the collection reported as valid.
