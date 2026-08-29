@@ -181,6 +181,52 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies bootstrap distributions retain the configured logarithm base.
+        /// </summary>
+        [TestMethod]
+        public void Test_Bootstrap_PreservesBase()
+        {
+            var source = new LogNormal(4.2d, 0.4d) { Base = Math.E };
+
+            var bootstrap = (LogNormal)source.Bootstrap(
+                ParameterEstimationMethod.MethodOfMoments, 40, 12345);
+
+            Assert.AreEqual(source.Base, bootstrap.Base, 0d);
+        }
+
+        /// <summary>
+        /// Equivalent base-10 and natural-log parameterizations produce the same seeded Monte
+        /// Carlo confidence intervals.
+        /// </summary>
+        [TestMethod]
+        public void Test_MonteCarloConfidenceIntervals_PreserveBase()
+        {
+            const double mu10 = 2.0;
+            const double sigma10 = 0.3;
+            var base10 = new LogNormal(mu10, sigma10);
+            var natural = new LogNormal(mu10 * Math.Log(10.0), sigma10 * Math.Log(10.0))
+            {
+                Base = Math.E
+            };
+            double[] quantiles = [0.5, 0.9];
+            double[] percentiles = [0.1, 0.5, 0.9];
+
+            double[,] expected = base10.MonteCarloConfidenceIntervals(
+                25, 100, quantiles, percentiles);
+            double[,] actual = natural.MonteCarloConfidenceIntervals(
+                25, 100, quantiles, percentiles);
+
+            for (int i = 0; i < expected.GetLength(0); i++)
+            {
+                for (int j = 0; j < expected.GetLength(1); j++)
+                {
+                    Assert.AreEqual(expected[i, j], actual[i, j],
+                        1E-10 * Math.Max(1.0, Math.Abs(expected[i, j])));
+                }
+            }
+        }
+
+        /// <summary>
         /// Testing Log-Normal with bad parameters.
         /// </summary>
         [TestMethod()]

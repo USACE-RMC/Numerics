@@ -432,9 +432,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>The bootstrap distribution retains the configured <see cref="Base"/>.</remarks>
         public IUnivariateDistribution Bootstrap(ParameterEstimationMethod estimationMethod, int sampleSize, int seed = -1)
         {
-            var newDistribution = new LogPearsonTypeIII(Mu, Sigma, Gamma);
+            var newDistribution = new LogPearsonTypeIII(Mu, Sigma, Gamma) { Base = Base };
             var sample = newDistribution.GenerateRandomValues(sampleSize, seed);
             newDistribution.Estimate(sample, estimationMethod);
             if (newDistribution.ParametersValid == false)

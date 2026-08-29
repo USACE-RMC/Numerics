@@ -44,6 +44,20 @@ namespace Distributions.Univariate
             Assert.AreEqual(source.CDF(75d), clone.CDF(75d), 0d);
         }
 
+        /// <summary>
+        /// Verifies bootstrap distributions retain the configured logarithm base.
+        /// </summary>
+        [TestMethod]
+        public void Test_Bootstrap_PreservesBase()
+        {
+            var source = new LogPearsonTypeIII(4.2d, 0.4d, 0.25d) { Base = Math.E };
+
+            var bootstrap = (LogPearsonTypeIII)source.Bootstrap(
+                ParameterEstimationMethod.MethodOfMoments, 40, 12345);
+
+            Assert.AreEqual(source.Base, bootstrap.Base, 0d);
+        }
+
         // Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
         // Table 1.2 Maximum annual peak discharge values in cms, observed at the Harricana River at Amos (Quebec, Canada)
         private double[] sample = new double[] { 122d, 244d, 214d, 173d, 229d, 156d, 212d, 263d, 146d, 183d, 161d, 205d, 135d, 331d, 225d, 174d, 98.8d, 149d, 238d, 262d, 132d, 235d, 216d, 240d, 230d, 192d, 195d, 172d, 173d, 172d, 153d, 142d, 317d, 161d, 201d, 204d, 194d, 164d, 183d, 161d, 167d, 179d, 185d, 117d, 192d, 337d, 125d, 166d, 99.1d, 202d, 230d, 158d, 262d, 154d, 164d, 182d, 164d, 183d, 171d, 250d, 184d, 205d, 237d, 177d, 239d, 187d, 180d, 173d, 174d };

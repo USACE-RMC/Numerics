@@ -289,9 +289,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>The bootstrap distribution retains the configured <see cref="Base"/>.</remarks>
         public IUnivariateDistribution Bootstrap(ParameterEstimationMethod estimationMethod, int sampleSize, int seed = -1)
         {
-            var newDistribution = new LogNormal(Mu, Sigma);
+            var newDistribution = new LogNormal(Mu, Sigma) { Base = Base };
             var sample = newDistribution.GenerateRandomValues(sampleSize, seed);
             newDistribution.Estimate(sample, estimationMethod);
             if (newDistribution.ParametersValid == false)
@@ -555,6 +556,7 @@ namespace Numerics.Distributions
         /// <param name="percentiles">List of confidence percentiles for confidence interval output.</param>
         /// <remarks>
         /// This is the same sampling approach as used in HEC-FDA.
+        /// Each simulated distribution retains the configured <see cref="Base"/>.
         /// </remarks>
         public double[,] MonteCarloConfidenceIntervals(int sampleSize, int realizations, IList<double> quantiles, IList<double> percentiles)
         {
@@ -588,7 +590,7 @@ namespace Numerics.Distributions
                 var Chi = new ChiSquared(sampleSize - 1);
                 double NewSigma = Math.Sqrt((sampleSize - 1) * Math.Pow(OriginalStdDev, 2d) / Chi.InverseCDF(rndStdDev[idx]));
                 // Create a new distribution with the new parameters
-                MonteCarloDistributions[idx] = new LogNormal(NewMu, NewSigma);
+                MonteCarloDistributions[idx] = new LogNormal(NewMu, NewSigma) { Base = Base };
             });
 
             // Create confidence intervals
