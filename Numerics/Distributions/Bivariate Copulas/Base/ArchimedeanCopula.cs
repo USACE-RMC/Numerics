@@ -121,11 +121,19 @@ namespace Numerics.Distributions.Copulas
         /// Joe h = (1−u)^(θ−1)·[1 − (1−v)^θ]·A^(1/θ−1) with A = (1−u)^θ + (1−v)^θ − (1−u)^θ(1−v)^θ;
         /// Ali-Mikhail-Haq h = v(1 − θ(1−v))/D² with D = 1 − θ(1−u)(1−v).
         /// </para>
+        /// <para>
+        /// The generic generator ratio has conditioning domain 0 &lt; u &lt; 1. Within that domain,
+        /// the dependent-variable boundaries are exact: h(0|u) = 0 and h(1|u) = 1. Conditioning
+        /// endpoint limits are family-specific, so this base implementation does not impose a
+        /// family-independent value at u = 0 or u = 1.
+        /// </para>
         /// </remarks>
         public override double ConditionalCDF(double u, double v)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
+            if (v == 0d) return 0d;
+            if (v == 1d) return 1d;
             return GeneratorPrime(u) / GeneratorPrime(CDF(u, v));
         }
 

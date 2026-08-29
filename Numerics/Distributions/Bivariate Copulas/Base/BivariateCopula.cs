@@ -156,7 +156,10 @@ namespace Numerics.Distributions.Copulas
         /// implementation delegates to that array form; every copula shipped with the library
         /// overrides this method with the scalar computation and recomposes the array form on
         /// top of it, so hot loops can invert conditional probabilities without per-call
-        /// allocation.
+        /// allocation. Subclass authors must not implement <see cref="InverseCDF(double, double)"/>
+        /// by delegating its second coordinate back to this inherited method, because the two
+        /// base calls would recurse. Override this method when composing the array form from a
+        /// scalar conditional inverse.
         /// </remarks>
         public virtual double InverseConditionalCDF(double u, double t)
         {
