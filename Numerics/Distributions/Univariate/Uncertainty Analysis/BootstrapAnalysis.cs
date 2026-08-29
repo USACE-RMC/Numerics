@@ -929,75 +929,7 @@ namespace Numerics.Distributions
             }
             return standardErrors;
         }
-        /// <summary>
-        /// Estimates jackknife standard errors from successful leave-one-out fits.
-        /// </summary>
-        /// <param name="sampleData">The observed sample.</param>
-        /// <param name="probabilities">The non-exceedance probabilities.</param>
-        /// <param name="thetaHats">The cube-root-transformed fitted population quantiles.</param>
-        /// <returns>One jackknife standard error per probability.</returns>
-        /// <exception cref="AggregateException">Thrown when every leave-one-out fit fails.</exception>
-        /// <remarks>Chunked as <see cref="AccelerationConstants"/>.</remarks>
-        private double[] StandardError(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
-        {
-            int sampleCount = sampleData.Count;
-            int probabilityCount = probabilities.Count;
-            var standardErrors = new double[probabilityCount];
-            if (sampleCount == 0) return standardErrors;
 
-            int chunks = Math.Min(ReductionChunks, sampleCount);
-            var chunkSecondMoments = new double[chunks][];
-            var chunkSuccesses = new int[chunks];
-            var failures = new Exception?[sampleCount];
-            for (int chunk = 0; chunk < chunks; chunk++)
-                chunkSecondMoments[chunk] = new double[probabilityCount];
-
-            Parallel.For(0, chunks, chunk =>
-            {
-                var secondMoments = chunkSecondMoments[chunk];
-                int start = (int)((long)chunk * sampleCount / chunks);
-                int end = (int)((long)(chunk + 1) * sampleCount / chunks);
-                int successes = 0;
-                for (int index = start; index < end; index++)
-                {
-                    var jackknifeSample = new double[sampleCount - 1];
-                    for (int k = 0; k < index; k++) jackknifeSample[k] = sampleData[k];
-                    for (int k = index + 1; k < sampleCount; k++) jackknifeSample[k - 1] = sampleData[k];
-
-                    var distribution = ((UnivariateDistributionBase)Distribution).Clone();
-                    try
-                    {
-                        ((IEstimation)distribution).Estimate(jackknifeSample, EstimationMethod);
-                        for (int i = 0; i < probabilityCount; i++)
-                        {
-                            double difference = thetaHats[i] - CubeRoot(distribution.InverseCDF(probabilities[i]));
-                            secondMoments[i] += difference * difference;
-                        }
-                        successes++;
-                    }
-                    catch (Exception exception)
-                    {
-                        failures[index] = exception;
-                    }
-                }
-                chunkSuccesses[chunk] = successes;
-            });
-
-            int successfulFits = 0;
-            for (int chunk = 0; chunk < chunks; chunk++) successfulFits += chunkSuccesses[chunk];
-            if (successfulFits == 0)
-                throw new AggregateException("Every jackknife standard-error fit failed.", failures.Where(exception => exception != null).Cast<Exception>());
-
-            for (int i = 0; i < probabilityCount; i++)
-            {
-                double secondMoment = 0d;
-                for (int chunk = 0; chunk < chunks; chunk++) secondMoment += chunkSecondMoments[chunk][i];
-                standardErrors[i] = successfulFits > 1
-                    ? Math.Sqrt((successfulFits - 1d) / successfulFits * secondMoment)
-                    : 0d;
-            }
-            return standardErrors;
-        }
         /// <summary>
         /// Returns finite results from successful fits and enforces a minimum sample count.
         /// </summary>
