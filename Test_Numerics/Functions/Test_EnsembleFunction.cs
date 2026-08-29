@@ -43,8 +43,8 @@ namespace Functions
             var ensemble = BuildEnsemble();
             Assert.AreEqual(3, ensemble.Count);
 
-            var first = (SegmentedPowerFunction)ensemble.Sample(0);
-            var second = (SegmentedPowerFunction)ensemble.Sample(1);
+            var first = (SegmentedPowerFunction)ensemble.SampleAt(0);
+            var second = (SegmentedPowerFunction)ensemble.SampleAt(1);
             Assert.AreEqual(1.0d, first.GetBreakpoint(1), 0);
             Assert.AreEqual(0.9d, second.GetBreakpoint(1), 0);
             Assert.AreEqual(0.12d, second.Sigma, 0);
@@ -52,11 +52,11 @@ namespace Functions
 
             // Mutating one clone never touches another draw of the same index.
             second.SetParameters(new[] { 5d, 5d, 5d, 5d });
-            var secondAgain = (SegmentedPowerFunction)ensemble.Sample(1);
+            var secondAgain = (SegmentedPowerFunction)ensemble.SampleAt(1);
             Assert.AreEqual(0.9d, secondAgain.GetBreakpoint(1), 0, "Clones must be independent.");
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => ensemble.Sample(-1));
-            Assert.Throws<ArgumentOutOfRangeException>(() => ensemble.Sample(3));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ensemble.SampleAt(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ensemble.SampleAt(3));
         }
 
         /// <summary>
@@ -75,6 +75,20 @@ namespace Functions
         }
 
         /// <summary>
+        /// Verifies that an integer percentile literal uses percentile sampling instead of
+        /// silently binding to an index overload.
+        /// </summary>
+        [TestMethod]
+        public void Test_Sample_IntegerPercentileLiteral_SelectsLastDraw()
+        {
+            var ensemble = BuildEnsemble();
+
+            var last = (SegmentedPowerFunction)ensemble.Sample(1);
+
+            Assert.AreEqual(1.1d, last.GetBreakpoint(1), 0d);
+        }
+
+        /// <summary>
         /// Test the thread-safety contract: concurrent sampling shares no mutable state, so
         /// every parallel draw evaluates exactly its own parameter set.
         /// </summary>
@@ -87,7 +101,7 @@ namespace Functions
             Parallel.For(0, 3000, i =>
             {
                 int index = i % 3;
-                var clone = (SegmentedPowerFunction)ensemble.Sample(index);
+                var clone = (SegmentedPowerFunction)ensemble.SampleAt(index);
                 if (Math.Abs(clone.GetBreakpoint(1) - expected[index]) > 0d)
                     System.Threading.Interlocked.Increment(ref failures);
             });
@@ -122,8 +136,8 @@ namespace Functions
             Assert.AreEqual(original.Count, restored.Count);
             for (int i = 0; i < original.Count; i++)
             {
-                var a = original.Sample(i);
-                var b = restored.Sample(i);
+                var a = original.SampleAt(i);
+                var b = restored.SampleAt(i);
                 a.ConfidenceLevel = 0.75;
                 b.ConfidenceLevel = 0.75;
                 Assert.AreEqual(a.Function(5d), b.Function(5d), 1E-12, $"Draw {i} must evaluate identically after the round-trip.");
@@ -146,11 +160,11 @@ namespace Functions
                 new[] { new ParameterSet(values, 1d, 0.5d) });
 
             values[0] = 99d;
-            Assert.AreEqual(1d, ((SegmentedPowerFunction)ensemble.Sample(0)).GetBreakpoint(1), 0d);
+            Assert.AreEqual(1d, ((SegmentedPowerFunction)ensemble.SampleAt(0)).GetBreakpoint(1), 0d);
 
             ParameterSet exposed = ensemble.ParameterSets[0];
             exposed.Values[0] = 88d;
-            Assert.AreEqual(1d, ((SegmentedPowerFunction)ensemble.Sample(0)).GetBreakpoint(1), 0d);
+            Assert.AreEqual(1d, ((SegmentedPowerFunction)ensemble.SampleAt(0)).GetBreakpoint(1), 0d);
             Assert.Throws<ArgumentOutOfRangeException>(() => ensemble.Sample(double.NaN));
 
             XElement invalidValues = ensemble.ToXElement();

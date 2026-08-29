@@ -88,7 +88,7 @@ mutable state.
 
 ```cs
 var ensemble = new EnsembleFunction(rating, posteriorParameterSets);
-IUnivariateFunction draw = ensemble.Sample(index);        // posterior draw by index
+IUnivariateFunction draw = ensemble.SampleAt(index);      // posterior draw by index
 IUnivariateFunction pDraw = ensemble.Sample(0.37);        // min(⌊u·N⌋, N − 1)
 ```
 

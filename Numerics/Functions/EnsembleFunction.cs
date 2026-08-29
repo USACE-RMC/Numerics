@@ -96,7 +96,7 @@ namespace Numerics.Functions
         /// <param name="index">The posterior index in [0, Count).</param>
         /// <returns>A new configured function instance.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="index"/> is outside [0, Count).</exception>
-        public IUnivariateFunction Sample(int index)
+        public IUnivariateFunction SampleAt(int index)
         {
             if (index < 0 || index >= _parameterSets.Length)
                 throw new ArgumentOutOfRangeException(nameof(index), "The posterior index must be within [0, Count).");
@@ -120,7 +120,7 @@ namespace Numerics.Functions
                 throw new ArgumentOutOfRangeException(nameof(percentile), "The percentile must be between 0 and 1.");
             int index = (int)Math.Floor(percentile * _parameterSets.Length);
             if (index > _parameterSets.Length - 1) index = _parameterSets.Length - 1;
-            return Sample(index);
+            return SampleAt(index);
         }
 
         /// <summary>
