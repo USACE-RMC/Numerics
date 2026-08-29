@@ -526,6 +526,14 @@ namespace Mathematics.Optimization
             Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, 2, 2));
             Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, [0, 5], 2));
             Assert.Throws<ArgumentException>(() => Dijkstra.Solve(new List<Edge> { new Edge(0, 9, 1, 0) }, 0, 3));
+            Assert.Throws<ArgumentException>(() => Dijkstra.Solve(new List<Edge> { new Edge(0, 1, 1, -1) }, 1, 2));
+
+            var incomingEdges = new List<Edge>[]
+            {
+                new(),
+                new() { new Edge(0, 1, 1, -1) }
+            };
+            Assert.Throws<ArgumentException>(() => Dijkstra.Solve(edges, 1, 2, incomingEdges));
 
             Assert.Throws<ArgumentNullException>(() => Dijkstra.PathExists(null!, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => Dijkstra.PathExists(new float[2, 3], 2));

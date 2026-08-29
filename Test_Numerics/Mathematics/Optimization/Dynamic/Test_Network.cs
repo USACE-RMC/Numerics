@@ -98,6 +98,7 @@ namespace Mathematics.Optimization
             Assert.Throws<ArgumentException>(() => new Network(edges, new int[0]));
             Assert.Throws<ArgumentOutOfRangeException>(() => new Network(edges, [5]));
             Assert.Throws<ArgumentException>(() => new Network(new[] { new Edge(-1, 1, 1, 0) }, [0]));
+            Assert.Throws<ArgumentException>(() => new Network(new[] { new Edge(0, 1, 1, -1) }, [0]));
         }
 
         /// <summary>

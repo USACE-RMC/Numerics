@@ -83,7 +83,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="groupByEndNode">True to group slots by <see cref="Edge.ToIndex"/>; false to group by <see cref="Edge.FromIndex"/>.</param>
         /// <param name="parameterName">The caller's parameter name for exception reporting.</param>
         /// <returns>The compact view.</returns>
-        /// <exception cref="ArgumentException">Thrown when an edge references a node index outside [0, nodeCount).</exception>
+        /// <exception cref="ArgumentException">Thrown when an edge references a node index outside [0, nodeCount), or has a negative edge index.</exception>
         internal static CompactAdjacency FromEdges(IList<Edge> edges, int nodeCount, bool groupByEndNode, string parameterName)
         {
             int edgeCount = edges.Count;
@@ -98,6 +98,8 @@ namespace Numerics.Mathematics.Optimization
                         $"{(edge.FromIndex < 0 || edge.FromIndex >= nodeCount ? edge.FromIndex : edge.ToIndex)}, " +
                         $"outside the node range [0, {nodeCount}).", parameterName);
                 }
+                if (edge.Index < 0)
+                    throw new ArgumentException($"The edge at position {i} has negative edge index {edge.Index}.", parameterName);
                 rowStart[(groupByEndNode ? edge.ToIndex : edge.FromIndex) + 1]++;
             }
             for (int n = 0; n < nodeCount; n++) rowStart[n + 1] += rowStart[n];
@@ -137,7 +139,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="nodeCount">The number of nodes; the array length must equal it.</param>
         /// <param name="parameterName">The caller's parameter name for exception reporting.</param>
         /// <returns>The compact view, without source positions.</returns>
-        /// <exception cref="ArgumentException">Thrown when a listed edge references a node index outside [0, nodeCount).</exception>
+        /// <exception cref="ArgumentException">Thrown when a listed edge references a node index outside [0, nodeCount), or has a negative edge index.</exception>
         internal static CompactAdjacency FromIncomingLists(List<Edge>[] edgesToNodes, int nodeCount, string parameterName)
         {
             var rowStart = new int[nodeCount + 1];
@@ -168,6 +170,8 @@ namespace Numerics.Mathematics.Optimization
                             $"{(edge.FromIndex < 0 || edge.FromIndex >= nodeCount ? edge.FromIndex : edge.ToIndex)}, " +
                             $"outside the node range [0, {nodeCount}).", parameterName);
                     }
+                    if (edge.Index < 0)
+                        throw new ArgumentException($"The incoming-edge list for node {n} contains negative edge index {edge.Index}.", parameterName);
                     fromNode[slot] = edge.FromIndex;
                     toNode[slot] = edge.ToIndex;
                     weight[slot] = edge.Weight;

@@ -102,7 +102,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="edges">The edges that define the network. The array is copied.</param>
         /// <param name="destinationIndices">The destination node indices. The array is copied.</param>
         /// <exception cref="ArgumentNullException">Thrown when either array is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when either array is empty, or an edge references a negative node index.</exception>
+        /// <exception cref="ArgumentException">Thrown when either array is empty, or an edge references a negative node index or has a negative edge index.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when a destination index is outside the network.</exception>
         public Network(Edge[] edges, int[] destinationIndices)
         {

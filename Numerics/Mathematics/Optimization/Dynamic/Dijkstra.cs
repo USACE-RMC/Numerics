@@ -12,7 +12,7 @@ namespace Numerics.Mathematics.Optimization
     /// <param name="fromNodeIndex">Node index at start of edge.</param>
     /// <param name="toNodeIndex">Node index at end of edge.</param>
     /// <param name="edgeWeight">Weight (or Cost) of the edge.</param>
-    /// <param name="edgeIndex">Index of the edge.</param>
+    /// <param name="edgeIndex">Nonnegative index of the edge.</param>
     public struct Edge(int fromNodeIndex, int toNodeIndex, float edgeWeight, int edgeIndex)
     {
         /// <summary>
@@ -28,7 +28,7 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public float Weight = edgeWeight;
         /// <summary>
-        /// Index of the edge, often used as an index to the edge source (e.g., road segment).
+        /// Nonnegative index of the edge, often used as an index to the edge source (e.g., road segment).
         /// </summary>
         public int Index = edgeIndex;
     }
@@ -166,7 +166,7 @@ namespace Numerics.Mathematics.Optimization
         /// destination. Duplicate destination indices are tolerated.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the edges or destination indices are null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the destination array is empty, the node count cannot be derived, or an edge references a node outside the network.</exception>
+        /// <exception cref="ArgumentException">Thrown when the destination array is empty, the node count cannot be derived, or an edge references a node outside the network or has a negative index.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the node count is not positive, or a destination index is outside the network.</exception>
         public static float[,] SolveNearest(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1)
         {
@@ -245,7 +245,7 @@ namespace Numerics.Mathematics.Optimization
         /// the array wins. An empty destination array returns an all-unreachable table.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the edges or destination indices are null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the node count cannot be derived, or an edge references a node outside the network.</exception>
+        /// <exception cref="ArgumentException">Thrown when the node count cannot be derived, or an edge references a node outside the network or has a negative index.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the node count is not positive, or a destination index is outside the network.</exception>
         public static float[,] Solve(IList<Edge> edges, int[] destinationIndices, int nodeCount = -1, List<Edge>[]? edgesFromNodes = null)
         {
@@ -322,7 +322,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="edgesToNodes">Optional list of incoming edges for each node in the network. If not provided or mismatched with the node count it will be calculated internally.</param>
         /// <returns>Lookup table of shortest paths from any given node.</returns>
         /// <exception cref="ArgumentNullException">Thrown when the edges are null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the node count cannot be derived, or an edge references a node outside the network.</exception>
+        /// <exception cref="ArgumentException">Thrown when the node count cannot be derived, or an edge references a node outside the network or has a negative index.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the node count is not positive, or the destination index is outside the network.</exception>
         public static float[,] Solve(IList<Edge> edges, int destinationIndex, int nodeCount = -1, List<Edge>[]? edgesToNodes = null)
         {
