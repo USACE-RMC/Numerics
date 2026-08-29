@@ -298,6 +298,7 @@ namespace Numerics.Data
         /// Divide each value in the time-series by a constant. Missing values are kept as missing.
         /// </summary>
         /// <param name="constant">Factor to divide each value by in the series.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="constant"/> is zero.</exception>
         public void Divide(double constant)
         {
             if (constant == 0) throw new ArgumentException("Cannot divide by zero.", nameof(constant));
@@ -315,8 +316,10 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="constant">Factor to divide each value by in the series.</param>
         /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the calculation to.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="constant"/> is zero.</exception>
         public void Divide(double constant, IList<int> indexes)
         {
+            if (constant == 0) throw new ArgumentException("Cannot divide by zero.", nameof(constant));
             SuppressCollectionChanged = true;
             for (int i = 0; i < indexes.Count; i++)
             {

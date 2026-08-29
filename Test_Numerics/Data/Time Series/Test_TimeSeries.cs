@@ -228,6 +228,25 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// The indexed divide overload rejects a zero divisor with the same exception contract as
+        /// its all-values twin and leaves the selected values unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_Divide_Indexed_RejectsZeroLikeTwin()
+        {
+            var plain = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 2d, 4d });
+            var indexed = plain.Clone();
+
+            var expected = Assert.Throws<ArgumentException>(() => plain.Divide(0d));
+            var actual = Assert.Throws<ArgumentException>(() => indexed.Divide(0d, new[] { 1 }));
+
+            Assert.AreEqual(expected.ParamName, actual.ParamName);
+            Assert.AreEqual(expected.Message, actual.Message);
+            Assert.AreEqual(2d, indexed[0].Value, 0d);
+            Assert.AreEqual(4d, indexed[1].Value, 0d);
+        }
+
+        /// <summary>
         /// Verifies that the indexed log transform skips out-of-range indexes like its sibling overloads.
         /// </summary>
         [TestMethod]
