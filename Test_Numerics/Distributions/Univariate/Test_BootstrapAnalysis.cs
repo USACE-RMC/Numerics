@@ -186,6 +186,48 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Confidence intervals exclude NaN and both infinities before computing percentiles.
+        /// </summary>
+        [TestMethod]
+        public void Test_UncertaintyAnalysisResults_ConfidenceIntervalsUseFiniteValuesOnly()
+        {
+            var results = new UncertaintyAnalysisResults();
+            UnivariateDistributionBase[] sampledDistributions =
+            [
+                new Normal(0.0, 1.0),
+                new Deterministic(7.0),
+                null!
+            ];
+
+            results.ProcessConfidenceIntervals(sampledDistributions, [0.0, 1.0]);
+
+            double[,] confidenceIntervals = results.ConfidenceIntervals!;
+            Assert.AreEqual(7.0, confidenceIntervals[0, 0], 0.0);
+            Assert.AreEqual(7.0, confidenceIntervals[0, 1], 0.0);
+            Assert.AreEqual(7.0, confidenceIntervals[1, 0], 0.0);
+            Assert.AreEqual(7.0, confidenceIntervals[1, 1], 0.0);
+        }
+
+        /// <summary>
+        /// An ensemble containing no successful distribution fails explicitly in both the
+        /// aggregate constructor and the public mean-curve processor.
+        /// </summary>
+        [TestMethod]
+        public void Test_UncertaintyAnalysisResults_AllNullEnsembleThrowsClearly()
+        {
+            UnivariateDistributionBase[] allNull = [null!, null!];
+
+            InvalidOperationException constructorException = Assert.Throws<InvalidOperationException>(() =>
+                new UncertaintyAnalysisResults(new Normal(), allNull, [0.5]));
+            StringAssert.Contains(constructorException.Message, "At least one sampled distribution");
+
+            var results = new UncertaintyAnalysisResults();
+            InvalidOperationException meanException = Assert.Throws<InvalidOperationException>(() =>
+                results.ProcessMeanCurve(allNull, [0.5]));
+            StringAssert.Contains(meanException.Message, "At least one sampled distribution");
+        }
+
+        /// <summary>
         /// Verifies Estimate() is bit-reproducible across calls at the same seed. Compares raw
         /// bits: a tolerance assert cannot detect a reduction-order difference.
         /// </summary>

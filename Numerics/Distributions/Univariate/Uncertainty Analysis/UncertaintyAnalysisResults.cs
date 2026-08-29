@@ -49,6 +49,9 @@ namespace Numerics.Distributions
         /// <param name="minProbability">Minimum probability for mean curve computation (default = 0.001).</param>
         /// <param name="maxProbability">Maximum probability for mean curve computation (default = 1 - 1e-9).</param>
         /// <param name="recordParameterSets">If true, stores all parameter sets from sampled distributions.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="parentDistribution"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null or no finite sampled quantile is available.</exception>
         public UncertaintyAnalysisResults(UnivariateDistributionBase parentDistribution,
                                           UnivariateDistributionBase[] sampledDistributions,
                                           double[] probabilities,
@@ -59,8 +62,7 @@ namespace Numerics.Distributions
         {
             if (parentDistribution is null)
                 throw new ArgumentNullException(nameof(parentDistribution));
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+            ValidateSampledDistributions(sampledDistributions);
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
 
@@ -357,10 +359,12 @@ namespace Numerics.Distributions
         /// <param name="sampledDistributions">The list of sampled distributions to process.</param>
         /// <param name="probabilities">Array of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="alpha"/> is not strictly between zero and one.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null or no finite sampled quantile is available.</exception>
         public void ProcessConfidenceIntervals(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double alpha = 0.1)
         {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+            ValidateSampledDistributions(sampledDistributions);
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
             if (alpha <= 0 || alpha >= 1)
@@ -386,14 +390,17 @@ namespace Numerics.Distributions
                 int validCount = 0;
                 for (int j = 0; j < B; j++)
                 {
-                    if (!double.IsNaN(XValues[j])) validCount++;
+                    if (Tools.IsFinite(XValues[j])) validCount++;
                 }
+
+                if (validCount == 0)
+                    throw new InvalidOperationException($"No finite sampled quantiles are available for probability {probabilities[i]}.");
 
                 var validValues = new double[validCount];
                 int writeIdx = 0;
                 for (int j = 0; j < B; j++)
                 {
-                    if (!double.IsNaN(XValues[j]))
+                    if (Tools.IsFinite(XValues[j]))
                         validValues[writeIdx++] = XValues[j];
                 }
 
@@ -413,10 +420,11 @@ namespace Numerics.Distributions
         /// <param name="probabilities">Array of non-exceedance probabilities for interpolation.</param>
         /// <param name="minProbability">Minimum probability for range determination (default = 0.001).</param>
         /// <param name="maxProbability">Maximum probability for range determination (default = 1 - 1e-9).</param>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null.</exception>
         public void ProcessMeanCurve(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double minProbability = 0.001, double maxProbability = 1 - 1e-9)
         {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+            ValidateSampledDistributions(sampledDistributions);
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
 
@@ -493,7 +501,8 @@ namespace Numerics.Distributions
 
             int validDistributions = 0;
             for (int c = 0; c < chunkCount; c++) validDistributions += chunkValid[c];
-            if (validDistributions == 0) validDistributions = 1;
+            if (validDistributions == 0)
+                throw new InvalidOperationException("At least one sampled distribution must be non-null.");
 
             var expected = new double[bins];
             for (int i = 0; i < bins; i++)
@@ -530,6 +539,26 @@ namespace Numerics.Distributions
                 YTransform = useLogTransform ? Transform.Logarithmic : Transform.None
             };
             MeanCurve = linint.Interpolate(probabilities);
+        }
+
+        /// <summary>
+        /// Validates that an ensemble is present and contains at least one successful
+        /// distribution.
+        /// </summary>
+        /// <param name="sampledDistributions">The ensemble to validate.</param>
+        /// <exception cref="ArgumentException">Thrown when the ensemble is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every ensemble member is null.</exception>
+        private static void ValidateSampledDistributions(UnivariateDistributionBase[] sampledDistributions)
+        {
+            if (sampledDistributions == null || sampledDistributions.Length == 0)
+                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+
+            for (int i = 0; i < sampledDistributions.Length; i++)
+            {
+                if (sampledDistributions[i] is not null) return;
+            }
+
+            throw new InvalidOperationException("At least one sampled distribution must be non-null.");
         }
 
         /// <summary>
