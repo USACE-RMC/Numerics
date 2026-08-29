@@ -148,16 +148,36 @@ namespace Utilities
         }
 
         /// <summary>
-        /// Verifies the corrected argument order on a representative site in <see cref="Vector"/>.
+        /// Verifies static vector operations identify the incompatible right-side vector.
         /// </summary>
         [TestMethod]
-        public void Test_Vector_ReportsParameterName()
+        public void Test_Vector_StaticOperations_ReportSecondVectorParameterName()
         {
             var a = new Vector(new[] { 1d, 2d });
             var b = new Vector(new[] { 1d });
-            var exception = AssertThrows<ArgumentException>(() => Vector.DotProduct(a, b));
-            Assert.AreEqual("Length", exception.ParamName);
-            StringAssert.Contains(exception.Message, "The vectors must be the same length.");
+            var distanceException = AssertThrows<ArgumentException>(() => Vector.Distance(a, b));
+            var dotProductException = AssertThrows<ArgumentException>(() => Vector.DotProduct(a, b));
+
+            Assert.AreEqual("B", distanceException.ParamName);
+            Assert.AreEqual("B", dotProductException.ParamName);
+            StringAssert.Contains(distanceException.Message, "The vectors must be the same length.");
+            StringAssert.Contains(dotProductException.Message, "The vectors must be the same length.");
+        }
+
+        /// <summary>
+        /// Verifies instance multiply operations identify the incompatible right-side vector.
+        /// </summary>
+        [TestMethod]
+        public void Test_Vector_MultiplyOperations_ReportVectorParameterName()
+        {
+            var left = new Vector(new[] { 1d, 2d });
+            var vectorException = AssertThrows<ArgumentException>(() => left.Multiply(new Vector(new[] { 1d })));
+            var arrayException = AssertThrows<ArgumentException>(() => left.Multiply(new[] { 1d }));
+
+            Assert.AreEqual("vector", vectorException.ParamName);
+            Assert.AreEqual("vector", arrayException.ParamName);
+            StringAssert.Contains(vectorException.Message, "The vectors must be the same length.");
+            StringAssert.Contains(arrayException.Message, "The vectors must be the same length.");
         }
 
         /// <summary>

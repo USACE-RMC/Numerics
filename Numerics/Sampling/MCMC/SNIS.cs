@@ -69,7 +69,7 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateSettings()
         {
-            if (NumberOfChains != 1) throw new ArgumentException("There can only be 1 chain with this method.", nameof(InitialIterations));
+            if (NumberOfChains != 1) throw new ArgumentException("There can only be 1 chain with this method.", nameof(NumberOfChains));
             if (OutputLength < 100) throw new ArgumentException("The output length must be at least 100.", nameof(OutputLength));
             if (Iterations < OutputLength) throw new ArgumentException("The number of iterations cannot be less than the output length.", nameof(Iterations));
             if (WarmupIterations != 0) throw new ArgumentException("There are no warmup iterations with this method.", nameof(WarmupIterations));

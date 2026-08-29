@@ -133,6 +133,25 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
+        /// SNIS identifies NumberOfChains when rejecting configurations with more than one chain.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_MultipleChains_ReportsNumberOfChainsParameterName()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(0d, 1d) };
+            var sampler = new SNIS(priors, x => 0d)
+            {
+                NumberOfChains = 2,
+                InitialIterations = 2,
+                Iterations = 100,
+                OutputLength = 100
+            };
+
+            var exception = Assert.Throws<System.ArgumentException>(() => sampler.Sample());
+            Assert.AreEqual(nameof(SNIS.NumberOfChains), exception.ParamName);
+        }
+
+        /// <summary>
         /// This test verifies that the resampling sort is stable — draws tied at the same fitness
         /// keep their original draw order — and that an identically-seeded run reproduces the
         /// output exactly, element for element.

@@ -160,9 +160,10 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         /// <param name="A">Left-side vector.</param>
         /// <param name="B">Right-side vector.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="B"/> does not have the same length as <paramref name="A"/>.</exception>
         public static double Distance(Vector A, Vector B)
         {
-            if (A.Length != B.Length) throw new ArgumentException("The vectors must be the same length.", nameof(A.Length));
+            if (A.Length != B.Length) throw new ArgumentException("The vectors must be the same length.", nameof(B));
             double d = 0;
             for (int i = 0; i < A.Length; i++)
             {
@@ -177,9 +178,10 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         /// <param name="A">Left-side vector.</param>
         /// <param name="B">Right-side vector.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="B"/> does not have the same length as <paramref name="A"/>.</exception>
         public static double DotProduct(Vector A, Vector B)
         {
-            if (A.Length != B.Length) throw new ArgumentException("The vectors must be the same length.", nameof(A.Length));
+            if (A.Length != B.Length) throw new ArgumentException("The vectors must be the same length.", nameof(B));
             double sum = 0;
             for (int i = 0; i < A.Length; i++)
                 sum += A[i] * B[i];
@@ -277,9 +279,10 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Multiply by a vector.
         /// </summary>
         /// <param name="vector">The right-side vector.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="vector"/> does not have the same length as this vector.</exception>
         public Vector Multiply(Vector vector)
         {
-            if (Length != vector.Length) throw new ArgumentException("The vectors must be the same length.", nameof(Length));
+            if (Length != vector.Length) throw new ArgumentException("The vectors must be the same length.", nameof(vector));
             var result = new Vector(Length);
             for (int i = 0; i < Length; i++)
                 result[i] = _vector[i] * vector[i];
@@ -290,9 +293,10 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Multiply by an array.
         /// </summary>
         /// <param name="vector">The right-side array.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="vector"/> does not have the same length as this vector.</exception>
         public Vector Multiply(double[] vector)
         {
-            if (Length != vector.Length) throw new ArgumentException("The vectors must be the same length.", nameof(Length));
+            if (Length != vector.Length) throw new ArgumentException("The vectors must be the same length.", nameof(vector));
             var result = new Vector(Length);
             for (int i = 0; i < Length; i++)
                 result[i] = _vector[i] * vector[i];
