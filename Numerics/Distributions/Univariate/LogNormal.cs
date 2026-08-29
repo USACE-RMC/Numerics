@@ -527,7 +527,7 @@ namespace Numerics.Distributions
                 ValidateParameters(Mu, Sigma, true);
             if (x <= Minimum)
                 return 0d;
-            return 0.5d * (1.0d + Erf.Function((Math.Log(x, Base) - Mu) / (Sigma * Math.Sqrt(2.0d))));
+            return Normal.StandardCDF((Math.Log(x, Base) - Mu) / Sigma);
         }
 
         /// <inheritdoc/>

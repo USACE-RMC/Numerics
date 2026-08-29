@@ -252,13 +252,15 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Testing CDF method.
+        /// Testing the CDF, including the finite lower-tail probability at z = -25.
         /// </summary>
+        /// <remarks>The lower-tail reference was computed with mpmath 1.4.1 at 50 significant digits.</remarks>
         [TestMethod()]
         public void Test_CDF()
         {
             var LogN = new LogNormal(1.5, 0.1);
-            Assert.AreEqual(0, LogN.CDF(0.1));
+            const double lowerTail = 3.056696706382561E-138d;
+            Assert.AreEqual(lowerTail, LogN.CDF(0.1), lowerTail * 5E-12d);
 
             var LogN2 = new LogNormal(1.5, 1.5);
             Assert.AreEqual(0.11493, LogN2.CDF(0.5), 1e-05);

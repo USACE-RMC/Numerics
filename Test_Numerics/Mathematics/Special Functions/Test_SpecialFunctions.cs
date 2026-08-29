@@ -412,5 +412,22 @@ namespace Mathematics.SpecialFunctions
             Assert.AreEqual(5.725571222524577E-300, d.CDF(-37.0), 5.725571222524577E-300 * 5E-12);
         }
 
+        /// <summary>
+        /// Pins the standard-normal CDF through its moderate range after routing it through the
+        /// MVNPHI implementation.
+        /// </summary>
+        /// <remarks>
+        /// Reference values were computed with Python mpmath 1.4.1 at 50 significant digits.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NormalCDF_ModerateRange()
+        {
+            Assert.AreEqual(0.0013498980316300945d, Numerics.Distributions.Normal.StandardCDF(-3d), 5E-13d);
+            Assert.AreEqual(0.15865525393145707d, Numerics.Distributions.Normal.StandardCDF(-1d), 5E-13d);
+            Assert.AreEqual(0.5d, Numerics.Distributions.Normal.StandardCDF(0d), 5E-13d);
+            Assert.AreEqual(0.8413447460685429d, Numerics.Distributions.Normal.StandardCDF(1d), 5E-13d);
+            Assert.AreEqual(0.9986501019683699d, Numerics.Distributions.Normal.StandardCDF(3d), 5E-13d);
+        }
+
     }
 }

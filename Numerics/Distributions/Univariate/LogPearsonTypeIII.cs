@@ -807,7 +807,7 @@ namespace Numerics.Distributions
             if (x >= Maximum) return 1d;
             if (Math.Abs(Gamma) <= NearZero)
             {
-                return 0.5d * (1.0d + Erf.Function((Math.Log(x, Base) - Mu) / (Sigma * Math.Sqrt(2.0d))));
+                return Normal.StandardCDF((Math.Log(x, Base) - Mu) / Sigma);
             }
             else if (Beta > 0d)
             {
