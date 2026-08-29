@@ -262,10 +262,14 @@ namespace Numerics.Distributions
         /// <param name="componentIndex">The zero-based component index.</param>
         /// <param name="x">The value at which to evaluate the distribution function.</param>
         /// <returns>The positive-conditional cumulative probability.</returns>
+        /// <remarks>
+        /// Uses the survival ratio <c>1 - S(x) / S(0)</c> so a component's direct survival
+        /// evaluation can retain upper-tail probability after its CDF has rounded to one.
+        /// </remarks>
         private double PositiveConditionalCDF(int componentIndex, double x)
         {
             if (x <= 0.0 || !TryGetPositiveMass(componentIndex, out double positiveMass)) return 0.0;
-            double probability = (Distributions[componentIndex].CDF(x) - Distributions[componentIndex].CDF(0.0)) / positiveMass;
+            double probability = 1.0 - Distributions[componentIndex].CCDF(x) / positiveMass;
             return Clamp(probability, 0.0, 1.0);
         }
 

@@ -460,6 +460,27 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies the positive-hurdle CDF uses a component's retained survival probability
+        /// when its CDF has rounded to one.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_ZeroInflatedCDF_UsesSurvivalRatio()
+        {
+            var distribution = new TailAwareDistribution();
+            var mixture = new Mixture(new[] { 1.0 }, new UnivariateDistributionBase[] { distribution })
+            {
+                IsZeroInflated = true,
+                ZeroWeight = 0.0
+            };
+
+            double expected = 1.0 - distribution.CCDF(1.0) / distribution.CCDF(0.0);
+
+            Assert.AreEqual(0.5, expected, 0.0);
+            Assert.AreEqual(expected, mixture.CDF(1.0), 0.0);
+            Assert.IsTrue(mixture.CDF(1.0) >= 0.0 && mixture.CDF(1.0) <= 1.0);
+        }
+
+        /// <summary>
         /// Verifies the atom at zero and absence of negative support under the hurdle model.
         /// </summary>
         [TestMethod]
@@ -609,6 +630,25 @@ namespace Distributions.Univariate
             var single = new Mixture(new[] { 1d }, new UnivariateDistributionBase[] { child });
             Assert.AreEqual(child.CDF(400d), single.CDF(400d), 1E-12);
             Assert.IsLessThan(1d, single.CDF(400d));
+        }
+
+        /// <summary>
+        /// Test distribution whose direct survival function retains a tail that its CDF cannot
+        /// represent after subtraction from one.
+        /// </summary>
+        private sealed class TailAwareDistribution : Cauchy
+        {
+            /// <inheritdoc/>
+            public override double CDF(double x)
+            {
+                return x <= 0.0 ? 0.9999999999999999 : 1.0;
+            }
+
+            /// <inheritdoc/>
+            public override double CCDF(double x)
+            {
+                return x <= 0.0 ? 1E-16 : 5E-17;
+            }
         }
 
     }
