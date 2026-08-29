@@ -405,5 +405,21 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.NegativeInfinity, new LogPearsonTypeIII().MinimumOfParameters[0]);
         }
 
+        /// <summary>
+        /// Log-Pearson III shapes below one have a genuine density singularity at the
+        /// transformed support boundary for both skew directions.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_ShapeBelowOneIsPositiveInfinityAtLocation()
+        {
+            var positiveSkew = new LogPearsonTypeIII(1.0, 1.5, 3.0);
+            var negativeSkew = new LogPearsonTypeIII(-1.0, 1.5, -3.0);
+
+            Assert.AreEqual(0.0, positiveSkew.Xi, 0.0);
+            Assert.AreEqual(0.0, negativeSkew.Xi, 0.0);
+            Assert.AreEqual(double.PositiveInfinity, positiveSkew.LogPDF(1.0));
+            Assert.AreEqual(double.PositiveInfinity, negativeSkew.LogPDF(1.0));
+        }
+
     }
 }

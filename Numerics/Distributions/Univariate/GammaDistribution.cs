@@ -555,6 +555,8 @@ namespace Numerics.Distributions
         /// <remarks>
         /// Evaluated in log space, so far-tail densities that underflow <see cref="PDF(double)"/>
         /// keep a finite log density.
+        /// When <c>X = 0</c> and the shape <c>κ &lt; 1</c>, the Gamma density has a genuine
+        /// integrable singularity and this method intentionally returns positive infinity.
         /// </remarks>
         public override double LogPDF(double X)
         {

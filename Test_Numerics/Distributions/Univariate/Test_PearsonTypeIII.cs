@@ -398,6 +398,22 @@ namespace Distributions.Univariate
             Assert.AreEqual(expectedDerivative, zeroSkew.QuantileGradientForMoments(0.9d)[2], 1E-14);
         }
 
+        /// <summary>
+        /// Pearson III shapes below one have a genuine density singularity at the support
+        /// boundary for both skew directions.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_ShapeBelowOneIsPositiveInfinityAtLocation()
+        {
+            var positiveSkew = new PearsonTypeIII(1.0, 1.5, 3.0);
+            var negativeSkew = new PearsonTypeIII(-1.0, 1.5, -3.0);
+
+            Assert.AreEqual(0.0, positiveSkew.Xi, 0.0);
+            Assert.AreEqual(0.0, negativeSkew.Xi, 0.0);
+            Assert.AreEqual(double.PositiveInfinity, positiveSkew.LogPDF(positiveSkew.Xi));
+            Assert.AreEqual(double.PositiveInfinity, negativeSkew.LogPDF(negativeSkew.Xi));
+        }
+
     }
 
 

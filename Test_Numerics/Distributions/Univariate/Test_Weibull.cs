@@ -274,6 +274,15 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// A Weibull shape below one has a genuine density singularity at zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_ShapeBelowOneIsPositiveInfinityAtZero()
+        {
+            Assert.AreEqual(double.PositiveInfinity, new Weibull(2.0, 0.5).LogPDF(0.0));
+        }
+
+        /// <summary>
         /// Testing CDF method.
         /// </summary>
         [TestMethod()]
