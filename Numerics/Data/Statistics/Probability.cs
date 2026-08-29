@@ -35,8 +35,13 @@ namespace Numerics.Data.Statistics
             /// </summary>
             PerfectlyPositive,
             /// <summary>
-            /// Perfectly negatively dependent.
+            /// Uses the Fréchet–Hoeffding lower-bound convention for negative dependence.
             /// </summary>
+            /// <remarks>
+            /// The bound is attainable by a countermonotonic coupling for two events. For three
+            /// or more events it is a pointwise lower bound and generally does not define an
+            /// attainable joint distribution or copula.
+            /// </remarks>
             PerfectlyNegative,
             /// <summary>
             /// User-defined correlation matrix.
@@ -242,15 +247,16 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns the joint probability assuming perfect negative dependence.
+        /// Returns the Fréchet–Hoeffding lower bound for the joint probability.
         /// </summary>
         /// <param name="probabilities">List of probabilities.</param>
         /// <returns>The Fréchet–Hoeffding lower bound max(0, Σpᵢ − (n − 1)), where n is the number of events.</returns>
         /// <remarks>
-        /// For two events with probabilities 0.8 and 0.9 the joint probability is 0.7: under perfect
-        /// negative dependence the events overlap only by the amount their total probability exceeds one.
-        /// When the probabilities sum to one or less, perfectly negatively dependent events are disjoint
-        /// and the joint probability is zero.
+        /// For two events the bound is attained by a countermonotonic coupling; for example,
+        /// probabilities 0.8 and 0.9 have a minimum joint probability of 0.7. For three or more
+        /// events this expression remains the pointwise Fréchet–Hoeffding lower bound but is
+        /// generally not an attainable joint distribution or copula. It must not be interpreted
+        /// as a globally realizable perfect-negative-dependence model in that case.
         /// </remarks>
         public static double NegativeJointProbability(IList<double> probabilities)
         {
@@ -261,14 +267,17 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns the joint probability assuming perfect negative dependence.
+        /// Returns the Fréchet–Hoeffding lower bound over the indicated events.
         /// </summary>
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <param name="indicators">An array of indicators, 0 means the event did not occur, 1 means the event did occur.</param>
         /// <returns>The Fréchet–Hoeffding lower bound max(0, Σpᵢ − (k − 1)) over the indicated events, where k is the number of indicated events.</returns>
         /// <remarks>
         /// Only the events whose indicator is 1 participate, matching the other joint-probability
-        /// overloads. With no indicated events the joint probability of the empty intersection is one.
+        /// overloads. With no indicated events the joint probability of the empty intersection is
+        /// one. For two indicated events the bound is attainable by a countermonotonic coupling;
+        /// for three or more it is a pointwise lower bound and generally does not define an
+        /// attainable joint distribution or copula.
         /// </remarks>
         public static double NegativeJointProbability(IList<double> probabilities, int[] indicators)
         {
