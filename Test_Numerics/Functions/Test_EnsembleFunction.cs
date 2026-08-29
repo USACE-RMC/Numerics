@@ -2,6 +2,8 @@ using System;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Data;
+using Numerics.Distributions;
 using Numerics.Functions;
 using Numerics.Mathematics.Optimization;
 
@@ -121,6 +123,27 @@ namespace Functions
             Assert.Throws<ArgumentNullException>(() => new EnsembleFunction(template, null));
             Assert.Throws<ArgumentException>(() => new EnsembleFunction(template, Array.Empty<ParameterSet>()));
             Assert.Throws<ArgumentException>(() => new EnsembleFunction(template, new[] { new ParameterSet(new[] { 0d, 1d }, 0) }));
+        }
+
+        /// <summary>
+        /// Verifies that a tabular template is rejected at construction because its parameter
+        /// vector cannot be applied to sampled clones.
+        /// </summary>
+        [TestMethod]
+        public void Test_Construction_RejectsTabularTemplate()
+        {
+            var data = new UncertainOrderedPairedData(
+                new[]
+                {
+                    new UncertainOrdinate(0d, new Deterministic(0d)),
+                    new UncertainOrdinate(1d, new Deterministic(1d)),
+                },
+                true, SortOrder.Ascending, true, SortOrder.Ascending,
+                UnivariateDistributionType.Deterministic);
+            var template = new TabularFunction(data);
+            var sets = new[] { new ParameterSet(new[] { 0d }, 0d) };
+
+            Assert.Throws<NotSupportedException>(() => new EnsembleFunction(template, sets));
         }
 
         /// <summary>

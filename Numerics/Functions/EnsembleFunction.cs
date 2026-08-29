@@ -20,6 +20,8 @@ namespace Numerics.Functions
     /// concurrent samples do not share mutable function state. The constructor stores a
     /// serialized template snapshot, and each sample is reconstructed through
     /// <see cref="UnivariateFunctionFactory.CreateFromXElement(XElement)"/>.
+    /// <see cref="TabularFunction"/> is not supported because its uncertain paired data cannot
+    /// be configured through a reusable parameter vector.
     /// </para>
     /// <para>
     /// Percentile sampling maps u ∈ [0, 1] onto the index ladder as
@@ -37,12 +39,14 @@ namespace Numerics.Functions
         /// <param name="parameterSets">The posterior parameter sets; each must carry one value per template parameter.</param>
         /// <exception cref="ArgumentNullException">Thrown when either argument is null.</exception>
         /// <exception cref="ArgumentException">Thrown when no parameter sets are supplied, or a set's length does not match the template.</exception>
-        /// <exception cref="NotSupportedException">Thrown when the template is not a serializable library function type.</exception>
+        /// <exception cref="NotSupportedException">Thrown when the template is tabular or is not a serializable library function type.</exception>
         public EnsembleFunction(IUnivariateFunction template, IList<ParameterSet> parameterSets)
         {
             if (template == null) throw new ArgumentNullException(nameof(template));
             if (parameterSets == null) throw new ArgumentNullException(nameof(parameterSets));
             if (parameterSets.Count == 0) throw new ArgumentException("At least one parameter set is required.", nameof(parameterSets));
+            if (template is TabularFunction)
+                throw new NotSupportedException("TabularFunction templates cannot be configured from ensemble parameter sets.");
 
             _templateXml = SerializeTemplate(template).ToString(SaveOptions.DisableFormatting);
 
@@ -225,7 +229,6 @@ namespace Numerics.Functions
         {
             if (function is LinearFunction linear) return linear.ToXElement();
             if (function is PowerFunction power) return power.ToXElement();
-            if (function is TabularFunction tabular) return tabular.ToXElement();
             if (function is SegmentedPowerFunction segmented) return segmented.ToXElement();
             if (function is CompositeFunction composite) return composite.ToXElement();
             throw new NotSupportedException("The template function type '" + function.GetType().Name + "' does not support serialization.");

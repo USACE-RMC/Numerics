@@ -141,6 +141,10 @@ namespace Numerics.Functions
         private double _maximum = double.MaxValue;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// These are component-wise bounds only. They do not encode the required strict ordering
+        /// between breakpoint parameters; callers must use <see cref="ValidateParameters(IList{double}, bool)"/>.
+        /// </remarks>
         public double[] MinimumOfParameters
         {
             get
@@ -158,6 +162,10 @@ namespace Numerics.Functions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// These are component-wise bounds only. They do not encode the required strict ordering
+        /// between breakpoint parameters; callers must use <see cref="ValidateParameters(IList{double}, bool)"/>.
+        /// </remarks>
         public double[] MaximumOfParameters
         {
             get
@@ -211,6 +219,10 @@ namespace Numerics.Functions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// An invalid vector is rejected atomically and leaves the previously valid state unchanged.
+        /// Call <see cref="ValidateParameters(IList{double}, bool)"/> to obtain the validation error.
+        /// </remarks>
         public void SetParameters(IList<double> parameters)
         {
             var validationError = ValidateParameters(parameters, false);
