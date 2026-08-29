@@ -270,8 +270,17 @@ namespace Numerics.Distributions
         /// Bootstrap a list of quantiles given the input non-exceedance probabilities.
         /// </summary>
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] Quantiles(IList<double> probabilities, IUnivariateDistribution[]? distributions = null)
+        public double[,] Quantiles(IList<double> probabilities)
+        {
+            return Quantiles(probabilities, null);
+        }
+
+        /// <summary>
+        /// Computes quantiles from a supplied array of bootstrapped distributions.
+        /// </summary>
+        /// <param name="probabilities">List of non-exceedance probabilities.</param>
+        /// <param name="distributions">The bootstrapped distributions, or null to generate them.</param>
+        public double[,] Quantiles(IList<double> probabilities, IUnivariateDistribution[]? distributions)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
             var Output = new double[bootDistributions.Length, probabilities.Count];
@@ -288,8 +297,17 @@ namespace Numerics.Distributions
         /// Bootstrap a list of non-exceedance probabilities given the input quantile values.
         /// </summary>
         /// <param name="quantiles">List quantile values.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
-        public double[,] Probabilities(IList<double> quantiles, IUnivariateDistribution[]? distributions = null)
+        public double[,] Probabilities(IList<double> quantiles)
+        {
+            return Probabilities(quantiles, null);
+        }
+
+        /// <summary>
+        /// Computes non-exceedance probabilities from a supplied array of bootstrapped distributions.
+        /// </summary>
+        /// <param name="quantiles">List of quantile values.</param>
+        /// <param name="distributions">The bootstrapped distributions, or null to generate them.</param>
+        public double[,] Probabilities(IList<double> quantiles, IUnivariateDistribution[]? distributions)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
             var Output = new double[bootDistributions.Length, quantiles.Count];

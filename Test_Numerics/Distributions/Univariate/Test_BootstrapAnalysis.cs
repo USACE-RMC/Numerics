@@ -357,6 +357,21 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies that the released one-argument bootstrap summary method tokens remain
+        /// available to already-compiled consumers.
+        /// </summary>
+        [TestMethod]
+        public void Test_OneArgumentSummaryMethods_RetainBinarySignatures()
+        {
+            Type listType = typeof(IList<double>);
+
+            Assert.IsNotNull(typeof(BootstrapAnalysis).GetMethod(
+                nameof(BootstrapAnalysis.Quantiles), new[] { listType }));
+            Assert.IsNotNull(typeof(BootstrapAnalysis).GetMethod(
+                nameof(BootstrapAnalysis.Probabilities), new[] { listType }));
+        }
+
+        /// <summary>
         /// Test that the normal-approximation quantile interval preserves the sign of negative
         /// quantiles: the transform applied around the point estimate must remain finite and
         /// keep both interval endpoints on the data's side of zero.
