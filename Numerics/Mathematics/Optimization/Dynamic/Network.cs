@@ -389,7 +389,9 @@ namespace Numerics.Mathematics.Optimization
         /// <remarks>
         /// When the table's recorded route from the start node avoids every excluded edge it is
         /// returned directly — exclusions only remove paths, so a surviving unexcluded optimum
-        /// stays optimal. Otherwise the path is re-solved with the exclusions applied.
+        /// stays optimal. Otherwise the path is re-solved with the exclusions applied using the
+        /// edge weights supplied to the constructor. Use the four-argument overload when
+        /// <paramref name="existingResultsTable"/> was solved with custom weights.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the edge indices or table are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the table dimensions are not [<see cref="NodeCount"/>, 3].</exception>
@@ -426,14 +428,66 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
+        /// Finds an alternative path avoiding the specified edges, using a pre-computed
+        /// custom-weight result table to skip the solve when the recorded route is unaffected.
+        /// </summary>
+        /// <param name="edgesToRemove">Edge indices to exclude from the path. The array is not modified; every edge bearing a listed index is excluded.</param>
+        /// <param name="startNodeIndex">The starting node index.</param>
+        /// <param name="existingResultsTable">A result table previously solved on this network with <paramref name="edgeWeights"/>, toward its destinations and without exclusions.</param>
+        /// <param name="edgeWeights">Custom weights, one per edge, positional with the constructor's edge array.</param>
+        /// <returns>
+        /// The ordered edge indices from the start node to its nearest network destination
+        /// avoiding the excluded edges; an empty list when the start node is itself a
+        /// destination or when no path exists.
+        /// </returns>
+        /// <remarks>
+        /// The existing table and custom weights must describe the same solve. When the table's
+        /// recorded route is blocked, the detour is re-solved with <paramref name="edgeWeights"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when the edge indices, table, or weights are null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the table dimensions are not [<see cref="NodeCount"/>, 3] or the weight count does not equal the edge count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
+        public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable, float[] edgeWeights)
+        {
+            if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
+            ValidateResultTable(existingResultsTable);
+            ValidateWeights(edgeWeights);
+            if (startNodeIndex < 0 || startNodeIndex >= _nodeCount)
+                throw new ArgumentOutOfRangeException(nameof(startNodeIndex), $"The start node index must be within [0, {_nodeCount}).");
+
+            if (float.IsPositiveInfinity(existingResultsTable[startNodeIndex, 2])) return new List<int>();
+
+            var removed = new HashSet<int>();
+            for (int i = 0; i < edgesToRemove.Length; i++) removed.Add(edgesToRemove[i]);
+
+            List<int>? recorded = Dijkstra.GetPath(existingResultsTable, startNodeIndex);
+            if (recorded != null)
+            {
+                bool blocked = false;
+                for (int i = 0; i < recorded.Count; i++)
+                {
+                    if (removed.Contains(recorded[i]))
+                    {
+                        blocked = true;
+                        break;
+                    }
+                }
+                if (!blocked) return recorded;
+            }
+
+            return FindDetourPath(removed, startNodeIndex, edgeWeights) ?? new List<int>();
+        }
+
+        /// <summary>
         /// Runs a forward Dijkstra search from the start node over the outgoing adjacency,
         /// skipping excluded edges, stopping at the first settled destination (the nearest one),
         /// and reconstructing the edge-index path.
         /// </summary>
         /// <param name="removed">The excluded edge indices.</param>
         /// <param name="startNodeIndex">The starting node index.</param>
+        /// <param name="edgeWeights">Optional custom weights positional with the constructor's edge array; null uses the constructor weights.</param>
         /// <returns>The ordered edge indices to the nearest destination; an empty list when the start node is a destination; null when every destination is unreachable.</returns>
-        private List<int>? FindDetourPath(HashSet<int> removed, int startNodeIndex)
+        private List<int>? FindDetourPath(HashSet<int> removed, int startNodeIndex, float[]? edgeWeights = null)
         {
             if (_isDestination[startNodeIndex]) return new List<int>();
 
@@ -456,6 +510,7 @@ namespace Numerics.Mathematics.Optimization
             int[] toNodes = _outgoingAdjacency.ToNode;
             float[] weights = _outgoingAdjacency.Weight;
             int[] edgeIndexes = _outgoingAdjacency.EdgeIndex;
+            int[]? sourcePositions = _outgoingAdjacency.SourcePosition;
 
             int reachedDestination = -1;
             while (heap.Count > 0)
@@ -475,7 +530,8 @@ namespace Numerics.Mathematics.Optimization
                 {
                     if (removed.Contains(edgeIndexes[k])) continue;
                     int to = toNodes[k];
-                    float newCost = cost + weights[k];
+                    float weight = edgeWeights == null ? weights[k] : edgeWeights[sourcePositions![k]];
+                    float newCost = cost + weight;
                     if (newCost < dist[to])
                     {
                         dist[to] = newCost;

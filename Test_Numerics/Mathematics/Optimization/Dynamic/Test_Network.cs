@@ -407,6 +407,31 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
+        /// A detour from a custom-weight result table is solved with the same positional weights;
+        /// using the constructor weights would choose the other available route.
+        /// </summary>
+        [TestMethod]
+        public void GetPathCustomWeightTableUsesCustomWeightsForDetour()
+        {
+            var edges = new[]
+            {
+                new Edge(0, 1, 1, 0),
+                new Edge(1, 4, 1, 1),
+                new Edge(0, 2, 1, 2),
+                new Edge(2, 4, 1, 3),
+                new Edge(0, 3, 10, 4),
+                new Edge(3, 4, 10, 5),
+            };
+            var customWeights = new float[] { 1, 1, 100, 100, 2, 2 };
+            var network = new Network(edges, new[] { 4 });
+            var customTable = network.Solve(customWeights);
+
+            CollectionAssert.AreEqual(
+                new List<int> { 4, 5 },
+                network.GetPath(new[] { 1 }, 0, customTable, customWeights));
+        }
+
+        /// <summary>
         /// GetPath rejects null inputs, out-of-range start nodes, and wrong table dimensions
         /// with clear argument exceptions.
         /// </summary>
@@ -423,6 +448,8 @@ namespace Mathematics.Optimization
             Assert.Throws<ArgumentNullException>(() => network.GetPath(new int[0], 0, null!));
             Assert.Throws<ArgumentException>(() => network.GetPath(new int[0], 0, new float[2, 3]));
             Assert.Throws<ArgumentOutOfRangeException>(() => network.GetPath(new int[0], 9, table));
+            Assert.Throws<ArgumentNullException>(() => network.GetPath(new int[0], 0, table, null!));
+            Assert.Throws<ArgumentException>(() => network.GetPath(new int[0], 0, table, new float[1]));
         }
 
         /// <summary>
