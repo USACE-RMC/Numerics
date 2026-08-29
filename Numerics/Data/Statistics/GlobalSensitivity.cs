@@ -19,8 +19,8 @@ namespace Numerics.Data.Statistics
     /// the PAWN indices measure conditional-versus-unconditional distribution shifts through
     /// Kolmogorov-Smirnov statistics (sensitive to changes a variance ratio misses), and the
     /// Borgonovo delta is a moment-independent total-variation measure suited to tail-driven
-    /// outputs. All three are deterministic: binning is by rank with ties resolved by the sort's
-    /// deterministic order, and no randomness is used anywhere.
+    /// outputs. All three are deterministic: binning is by rank with ties resolved by original
+    /// sample index, and no randomness is used anywhere.
     /// </para>
     /// <b> References: </b>
     /// <list type="bullet">
@@ -225,22 +225,22 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Returns the sample indices sorted ascending by value. Ties keep the sort's deterministic
-        /// order, so identical inputs always produce identical bin assignments.
+        /// Returns the sample indices sorted ascending by value. Ties are ordered by original
+        /// sample index so bin assignments do not depend on framework sort stability.
         /// </summary>
         /// <param name="values">The values to rank.</param>
         /// <returns>The sorted index array.</returns>
         private static int[] SortIndicesBy(IList<double> values)
         {
             int n = values.Count;
-            var keys = new double[n];
             var order = new int[n];
             for (int i = 0; i < n; i++)
-            {
-                keys[i] = values[i];
                 order[i] = i;
-            }
-            Array.Sort(keys, order);
+            Array.Sort(order, (first, second) =>
+            {
+                int comparison = values[first].CompareTo(values[second]);
+                return comparison != 0 ? comparison : first.CompareTo(second);
+            });
             return order;
         }
 

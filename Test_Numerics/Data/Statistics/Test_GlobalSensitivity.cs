@@ -181,6 +181,26 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Equal rank values are resolved by their original sample indices, so a tied input with
+        /// outputs split by original position forms the same two pure bins on every framework.
+        /// </summary>
+        [TestMethod]
+        public void Test_TiedRanks_UseOriginalIndexOrder()
+        {
+            var x = new double[32];
+            var y = new double[32];
+            for (int i = 0; i < x.Length; i++)
+            {
+                x[i] = 1d;
+                y[i] = i < x.Length / 2 ? 0d : 1d;
+            }
+
+            Assert.AreEqual(1d, GlobalSensitivity.FirstOrderSobol(x, y, 2), 0d);
+            CollectionAssert.AreEqual(new double[] { 0.5d, 0.5d }, GlobalSensitivity.Pawn(x, y, 2));
+            Assert.AreEqual(0.5d, GlobalSensitivity.BorgonovoDelta(x, y, 2, 2), 0d);
+        }
+
+        /// <summary>
         /// Guard matrix: nulls, length mismatches, degenerate bin counts, samples shorter than the
         /// bin counts, and non-finite values all throw the documented exceptions, and a
         /// zero-variance output returns a zero Sobol index.
