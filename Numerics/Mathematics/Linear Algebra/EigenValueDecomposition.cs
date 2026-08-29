@@ -139,19 +139,31 @@
         /// <summary>
         /// Returns the effective sample size based on Dutilleul's method (1993). 
         /// </summary>
+        /// <returns>The scale-invariant effective sample size, or zero for an all-zero spectrum.</returns>
+        /// <remarks>
+        /// Eigenvalues are normalized by the largest absolute eigenvalue before evaluating
+        /// <c>(Σλ)² / Σλ²</c>. Negative eigenvalues no larger than <c>1E-10</c> of that spectral
+        /// scale are treated as numerical roundoff; materially negative eigenvalues retain the
+        /// established formula behavior.
+        /// </remarks>
         public double EffectiveSampleSize()
         {
+            double spectralScale = 0d;
+            for (int i = 0; i < EigenValues.Length; i++)
+                spectralScale = Math.Max(spectralScale, Math.Abs(EigenValues[i]));
+            if (spectralScale == 0d) return 0d;
+
             double sum = 0;
             double sumsq = 0;
             for (int i = 0; i < EigenValues.Length; i++)
             {
-                // Clip tiny negative eigenvalues that can appear from numerical error
-                double lambda = EigenValues[i];
+                // Normalize first so the roundoff threshold and ESS are independent of matrix scale.
+                double lambda = EigenValues[i] / spectralScale;
                 if (lambda < 0.0 && Math.Abs(lambda) <= 1e-10) lambda = 0.0;
                 sum += lambda;
                 sumsq += lambda * lambda;
             }
-            if (sumsq <= 1E-12) return 0.0; // degenerate case
+            if (sumsq == 0d) return 0d;
             double neff = (sum * sum) / sumsq;
             return neff;
         }

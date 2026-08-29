@@ -317,5 +317,49 @@ namespace Mathematics.LinearAlgebra
             }
         }
 
+        /// <summary>
+        /// Verifies Dutilleul effective sample size is invariant to covariance scale, including
+        /// scales below the former absolute degeneracy threshold.
+        /// </summary>
+        [TestMethod]
+        public void Test_EffectiveSampleSize_IsScaleInvariant()
+        {
+            const double expected = 1.8d; // (1 + 2)^2 / (1^2 + 2^2)
+            foreach (double scale in new double[] { 1E-9d, 1d, 1E+6d })
+            {
+                var matrix = new Matrix(new double[,]
+                {
+                    { scale, 0d },
+                    { 0d, 2d * scale },
+                });
+
+                double actual = new EigenValueDecomposition(matrix).EffectiveSampleSize();
+                Assert.AreEqual(expected, actual, 1E-12d, $"scale={scale:R}");
+            }
+        }
+
+        /// <summary>
+        /// Verifies the zero spectrum remains degenerate and tiny negative roundoff is clipped
+        /// relative to the spectrum rather than by an absolute eigenvalue threshold.
+        /// </summary>
+        [TestMethod]
+        public void Test_EffectiveSampleSize_HandlesZeroAndRelativeNegativeRoundoff()
+        {
+            Assert.AreEqual(0d,
+                new EigenValueDecomposition(new Matrix(new double[2, 2])).EffectiveSampleSize(), 0d);
+
+            foreach (double scale in new double[] { 1E-9d, 1d, 1E+6d })
+            {
+                var matrix = new Matrix(new double[,]
+                {
+                    { scale, 0d },
+                    { 0d, -5E-11d * scale },
+                });
+
+                double actual = new EigenValueDecomposition(matrix).EffectiveSampleSize();
+                Assert.AreEqual(1d, actual, 1E-12d, $"scale={scale:R}");
+            }
+        }
+
     }
 }
