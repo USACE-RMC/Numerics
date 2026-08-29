@@ -379,6 +379,11 @@ namespace Numerics.Distributions
         /// <param name="probabilities">The probabilities to interpolate.</param>
         /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
         /// <returns>The interpolated quantiles.</returns>
+        /// <remarks>
+        /// Despite the historical method name, this overload returns one quantile for each entry in
+        /// <paramref name="probabilities"/>. The two-argument overload instead returns mean CDF
+        /// probabilities evaluated at sorted quantiles.
+        /// </remarks>
         public double[] ExpectedProbabilities(IList<double> quantiles, IList<double> probabilities, IUnivariateDistribution[]? distributions = null)
         {
             if (quantiles == null) throw new ArgumentNullException(nameof(quantiles));
@@ -475,10 +480,16 @@ namespace Numerics.Distributions
             return expected;
         }
         /// <summary>
-        /// Bootstrap the expected non-exceedance probabilities given the input quantile values.
+        /// Computes mean non-exceedance probabilities at the input quantiles.
         /// </summary>
-        /// <param name="quantiles">List quantile values.</param>
+        /// <param name="quantiles">Quantile values, which are copied and sorted in ascending order.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <returns>Mean CDF probabilities corresponding to the quantiles in ascending order.</returns>
+        /// <remarks>
+        /// The returned positions follow ascending quantile order, not the caller's input order.
+        /// The three-argument overload instead interpolates and returns quantiles at requested
+        /// probabilities.
+        /// </remarks>
         public double[] ExpectedProbabilities(IList<double> quantiles, IUnivariateDistribution[]? distributions = null)
         {
             var quants = quantiles.ToArray();
