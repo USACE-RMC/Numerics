@@ -272,31 +272,59 @@ namespace Numerics.Functions
 
         /// <summary>
         /// Deserializes a power function from an XElement produced by <see cref="ToXElement"/>.
-        /// Missing or unparseable attributes keep the default-constructed values.
+        /// Missing attributes keep the default-constructed values.
         /// </summary>
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new <see cref="PowerFunction"/>.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when a present attribute is malformed or non-finite.</exception>
         public static PowerFunction FromXElement(XElement xElement)
         {
             if (xElement == null) throw new ArgumentNullException(nameof(xElement));
             var function = new PowerFunction();
             // Set the deterministic flag first: parameter validation is gated on it.
-            if (bool.TryParse(xElement.Attribute(nameof(IsDeterministic))?.Value, out bool isDeterministic))
+            var deterministicAttribute = xElement.Attribute(nameof(IsDeterministic));
+            if (deterministicAttribute != null)
+            {
+                if (!bool.TryParse(deterministicAttribute.Value, out bool isDeterministic))
+                    throw new ArgumentException("The serialized deterministic flag is invalid.", nameof(xElement));
                 function.IsDeterministic = isDeterministic;
-            if (bool.TryParse(xElement.Attribute(nameof(IsInverse))?.Value, out bool isInverse))
+            }
+            var inverseAttribute = xElement.Attribute(nameof(IsInverse));
+            if (inverseAttribute != null)
+            {
+                if (!bool.TryParse(inverseAttribute.Value, out bool isInverse))
+                    throw new ArgumentException("The serialized inverse flag is invalid.", nameof(xElement));
                 function.IsInverse = isInverse;
-            if (double.TryParse(xElement.Attribute(nameof(Alpha))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double alpha))
+            }
+            if (TryReadFiniteDouble(xElement, nameof(Alpha), out double alpha))
                 function.Alpha = alpha;
-            if (double.TryParse(xElement.Attribute(nameof(Beta))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double beta))
+            if (TryReadFiniteDouble(xElement, nameof(Beta), out double beta))
                 function.Beta = beta;
-            if (double.TryParse(xElement.Attribute(nameof(Xi))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double xi))
+            if (TryReadFiniteDouble(xElement, nameof(Xi), out double xi))
                 function.Xi = xi;
-            if (double.TryParse(xElement.Attribute(nameof(Sigma))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double sigma))
+            if (TryReadFiniteDouble(xElement, nameof(Sigma), out double sigma))
                 function.Sigma = sigma;
-            if (double.TryParse(xElement.Attribute(nameof(Maximum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double maximum))
+            if (TryReadFiniteDouble(xElement, nameof(Maximum), out double maximum))
                 function.Maximum = maximum;
             return function;
+        }
+
+        /// <summary>Reads an optional finite double attribute.</summary>
+        private static bool TryReadFiniteDouble(XElement xElement, string attributeName, out double value)
+        {
+            var attribute = xElement.Attribute(attributeName);
+            if (attribute == null)
+            {
+                value = 0d;
+                return false;
+            }
+            if (!double.TryParse(attribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value)
+                || !Tools.IsFinite(value))
+            {
+                throw new ArgumentException("The serialized " + attributeName + " value is invalid.", nameof(xElement));
+            }
+            return true;
         }
 
     }

@@ -198,7 +198,7 @@ namespace Numerics.Functions
         /// <param name="xElement">The XElement to deserialize.</param>
         /// <returns>A new <see cref="TabularFunction"/>.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when the element carries no embedded uncertain ordered paired data.</exception>
+        /// <exception cref="ArgumentException">Thrown when the element carries no embedded uncertain ordered paired data, or a present attribute is malformed, non-finite, or undefined.</exception>
         public static TabularFunction FromXElement(XElement xElement)
         {
             if (xElement == null) throw new ArgumentNullException(nameof(xElement));
@@ -207,19 +207,59 @@ namespace Numerics.Functions
                 throw new ArgumentException("The serialized tabular function is missing its embedded UncertainOrderedPairedData.", nameof(xElement));
 
             var function = new TabularFunction(new UncertainOrderedPairedData(tableElement));
-            if (Enum.TryParse(xElement.Attribute(nameof(XTransform))?.Value, out Transform xTransform))
+            var xTransformAttribute = xElement.Attribute(nameof(XTransform));
+            if (xTransformAttribute != null)
+            {
+                if (!Enum.TryParse(xTransformAttribute.Value, out Transform xTransform)
+                    || !Enum.IsDefined(typeof(Transform), xTransform))
+                    throw new ArgumentException("The serialized X transform is invalid.", nameof(xElement));
                 function.XTransform = xTransform;
-            if (Enum.TryParse(xElement.Attribute(nameof(YTransform))?.Value, out Transform yTransform))
+            }
+            var yTransformAttribute = xElement.Attribute(nameof(YTransform));
+            if (yTransformAttribute != null)
+            {
+                if (!Enum.TryParse(yTransformAttribute.Value, out Transform yTransform)
+                    || !Enum.IsDefined(typeof(Transform), yTransform))
+                    throw new ArgumentException("The serialized Y transform is invalid.", nameof(xElement));
                 function.YTransform = yTransform;
-            if (Enum.TryParse(xElement.Attribute(nameof(Extrapolation))?.Value, out ExtrapolationSides extrapolation))
+            }
+            var extrapolationAttribute = xElement.Attribute(nameof(Extrapolation));
+            if (extrapolationAttribute != null)
+            {
+                if (!Enum.TryParse(extrapolationAttribute.Value, out ExtrapolationSides extrapolation)
+                    || !Enum.IsDefined(typeof(ExtrapolationSides), extrapolation))
+                    throw new ArgumentException("The serialized extrapolation policy is invalid.", nameof(xElement));
                 function.Extrapolation = extrapolation;
-            if (bool.TryParse(xElement.Attribute(nameof(AllowNegativeYValues))?.Value, out bool allowNegative))
+            }
+            var allowNegativeAttribute = xElement.Attribute(nameof(AllowNegativeYValues));
+            if (allowNegativeAttribute != null)
+            {
+                if (!bool.TryParse(allowNegativeAttribute.Value, out bool allowNegative))
+                    throw new ArgumentException("The serialized negative-Y policy is invalid.", nameof(xElement));
                 function.AllowNegativeYValues = allowNegative;
-            if (double.TryParse(xElement.Attribute(nameof(Minimum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double minimum))
+            }
+            if (TryReadFiniteDouble(xElement, nameof(Minimum), out double minimum))
                 function.Minimum = minimum;
-            if (double.TryParse(xElement.Attribute(nameof(Maximum))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double maximum))
+            if (TryReadFiniteDouble(xElement, nameof(Maximum), out double maximum))
                 function.Maximum = maximum;
             return function;
+        }
+
+        /// <summary>Reads an optional finite double attribute.</summary>
+        private static bool TryReadFiniteDouble(XElement xElement, string attributeName, out double value)
+        {
+            var attribute = xElement.Attribute(attributeName);
+            if (attribute == null)
+            {
+                value = 0d;
+                return false;
+            }
+            if (!double.TryParse(attribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out value)
+                || !Tools.IsFinite(value))
+            {
+                throw new ArgumentException("The serialized " + attributeName + " value is invalid.", nameof(xElement));
+            }
+            return true;
         }
     }
 }

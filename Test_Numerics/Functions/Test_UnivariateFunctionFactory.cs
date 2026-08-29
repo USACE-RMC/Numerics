@@ -172,6 +172,67 @@ namespace Functions
         }
 
         /// <summary>
+        /// Verifies that every present linear-function attribute must contain a parseable,
+        /// finite value instead of silently preserving a constructor default.
+        /// </summary>
+        [TestMethod]
+        [DataRow(nameof(LinearFunction.IsDeterministic), "not-a-Boolean")]
+        [DataRow(nameof(LinearFunction.Alpha), "not-a-number")]
+        [DataRow(nameof(LinearFunction.Beta), "NaN")]
+        [DataRow(nameof(LinearFunction.Sigma), "Infinity")]
+        [DataRow(nameof(LinearFunction.Minimum), "not-a-number")]
+        [DataRow(nameof(LinearFunction.Maximum), "NaN")]
+        public void Test_LinearFunction_RejectsInvalidPresentAttribute(string attributeName, string value)
+        {
+            XElement element = new LinearFunction().ToXElement();
+            element.SetAttributeValue(attributeName, value);
+
+            Assert.Throws<ArgumentException>(() => LinearFunction.FromXElement(element));
+        }
+
+        /// <summary>
+        /// Verifies that every present power-function attribute must contain a parseable,
+        /// finite value instead of silently preserving a constructor default.
+        /// </summary>
+        [TestMethod]
+        [DataRow(nameof(PowerFunction.IsDeterministic), "not-a-Boolean")]
+        [DataRow(nameof(PowerFunction.IsInverse), "not-a-Boolean")]
+        [DataRow(nameof(PowerFunction.Alpha), "not-a-number")]
+        [DataRow(nameof(PowerFunction.Beta), "NaN")]
+        [DataRow(nameof(PowerFunction.Xi), "Infinity")]
+        [DataRow(nameof(PowerFunction.Sigma), "not-a-number")]
+        [DataRow(nameof(PowerFunction.Maximum), "NaN")]
+        public void Test_PowerFunction_RejectsInvalidPresentAttribute(string attributeName, string value)
+        {
+            XElement element = new PowerFunction().ToXElement();
+            element.SetAttributeValue(attributeName, value);
+
+            Assert.Throws<ArgumentException>(() => PowerFunction.FromXElement(element));
+        }
+
+        /// <summary>
+        /// Verifies that every present tabular-function attribute must contain a parseable,
+        /// finite value and that enum values must be defined.
+        /// </summary>
+        [TestMethod]
+        [DataRow(nameof(TabularFunction.XTransform), "999")]
+        [DataRow(nameof(TabularFunction.YTransform), "not-a-transform")]
+        [DataRow(nameof(TabularFunction.Extrapolation), "999")]
+        [DataRow(nameof(TabularFunction.AllowNegativeYValues), "not-a-Boolean")]
+        [DataRow(nameof(TabularFunction.Minimum), "NaN")]
+        [DataRow(nameof(TabularFunction.Maximum), "not-a-number")]
+        public void Test_TabularFunction_RejectsInvalidPresentAttribute(string attributeName, string value)
+        {
+            var table = new UncertainOrderedPairedData(
+                new[] { new UncertainOrdinate(0d, new Deterministic(0d)), new UncertainOrdinate(1d, new Deterministic(1d)) },
+                true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Deterministic);
+            XElement element = new TabularFunction(table).ToXElement();
+            element.SetAttributeValue(attributeName, value);
+
+            Assert.Throws<ArgumentException>(() => TabularFunction.FromXElement(element));
+        }
+
+        /// <summary>
         /// Test that the factory rejects null and unknown serialized forms.
         /// </summary>
         [TestMethod]
