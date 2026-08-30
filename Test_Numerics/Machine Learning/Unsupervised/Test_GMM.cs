@@ -1,6 +1,7 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.MachineLearning;
 using System.Collections.Generic;
+using System.Reflection;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Sampling;
 
@@ -119,20 +120,15 @@ namespace MachineLearning
         }
 
         /// <summary>
-        /// Verify that the M-step's symmetric positive-definite repair is actually applied to the
-        /// stored covariance matrices.
+        /// Verifies that the M-step does not ridge covariance matrices that are already positive definite.
         /// </summary>
         /// <remarks>
-        /// MatrixRegularization.MakeSymmetricPositiveDefinite is pure — it returns a symmetrized copy
-        /// with a trace-scaled ridge — so the M-step must store that return value for the repair to
-        /// reach the covariance the next E-step's Cholesky factorization consumes. This test recomputes
-        /// the M-step covariance externally from the public responsibilities after a single EM iteration
-        /// and asserts the stored matrices carry the repair's base ridge (1E-10 of the mean diagonal)
-        /// exactly; a covariance stored WITHOUT the ridge would miss these assertions by exactly that
-        /// amount.
+        /// The helper returns the symmetrized input unchanged when Cholesky accepts it. This test
+        /// recomputes each M-step covariance externally from the public responsibilities after one EM
+        /// iteration and requires exact agreement after applying only the established diagonal floor.
         /// </remarks>
         [TestMethod]
-        public void Test_GMM_MStep_PositiveDefiniteRepairIsApplied()
+        public void Test_GMM_MStep_WellConditionedCovarianceIsNotRidged()
         {
             var data = new double[,]
             {
@@ -178,23 +174,54 @@ namespace MachineLearning
                         expected[d, j] = sum / wgt;
                     }
                 }
-                // Apply the diagonal floor, then the repair's base ridge (the first Cholesky attempt
-                // succeeds for these well-separated clusters, so exactly one base ridge is added).
-                double trace = 0;
+                // Apply the established diagonal floor. No ridge is needed for these covariances.
                 for (int d = 0; d < dims; d++)
-                {
                     expected[d, d] = System.Math.Max(expected[d, d], 1E-6 * colVar[d]);
-                    trace += expected[d, d];
-                }
-                double baseRidge = 1e-10 * trace / dims;
-                for (int d = 0; d < dims; d++)
-                    expected[d, d] += baseRidge;
 
                 for (int d = 0; d < dims; d++)
                     for (int j = 0; j < dims; j++)
                         Assert.AreEqual(expected[d, j], gmm.Sigmas[k][d, j], 0d,
-                            $"Sigma[{k}][{d},{j}] must carry the positive-definite repair.");
+                            $"Sigma[{k}][{d},{j}] must preserve the un-ridged covariance.");
             }
+        }
+
+        /// <summary>
+        /// Verifies that a ridge required by a rank-deficient M-step covariance is stored for the next E-step.
+        /// </summary>
+        /// <remarks>
+        /// The full fixture has a usable initial covariance. The test then assigns responsibility only to
+        /// the first three collinear observations and invokes one M-step, producing the exactly rank-one
+        /// covariance <c>[[2/3, 2/3], [2/3, 2/3]]</c>. The returned trace-scaled ridge must be assigned to
+        /// <see cref="GaussianMixtureModel.Sigmas"/>; discarding the pure helper's return value leaves the
+        /// stored covariance singular.
+        /// </remarks>
+        [TestMethod]
+        public void Test_GMM_MStep_RequiredPositiveDefiniteRepairIsStored()
+        {
+            var data = new double[,]
+            {
+                { 0d, 0d }, { 1d, 1d }, { 2d, 2d },
+                { 0d, 2d }, { 1d, 0d }, { 2d, 0d }
+            };
+            var gmm = new GaussianMixtureModel(data, 1) { MaxIterations = 1 };
+            gmm.Train(seed: 42);
+
+            for (int i = 0; i < data.GetLength(0); i++)
+                gmm.LikelihoodMatrix[i, 0] = i < 3 ? 1d : 0d;
+
+            MethodInfo mStep = typeof(GaussianMixtureModel).GetMethod(
+                "MStep",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(mStep);
+            mStep.Invoke(gmm, null);
+
+            double rawVariance = 2d / 3d;
+            double baseRidge = 1E-10d * rawVariance;
+            Assert.AreEqual(rawVariance + baseRidge, gmm.Sigmas[0][0, 0], 0d);
+            Assert.AreEqual(rawVariance + baseRidge, gmm.Sigmas[0][1, 1], 0d);
+            Assert.AreEqual(rawVariance, gmm.Sigmas[0][0, 1], 0d);
+            Assert.AreEqual(rawVariance, gmm.Sigmas[0][1, 0], 0d);
+            Assert.IsTrue(new CholeskyDecomposition(gmm.Sigmas[0]).IsPositiveDefinite);
         }
 
     }

@@ -16,12 +16,11 @@ namespace Mathematics.LinearAlgebra
     ///     </list>
     /// </para>
     /// <para>
-    /// <see cref="MatrixRegularization.MakeSymmetricPositiveDefinite"/> symmetrizes its input, then adds a
-    /// trace-scaled ridge of <c>1E-10 * trace / p</c> and retries with the ridge multiplied by ten each time
-    /// the factorization is rejected, up to eight attempts. Tightening the Cholesky pivot test could in
-    /// principle make the loop reject a matrix the absolute test accepts, escalate to a larger ridge, and
-    /// return a different matrix to every downstream consumer. These tests pin the returned matrix so that
-    /// any such escalation shows up as a failure rather than as a silent change in a fitted result.
+    /// <see cref="MatrixRegularization.MakeSymmetricPositiveDefinite"/> symmetrizes its input and first tests
+    /// that un-ridged candidate. It returns the candidate unchanged when Cholesky accepts it. Only a rejected
+    /// candidate enters the trace-scaled ridge loop, beginning at <c>1E-10 * trace / p</c> and multiplying the
+    /// ridge by ten after each rejection, up to eight attempts. These tests pin both the no-ridge and fallback
+    /// paths so that a conditioning-policy change cannot silently alter downstream fitted results.
     /// </para>
     /// <para>
     /// The loop is structurally immune to the scale-relative pivot test at any realistic dimension. For a
@@ -74,13 +73,28 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Verifies that a well-conditioned symmetric matrix is returned with the base ridge only.
+        /// Verifies that a well-conditioned symmetric matrix is returned without a ridge.
         /// </summary>
         [TestMethod]
-        public void Test_MakeSymmetricPositiveDefinite_WellConditionedTakesTheBaseRidge()
+        public void Test_MakeSymmetricPositiveDefinite_WellConditionedReturnsWithoutRidge()
         {
             var M = new Matrix(new[,] { { 4d, 1d, 0.5d }, { 1d, 3d, 0.25d }, { 0.5d, 0.25d, 2d } });
-            AssertMatricesEqual(FirstRidgeCandidate(M), MatrixRegularization.MakeSymmetricPositiveDefinite(M), 0d);
+            AssertMatricesEqual(M, MatrixRegularization.MakeSymmetricPositiveDefinite(M), 0d);
+        }
+
+        /// <summary>
+        /// Verifies that a positive-definite matrix with widely separated coordinate scales is not changed.
+        /// </summary>
+        /// <remarks>
+        /// The diagonal scales mirror real-space moment covariances. An unconditional trace-scaled ridge is
+        /// dominated by the largest coordinate and materially changes the smallest coordinate even though
+        /// each Cholesky pivot is healthy relative to its own diagonal.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MakeSymmetricPositiveDefinite_ScaleSeparatedReturnsWithoutRidge()
+        {
+            var M = new Matrix(new[,] { { 1d, 0d, 0d }, { 0d, 1E4d, 0d }, { 0d, 0d, 1E8d } });
+            AssertMatricesEqual(M, MatrixRegularization.MakeSymmetricPositiveDefinite(M), 0d);
         }
 
         /// <summary>
@@ -108,14 +122,15 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Verifies that an asymmetric input is symmetrized before the ridge is applied.
+        /// Verifies that an asymmetric input whose symmetric part is positive definite is only symmetrized.
         /// </summary>
         [TestMethod]
         public void Test_MakeSymmetricPositiveDefinite_SymmetrizesFirst()
         {
             var M = new Matrix(new[,] { { 2d, 0.8d }, { 0.2d, 2d } });
             var regularized = MatrixRegularization.MakeSymmetricPositiveDefinite(M);
-            AssertMatricesEqual(FirstRidgeCandidate(M), regularized, 0d);
+            var expected = new Matrix(new[,] { { 2d, 0.5d }, { 0.5d, 2d } });
+            AssertMatricesEqual(expected, regularized, 0d);
             Assert.AreEqual(0.5d, regularized[0, 1], 0d);
             Assert.AreEqual(0.5d, regularized[1, 0], 0d);
         }

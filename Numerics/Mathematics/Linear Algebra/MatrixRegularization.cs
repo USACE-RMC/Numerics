@@ -104,14 +104,39 @@
         }
 
         /// <summary>
-        /// Makes the matrix symmetric and positive definite.
+        /// Determines whether the Cholesky decomposition accepts a matrix as positive definite.
+        /// </summary>
+        /// <param name="matrix">The symmetric matrix to test.</param>
+        /// <returns><see langword="true"/> when the decomposition succeeds; otherwise, <see langword="false"/>.</returns>
+        private static bool CholeskyAccepts(Matrix matrix)
+        {
+            try
+            {
+                _ = new CholeskyDecomposition(matrix);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Makes the matrix symmetric and, when necessary, adds a ridge until Cholesky accepts it as
+        /// positive definite.
         /// </summary>
         /// <param name="M">The matrix to adjust.</param>
         /// <returns>A symmetric and positive definite matrix.</returns>
+        /// <remarks>
+        /// The symmetric input is returned without a ridge when its Cholesky decomposition succeeds.
+        /// A failed decomposition enters the existing trace-scaled ridge escalation.
+        /// </remarks>
         public static Matrix MakeSymmetricPositiveDefinite(Matrix M)
         {
             // Symmetrize
             var S = 0.5 * (M + M.Transpose());
+            if (CholeskyAccepts(S)) return S;
+
             // Tiny trace-scaled ridge
             double tr = 0.0;
             for (int i = 0; i < S.NumberOfRows; i++) tr += S[i, i];
@@ -123,7 +148,7 @@
                 var T = S.Clone();
                 double ridge = baseRidge * Math.Pow(10.0, k);
                 for (int i = 0; i < T.NumberOfRows; i++) T[i, i] += ridge;
-                try { var _ = new CholeskyDecomposition(T); return T; } catch { /* retry bigger ridge */ }
+                if (CholeskyAccepts(T)) return T;
             }
             // Last resort: add a biggish ridge
             var U = S.Clone();

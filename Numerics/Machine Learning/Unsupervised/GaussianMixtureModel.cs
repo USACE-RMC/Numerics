@@ -367,9 +367,9 @@ namespace Numerics.MachineLearning
                 }
 
                 // Ensure the full covariance matrix remains symmetric positive-definite. The helper is
-                // pure — it returns a symmetrized copy with a trace-scaled ridge — so its result must be
-                // assigned; a discarded call leaves the repair a no-op and the next E-step's Cholesky
-                // factorization protected only by the diagonal floor above.
+                // pure: it returns the symmetrized covariance unchanged when usable and adds a
+                // trace-scaled ridge only when needed. Its result must be assigned so an actual repair
+                // reaches the covariance consumed by the next E-step's Cholesky factorization.
                 Sigmas[k] = MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
             }
         }
