@@ -101,6 +101,25 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies that a negative maximum-likelihood location initializer receives finite bounds.
+        /// </summary>
+        [TestMethod()]
+        public void Test_EXP_ParameterConstraints_NegativeLocationInitial_HasFiniteBounds()
+        {
+            var exponential = new Exponential();
+            double[] values = [0.1d, 10d, 20d, 30d];
+
+            var constraints = exponential.GetParameterConstraints(values);
+
+            Assert.IsLessThan(0d, constraints.Item1[0]);
+            Assert.IsFalse(double.IsNaN(constraints.Item2[0]) || double.IsInfinity(constraints.Item2[0]));
+            Assert.IsFalse(double.IsNaN(constraints.Item3[0]) || double.IsInfinity(constraints.Item3[0]));
+            Assert.AreEqual(0.1d, constraints.Item3[0]);
+            Assert.IsLessThan(constraints.Item3[0], constraints.Item1[0]);
+            Assert.IsGreaterThan(constraints.Item2[0], constraints.Item1[0]);
+        }
+
+        /// <summary>
         /// Test the quantile function for the Exponential Distribution.
         /// </summary>
         /// <remarks>
