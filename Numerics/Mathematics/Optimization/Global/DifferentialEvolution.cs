@@ -161,7 +161,12 @@ namespace Numerics.Mathematics.Optimization
                         if (rr <= CrossoverProbability || j == jRand)
                         {
                             u[j] = Xp[r0].Values[j] + G * (Xp[r1].Values[j] - Xp[r2].Values[j]);
-                            u[j] = RepairParameter(u[j], LowerBounds[j], UpperBounds[j]);
+                            // Repair halfway toward the target so infeasible trials neither accumulate exactly
+                            // on a bound nor consume an extra random draw that shifts the seeded DE trajectory.
+                            if (u[j] < LowerBounds[j])
+                                u[j] = 0.5d * Xp[i].Values[j] + 0.5d * LowerBounds[j];
+                            else if (u[j] > UpperBounds[j])
+                                u[j] = 0.5d * Xp[i].Values[j] + 0.5d * UpperBounds[j];
                         }
                         else
                         {
