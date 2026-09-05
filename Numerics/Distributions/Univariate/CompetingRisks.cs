@@ -1350,9 +1350,16 @@ namespace Numerics.Distributions
         /// Creates a competing-risks distribution from its serialized representation.
         /// </summary>
         /// <param name="xElement">The element to deserialize.</param>
-        /// <returns>A validated competing-risks distribution, or <see langword="null"/> when the element identifies another distribution type.</returns>
+        /// <returns>A deserialized competing-risks distribution, or <see langword="null"/> when the element identifies another distribution type.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when serialized configuration, parameters, or correlation data is malformed.</exception>
+        /// <remarks>
+        /// Deserialization preserves the saved dependency mode even when optional correlation data
+        /// is absent. Empty correlation elements and complete component-sized all-zero matrices
+        /// written by earlier applications are treated as an unconfigured matrix. This permits
+        /// legacy import without declaring the configuration numerically ready: correlation-based
+        /// evaluation still calls the strict matrix validator and fails until a valid matrix is set.
+        /// </remarks>
         public static CompetingRisks? FromXElement(XElement xElement)
         {
             if (xElement == null) throw new ArgumentNullException(nameof(xElement));
@@ -1451,14 +1458,24 @@ namespace Numerics.Distributions
                 throw new ArgumentException("The serialized competing-risks parameters are invalid.", nameof(xElement));
 
             var correlationElement = xElement.Element(nameof(CorrelationMatrix));
-            var correlationRows = correlationElement?.Elements("Correlation_Row").ToArray() ?? Array.Empty<XElement>();
-            if (correlationRows.Length > 0)
+            if (correlationElement != null)
             {
+                var correlationRows = correlationElement.Elements("Correlation_Row").ToArray();
+                bool containsUnsupportedContent = correlationElement.Elements().Count() != correlationRows.Length
+                    || correlationRows.Any(row => row.HasElements)
+                    || correlationElement.Nodes().OfType<XText>().Any(text => !string.IsNullOrWhiteSpace(text.Value));
+                if (containsUnsupportedContent)
+                    throw new ArgumentException("The serialized correlation matrix contains unsupported content.", nameof(xElement));
+
+                if (correlationRows.Length == 0)
+                    return competingRisks;
+
                 int dimension = distributions.Length;
                 if (correlationRows.Length != dimension)
                     throw new ArgumentException("The serialized correlation matrix has an invalid row count.", nameof(xElement));
 
                 var correlation = new double[dimension, dimension];
+                bool allZero = true;
                 for (int i = 0; i < dimension; i++)
                 {
                     string[] entries = correlationRows[i].Value.Split('|');
@@ -1471,8 +1488,13 @@ namespace Numerics.Distributions
                             || correlation[i, j] < -1d
                             || correlation[i, j] > 1d)
                             throw new ArgumentException("The serialized correlation matrix contains an invalid value.", nameof(xElement));
+                        if (correlation[i, j] != 0d)
+                            allZero = false;
                     }
                 }
+
+                if (allZero)
+                    return competingRisks;
 
                 for (int i = 0; i < dimension; i++)
                 {
@@ -1485,10 +1507,6 @@ namespace Numerics.Distributions
                     }
                 }
                 competingRisks.CorrelationMatrix = correlation;
-            }
-            else if (competingRisks.Dependency == Probability.DependencyType.CorrelationMatrix)
-            {
-                throw new ArgumentException("A correlation-matrix dependency requires serialized correlation data.", nameof(xElement));
             }
 
             return competingRisks;
