@@ -402,5 +402,90 @@ namespace Mathematics.Integration
             Assert.AreEqual(first.FunctionEvaluations, second.FunctionEvaluations);
         }
 
+        /// <summary>
+        /// The recorder flushes the frozen composite rule on budget and depth exhaustion, not
+        /// only on success: a consumer adopting the recorded mass (nodes in whole regions,
+        /// weights summing to the domain area, weighted values reproducing the result) can rely
+        /// on a complete flush for every non-throwing outcome.
+        /// </summary>
+        [TestMethod]
+        public void Test_Recorder_FlushesOnBudgetAndDepthExhaustion()
+        {
+            double sumW = 0, sumWF = 0;
+            int count = 0;
+            var budget = new AdaptiveGaussKronrod2D((x, y) => Integrands.GenzProductPeak(x, y, 50, 50, 0.4, 0.6), 0, 1, 0, 1)
+            {
+                MaxFunctionEvaluations = 2000,
+                Recorder = (x, y, w, f) => { sumW += w; sumWF += w * f; count++; }
+            };
+            budget.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumFunctionEvaluationsReached, budget.Status);
+            Assert.IsGreaterThanOrEqualTo(441, count);
+            Assert.AreEqual(0, count % 441);
+            Assert.AreEqual(1d, sumW, 1E-12);
+            Assert.AreEqual(budget.Result, sumWF, 1E-12 * Math.Abs(budget.Result));
+
+            sumW = 0; sumWF = 0; count = 0;
+            var depth = new AdaptiveGaussKronrod2D((x, y) => Integrands.GenzGaussian(x, y, 10, 10, 0.4, 0.6), 0, 1, 0, 1)
+            {
+                MaxDepth = 0,
+                Recorder = (x, y, w, f) => { sumW += w; sumWF += w * f; count++; }
+            };
+            depth.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumIterationsReached, depth.Status);
+            Assert.AreEqual(441, count);
+            Assert.AreEqual(1d, sumW, 1E-12);
+            Assert.AreEqual(depth.Result, sumWF, 1E-12 * Math.Abs(depth.Result));
+        }
+
+        /// <summary>
+        /// The recorded weights sum to the domain area on every non-Failure status — success,
+        /// budget exhaustion, and depth exhaustion — on a non-unit-area domain, and a throwing
+        /// integrand reports nothing at all.
+        /// </summary>
+        [TestMethod]
+        public void Test_Recorder_MassCompleteOnEveryNonFailureStatus()
+        {
+            const double Area = 2d * 3d;
+            double sumW = 0;
+            var success = new AdaptiveGaussKronrod2D((x, y) => x * y, 0, 2, 0, 3)
+            {
+                Recorder = (x, y, w, f) => sumW += w
+            };
+            success.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, success.Status);
+            Assert.AreEqual(Area, sumW, 1E-12 * Area);
+
+            sumW = 0;
+            var budget = new AdaptiveGaussKronrod2D((x, y) => Integrands.GenzProductPeak(x / 2d, y / 3d, 50, 50, 0.4, 0.6), 0, 2, 0, 3)
+            {
+                MaxFunctionEvaluations = 2000,
+                Recorder = (x, y, w, f) => sumW += w
+            };
+            budget.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumFunctionEvaluationsReached, budget.Status);
+            Assert.AreEqual(Area, sumW, 1E-12 * Area);
+
+            sumW = 0;
+            var depth = new AdaptiveGaussKronrod2D((x, y) => Integrands.GenzGaussian(x / 2d, y / 3d, 10, 10, 0.4, 0.6), 0, 2, 0, 3)
+            {
+                MaxDepth = 0,
+                Recorder = (x, y, w, f) => sumW += w
+            };
+            depth.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumIterationsReached, depth.Status);
+            Assert.AreEqual(Area, sumW, 1E-12 * Area);
+
+            int failureCount = 0;
+            var failing = new AdaptiveGaussKronrod2D((x, y) => throw new InvalidOperationException("Integrand failure."), 0, 2, 0, 3)
+            {
+                ReportFailure = false,
+                Recorder = (x, y, w, f) => failureCount++
+            };
+            failing.Integrate();
+            Assert.AreEqual(IntegrationStatus.Failure, failing.Status);
+            Assert.AreEqual(0, failureCount);
+        }
+
     }
 }
