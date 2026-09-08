@@ -228,7 +228,7 @@ namespace Numerics.Sampling.MCMC
         /// <returns>The split-chain indicator ESS.</returns>
         private static double ComputeQuantileEffectiveSampleSize(double[][] chains, double probability)
         {
-            double threshold = Quantile(Flatten(chains), probability);
+            double threshold = Statistics.Percentile(Flatten(chains), probability);
             var indicators = new double[chains.Length][];
             for (int chainIndex = 0; chainIndex < chains.Length; chainIndex++)
             {
@@ -413,7 +413,7 @@ namespace Numerics.Sampling.MCMC
         /// <returns>Absolute deviations from the pooled median.</returns>
         private static double[][] FoldAroundMedian(double[][] chains)
         {
-            double median = Quantile(Flatten(chains), 0.5d);
+            double median = Statistics.Percentile(Flatten(chains), 0.5d);
             var folded = new double[chains.Length][];
             for (int chainIndex = 0; chainIndex < chains.Length; chainIndex++)
             {
@@ -475,23 +475,6 @@ namespace Numerics.Sampling.MCMC
                 offset += chain.Length;
             }
             return flattened;
-        }
-
-        /// <summary>
-        /// Computes the R type-7 sample quantile.
-        /// </summary>
-        /// <param name="values">Pooled sample values.</param>
-        /// <param name="probability">Probability in the closed unit interval.</param>
-        /// <returns>The interpolated sample quantile.</returns>
-        private static double Quantile(double[] values, double probability)
-        {
-            var sorted = values.OrderBy(value => value).ToArray();
-            double position = (sorted.Length - 1d) * probability;
-            int lower = (int)Math.Floor(position);
-            int upper = (int)Math.Ceiling(position);
-            if (lower == upper)
-                return sorted[lower];
-            return sorted[lower] + (position - lower) * (sorted[upper] - sorted[lower]);
         }
 
         /// <summary>

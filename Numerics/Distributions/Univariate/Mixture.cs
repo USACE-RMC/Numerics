@@ -156,28 +156,6 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Determines whether a value is finite on every target framework.
-        /// </summary>
-        /// <param name="value">The value to inspect.</param>
-        /// <returns><see langword="true"/> when the value is neither NaN nor infinite.</returns>
-        private static bool IsFinite(double value)
-        {
-            return !double.IsNaN(value) && !double.IsInfinity(value);
-        }
-
-        /// <summary>
-        /// Restricts a value to an inclusive interval on every target framework.
-        /// </summary>
-        /// <param name="value">The value to restrict.</param>
-        /// <param name="minimum">The inclusive lower bound.</param>
-        /// <param name="maximum">The inclusive upper bound.</param>
-        /// <returns>The restricted value.</returns>
-        private static double Clamp(double value, double minimum, double maximum)
-        {
-            return value < minimum ? minimum : value > maximum ? maximum : value;
-        }
-
-        /// <summary>
         /// Returns the next representable value greater than the supplied value.
         /// </summary>
         /// <param name="value">The starting value.</param>
@@ -207,7 +185,7 @@ namespace Numerics.Distributions
         private double PositiveLogMass(int componentIndex)
         {
             double log = Distributions[componentIndex].LogCCDF(0);
-            if (!IsFinite(log) || log > 0) throw new InvalidOperationException("The active component must have positive probability above zero.");
+            if (!Tools.IsFinite(log) || log > 0) throw new InvalidOperationException("The active component must have positive probability above zero.");
             return log;
         }
 
@@ -234,13 +212,13 @@ namespace Numerics.Distributions
             if (probability == 1) return distribution.Maximum;
             double target = PositiveLogMass(componentIndex) + Tools.Log1p(-probability);
             double scale = distribution.InverseCDF(.75) - distribution.InverseCDF(.25);
-            if (!(scale > 0) || !IsFinite(scale)) scale = Math.Max(1, Math.Abs(minimum));
+            if (!(scale > 0) || !Tools.IsFinite(scale)) scale = Math.Max(1, Math.Abs(minimum));
             double upper = Math.Min(distribution.Maximum, minimum + scale);
             for (int i = 0; distribution.LogCCDF(upper) > target && i < 1024; i++)
             {
                 scale *= 2;
                 double next = minimum + scale;
-                upper = Math.Min(distribution.Maximum, IsFinite(next) ? next : double.MaxValue);
+                upper = Math.Min(distribution.Maximum, Tools.IsFinite(next) ? next : double.MaxValue);
             }
             if (!(upper > minimum) || distribution.LogCCDF(upper) > target)
                 throw new InvalidOperationException("The positive-conditional quantile could not be bracketed.");
@@ -447,14 +425,14 @@ namespace Numerics.Distributions
             double reference = components[0].mean, offset = 0, totalWeight = 0;
             foreach (var component in components) { offset += component.weight * (component.mean - reference); totalWeight += component.weight; }
             u1 = reference * totalWeight + offset;
-            if (!IsFinite(u1))
+            if (!Tools.IsFinite(u1))
             {
                 double magnitude = components.Max(c => Math.Abs(c.mean));
                 u1 = magnitude * components.Sum(c => c.weight * (c.mean / magnitude));
             }
             double scaleMoment = components.Max(c => Math.Max(c.sd, double.IsInfinity(c.mean - u1)
-                && IsFinite(c.mean) && IsFinite(u1) ? Math.Max(Math.Abs(c.mean), Math.Abs(u1)) : Math.Abs(c.mean - u1)));
-            if (!IsFinite(scaleMoment)) { u2 = scaleMoment; u3 = u4 = double.NaN; _momentsComputed = true; return; }
+                && Tools.IsFinite(c.mean) && Tools.IsFinite(u1) ? Math.Max(Math.Abs(c.mean), Math.Abs(u1)) : Math.Abs(c.mean - u1)));
+            if (!Tools.IsFinite(scaleMoment)) { u2 = scaleMoment; u3 = u4 = double.NaN; _momentsComputed = true; return; }
             if (scaleMoment == 0) { u2 = 0; u3 = u4 = double.NaN; _momentsComputed = true; return; }
             double m2 = 0, m3 = 0, m4 = 0;
             foreach (var component in components)
@@ -764,7 +742,7 @@ namespace Numerics.Distributions
                 }
 
                 double componentMass = IsZeroInflated ? 1.0 - ZeroWeight : 1.0;
-                if (weightSum <= 0.0 || !IsFinite(weightSum))
+                if (weightSum <= 0.0 || !Tools.IsFinite(weightSum))
                 {
                     double uniformWeight = componentMass / componentCount;
                     for (int i = 0; i < componentCount; i++) Weights[i] = uniformWeight;
@@ -800,7 +778,7 @@ namespace Numerics.Distributions
                 error = new ArgumentOutOfRangeException(nameof(Distributions), "At least one non-null component and a matching weight vector are required.");
             else if (parameters is null || parameters.Count != _weights.Length + _distributions.Sum(d => d.GetParameters.Length))
                 error = new ArgumentOutOfRangeException(nameof(parameters), "The flattened parameter count must match the mixture.");
-            else if (IsZeroInflated && (!IsFinite(ZeroWeight) || ZeroWeight < 0 || ZeroWeight >= 1))
+            else if (IsZeroInflated && (!Tools.IsFinite(ZeroWeight) || ZeroWeight < 0 || ZeroWeight >= 1))
                 error = new ArgumentOutOfRangeException(nameof(ZeroWeight), "The zero weight must be finite and in [0,1).");
             else
             {
@@ -809,11 +787,11 @@ namespace Numerics.Distributions
                 for (int i = 0; i < count; i++)
                 {
                     double weight = parameters[i];
-                    if (!IsFinite(weight) || weight < 0 || weight > 1)
+                    if (!Tools.IsFinite(weight) || weight < 0 || weight > 1)
                     { error = new ArgumentOutOfRangeException(nameof(Weights), "Weights must be finite and between zero and one."); break; }
                     mass += weight;
                 }
-                if (error is null && (!IsFinite(mass) || !mass.AlmostEquals(1, 1E-8)))
+                if (error is null && (!Tools.IsFinite(mass) || !mass.AlmostEquals(1, 1E-8)))
                     error = new ArgumentOutOfRangeException(nameof(Weights), "Component and zero weights must sum to one.");
                 int offset = count;
                 for (int i = 0; i < count && error is null; i++)
@@ -828,7 +806,7 @@ namespace Numerics.Distributions
                         if (!candidate.SequenceEqual(distribution.GetParameters))
                         { distribution = distribution.Clone(); distribution.SetParameters(candidate); }
                         double logMass = distribution.LogCCDF(0);
-                        if (!IsFinite(logMass) || logMass > 0)
+                        if (!Tools.IsFinite(logMass) || logMass > 0)
                             error = new ArgumentOutOfRangeException(nameof(Distributions), "Each active component must have positive probability above zero.");
                     }
                 }
@@ -924,7 +902,7 @@ namespace Numerics.Distributions
                     double value = sample[rowIndex];
                     if (IsZeroInflated && value == 0.0)
                     {
-                        if (!IsFinite(ZeroWeight) || ZeroWeight <= 0.0)
+                        if (!Tools.IsFinite(ZeroWeight) || ZeroWeight <= 0.0)
                         {
                             throw CreateImpossibleRowException(rowIndex, value);
                         }
@@ -951,7 +929,7 @@ namespace Numerics.Distributions
                     }
                     var rowResponsibilities = new double[componentCount];
                     double rowLogProbability = MixtureLogWeights.Normalize(componentLogs, mleWeights, rowResponsibilities);
-                    if (!IsFinite(rowLogProbability))
+                    if (!Tools.IsFinite(rowLogProbability))
                     {
                         throw CreateImpossibleRowException(rowIndex, value);
                     }
@@ -983,7 +961,7 @@ namespace Numerics.Distributions
 
                 double componentWeightSum = mleWeights.Sum();
                 double componentWeightTarget = IsZeroInflated ? 1.0 - ZeroWeight : 1.0;
-                if (!IsFinite(componentWeightSum) || componentWeightSum <= 0.0)
+                if (!Tools.IsFinite(componentWeightSum) || componentWeightSum <= 0.0)
                 {
                     throw new InvalidOperationException("Mixture EM cannot update component weights because no finite positive responsibility mass is available.");
                 }
@@ -1004,7 +982,7 @@ namespace Numerics.Distributions
                 var distribution = (Mixture)Clone();
                 distribution.SetParameters(mleWeights, parameters);
                 double logLikelihood = distribution.LogLikelihood(sample);
-                return IsFinite(logLikelihood) ? logLikelihood : double.NegativeInfinity;
+                return Tools.IsFinite(logLikelihood) ? logLikelihood : double.NegativeInfinity;
             }
 
             InvalidOperationException CreateImpossibleRowException(int rowIndex, double value)
@@ -1117,7 +1095,7 @@ namespace Numerics.Distributions
             if (_empiricalCDFCreated)
             {
                 double empiricalValue = _empiricalCDF.InverseCDF(probability);
-                return Clamp(empiricalValue, Minimum, Maximum);
+                return Tools.Clamp(empiricalValue, Minimum, Maximum);
             }
 
             double componentProbability = IsZeroInflated
@@ -1136,12 +1114,12 @@ namespace Numerics.Distributions
             double value;
             try
             {
-                if (lowerBound == upperBound) return Clamp(lowerBound, Minimum, Maximum);
+                if (lowerBound == upperBound) return Tools.Clamp(lowerBound, Minimum, Maximum);
                 double width = upperBound - lowerBound;
-                double Argument(double t) => IsFinite(width) ? lowerBound + width * t : (1 - t) * lowerBound + t * upperBound;
+                double Argument(double t) => Tools.IsFinite(width) ? lowerBound + width * t : (1 - t) * lowerBound + t * upperBound;
                 double Residual(double t) => probability <= .5 ? LogCDF(Argument(t)) - Math.Log(probability)
                     : LogCCDF(Argument(t)) - Tools.Log1p(-probability);
-                double scale = IsFinite(width) ? width : Math.Max(Math.Abs(lowerBound), Math.Abs(upperBound));
+                double scale = Tools.IsFinite(width) ? width : Math.Max(Math.Abs(lowerBound), Math.Abs(upperBound));
                 value = Argument(Brent.Solve(Residual, 0, 1, 1E-6 / Math.Max(1, scale), 100, true));
             }
             catch (Exception)
@@ -1150,7 +1128,7 @@ namespace Numerics.Distributions
                 value = _empiricalCDF.InverseCDF(probability);
             }
 
-            return Clamp(value, Minimum, Maximum);
+            return Tools.Clamp(value, Minimum, Maximum);
         }
 
         /// <summary>

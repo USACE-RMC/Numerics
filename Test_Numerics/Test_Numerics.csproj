@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RunSettingsFilePath>$(MSBuildProjectDirectory)\test.runsettings</RunSettingsFilePath>
+    <TestTfmsInParallel>false</TestTfmsInParallel>
   </PropertyGroup>
   
     <!-- Otherwise targets C# 7.3 which doesn't have global usings and some other syntactic sugar utilized here.  -->

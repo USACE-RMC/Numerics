@@ -799,7 +799,7 @@ namespace Numerics.Sampling.MCMC
                 // If the subtree is valid, consider accepting its candidate
                 if (subtree.Valid)
                 {
-                    double logSumWeightNew = LogSumExp(logSumWeight, subtree.LogSumWeight);
+                    double logSumWeightNew = Tools.LogSumExp(logSumWeight, subtree.LogSumWeight);
                     double acceptProb = Math.Exp(subtree.LogSumWeight - logSumWeightNew);
                     if (_chainPRNGs[index].NextDouble() < acceptProb)
                     {
@@ -1165,7 +1165,7 @@ namespace Numerics.Sampling.MCMC
                 }
 
                 // Multinomial sampling: accept candidate from tree2 with appropriate probability
-                double logSumWeightNew = LogSumExp(tree.LogSumWeight, tree2.LogSumWeight);
+                double logSumWeightNew = Tools.LogSumExp(tree.LogSumWeight, tree2.LogSumWeight);
                 double acceptTree2Prob = Math.Exp(tree2.LogSumWeight - logSumWeightNew);
                 if (_chainPRNGs[chainIndex].NextDouble() < acceptTree2Prob)
                 {
@@ -1299,16 +1299,6 @@ namespace Numerics.Sampling.MCMC
                 _chainStepSizes[chainIndex] = 1e-10;
             if (_chainStepSizes[chainIndex] > 1e5)
                 _chainStepSizes[chainIndex] = 1e5;
-        }
-
-        /// <summary>
-        /// Computes log(exp(a) + exp(b)) in a numerically stable way.
-        /// </summary>
-        private static double LogSumExp(double a, double b)
-        {
-            double max = Math.Max(a, b);
-            if (double.IsNegativeInfinity(max)) return double.NegativeInfinity;
-            return max + Math.Log(Math.Exp(a - max) + Math.Exp(b - max));
         }
 
         /// <summary>

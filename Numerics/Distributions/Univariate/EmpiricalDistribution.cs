@@ -834,33 +834,6 @@ namespace Numerics.Distributions
             return lattice;
         }
 
-        /// <summary>Returns the smallest value of a list.</summary>
-        /// <param name="values">The list.</param>
-        private static double Min(IList<double> values)
-        {
-            double minimum = double.MaxValue;
-            for (int i = 0; i < values.Count; i++) if (values[i] < minimum) minimum = values[i];
-            return minimum;
-        }
-
-        /// <summary>Returns the largest value of a list.</summary>
-        /// <param name="values">The list.</param>
-        private static double Max(IList<double> values)
-        {
-            double maximum = double.MinValue;
-            for (int i = 0; i < values.Count; i++) if (values[i] > maximum) maximum = values[i];
-            return maximum;
-        }
-
-        /// <summary>Returns the sum of a list.</summary>
-        /// <param name="values">The list.</param>
-        private static double Sum(IList<double> values)
-        {
-            double sum = 0d;
-            for (int i = 0; i < values.Count; i++) sum += values[i];
-            return sum;
-        }
-
         /// <summary>
         /// Serializes the X and probability tables, probability ordering, and interpolation
         /// transforms using invariant round-trip numeric formatting.

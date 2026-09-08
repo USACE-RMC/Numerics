@@ -156,33 +156,33 @@ namespace Numerics.Sampling.MCMC
        
             // Get the maximum a posteriori
             for (int i = 0; i < Iterations; i++)
-                if (IsFinite(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight > MAP.Weight)
+                if (Tools.IsFinite(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight > MAP.Weight)
                     MAP = MarkovChains[0][i].Clone();
 
             // Get the normalization factor
             double max = MAP.Weight;
-            if (!IsFinite(max))
+            if (!Tools.IsFinite(max))
                 throw new InvalidOperationException("SNIS failed because all importance weights are non-finite.");
 
             double sum = 0;
             for (int i = 0; i < Iterations; i++)
             {
-                if (IsFinite(MarkovChains[0][i].Weight))
+                if (Tools.IsFinite(MarkovChains[0][i].Weight))
                 {
                     sum += Math.Exp(MarkovChains[0][i].Weight - max);
                 }            
             }
-            if (!IsFinite(sum) || sum <= 0d)
+            if (!Tools.IsFinite(sum) || sum <= 0d)
                 throw new InvalidOperationException("SNIS failed because the finite importance weights could not be normalized.");
 
             double normalization = max + Math.Log(sum);
-            if (!IsFinite(normalization))
+            if (!Tools.IsFinite(normalization))
                 throw new InvalidOperationException("SNIS failed because the importance-weight normalization is non-finite.");
 
             // Compute the posterior weights
             Parallel.For(0, Iterations, (idx) => 
             {
-                double w = IsFinite(MarkovChains[0][idx].Weight) ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
+                double w = Tools.IsFinite(MarkovChains[0][idx].Weight) ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
                 MarkovChains[0][idx] = new ParameterSet(MarkovChains[0][idx].Values, MarkovChains[0][idx].Fitness, w);
             });
 
@@ -208,16 +208,6 @@ namespace Numerics.Sampling.MCMC
                 //idx = Math.Max(0, Math.Min(OutputLength - 1, idx));
                 Output[0].Add(MarkovChains[0][idx].Clone());
             }
-        }
-
-        /// <summary>
-        /// Determines whether a value is finite.
-        /// </summary>
-        /// <param name="value">The value to evaluate.</param>
-        /// <returns><c>true</c> when the value is neither NaN nor infinite; otherwise <c>false</c>.</returns>
-        private static bool IsFinite(double value)
-        {
-            return !double.IsNaN(value) && !double.IsInfinity(value);
         }
 
     }

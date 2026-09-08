@@ -316,6 +316,50 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies standard normal quantiles retain their bitwise values across approximation branches and tails.
+        /// </summary>
+        /// <param name="probability">The nonexceedance probability.</param>
+        /// <param name="expectedBits">The IEEE 754 bits of the existing quantile result.</param>
+        /// <remarks>Compatibility values were captured from the pre-refactor c0d67b9 implementation.</remarks>
+        [TestMethod]
+        [DataRow(0d, -4592761413495173886L)]
+        [DataRow(double.Epsilon, -4592761413495173886L)]
+        [DataRow(1e-300, -4592961304261246354L)]
+        [DataRow(1e-20, -4601968184877893045L)]
+        [DataRow(1e-12, -4603765893743795414L)]
+        [DataRow(0.075d, -4614210144286022365L)]
+        [DataRow(0.5d, 0L)]
+        [DataRow(0.925d, 4609161892568753444L)]
+        [DataRow(0.999999999999d, 4619606146584096420L)]
+        [DataRow(0.9999999999999999d, 4620811176048912977L)]
+        [DataRow(1d, 9218868437227405312L)]
+        public void Test_StandardZ_PreservesBranchAndTailValues(double probability, long expectedBits)
+        {
+            Assert.AreEqual(expectedBits, BitConverter.DoubleToInt64Bits(Normal.StandardZ(probability)));
+        }
+
+        /// <summary>
+        /// Verifies distribution quantile endpoints and the existing NaN and invalid-probability contracts.
+        /// </summary>
+        [TestMethod]
+        public void Test_Quantiles_ProbabilityEdges()
+        {
+            var normal = new Normal();
+            Assert.AreEqual(double.NegativeInfinity, normal.InverseCDF(0d));
+            Assert.AreEqual(double.PositiveInfinity, normal.InverseCDF(1d));
+            Assert.IsTrue(double.IsNaN(normal.InverseCDF(double.NaN)));
+            Assert.IsTrue(double.IsNaN(Normal.StandardZ(double.NaN)));
+
+            foreach (double probability in new[] { -1d, 2d, double.NegativeInfinity, double.PositiveInfinity })
+            {
+                var distributionError = Assert.Throws<ArgumentOutOfRangeException>(() => normal.InverseCDF(probability));
+                var standardError = Assert.Throws<ArgumentOutOfRangeException>(() => Normal.StandardZ(probability));
+                Assert.AreEqual("probability", distributionError.ParamName);
+                Assert.AreEqual("probability", standardError.ParamName);
+            }
+        }
+
+        /// <summary>
         /// Testing CDF method.
         /// </summary>
         [TestMethod()]
