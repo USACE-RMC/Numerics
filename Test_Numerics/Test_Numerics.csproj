@@ -32,4 +32,9 @@
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Distributions\Univariate\Fixtures\kappa-four-probabilities.csv" />
+    <EmbeddedResource Include="Distributions\Univariate\Fixtures\kappa-four-boundaries.csv" />
+  </ItemGroup>
+
 </Project>
