@@ -23,6 +23,38 @@ namespace Utilities
     public class Test_Tools
     {
         /// <summary>
+        /// Verifies finite classification includes signed zero and subnormal values but excludes NaN and infinities.
+        /// </summary>
+        [TestMethod]
+        public void Test_IsFinite_EdgeValues()
+        {
+            double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
+            foreach (double value in new[] { 0d, negativeZero, double.Epsilon, -double.Epsilon, double.MinValue, double.MaxValue })
+                Assert.IsTrue(Tools.IsFinite(value));
+
+            Assert.IsFalse(Tools.IsFinite(double.NaN));
+            Assert.IsFalse(Tools.IsFinite(double.NegativeInfinity));
+            Assert.IsFalse(Tools.IsFinite(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies clamping preserves in-range values and signed zero while bounding infinities and propagating NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clamp_EdgeValues()
+        {
+            Assert.AreEqual(0d, Tools.Clamp(-1d, 0d, 1d));
+            Assert.AreEqual(1d, Tools.Clamp(2d, 0d, 1d));
+            Assert.AreEqual(0.25d, Tools.Clamp(0.25d, 0d, 1d));
+            Assert.AreEqual(0d, Tools.Clamp(double.NegativeInfinity, 0d, 1d));
+            Assert.AreEqual(1d, Tools.Clamp(double.PositiveInfinity, 0d, 1d));
+            Assert.IsTrue(double.IsNaN(Tools.Clamp(double.NaN, 0d, 1d)));
+
+            double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
+            Assert.AreEqual(long.MinValue, BitConverter.DoubleToInt64Bits(Tools.Clamp(negativeZero, 0d, 1d)));
+        }
+
+        /// <summary>
         /// Test Sign function with varying inputs.
         /// </summary>
         [TestMethod]
@@ -556,6 +588,20 @@ namespace Utilities
 
             Assert.AreEqual(double.NegativeInfinity, Tools.LogSumExp(double.NegativeInfinity, double.NegativeInfinity));
             Assert.AreEqual(double.NegativeInfinity, Tools.LogSumExp(values));
+        }
+
+        /// <summary>
+        /// Verifies the two-value log-sum preserves finite terms beside negative infinity and existing NaN behavior.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogSumExp_NonfiniteInputs()
+        {
+            Assert.AreEqual(5d, Tools.LogSumExp(5d, double.NegativeInfinity));
+            Assert.AreEqual(5d, Tools.LogSumExp(double.NegativeInfinity, 5d));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(double.NaN, 5d)));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(5d, double.NaN)));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(double.PositiveInfinity, 5d)));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(5d, double.PositiveInfinity)));
         }
 
         /// <summary>

@@ -480,7 +480,7 @@ namespace Numerics.Distributions
             if (Math.Abs(q) <= 0.425)
             {
                 r = 0.180625 - q * q;
-                value = q * r8poly_value(8, a, r) / r8poly_value(8, b, r);
+                value = q * Evaluate.Polynomial(a, r) / Evaluate.Polynomial(b, r);
             }
             else
             {
@@ -498,12 +498,12 @@ namespace Numerics.Distributions
                 if (r <= 5.0)
                 {
                     r = r - 1.6;
-                    value = r8poly_value(8, c, r) / r8poly_value(8, d, r);
+                    value = Evaluate.Polynomial(c, r) / Evaluate.Polynomial(d, r);
                 }
                 else
                 {
                     r = r - 5.0;
-                    value = r8poly_value(8, e, r) / r8poly_value(8, f, r);
+                    value = Evaluate.Polynomial(e, r) / Evaluate.Polynomial(f, r);
                 }
 
                 if (q < 0.0)
@@ -511,65 +511,6 @@ namespace Numerics.Distributions
                     value = -value;
                 }
 
-            }
-
-            return value;
-        }
-
-        /// <summary>
-        /// R8POLY_VALUE evaluates a double precision polynomial.
-        /// </summary>
-        /// <param name="n">The number of coefficients.</param>
-        /// <param name="a">The coefficients.</param>
-        /// <param name="x">The point to evaluate.</param>
-        private static double r8poly_value(int n, double[] a, double x)
-        {
-            //****************************************************************************80
-            //
-            //  Purpose:
-            //
-            //    R8POLY_VALUE evaluates a double precision polynomial.
-            //
-            //  Discussion:
-            //
-            //    For sanity's sake, the value of N indicates the NUMBER of 
-            //    coefficients, or more precisely, the ORDER of the polynomial,
-            //    rather than the DEGREE of the polynomial.  The two quantities
-            //    differ by 1, but cause a great deal of confusion.
-            //
-            //    Given N and A, the form of the polynomial is:
-            //
-            //      p(x) = a[0] + a[1] * x + ... + a[n-2] * x^(n-2) + a[n-1] * x^(n-1)
-            //
-            //  Licensing:
-            //
-            //    This code is distributed under the GNU LGPL license. 
-            //
-            //  Modified:
-            //
-            //    13 August 2004
-            //
-            //  Author:
-            //
-            //    John Burkardt
-            //
-            //  Parameters:
-            //
-            //    Input, int N, the order of the polynomial.
-            //
-            //    Input, double A[N], the coefficients of the polynomial.
-            //    A[0] is the constant term.
-            //
-            //    Input, double X, the point at which the polynomial is to be evaluated.
-            //
-            //    Output, double R8POLY_VALUE, the value of the polynomial at X.
-            //
-
-            int i;
-            double value = 0.0;
-            for (i = n - 1; 0 <= i; i--)
-            {
-                value = value * x + a[i];
             }
 
             return value;
