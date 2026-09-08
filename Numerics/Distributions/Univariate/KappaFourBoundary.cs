@@ -10,6 +10,53 @@ namespace Numerics.Distributions
     {
         private static readonly Pair LogTwo = new Pair(0.6931471805599453d, 2.3190468138462996E-17d);
 
+        /// <summary>Computes a positive-hondo lower endpoint with compensated logarithm, exponential and affine arithmetic.</summary>
+        /// <param name="xi">The finite location.</param>
+        /// <param name="alpha">The positive finite scale.</param>
+        /// <param name="k">The finite kappa shape.</param>
+        /// <param name="h">The positive finite hondo shape.</param>
+        /// <param name="endpoint">The accurately rounded finite endpoint when evaluation succeeds.</param>
+        /// <returns>Whether the compensated finite-range evaluation succeeded.</returns>
+        /// <remarks>
+        /// A rounded log(h) multiplied by kappa can move the support by several doubles.
+        /// Retaining the low parts prevents the declared support from excluding its first
+        /// interior representable argument. No tolerance or support clipping is used.
+        /// Extreme exponential or affine ranges remain the caller's responsibility.
+        /// </remarks>
+        internal static bool TryLowerEndpoint(double xi, double alpha, double k, double h, out double endpoint)
+        {
+            endpoint = double.NaN;
+            if (!(h > 0) || !Tools.IsFinite(h)) return false;
+            Pair logH = Log(new Pair(h));
+            Pair exponent = Multiply(new Pair(-k), logH);
+            if (!Tools.IsFinite(exponent.High) || Math.Abs(exponent.High) > 700) return false;
+            Pair standard;
+            if (Math.Abs(exponent.High) < .5)
+            {
+                Pair relative = new Pair(1), term = new Pair(1);
+                for (int n = 1; n <= 32; n++)
+                {
+                    term = Divide(Multiply(term, exponent), new Pair(n + 1));
+                    relative = Add(relative, term);
+                }
+                standard = Multiply(logH, relative);
+            }
+            else
+            {
+                int power = (int)Math.Round(exponent.High / LogTwo.High);
+                Pair reduced = Subtract(exponent, Multiply(new Pair(power), LogTwo));
+                Pair sum = new Pair(1), term = new Pair(1);
+                for (int n = 1; n <= 32; n++)
+                {
+                    term = Divide(Multiply(term, reduced), new Pair(n));
+                    sum = Add(sum, term);
+                }
+                standard = Divide(Subtract(new Pair(1), Scale(sum, power)), new Pair(k));
+            }
+            endpoint = Add(new Pair(xi), Multiply(new Pair(alpha), standard)).High;
+            return Tools.IsFinite(endpoint);
+        }
+
         /// <summary>Returns log F close to the lower support endpoint for positive hondo.</summary>
         /// <param name="x">The value being evaluated.</param>
         /// <param name="xi">The finite location parameter.</param>

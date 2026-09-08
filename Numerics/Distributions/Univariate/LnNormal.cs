@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics.Optimization;
@@ -21,6 +21,14 @@ namespace Numerics.Distributions
     /// <para>
     /// Wikipedia contributors, "Log-normal distribution,". Wikipedia, The Free
     /// Encyclopedia. Available at: <see href="https://en.wikipedia.org/wiki/Log-normal_distribution"/>
+    /// </para>
+    /// <para>
+    /// <see cref="SetParameters(double, double)"/> and <see cref="GetParameters"/> use physical
+    /// mean and standard deviation; <see cref="Mu"/> and <see cref="Sigma"/> store the natural-log
+    /// mean and standard deviation. Quantile derivatives and covariance use the physical coordinates.
+    /// The method-of-moments estimator is the existing indirect estimator of log observations,
+    /// so its leading covariance is the transformed Normal covariance, as for maximum likelihood.
+    /// <see cref="ParametersFromMoments"/> instead converts explicitly supplied physical moments.
     /// </para>
     /// </remarks>
     [Serializable]
@@ -52,22 +60,26 @@ namespace Numerics.Distributions
 
         private double _mu;
         private double _sigma;
+        private bool _hasPhysicalMoments;
+        private double _physicalMean;
+        private double _physicalStandardDeviation;
 
         /// <summary>
-        /// Gets and sets the location parameter µ (Mu).
+        /// Gets and sets the mean µ (Mu) of the natural logarithm of the observation.
         /// </summary>
         public double Mu
         {
             get { return _mu; }
             set
             {
-                _parametersValid = ValidateParameters(value, Sigma, false) is null;
+                _parametersValid = ValidateLogParameters(value, Sigma, false) is null;
                 _mu = value;
+                _hasPhysicalMoments = false;
             }
         }
 
         /// <summary>
-        /// Gets and sets the scale parameter σ (sigma).
+        /// Gets and sets the standard deviation σ (sigma) of the natural logarithm of the observation.
         /// </summary>
         public double Sigma
         {
@@ -75,9 +87,39 @@ namespace Numerics.Distributions
             set
             {
                 if (value < 1E-16 && Math.Sign(value) != -1) value = 1E-16;
-                _parametersValid = ValidateParameters(Mu, value, false) is null;
+                _parametersValid = ValidateLogParameters(Mu, value, false) is null;
                 _sigma = value;
+                _hasPhysicalMoments = false;
             }
+        }
+
+        /// <summary>Validates the internal natural-log coordinates without applying physical-mean constraints.</summary>
+        private static ArgumentOutOfRangeException? ValidateLogParameters(double mean, double standardDeviation, bool throwException)
+        {
+            ArgumentOutOfRangeException? error = null;
+            if (double.IsNaN(mean) || double.IsInfinity(mean))
+                error = new ArgumentOutOfRangeException(nameof(Mu), "The logarithmic mean must be finite.");
+            else if (!(standardDeviation > 0d) || double.IsInfinity(standardDeviation))
+                error = new ArgumentOutOfRangeException(nameof(Sigma), "The logarithmic standard deviation must be finite and positive.");
+            if (throwException && error != null) throw error;
+            return error;
+        }
+
+        /// <inheritdoc/>
+        public override double LogCDF(double x)
+        {
+            if (!_parametersValid) ValidateLogParameters(Mu, Sigma, true);
+            return x <= 0d ? double.NegativeInfinity : DistributionNumerics.NormalLogCDF(DistributionNumerics.Standardize(Math.Log(x), Mu, Sigma));
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double x)
+        {
+            if (!_parametersValid) ValidateLogParameters(Mu, Sigma, true);
+            return x <= 0d ? 0d : DistributionNumerics.NormalLogSurvival(DistributionNumerics.Standardize(Math.Log(x), Mu, Sigma));
         }
 
         /// <inheritdoc/>
@@ -139,7 +181,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Mean
         {
-            get { return Math.Exp(Mu + Sigma * Sigma / 2.0d); }
+            get { return _hasPhysicalMoments ? _physicalMean : Math.Exp(Mu + Sigma * Sigma / 2.0d); }
         }
 
         /// <inheritdoc/>
@@ -157,13 +199,19 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double StandardDeviation
         {
-            get { return Math.Sqrt((Math.Exp(Sigma * Sigma) - 1.0d) * Math.Exp(2d * Mu + Sigma * Sigma)); }
+            get
+            {
+                if (_hasPhysicalMoments) return _physicalStandardDeviation;
+                double variance = Sigma * Sigma;
+                double logExcess = variance > 0.5d ? variance + Tools.Log1p(-Math.Exp(-variance)) : Math.Log(Tools.Expm1(variance));
+                return Math.Exp(Mu + 0.5d * variance + 0.5d * logExcess);
+            }
         }
 
         /// <inheritdoc/>
         public override double Skewness
         {
-            get { return (Math.Exp(Sigma * Sigma) + 2.0d) * Math.Sqrt(Math.Exp(Sigma * Sigma) - 1d); }
+            get { return (Math.Exp(Sigma * Sigma) + 2d) * Math.Sqrt(Tools.Expm1(Sigma * Sigma)); }
         }
 
         /// <inheritdoc/>
@@ -171,8 +219,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                double siqma2 = Math.Pow(Sigma, 2d);
-                return 3d + (Math.Exp(4d * siqma2) + 2d * Math.Exp(3d * siqma2) + 3d * Math.Exp(2d * siqma2) - 6d)  ;
+                double variance = Sigma * Sigma;
+                return 3d + Tools.Expm1(4d * variance) + 2d * Tools.Expm1(3d * variance) + 3d * Tools.Expm1(2d * variance);
             }
         }
 
@@ -191,7 +239,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] MinimumOfParameters
         {
-            get { return [double.NegativeInfinity, 0.0d]; }
+            get { return [0.0d, 0.0d]; }
         }
 
         /// <inheritdoc/>
@@ -203,6 +251,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 // Estimate using the method of moments(a.k.a product moments).
@@ -246,6 +295,8 @@ namespace Numerics.Distributions
         /// <remarks>
         /// The direct method for setting parameters is used so that users can set the parameters directly
         /// from real-space data, which is more intuitive.
+        /// Physical inputs are retained exactly for parameter-vector and XML round trips until a log
+        /// parameter changes. The legacy minimum log-scale rule still applies when conversion reaches it.
         /// </remarks>
         public void SetParameters(double mean, double standardDeviation)
         {
@@ -253,6 +304,12 @@ namespace Numerics.Distributions
             // Validate parameters
             Mu = parms[0];
             Sigma = parms[1];
+            if (_parametersValid && Sigma == parms[1])
+            {
+                _physicalMean = mean;
+                _physicalStandardDeviation = standardDeviation;
+                _hasPhysicalMoments = true;
+            }
         }
 
         /// <inheritdoc/>
@@ -262,26 +319,28 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Validate the parameters.
+        /// Validates physical mean and standard deviation supplied through the parameter-vector API.
         /// </summary>
         /// <param name="mean">Mean.</param>
         /// <param name="standardDeviation">Standard deviation.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
+        /// <returns>The validation error, or null when both physical moments are finite and positive.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">A physical moment is invalid and <paramref name="throwException"/> is true.</exception>
         public ArgumentOutOfRangeException? ValidateParameters(double mean, double standardDeviation, bool throwException)
         {
-            if (double.IsNaN(mean) || double.IsInfinity(mean))
+            if (!(mean > 0d) || double.IsInfinity(mean))
             {
-                if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Mu), "Mu must be a number.");
-                return new ArgumentOutOfRangeException(nameof(Mu), "Mu must be a number.");
+                var error = new ArgumentOutOfRangeException(nameof(mean), "The physical mean must be finite and positive.");
+                if (throwException) throw error;
+                return error;
             }
-            if (double.IsNaN(standardDeviation) || double.IsInfinity(standardDeviation) || standardDeviation <= 0.0d)
+            if (!(standardDeviation > 0d) || double.IsInfinity(standardDeviation))
             {
-                if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Sigma), "Sigma must be positive.");
-                return new ArgumentOutOfRangeException(nameof(Sigma), "Sigma must be positive.");
+                var error = new ArgumentOutOfRangeException(nameof(standardDeviation), "The physical standard deviation must be finite and positive.");
+                if (throwException) throw error;
+                return error;
             }
-            return null!;
+            return null;
         }
 
         /// <inheritdoc/>
@@ -297,19 +356,9 @@ namespace Numerics.Distributions
         /// <param name="sample">The array of sample data.</param>
         public static double[] IndirectMethodOfMoments(IList<double> sample)
         {
-            // Transform the sample
-            var transformedSample = new List<double>();
-            for (int i = 0; i < sample.Count; i++)
-            {
-                if (sample[i] > 0d)
-                {
-                    transformedSample.Add(Math.Log(sample[i]));
-                }
-                else
-                {
-                    transformedSample.Add(Math.Log(0.1d));
-                }
-            }
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
+            var transformedSample = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) transformedSample[i] = Math.Log(sample[i]);
             return Statistics.ProductMoments(transformedSample);
         }
 
@@ -320,19 +369,9 @@ namespace Numerics.Distributions
         /// <param name="sample">The array of sample data.</param>
         public double[] IndirectMethodOfLinearMoments(IList<double> sample)
         {
-            // Transform the sample
-            var transformedSample = new List<double>();
-            for (int i = 0; i < sample.Count; i++)
-            {
-                if (sample[i] > 0d)
-                {
-                    transformedSample.Add(Math.Log(sample[i]));
-                }
-                else
-                {
-                    transformedSample.Add(Math.Log(0.1d));
-                }
-            }
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
+            var transformedSample = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) transformedSample[i] = Math.Log(sample[i]);
             return Statistics.LinearMoments(transformedSample);
         }
 
@@ -343,27 +382,21 @@ namespace Numerics.Distributions
         /// <param name="standardDeviation">The real-space standard deviation of the data.</param>
         public static double[] DirectMethodOfMoments(double mean, double standardDeviation)
         {
-            if (standardDeviation <= 0)
+            if (!(mean > 0d) || !(standardDeviation > 0d) || double.IsInfinity(mean) || double.IsInfinity(standardDeviation))
                 return [double.NaN, double.NaN];
-            double variance = Math.Pow(standardDeviation, 2d);
-            double mu = Math.Log(Math.Pow(mean, 2d) / Math.Sqrt(variance + Math.Pow(mean, 2d)));
-            double sigma = Math.Sqrt(Math.Log(1.0d + variance / Math.Pow(mean, 2d)));
-            if (sigma < 1E-16 && Math.Sign(sigma) != -1) sigma = Tools.DoubleMachineEpsilon;
-            return [mu, sigma];
+            double logRatio = Math.Log(standardDeviation) - Math.Log(mean);
+            double variance = logRatio > 0d
+                ? 2d * logRatio + Tools.Log1p(Math.Exp(-2d * logRatio))
+                : Tools.Log1p(Math.Exp(2d * logRatio));
+            return [Math.Log(mean) - 0.5d * variance, Math.Sqrt(variance)];
         }
 
         /// <inheritdoc/>
+        /// <remarks>Returns the supplied physical mean and standard deviation in the same coordinates used by <see cref="SetParameters(double, double)"/>.</remarks>
         public double[] ParametersFromMoments(IList<double> moments)
         {
-            var mean = moments[0];
-            var standardDeviation = moments[1];
-            if (standardDeviation <= 0)
-                return [double.NaN, double.NaN];
-            double variance = Math.Pow(standardDeviation, 2d);
-            double mu = Math.Log(Math.Pow(mean, 2d) / Math.Sqrt(variance + Math.Pow(mean, 2d)));
-            double sigma = Math.Sqrt(Math.Log(1.0d + variance / Math.Pow(mean, 2d)));
-            if (sigma < 1E-16 && Math.Sign(sigma) != -1) sigma = Tools.DoubleMachineEpsilon;
-            return [mu, sigma];
+            ValidateParameters(moments[0], moments[1], true);
+            return [moments[0], moments[1]];
         }
 
         /// <inheritdoc/>
@@ -399,20 +432,10 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
-            var initialVals = new double[NumberOfParameters];
-            var lowerVals = new double[NumberOfParameters];
-            var upperVals = new double[NumberOfParameters];
-            // Get initial values
-            var moments = Statistics.ProductMoments(sample);
-            initialVals[0] = moments[0];
-            initialVals[1] = moments[1];
-            // Get bounds of mean
-            lowerVals[0] = Tools.DoubleMachineEpsilon;
-            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
-            // Get bounds of standard deviation
-            lowerVals[1] = Tools.DoubleMachineEpsilon;
-            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
-            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
+            var constraints = new Normal().GetParameterConstraints(sample);
+            constraints.Item2[0] = Math.Min(Tools.DoubleMachineEpsilon, constraints.Item1[0] / 10d);
+            return constraints;
         }
 
         /// <inheritdoc/>
@@ -440,12 +463,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            if (x <= Minimum) return 0.0d;
-            double d = (Math.Log(x) - Mu) / Sigma;
-            return Math.Exp(-0.5d * d * d) / (Tools.Sqrt2PI * Sigma * x);
+            return Math.Exp(LogPDF(x));
         }
 
         /// <inheritdoc/>
@@ -455,31 +473,24 @@ namespace Numerics.Distributions
         /// </remarks>
         public override double LogPDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            if (x <= Minimum) return double.NegativeInfinity;
-            double d = (Math.Log(x) - Mu) / Sigma;
-            double lf = -0.5d * d * d - Math.Log(Tools.Sqrt2PI * Sigma) - Math.Log(x);
-            return double.IsNaN(lf) ? double.NegativeInfinity : lf;
+            if (!_parametersValid) ValidateLogParameters(Mu, Sigma, true);
+            if (x <= 0d || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
+            double logX = Math.Log(x);
+            double z = DistributionNumerics.Standardize(logX, Mu, Sigma);
+            return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI) - logX;
         }
 
         /// <inheritdoc/>
         public override double CDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            if (x <= Minimum)
-                return 0d;
-            return Normal.StandardCDF((Math.Log(x) - Mu) / Sigma);
+            return Math.Exp(LogCDF(x));
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (double.IsNaN(probability) || probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -487,89 +498,73 @@ namespace Numerics.Distributions
                 return Maximum;
             // Validate parameters
             if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            return Math.Exp(Mu - Sigma * Math.Sqrt(2.0d) * Erf.InverseErfc(2.0d * probability));
+                ValidateLogParameters(Mu, Sigma, true);
+            return Math.Exp(Mu + Sigma * Normal.StandardZ(probability));
         }
 
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new LnNormal() { Mu = Mu, Sigma = Sigma };
+            var clone = new LnNormal() { Mu = Mu, Sigma = Sigma };
+            clone._hasPhysicalMoments = _hasPhysicalMoments;
+            clone._physicalMean = _physicalMean;
+            clone._physicalStandardDeviation = _physicalStandardDeviation;
+            return clone;
         }
 
         /// <inheritdoc/>
+        /// <remarks>The returned covariance is for physical mean and standard deviation. Both supported estimators use log observations; this method applies the complete two-coordinate delta transformation.</remarks>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
-                estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
-            {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments && estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
                 throw new NotImplementedException();
-            }
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, _sigma, true);
-            // Compute covariance
-            double u2 = Sigma;
-            var covar = new double[2, 2];
-            covar[0, 0] = Math.Pow(u2, 2d) / sampleSize; // location
-            covar[1, 1] = 2d * Math.Pow(u2, 4d) / sampleSize; // scale
-            covar[0, 1] = 0.0;
-            covar[1, 0] = covar[0, 1];
-            return covar;
+            if (!_parametersValid) ValidateLogParameters(Mu, Sigma, true);
+            // Both supported estimators operate on log observations. Transform the leading
+            // Normal covariance diag(sigma^2, sigma^2/2)/n into physical (mean, SD) coordinates.
+            double mean = Mean, sd = StandardDeviation, variance = Sigma * Sigma;
+            double excess = Tools.Expm1(variance);
+            double sdDerivative = excess < 0.5d
+                ? mean * (Sigma / Math.Sqrt(excess)) * (1d + 2d * excess)
+                : sd * Sigma * (2d + 1d / excess);
+            double seMean = Sigma / Math.Sqrt(sampleSize), seSd = Sigma / Math.Sqrt(2d * sampleSize);
+            double m0 = mean * seMean, m1 = mean * Sigma * seSd;
+            double s0 = sd * seMean, s1 = sdDerivative * seSd;
+            return new[,] { { m0 * m0 + m1 * m1, m0 * s0 + m1 * s1 }, { m0 * s0 + m1 * s1, s0 * s0 + s1 * s1 } };
         }
 
         /// <inheritdoc/>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            var covar = ParameterCovariance(sampleSize, estimationMethod);
-            var grad = QuantileGradient(probability);
-            double varA = covar[0, 0];
-            double varB = covar[1, 1];
-            double covAB = covar[1, 0];
-            double dQx1 = grad[0];
-            double dQx2 = grad[1];
-            return Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + 2d * dQx1 * dQx2 * covAB;
+            DistributionNumerics.ValidateProbability(probability);
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments && estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+                throw new NotImplementedException();
+            if (!_parametersValid) ValidateLogParameters(Mu, Sigma, true);
+            // The two physical-coordinate chain rules cancel to the original log-estimator delta method.
+            double z = Normal.StandardZ(probability);
+            double logStandardError = Mu + Sigma * z + Math.Log(Sigma) - .5 * Math.Log(sampleSize);
+            return Math.Exp(2 * logStandardError + Tools.Log1p(.5 * z * z));
         }
 
         /// <inheritdoc/>
+        /// <remarks>Returns derivatives of the physical quantile with respect to physical mean and standard deviation, including both log-mean and log-variance dependencies.</remarks>
         public double[] QuantileGradient(double probability)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, _sigma, true);
-            double u1 = Mu;
-            double u2 = Sigma;
-            double z = Normal.StandardZ(probability);
-            var gradient = new double[]
-            {
-                Math.Exp(u1 + z * u2), // location
-                z * Math.Exp(u1 + z * u2) / (2d * u2) // scale
-            };
-            return gradient;
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateLogParameters(Mu, Sigma, true);
+            double z = Normal.StandardZ(probability), variance = Sigma * Sigma;
+            double weight = -Tools.Expm1(-variance);
+            double relativeQuantile = Math.Exp(z * Sigma - 0.5d * variance);
+            double meanDerivative = relativeQuantile * (1d + weight - z * weight / Sigma);
+            double sdDerivative = relativeQuantile * Math.Sqrt(weight) * Math.Exp(-0.5d * variance) * (z / Sigma - 1d);
+            return [meanDerivative, sdDerivative];
         }
 
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Get gradients
-            var dQp1 = QuantileGradient(probabilities[0]);
-            var dQp2 = QuantileGradient(probabilities[1]);
-            // Compute determinant
-            // |a b|
-            // |c d|
-            // |A| = ad − bc
-            double a = dQp1[0];
-            double b = dQp1[1];
-            double c = dQp2[0];
-            double d = dQp2[1];
-            determinant = a * d - b * c;
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b }, { c, d } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
         /// <inheritdoc/>

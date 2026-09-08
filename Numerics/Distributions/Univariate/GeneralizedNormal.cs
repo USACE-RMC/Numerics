@@ -1,7 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Numerics.Data.Statistics;
-using Numerics.Mathematics;
 using Numerics.Mathematics.Optimization;
 
 namespace Numerics.Distributions
@@ -152,7 +151,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1000);
+                    u = AnalyticalMoments();
                     _momentsComputed = true;
                 }
                 return u[0];
@@ -170,9 +169,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                var brent = new BrentSearch(PDF, InverseCDF(0.001), InverseCDF(0.999));
-                brent.Maximize();
-                return brent.BestParameterSet.Values[0];
+                if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+                return QuantileAtLatent(Kappa);
             }
         }
 
@@ -183,7 +181,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1000);
+                    u = AnalyticalMoments();
                     _momentsComputed = true;
                 }
                 return u[1];
@@ -197,7 +195,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1000);
+                    u = AnalyticalMoments();
                     _momentsComputed = true;
                 }
                 return u[2];
@@ -211,7 +209,7 @@ namespace Numerics.Distributions
             {
                 if (!_momentsComputed)
                 {
-                    u = CentralMoments(1000);
+                    u = AnalyticalMoments();
                     _momentsComputed = true;
                 }
                 return u[3];
@@ -223,13 +221,13 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (Kappa >= -NearZero)
+                if (Kappa >= 0)
                 {
                     return double.NegativeInfinity;
                 }
                 else
                 {
-                    return Xi + Alpha / Kappa;
+                    return FiniteShapeEndpoint();
                 }
             }
         }
@@ -239,13 +237,13 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (Kappa <= NearZero)
+                if (Kappa <= 0)
                 {
                     return double.PositiveInfinity;
                 }
                 else
                 {
-                    return Xi + Alpha / Kappa;
+                    return FiniteShapeEndpoint();
                 }
             }
         }
@@ -265,6 +263,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
             if (estimationMethod == ParameterEstimationMethod.MethodOfLinearMoments)
             {
                 SetParameters(ParametersFromLinearMoments(Statistics.LinearMoments(sample)));
@@ -350,6 +349,10 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[] ParametersFromLinearMoments(IList<double> moments)
         {
+            if (moments == null) throw new ArgumentNullException(nameof(moments));
+            if (moments.Count < 3 || !DistributionNumerics.IsFinite(moments[0]) || !DistributionNumerics.IsFinite(moments[1])
+                || moments[1] <= 0 || !DistributionNumerics.IsFinite(moments[2]) || Math.Abs(moments[2]) >= 1)
+                throw new ArgumentOutOfRangeException(nameof(moments), "Finite L-moments require positive L-scale and absolute L-skewness below one.");
             double L1 = moments[0];
             double L2 = moments[1];
             double T3 = moments[2];
@@ -363,8 +366,8 @@ namespace Numerics.Distributions
             double F3 = -0.21741801;
 
             double kappa = -T3 * (E0 + E1 * Math.Pow(T3, 2d) + E2 * Math.Pow(T3, 4d) + E3 * Math.Pow(T3, 6d)) / (1d + F1 * Math.Pow(T3, 2d) + F2 * Math.Pow(T3, 4d) + F3 * Math.Pow(T3, 6d));
-            double alpha = (L2 * kappa * Math.Exp(-(kappa * kappa) / 2d)) / (1d - 2 * Normal.StandardCDF(-kappa / Tools.Sqrt2));
-            double xi = L1 - alpha * (1.0d - Math.Exp(kappa * kappa / 2d)) / kappa;
+            double alpha = L2 / NormalLScale(kappa);
+            double xi = L1 - new GeneralizedNormal(0, alpha, kappa).Mean;
             return [xi, alpha, kappa];
         }
 
@@ -374,6 +377,7 @@ namespace Numerics.Distributions
             double xi = parameters[0];
             double alpha = parameters[1];
             double kappa = parameters[2];
+            ValidateParameters(xi, alpha, kappa, true);
 
             double A0 = 4.8860251 * Math.Pow(10, -1);
             double A1 = 4.4493076 * Math.Pow(10, -3); 
@@ -389,10 +393,10 @@ namespace Numerics.Distributions
             double D1 = 8.2325617 * Math.Pow(10, -2); 
             double D2 = 4.2681448 * Math.Pow(10, -3); 
             double D3 = 1.1653690 * Math.Pow(10, -4); 
-            double tau40 = 1.2260172 * Math.Pow(10, -1); 
+            double tau40 = 0.12260171954089095; // 30*asin(1/3)/pi - 9, the exact normal L-kurtosis limit.
 
-            double L1 = xi + alpha * (1.0d - Math.Exp(kappa * kappa / 2d)) / kappa;
-            double L2 = (alpha / kappa) * Math.Exp(kappa * kappa / 2d) * (1d - 2d * Normal.StandardCDF(-kappa / Tools.Sqrt2));
+            double L1 = new GeneralizedNormal(xi, alpha, kappa).Mean;
+            double L2 = alpha * NormalLScale(kappa);
             double T3 = -kappa * (A0 + A1 * Math.Pow(kappa, 2d) + A2 * Math.Pow(kappa, 4d) + A3 * Math.Pow(kappa, 6d)) / (1d + B1 * Math.Pow(kappa, 2d) + B2 * Math.Pow(kappa, 4d) + B3 * Math.Pow(kappa, 6d));
             double T4 = tau40 + Math.Pow(kappa, 2d) * (C0 + C1 * Math.Pow(kappa, 2d) + C2 * Math.Pow(kappa, 4d) + C3 * Math.Pow(kappa, 6d)) / (1d + D1 * Math.Pow(kappa, 2d) + D2 * Math.Pow(kappa, 4d) + D3 * Math.Pow(kappa, 6d));
             return [L1, L2, T3, T4];
@@ -401,19 +405,30 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
             // Estimate initial values using the method of moments (a.k.a product moments).
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
             // Get initial values
-            initialVals = ParametersFromLinearMoments(Statistics.LinearMoments(sample));
+            double magnitude = 0;
+            foreach (double value in sample) magnitude = Math.Max(magnitude, Math.Abs(value));
+            var scaled = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) scaled[i] = sample[i] / magnitude;
+            double[] moments = Statistics.LinearMoments(scaled);
+            initialVals = ParametersFromLinearMoments(moments);
+            initialVals[0] *= magnitude;
+            initialVals[1] *= magnitude;
+            var candidate = new GeneralizedNormal(initialVals[0], initialVals[1], initialVals[2]);
+            if (!candidate.ParametersValid || !DistributionNumerics.IsFinite(candidate.LogLikelihood(sample)))
+                initialVals = [moments[0] * magnitude, moments[1] * Math.Sqrt(Math.PI) * magnitude, 0];
             // Get bounds of location
-            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
-            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
-            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            double locationMagnitude = Math.Max(Math.Abs(initialVals[0]), initialVals[1]);
+            lowerVals[0] = -FiniteDecimalBound(locationMagnitude);
+            upperVals[0] = -lowerVals[0];
             // Get bounds of scale
-            lowerVals[1] = Tools.DoubleMachineEpsilon;
-            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[1]))) + 1d);
+            lowerVals[1] = Math.Min(Tools.DoubleMachineEpsilon, initialVals[1] / 10);
+            upperVals[1] = FiniteDecimalBound(initialVals[1]);
             // Get bounds of shape
             lowerVals[2] = -10d;
             upperVals[2] = 10d;
@@ -422,6 +437,11 @@ namespace Numerics.Distributions
             {
                 initialVals[2] = 0d;
             }
+            candidate.SetParameters(initialVals);
+            if (!candidate.ParametersValid || !DistributionNumerics.IsFinite(candidate.LogLikelihood(sample))
+                || initialVals[0] <= lowerVals[0] || initialVals[0] >= upperVals[0]
+                || initialVals[1] <= lowerVals[1] || initialVals[1] >= upperVals[1])
+                throw new InvalidOperationException("The sample does not admit a finite supported generalized-normal initializer within finite bounds.");
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
         }
 
@@ -444,121 +464,277 @@ namespace Numerics.Distributions
             var solver = new NelderMead(logLH, NumberOfParameters, Initials, Lowers, Uppers);
             solver.ReportFailure = true;
             solver.Maximize();
+            if (solver.Status != OptimizationStatus.Success
+                || ValidateParameters(solver.BestParameterSet.Values, false) != null
+                || !DistributionNumerics.IsFinite(new GeneralizedNormal(solver.BestParameterSet.Values[0], solver.BestParameterSet.Values[1], solver.BestParameterSet.Values[2]).LogLikelihood(sample)))
+                throw new InvalidOperationException($"Generalized normal maximum likelihood estimation failed with optimizer status {solver.Status} or a nonfinite fit.");
             return solver.BestParameterSet.Values;
         }
 
-        /// <inheritdoc/>
-        public override double PDF(double x)
+        /// <summary>Analytical shifted-lognormal moments, preserving representable scale products.</summary>
+        private double[] AnalyticalMoments()
         {
-            if (_parametersValid == false)
-                ValidateParameters(Xi, Alpha, Kappa, true);
-            if (x < Minimum || x > Maximum) return 0.0d;
-            double y = (x - Xi) / Alpha;
-            if (Math.Abs(Kappa) > NearZero)
-                y = -Math.Log(1d - Kappa * y) / Kappa;
-            return 1d / Alpha * Math.Exp(Kappa * y - y * y / 2d) / Tools.Sqrt2PI;
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (Kappa == 0) return [Xi, Alpha, 0, 3];
+            double v = Kappa * Kappa;
+            double t = Tools.Expm1(v);
+            double mean, sd, skew;
+            if (v <= .5)
+            {
+                double relative = DistributionNumerics.Exprel(v);
+                mean = Xi - Alpha * Kappa * .5 * DistributionNumerics.Exprel(.5 * v);
+                sd = Alpha * Math.Exp(.5 * v) * Math.Sqrt(relative);
+                skew = -Kappa * (t + 3) * Math.Sqrt(relative);
+            }
+            else
+            {
+                double logt = v > 36 ? v + Tools.Log1p(-Math.Exp(-v)) : Math.Log(t);
+                double loghalf = v > 72 ? v / 2 + Tools.Log1p(-Math.Exp(-v / 2)) : Math.Log(Tools.Expm1(v / 2));
+                mean = Xi - Math.Sign(Kappa) * Math.Exp(Math.Log(Alpha) + loghalf - Math.Log(Math.Abs(Kappa)));
+                sd = Math.Exp(Math.Log(Alpha) + v / 2 + logt / 2 - Math.Log(Math.Abs(Kappa)));
+                double logsum = v > 36 ? v + Tools.Log1p(2 * Math.Exp(-v)) : Math.Log(t + 3);
+                skew = -Math.Sign(Kappa) * Math.Exp(logsum + logt / 2);
+            }
+            return [mean, sd, skew, 3 + t * (16 + t * (15 + t * (6 + t)))];
+        }
+
+        /// <summary>Returns unit-scale L-scale with the exact kappa=0 normal limit.</summary>
+        private static double NormalLScale(double k)
+        {
+            double v = k * k;
+            if (Math.Abs(k) < .5)
+            {
+                double sum = 1, power = 1;
+                for (int n = 1; n < 24; n++)
+                {
+                    power *= -v / (4 * n);
+                    double term = power / (2 * n + 1);
+                    sum += term;
+                    if (Math.Abs(term) < Math.Abs(sum) * 1E-17) break;
+                }
+                return Math.Exp(v / 2) * sum / Math.Sqrt(Math.PI);
+            }
+            return Math.Exp(v / 2) * (1 - 2 * Normal.StandardCDF(-Math.Abs(k) / Tools.Sqrt2)) / Math.Abs(k);
+        }
+
+        /// <summary>Retains the existing decimal-order bound construction while preventing overflow.</summary>
+        private static double FiniteDecimalBound(double value)
+        {
+            double bound = Math.Pow(10, Math.Ceiling(Math.Log10(value)) + 1);
+            return double.IsPositiveInfinity(bound) ? double.MaxValue : bound;
+        }
+
+        /// <summary>Retains a finite support endpoint when an intermediate scale/shape quotient overflows.</summary>
+        private double FiniteShapeEndpoint()
+        {
+            double shift = Alpha / Kappa;
+            return double.IsInfinity(shift) && Math.Sign(Xi) != Math.Sign(shift)
+                ? (Xi * Kappa + Alpha) / Kappa : Xi + shift;
+        }
+
+        /// <summary>Inverts the Hosking shape transform, retaining its exact nonzero shape and support residual.</summary>
+        private double LatentNormal(double x)
+        {
+            double y = DistributionNumerics.Standardize(x, Xi, Alpha);
+            if (Kappa == 0) return y;
+            double product = -Kappa * y;
+            if (product < -.9) return -KappaFourBoundary.LogT(x, Xi, Alpha, Kappa);
+            return DistributionNumerics.HoskingShapeTransform(x, Xi, Alpha, Kappa);
         }
 
         /// <inheritdoc/>
-        public override double CDF(double x)
+        public override double PDF(double x) => Math.Exp(LogPDF(x));
+
+        /// <inheritdoc/>
+        /// <remarks>Evaluates the transformed-normal log density directly, including underflowing densities.</remarks>
+        public override double LogPDF(double x)
         {
-            if (_parametersValid == false)
-                ValidateParameters(Xi, Alpha, Kappa, true);
-            if (x <= Minimum)
-                return 0d;
-            if (x >= Maximum)
-                return 1d;
-            double y = (x - Xi) / Alpha;
-            if (Math.Abs(Kappa) > NearZero)
-                y = -Math.Log(1d - Kappa * y) / Kappa;
-            return Normal.StandardCDF(y);
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (double.IsNaN(x)) return double.NaN;
+            if (double.IsInfinity(x) || x <= Minimum || x >= Maximum) return double.NegativeInfinity;
+            double z = LatentNormal(x);
+            return -Math.Log(Alpha) - Tools.LogSqrt2PI + z * (Kappa - z / 2);
+        }
+
+        /// <inheritdoc/>
+        public override double CDF(double x) => Math.Exp(LogCDF(x));
+
+        /// <inheritdoc/>
+        public override double LogCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (x <= Minimum) return double.NegativeInfinity;
+            if (x >= Maximum) return 0;
+            return DistributionNumerics.NormalLogCDF(LatentNormal(x));
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (x <= Minimum) return 0;
+            if (x >= Maximum) return double.NegativeInfinity;
+            return DistributionNumerics.NormalLogSurvival(LatentNormal(x));
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
-            // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
-                throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
-            if (probability == 0.0d)
-                return Minimum;
-            if (probability == 1.0d)
-                return Maximum;
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Xi, Alpha, Kappa, true);
-            if (Math.Abs(Kappa) <= NearZero)
+            if (!(probability >= 0 && probability <= 1))
+                throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between zero and one.");
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (probability == 0) return Minimum;
+            if (probability == 1) return Maximum;
+            return QuantileAtLatent(Normal.StandardZ(probability));
+        }
+
+        /// <summary>Combines shape exponentials and physical scale before exponentiation or affine addition.</summary>
+        private double QuantileAtLatent(double z)
+        {
+            double v = -Kappa * z;
+            double standard = v > 50 ? -Math.Sign(Kappa) * Math.Exp(v - Math.Log(Math.Abs(Kappa)))
+                : v < -50 ? 1 / Kappa : z * DistributionNumerics.Exprel(v);
+            double offset = v > 50 ? -Math.Sign(Kappa) * Math.Exp(Math.Log(Alpha) + v - Math.Log(Math.Abs(Kappa)))
+                : Alpha * standard;
+            double value = Xi + offset;
+            if (double.IsInfinity(value) && DistributionNumerics.IsFinite(standard))
             {
-                return Xi + Alpha * Normal.StandardZ(probability);
+                double combined = Xi / Alpha + standard;
+                if (DistributionNumerics.IsFinite(combined)) return Alpha * combined;
+            }
+            return value;
+        }
+
+        /// <inheritdoc/>
+        public override UnivariateDistributionBase Clone() => new GeneralizedNormal(Xi, Alpha, Kappa);
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Local asymptotic MLE covariance for all three estimated parameters in xi, alpha,
+        /// kappa order. Information is finite for every finite kappa. This does not assert
+        /// existence of a finite global MLE for the three-parameter lognormal likelihood.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size or distribution parameters are invalid.</exception>
+        /// <exception cref="NotImplementedException">The requested estimator is not maximum likelihood.</exception>
+        public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
+        {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+                throw new NotImplementedException("Generalized-normal covariance is implemented only for local maximum-likelihood uncertainty.");
+            NormalInformationFactors(Kappa, out double c, out double inverseR, out double logInverseR);
+            double scale = Alpha / Math.Sqrt(sampleSize), shapedScale = Alpha * Kappa / Math.Sqrt(sampleSize);
+            double logAlpha = Math.Log(Alpha), logN = Math.Log(sampleSize), logK = Math.Log(Math.Abs(Kappa));
+            var covariance = new double[3, 3];
+            covariance[0, 0] = scale * scale * (1 + c * c * inverseR);
+            covariance[1, 1] = shapedScale * shapedScale + scale * scale / 2;
+            covariance[2, 2] = (Kappa / 2 / sampleSize) * Kappa + inverseR / sampleSize;
+            covariance[0, 1] = -scale * shapedScale;
+            if (!DistributionNumerics.IsFinite(covariance[0, 1]) || covariance[0, 1] == 0)
+                covariance[0, 1] = -Math.Sign(Kappa) * Math.Exp(2 * logAlpha + logK - logN);
+            covariance[0, 2] = c * inverseR * Alpha / sampleSize;
+            if (c > 0 && (covariance[0, 2] == 0 || !DistributionNumerics.IsFinite(covariance[0, 2])))
+                covariance[0, 2] = Math.Exp(logAlpha + Math.Log(c) + logInverseR - logN);
+            covariance[1, 2] = Alpha * Kappa / 2 / sampleSize;
+            if (!DistributionNumerics.IsFinite(covariance[1, 2]) || covariance[1, 2] == 0)
+                covariance[1, 2] = Math.Sign(Kappa) * Math.Exp(logAlpha + logK - Math.Log(2) - logN);
+            covariance[1, 0] = covariance[0, 1];
+            covariance[2, 0] = covariance[0, 2];
+            covariance[2, 1] = covariance[1, 2];
+            return covariance;
+        }
+
+        /// <summary>Evaluates the closed-form information factors, retaining log(1/R) after underflow.</summary>
+        private static void NormalInformationFactors(double kappa, out double c, out double inverseR, out double logInverseR)
+        {
+            double v = kappa * kappa;
+            c = .5 * DistributionNumerics.Exprel(-v / 2);
+            if (v < .1)
+            {
+                double sum = 1.5, term = 1.5;
+                for (int m = 2; m < 24; m++)
+                {
+                    term *= v * (m + 2d) / (m + 1) / (m + 1);
+                    sum += term;
+                    if (Math.Abs(term) < Math.Abs(sum) * 1E-17) break;
+                }
+                inverseR = 1 / sum;
+                logInverseR = -Math.Log(sum);
             }
             else
             {
-                return Xi - Alpha / Kappa * (Math.Exp(-Kappa * Normal.StandardZ(probability)) - 1d);
+                logInverseR = double.IsPositiveInfinity(v) ? double.NegativeInfinity : 2 * Math.Log(v) - v
+                    - (v > 350 ? Tools.Log1p(v) : Math.Log(1 + v - (1 + 2 * v) * Math.Exp(-v)));
+                inverseR = Math.Exp(logInverseR);
             }
+            if (double.IsPositiveInfinity(v)) c = 0;
         }
 
         /// <inheritdoc/>
-        public override UnivariateDistributionBase Clone()
-        {
-            return new GeneralizedNormal(Xi, Alpha, Kappa);
-        }
-
-        /// <inheritdoc/>
-        public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc/>
+        /// <remarks>
+        /// Applies the local-MLE delta method in public parameter coordinates. An exact positive
+        /// factorization of the covariance avoids cancellation near a finite shape endpoint.
+        /// Scale and exponential factors are combined before the scalar variance is exponentiated.
+        /// </remarks>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            throw new NotImplementedException();
+            DistributionNumerics.ValidateProbability(probability);
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            if (estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+                throw new NotImplementedException("Generalized-normal covariance is implemented only for local maximum-likelihood uncertainty.");
+            NormalInformationFactors(Kappa, out double c, out _, out double logInverseR);
+            double z = Normal.StandardZ(probability), argument = -Kappa * z;
+            double logScale = Math.Log(Alpha) - .5 * Math.Log(sampleSize);
+            // C = a*a' + b*b'/2 + d*d'/R, with a=[1,-k,0], b=[0,1,k], d=[c,0,1].
+            // For g=[1,S,T], g'a=exp(-k*z) and g'b=z*exp(-k*z).
+            double first = 2 * (logScale + argument) + Tools.Log1p(z * z / 2);
+            if (double.IsPositiveInfinity(first)) return double.PositiveInfinity;
+            double logResidual;
+            if (Math.Abs(Kappa) < .1)
+            {
+                double residual = c - z * z * DistributionNumerics.ExprelDerivative(argument);
+                logResidual = Math.Log(Math.Abs(residual));
+            }
+            else
+            {
+                // c+T = ((1-argument)*exp(argument)-exp(-k*k/2))/(k*k).
+                // Retain this difference even when c and T individually round to +/-1/(k*k).
+                double negative = -(Kappa / 2) * Kappa;
+                double numerator;
+                if (argument > 1)
+                    numerator = DistributionNumerics.LogSum(argument + Math.Log(argument - 1), negative);
+                else
+                {
+                    double positive = argument == 1 || double.IsNegativeInfinity(argument)
+                        ? double.NegativeInfinity : argument + Tools.Log1p(-argument);
+                    numerator = DistributionNumerics.LogDifference(Math.Max(positive, negative), Math.Min(positive, negative));
+                }
+                logResidual = numerator - 2 * Math.Log(Math.Abs(Kappa));
+            }
+            double second = 2 * (logScale + logResidual) + logInverseR;
+            return Math.Exp(DistributionNumerics.LogSum(first, second));
         }
 
         /// <inheritdoc/>
+        /// <remarks>The analytical shape derivative is continuous at kappa=0 and equals -alpha*z*z/2 there.</remarks>
         public double[] QuantileGradient(double probability)
         {
-            if (_parametersValid == false)
-                ValidateParameters(Xi, _alpha, Kappa, true);
-
-            var gradient = NumericalDerivative.Gradient(x =>
-            {
-                var gno = new GeneralizedNormal();
-                gno.SetParameters(x);
-                return gno.InverseCDF(probability);
-            }, GetParameters);       
-            return gradient;
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
+            double z = Normal.StandardZ(probability), v = -Kappa * z;
+            double shape = v < -50 ? -Math.Exp(Math.Log(Alpha) - 2 * Math.Log(Math.Abs(Kappa)))
+                : v > 50 ? -Math.Exp(Math.Log(Alpha) + v + Math.Log(v - 1) - 2 * Math.Log(Math.Abs(Kappa)))
+                : -Alpha * (z * z * DistributionNumerics.ExprelDerivative(v));
+            double scale = v > 50 ? -Math.Sign(Kappa) * Math.Exp(v - Math.Log(Math.Abs(Kappa)))
+                : v < -50 ? 1 / Kappa : z * DistributionNumerics.Exprel(v);
+            return [1, scale, shape];
         }
 
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
-        {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Get gradients
-            var dQp1 = QuantileGradient(probabilities[0]);
-            var dQp2 = QuantileGradient(probabilities[1]);
-            var dQp3 = QuantileGradient(probabilities[2]);
-            // Compute determinant
-            // |a b c|
-            // |d e f|
-            // |g h i|
-            // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
-            double a = dQp1[0];
-            double b = dQp1[1];
-            double c = dQp1[2];
-            double d = dQp2[0];
-            double e = dQp2[1];
-            double f = dQp2[2];
-            double g = dQp3[0];
-            double h = dQp3[1];
-            double i = dQp3[2];
-            determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b, c }, { d, e, f }, { g, h, i } };
-            return jacobian;
-        }
+            => DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
     }
 }

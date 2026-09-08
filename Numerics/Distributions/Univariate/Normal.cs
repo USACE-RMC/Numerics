@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -214,6 +214,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 SetParameters(Statistics.ProductMoments(sample));
@@ -331,21 +332,29 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
-            var initialVals = new double[NumberOfParameters];
-            var lowerVals = new double[NumberOfParameters];
-            var upperVals = new double[NumberOfParameters];
-            // Estimate initial values using the method of moments (a.k.a product moments).
-            var moments = Statistics.ProductMoments(sample);
-            initialVals[0] = moments[0];
-            initialVals[1] = moments[1];
-            // Get bounds of mean
-            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
-            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
-            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
-            // Get bounds of standard deviation
-            lowerVals[1] = Tools.DoubleMachineEpsilon;
-            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
-            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+            DistributionNumerics.ValidateSample(sample, 4);
+            // Scale before computing sample moments so squaring large observations cannot overflow.
+            double magnitude = 0d;
+            for (int i = 0; i < sample.Count; i++) magnitude = Math.Max(magnitude, Math.Abs(sample[i]));
+            var scaled = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) scaled[i] = sample[i] / magnitude;
+            double[] moments = Statistics.ProductMoments(scaled);
+            double location = moments[0] * magnitude;
+            double scale = moments[1] * magnitude;
+            if (!(scale > 0d) || double.IsInfinity(scale) || double.IsNaN(location) || double.IsInfinity(location))
+                throw new ArgumentException("Sample moments must be finite with positive dispersion.", nameof(sample));
+            // Preserve the distribution's minimum representable fitted scale.
+            scale = Math.Max(1E-16, scale);
+            // Retain the established decade bounds for ordinary nonzero centers; use dispersion
+            // only when the center is zero, and retain finite bounds when a decade overflows.
+            double locationMagnitude = location == 0 ? scale : Math.Abs(location);
+            double locationBound = Math.Pow(10, Math.Ceiling(Math.Log10(locationMagnitude) + 1));
+            double scaleBound = Math.Pow(10, Math.Ceiling(Math.Log10(scale) + 1));
+            if (double.IsInfinity(locationBound)) locationBound = double.MaxValue;
+            if (double.IsInfinity(scaleBound)) scaleBound = double.MaxValue;
+            if (Math.Abs(location) >= locationBound || scale >= scaleBound)
+                throw new ArgumentException("Sample moments do not admit finite interior parameter bounds.", nameof(sample));
+            return Tuple.Create(new[] { location, scale }, new[] { -locationBound, Math.Min(Tools.DoubleMachineEpsilon, scale / 10d) }, new[] { locationBound, scaleBound });
         }
 
         /// <inheritdoc/>
@@ -373,11 +382,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            double z = (x - Mu) / Sigma;
-            return Math.Exp(-0.5d * z * z) / (Tools.Sqrt2PI * Sigma);
+            return Math.Exp(LogPDF(x));
         }
 
         /// <inheritdoc/>
@@ -387,23 +392,39 @@ namespace Numerics.Distributions
         /// </remarks>
         public override double LogPDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            double z = (x - Mu) / Sigma;
-            double lf = -0.5d * z * z - Math.Log(Tools.Sqrt2PI * Sigma);
-            return double.IsNaN(lf) ? double.NegativeInfinity : lf;
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            double z = DistributionNumerics.Standardize(x, Mu, Sigma);
+            return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI);
         }
 
         /// <inheritdoc/>
         public override double CDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            // Evaluated through the standard normal routine, which holds relative accuracy deep in
-            // both tails where the error function complement form loses the probability entirely
-            return StandardCDF((x - Mu) / Sigma);
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            return StandardCDF(DistributionNumerics.Standardize(x, Mu, Sigma));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Evaluates the lower tail directly in logarithmic form, including probabilities below floating-point range.</remarks>
+        public override double LogCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            return DistributionNumerics.NormalLogCDF(DistributionNumerics.Standardize(x, Mu, Sigma));
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            return StandardCDF(-DistributionNumerics.Standardize(x, Mu, Sigma));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Evaluates the upper tail directly without subtracting a rounded CDF from one.</remarks>
+        public override double LogCCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            return DistributionNumerics.NormalLogSurvival(DistributionNumerics.Standardize(x, Mu, Sigma));
         }
 
         private static readonly double[] a = [3.3871328727963666080, 1.3314166789178437745e+2, 1.9715909503065514427e+3, 1.3731693765509461125e+4, 4.5921953931549871457e+4, 6.7265770927008700853e+4, 3.3430575583588128105e+4, 2.5090809287301226727e+3];
@@ -579,7 +600,7 @@ namespace Numerics.Distributions
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (double.IsNaN(probability) || probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -651,7 +672,7 @@ namespace Numerics.Distributions
         public static double StandardZ(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (double.IsNaN(probability) || probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0) return r8_normal_01_cdf_inverse(double.Epsilon);
             if (probability == 1) return r8_normal_01_cdf_inverse(1-double.Epsilon);
@@ -682,6 +703,7 @@ namespace Numerics.Distributions
         /// </remarks>
         public double[,] NormalConfidenceIntervals(int sampleSize, IList<double> quantiles, IList<double> percentiles)
         {
+            DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles);
             // validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
@@ -716,6 +738,7 @@ namespace Numerics.Distributions
         /// </remarks>
         public double[,] NoncentralTConfidenceIntervals(int sampleSize, IList<double> quantiles, IList<double> percentiles)
         {
+            DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles, 2);
             // validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
@@ -749,6 +772,8 @@ namespace Numerics.Distributions
         /// </remarks>
         public double[,] MonteCarloConfidenceIntervals(int sampleSize, int realizations, IList<double> quantiles, IList<double> percentiles)
         {
+            DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles, 2);
+            if (realizations <= 0) throw new ArgumentOutOfRangeException(nameof(realizations), "At least one realization is required.");
             // validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
@@ -802,6 +827,8 @@ namespace Numerics.Distributions
         /// <param name="probability">Exceedance probability.</param>
         public double ExpectedProbability(int sampleSize, double probability)
         {
+            DistributionNumerics.ValidateProbability(probability);
+            if (sampleSize < 2) throw new ArgumentOutOfRangeException(nameof(sampleSize), "At least two observations are required for a positive Student-t degree of freedom.");
             int N = sampleSize;
             var T = new StudentT(N - 1);
             return T.CDF(StandardZ(probability) * Math.Sqrt(N / (double)(N + 1)));
@@ -816,6 +843,8 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
             if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
                 estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
             {
@@ -823,11 +852,12 @@ namespace Numerics.Distributions
             }
             // Compute covariance in (μ, σ) parameterization.
             // Var(μ̂) = σ²/n, Var(σ̂) = σ²/(2n), Cov = 0.
-            // Both MoM and MLE give the same result for Normal (UMVUE).
-            double s2 = Sigma * Sigma;
+            // Both supported estimators have the same leading asymptotic covariance.
+            double scaled = Sigma / Math.Sqrt(sampleSize);
+            double s2 = scaled * scaled;
             var covar = new double[2, 2];
-            covar[0, 0] = s2 / sampleSize; // Var(μ̂)
-            covar[1, 1] = s2 / (2.0 * sampleSize); // Var(σ̂)
+            covar[0, 0] = s2; // Var(μ̂)
+            covar[1, 1] = s2 / 2d; // Var(σ̂)
             covar[0, 1] = 0.0;
             covar[1, 0] = covar[0, 1];
             return covar;
@@ -836,19 +866,15 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            var covar = ParameterCovariance(sampleSize, estimationMethod);
             var grad = QuantileGradient(probability);
-            double varA = covar[0, 0];
-            double varB = covar[1, 1];
-            double covAB = covar[1, 0];
-            double dQx1 = grad[0];
-            double dQx2 = grad[1];
-            return Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + 2d * dQx1 * dQx2 * covAB;
+            var covariance = new Normal(0, 1).ParameterCovariance(sampleSize, estimationMethod);
+            return DistributionNumerics.ScaledQuantileVariance(covariance, grad, Sigma);
         }
 
         /// <inheritdoc/>
         public double[] QuantileGradient(double probability)
         {
+            DistributionNumerics.ValidateProbability(probability);
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
@@ -865,25 +891,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Get gradients
-            var dQp1 = QuantileGradient(probabilities[0]);
-            var dQp2 = QuantileGradient(probabilities[1]);
-            // Compute determinant
-            // |a b|
-            // |c d|
-            // |A| = ad − bc
-            double a = dQp1[0];
-            double b = dQp1[1];
-            double c = dQp2[0];
-            double d = dQp2[1];
-            determinant = a * d - b * c;
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b }, { c, d } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
         /// <inheritdoc/>

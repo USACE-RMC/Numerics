@@ -84,10 +84,9 @@ namespace Distributions.Univariate
         {
 
             // Maximum Likelihood
-            var GUM = new Gumbel(8049.6d, 4478.6d);
-            double qVar99 = Math.Sqrt(GUM.QuantileVariance(0.99d, 53, ParameterEstimationMethod.MaximumLikelihood));
-            double true_qVar99 = 2486.5d;
-            Assert.IsLessThan(0.01d, (qVar99 - true_qVar99) / true_qVar99);
+            var distribution = new Weibull(2, 2);
+            double standardError = Math.Sqrt(distribution.QuantileVariance(.5, 100, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.AreEqual(.09775810184419749, standardError, 1E-14);
         }
 
         /// <summary>

@@ -1,4 +1,4 @@
-﻿using Numerics.Data;
+using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
 using Numerics.Mathematics.LinearAlgebra;
@@ -61,9 +61,18 @@ namespace Numerics.Distributions
         private MultivariateNormal _mvn = null!;
         private int _prngSeed = MultivariateNormal.DefaultMVNUNISeed;
 
-        // Soft finite floor used in tail arithmetic before returning the final log-density.
-        private const double _logZero = -745.0;
-        private const double _minDensity = 1E-300;
+        private string? _cachedConfiguration;
+
+        /// <summary>Invalidates derived caches when mutable components or configuration change.</summary>
+        private void RefreshCachedConfiguration()
+        {
+            string configuration = DistributionNumerics.ConfigurationState(this);
+            if (configuration == _cachedConfiguration) return;
+            _cachedConfiguration = configuration;
+            _momentsComputed = false;
+            _empiricalCDFCreated = false;
+            _mvnCreated = false;
+        }
 
         /// <summary>
         /// Returns the array of univariate probability distributions.
@@ -238,7 +247,8 @@ namespace Numerics.Distributions
         /// </summary>
         private void ComputeMoments()
         {
-            var mom = CentralMoments(1000);
+            double center = InverseCDF(.5), scale = InverseCDF(.75) - InverseCDF(.25);
+            var mom = DistributionMomentIntegration.Compute(LogPDF, Minimum, Maximum, center, scale);
             u1 = mom[0];
             u2 = mom[1];
             u3 = mom[2];
@@ -251,6 +261,7 @@ namespace Numerics.Distributions
         {
             get
             {
+                RefreshCachedConfiguration();
                 if (!_momentsComputed) ComputeMoments();
                 return u1;
             }
@@ -278,6 +289,7 @@ namespace Numerics.Distributions
         {
             get
             {
+                RefreshCachedConfiguration();
                 if (!_momentsComputed) ComputeMoments();
                 return u2;
             }
@@ -288,6 +300,7 @@ namespace Numerics.Distributions
         {
             get
             {
+                RefreshCachedConfiguration();
                 if (!_momentsComputed) ComputeMoments();
                 return u3;
             }
@@ -298,6 +311,7 @@ namespace Numerics.Distributions
         {
             get
             {
+                RefreshCachedConfiguration();
                 if (!_momentsComputed) ComputeMoments();
                 return u4;
             }
@@ -306,13 +320,13 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Minimum
         {
-            get { return Distributions.Min(p => p.Minimum); }
+            get { return MinimumOfRandomVariables ? Distributions.Min(p => p.Minimum) : Distributions.Max(p => p.Minimum); }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get { return Distributions.Max(p => p.Maximum); }
+            get { return MinimumOfRandomVariables ? Distributions.Min(p => p.Maximum) : Distributions.Max(p => p.Maximum); }
         }
 
         /// <inheritdoc/>
@@ -375,7 +389,7 @@ namespace Numerics.Distributions
         {
             if (distributions == null) throw new ArgumentNullException(nameof(Distributions));
             _distributions = distributions;
-            _parametersValid = ValidateParameters(Array.Empty<double>(), false) is null;
+            _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
             _mvnCreated = false;
@@ -393,7 +407,7 @@ namespace Numerics.Distributions
             {
                 _distributions[i] = (UnivariateDistributionBase)distributions[i];
             }
-            _parametersValid = ValidateParameters(Array.Empty<double>(), false) is null;
+            _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
             _mvnCreated = false;
@@ -434,27 +448,30 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (Distributions.Count == 0)
+            ArgumentOutOfRangeException? error = null;
+            if (_distributions == null || _distributions.Length == 0 || _distributions.Any(d => d is null))
+                error = new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least one non-null distribution.");
+            else if (parameters == null || parameters.Count != _distributions.Sum(d => d.GetParameters.Length))
+                error = new ArgumentOutOfRangeException(nameof(parameters), "The flattened parameter count must match the component distributions.");
+            else
             {
-                var exception = new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least 1 distribution.");
-                if (throwException) throw exception;
-                return exception;
-            }
-            for (int i = 0; i < Distributions.Count; i++)
-            {
-                if (Distributions[i].ParametersValid == false)
+                int offset = 0;
+                foreach (var distribution in Distributions)
                 {
-                    if (throwException)
-                        throw new ArgumentOutOfRangeException(nameof(Distributions), "One of the distributions have invalid parameters.");
-                    return new ArgumentOutOfRangeException(nameof(Distributions), "One of the distributions have invalid parameters.");
+                    var candidate = new double[distribution.GetParameters.Length];
+                    for (int j = 0; j < candidate.Length; j++) candidate[j] = parameters[offset++];
+                    error = distribution.ValidateParameters(candidate, false);
+                    if (error != null) break;
                 }
             }
-            return null;
+            if (throwException && error != null) throw error;
+            return error;
         }
 
         /// <inheritdoc/>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
+            DistributionNumerics.ValidateSample(sample);
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
@@ -501,283 +518,130 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override double PDF(double x)
-        {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(GetParameters, true);
-
-            if (Distributions.Count == 1)
-            {
-                return Distributions[0].PDF(x);
-            }
-
-            double f = double.NaN;
-
-            // Only compute the exact PDF for independent random variables
-            if (Dependency == Probability.DependencyType.Independent)
-            {
-                if (MinimumOfRandomVariables)
-                {
-                    f = PDFMinimumIndependent(x);
-                }
-                else
-                {
-                    f = PDFMaximumIndependent(x);
-                }
-            }
-            else
-            {
-                // Compute the PDF using numerical differentiation
-                f = NumericalDerivative.Derivative(CDF, x);
-            }
-
-            // Return minimum density instead of zero to prevent log-likelihood issues
-            return f < _minDensity ? _minDensity : f;
-        }
-
-        /// <summary>
-        /// Computes PDF for minimum of independent random variables.
-        /// f(x) = h(x) * S(x) where h(x) = sum of hazard rates, S(x) = product of survival functions
-        /// </summary>
-        private double PDFMinimumIndependent(double x)
-        {
-            double sumHazard = 0.0;
-            double productSurvival = 1.0;
-
-            for (int i = 0; i < Distributions.Count; i++)
-            {
-                double ccdf = Distributions[i].CCDF(x);
-                double pdf = Distributions[i].PDF(x);
-
-                productSurvival *= ccdf;
-
-                // Safe hazard calculation
-                if (ccdf > _minDensity)
-                {
-                    sumHazard += pdf / ccdf;
-                }
-                else if (pdf > _minDensity)
-                {
-                    // CCDF ≈ 0 but PDF > 0: we're at the boundary
-                    // The hazard is very large, but productSurvival will be ≈ 0
-                    // so the contribution is negligible
-                    sumHazard += pdf / _minDensity; // Cap the hazard
-                }
-            }
-
-            return sumHazard * productSurvival;
-        }
-
-        /// <summary>
-        /// Computes PDF for maximum of independent random variables.
-        /// f(x) = sum_i [f_i(x) * prod_{j≠i} F_j(x)]
-        ///      = [sum_i (f_i/F_i)] * [prod_j F_j]
-        /// </summary>
-        private double PDFMaximumIndependent(double x)
-        {
-            double sumRatio = 0.0;
-            double productCdf = 1.0;
-
-            for (int i = 0; i < Distributions.Count; i++)
-            {
-                double cdf = Distributions[i].CDF(x);
-                double pdf = Distributions[i].PDF(x);
-
-                productCdf *= cdf;
-
-                // Safe ratio calculation
-                if (cdf > _minDensity)
-                {
-                    sumRatio += pdf / cdf;
-                }
-                else if (pdf > _minDensity)
-                {
-                    // CDF ≈ 0 but PDF > 0: we're at the left boundary
-                    // The ratio is very large, but productCdf will be ≈ 0
-                    // so the contribution is negligible
-                    sumRatio += pdf / _minDensity; // Cap the ratio
-                }
-            }
-
-            return sumRatio * productCdf;
-        }
+        public override double PDF(double x) => Math.Exp(LogPDF(x));
 
         /// <inheritdoc/>
         public override double LogPDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(GetParameters, true);
+            ValidateEvaluation();
+            if (double.IsNaN(x)) return double.NaN;
+            if (x < Minimum || x > Maximum || double.IsInfinity(x)) return double.NegativeInfinity;
+            if (Distributions.Count == 1) return Distributions[0].LogPDF(x);
+            if (Dependency != Probability.DependencyType.Independent)
+                return Math.Log(DependentDensity(x));
 
-            if (Distributions.Count == 1)
+            // Sum f_i times the other factors, without dividing by possibly zero tails.
+            // Computing each excluded product also avoids infinity-minus-infinity in the log sum.
+            double total = double.NegativeInfinity;
+            for (int i = 0; i < Distributions.Count; i++)
             {
-                return Distributions[0].LogPDF(x);
-            }
-
-            // Only compute the exact LogPDF for independent random variables
-            if (Dependency == Probability.DependencyType.Independent)
-            {
-                if (MinimumOfRandomVariables)
+                double product = 0;
+                for (int j = 0; j < Distributions.Count; j++)
+                    if (j != i) product += MinimumOfRandomVariables ? Distributions[j].LogCCDF(x) : Distributions[j].LogCDF(x);
+                double logDensity = Distributions[i].LogPDF(x);
+                if (double.IsNegativeInfinity(product))
                 {
-                    return LogPDFMinimumIndependent(x);
+                    if (double.IsPositiveInfinity(logDensity)) return IndependentEndpointLogDensity(x);
+                    continue;
                 }
-                else
-                {
-                    return LogPDFMaximumIndependent(x);
-                }
+                double term = logDensity + product;
+                total = DistributionNumerics.LogSum(total, term);
             }
-            else
-            {
-                // For dependent cases, fall back to numerical differentiation
-                // but use a more stable approach
-                double pdf = NumericalDerivative.Derivative(CDF, x);
-                return pdf > _minDensity ? Math.Log(pdf) : double.NegativeInfinity;
-            }
-
+            return total;
         }
 
-        /// <summary>
-        /// Computes log-PDF for minimum of independent random variables.
-        /// Uses the formula: log(f(x)) = log(sum of hazards) + sum of log(survival functions)
-        /// 
-        /// For minimum: f(x) = h(x) * S(x) where:
-        ///   h(x) = sum_i h_i(x) = sum_i [f_i(x) / S_i(x)]
-        ///   S(x) = prod_i S_i(x)
-        /// 
-        /// In log space: log(f) = log(h(x)) + sum_i log(S_i(x))
-        /// </summary>
-        private double LogPDFMinimumIndependent(double x)
+        /// <summary>Combines endpoint tail exponents before evaluating the one-sided density limit.</summary>
+        /// <remarks>For a product tail c*t^a*log(1/t)^b, its density tends to zero for a&gt;1,
+        /// infinity for a&lt;1, and c times the logarithmic limit for a=1.</remarks>
+        private double IndependentEndpointLogDensity(double x)
         {
-            int n = Distributions.Count;
-            var logSurvival = new double[n];
-            var logHazard = new double[n];
-
-            double sumLogSurvival = 0.0;
-            bool allSurvivalZero = true;
-
-            for (int i = 0; i < n; i++)
+            double power = 0, logPower = 0, logCoefficient = 0;
+            bool lower = !MinimumOfRandomVariables;
+            foreach (var distribution in Distributions)
             {
-                double ccdf = Distributions[i].CCDF(x);
-                double pdf = Distributions[i].PDF(x);
-
-                if (ccdf > _minDensity)
-                {
-                    logSurvival[i] = Math.Log(ccdf);
-                    allSurvivalZero = false;
-                }
-                else
-                {
-                    // Survival is essentially zero - we're far in the right tail
-                    logSurvival[i] = _logZero;
-                }
-
-                sumLogSurvival += logSurvival[i];
-
-                // Compute log-hazard: log(f_i / S_i) = log(f_i) - log(S_i)
-                if (pdf > _minDensity && ccdf > _minDensity)
-                {
-                    logHazard[i] = Math.Log(pdf) - Math.Log(ccdf);
-                }
-                else if (pdf <= _minDensity)
-                {
-                    logHazard[i] = _logZero;
-                }
-                else
-                {
-                    // pdf > 0 but ccdf ≈ 0: hazard is very large
-                    // This happens in the far right tail
-                    logHazard[i] = Math.Log(pdf) - _logZero; // Will be very large
-                }
+                double logTail = lower ? distribution.LogCDF(x) : distribution.LogCCDF(x);
+                if (!double.IsNegativeInfinity(logTail)) { logCoefficient += logTail; continue; }
+                if (!DistributionEndpointTail.TryExpansion(distribution, lower, out double componentPower,
+                    out double componentLogPower, out double componentCoefficient))
+                    throw new InvalidOperationException("The independent endpoint density limit is unavailable for this component family.");
+                power += componentPower;
+                logPower += componentLogPower;
+                logCoefficient += componentCoefficient;
             }
-
-            // If all survival functions are zero, density is zero
-            if (allSurvivalZero)
-                return _logZero;
-
-            // Compute log of sum of hazards using log-sum-exp trick
-            double logSumHazard = Tools.LogSumExp(logHazard);
-
-            // Final result: log(f) = log(sum h_i) + sum log(S_i)
-            double logPdf = logSumHazard + sumLogSurvival;
-
-            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.NegativeInfinity : logPdf;
+            if (power > 1 || (power == 1 && logPower < 0)) return double.NegativeInfinity;
+            if (power < 1 || logPower > 0) return double.PositiveInfinity;
+            return logCoefficient;
         }
 
-        /// <summary>
-        /// Computes log-PDF for maximum of independent random variables.
-        /// Uses the formula: f(x) = sum_i [f_i(x) * prod_{j≠i} F_j(x)]
-        /// 
-        /// In log space, we use the identity:
-        ///   f(x) = [sum_i (f_i/F_i)] * [prod_j F_j]
-        /// 
-        /// So: log(f) = log(sum_i f_i/F_i) + sum_j log(F_j)
-        /// </summary>
-        private double LogPDFMaximumIndependent(double x)
+        /// <summary>Checks current component validity, including mutations through public component references.</summary>
+        private void ValidateEvaluation()
         {
-            int n = Distributions.Count;
-            var logCdf = new double[n];
-            var logRatio = new double[n]; // log(f_i / F_i)
-
-            double sumLogCdf = 0.0;
-            bool allCdfZero = true;
-
-            for (int i = 0; i < n; i++)
-            {
-                double cdf = Distributions[i].CDF(x);
-                double pdf = Distributions[i].PDF(x);
-
-                if (cdf > _minDensity)
-                {
-                    logCdf[i] = Math.Log(cdf);
-                    allCdfZero = false;
-                }
-                else
-                {
-                    // CDF is essentially zero - we're far in the left tail
-                    logCdf[i] = _logZero;
-                }
-
-                sumLogCdf += logCdf[i];
-
-                // Compute log(f_i / F_i) = log(f_i) - log(F_i)
-                if (pdf > _minDensity && cdf > _minDensity)
-                {
-                    logRatio[i] = Math.Log(pdf) - Math.Log(cdf);
-                }
-                else if (pdf <= _minDensity)
-                {
-                    logRatio[i] = _logZero;
-                }
-                else
-                {
-                    // pdf > 0 but cdf ≈ 0: ratio is very large
-                    // This can happen but contributes negligibly when multiplied by near-zero CDF product
-                    logRatio[i] = Math.Log(pdf) - _logZero;
-                }
-            }
-
-            // If all CDFs are zero, density is zero
-            if (allCdfZero)
-                return _logZero;
-
-            // Compute log of sum of ratios using log-sum-exp trick
-            double logSumRatio = Tools.LogSumExp(logRatio);
-
-            // Final result: log(f) = log(sum f_i/F_i) + sum log(F_i)
-            double logPdf = logSumRatio + sumLogCdf;
-
-            return double.IsNaN(logPdf) || double.IsInfinity(logPdf) ? double.NegativeInfinity : logPdf;
+            if (!_parametersValid || Distributions.Any(d => !d.ParametersValid)) ValidateParameters(GetParameters, true);
         }
 
+        /// <summary>Numerically differentiates the existing dependent CDF within its mathematical support.</summary>
+        /// <remarks>The dependence model and its probability-combination rule are unchanged. A centered
+        /// local step is used in the interior; endpoints use a one-sided step. Negative or unresolved
+        /// density is reported rather than replaced by a positive likelihood floor.</remarks>
+        private double DependentDensity(double x)
+        {
+            double scale = double.PositiveInfinity;
+            foreach (var distribution in Distributions)
+            {
+                double width = distribution.InverseCDF(.75) - distribution.InverseCDF(.25);
+                if (width > 0 && DistributionNumerics.IsFinite(width)) scale = Math.Min(scale, width);
+            }
+            if (!DistributionNumerics.IsFinite(scale)) scale = Math.Max(1, Math.Abs(x));
+            double step = Math.Pow(Tools.DoubleMachineEpsilon, 1.0 / 3) * scale;
+            double left = Math.Max(Minimum, x - step), right = Math.Min(Maximum, x + step);
+            if (!(right > left)) throw new InvalidOperationException("The dependent density cannot be resolved at this floating-point scale.");
+            double density = (CDF(right) - CDF(left)) / (right - left);
+            if (!DistributionNumerics.IsFinite(density) || density < 0)
+                throw new InvalidOperationException("Numerical differentiation of the dependent CDF did not produce a nonnegative finite density.");
+            return density;
+        }
+
+        /// <inheritdoc/>
+        public override double LogCDF(double x)
+        {
+            ValidateEvaluation();
+            if (Dependency != Probability.DependencyType.Independent) return Math.Log(CDF(x));
+            if (!MinimumOfRandomVariables) return Distributions.Sum(d => d.LogCDF(x));
+            double union = double.NegativeInfinity, precedingSurvival = 0;
+            foreach (var distribution in Distributions)
+            {
+                union = DistributionNumerics.LogSum(union, precedingSurvival + distribution.LogCDF(x));
+                precedingSurvival += distribution.LogCCDF(x);
+            }
+            return union;
+        }
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double x)
+        {
+            ValidateEvaluation();
+            if (Dependency != Probability.DependencyType.Independent) return DistributionNumerics.Log1mExp(Math.Log(CDF(x)));
+            if (MinimumOfRandomVariables) return Distributions.Sum(d => d.LogCCDF(x));
+            double union = double.NegativeInfinity, precedingCDF = 0;
+            foreach (var distribution in Distributions)
+            {
+                union = DistributionNumerics.LogSum(union, precedingCDF + distribution.LogCCDF(x));
+                precedingCDF += distribution.LogCDF(x);
+            }
+            return union;
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
 
         /// <inheritdoc/>
         public override double CDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(GetParameters, true);
-
+            ValidateEvaluation();
+            if (Dependency == Probability.DependencyType.Independent) return Math.Exp(LogCDF(x));
+            RefreshCachedConfiguration();
+            if (x < Minimum) return 0;
+            if (x > Maximum) return 1;
             if (Distributions.Count == 1)
             {
                 return Distributions[0].CDF(x);
@@ -827,13 +691,15 @@ namespace Numerics.Distributions
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
+            ValidateEvaluation();
+            RefreshCachedConfiguration();
             if (probability == 0.0d) return Minimum;
             if (probability == 1.0d) return Maximum;
             // Validate parameters
             if (_parametersValid == false)
-                ValidateParameters([0], true);
+                ValidateParameters(GetParameters, true);
 
             // If there is only one distribution, return its inverse CDF
             if (Distributions.Count() == 1)
@@ -854,8 +720,22 @@ namespace Numerics.Distributions
                 double maxX = xVals.Max();
                 try
                 {
-                    Brent.Bracket((y) => { return probability - CDF(y); }, ref minX, ref maxX, out var f1, out var f2);
-                    x = Brent.Solve((y) => { return probability - CDF(y); }, minX, maxX, 1E-6, 100, true);
+                    double reference = minX / 2 + maxX / 2;
+                    double scale = maxX / 2 - minX / 2;
+                    if (!(scale > 0) || !DistributionNumerics.IsFinite(scale))
+                        scale = Distributions.Select(d => d.InverseCDF(.75) - d.InverseCDF(.25))
+                            .Where(width => width > 0 && DistributionNumerics.IsFinite(width)).DefaultIfEmpty(1).Min();
+                    double Argument(double t)
+                    {
+                        double value = reference + scale * t;
+                        if (double.IsInfinity(value) && DistributionNumerics.IsFinite(t)) value = scale * (reference / scale + t);
+                        return Math.Max(Minimum, Math.Min(Maximum, value));
+                    }
+                    double Residual(double t) => probability <= .5 ? LogCDF(Argument(t)) - Math.Log(probability)
+                        : LogCCDF(Argument(t)) - Tools.Log1p(-probability);
+                    double lower = -1, upper = 1;
+                    Brent.Bracket(Residual, ref lower, ref upper, out _, out _);
+                    x = Argument(Brent.Solve(Residual, lower, upper, 1E-6 / Math.Max(1, scale), 100, true));
                 }
                 catch (Exception)
                 {
@@ -876,6 +756,7 @@ namespace Numerics.Distributions
         /// <param name="bins">Optional. The stratification bins to integrate over. Default is 200 bins.</param>
         public List<EmpiricalDistribution> CumulativeIncidenceFunctions(List<StratificationBin>? bins = null)
         {
+            RefreshCachedConfiguration();
             // Get stratification bins
             if (bins == null)
             {
@@ -1148,6 +1029,7 @@ namespace Numerics.Distributions
         /// </summary>
         public void CreateEmpiricalCDF()
         {
+            RefreshCachedConfiguration();
             // Get min & max
             double minP = 1E-16;
             double maxP = 1 - 1E-16;

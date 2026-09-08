@@ -1,0 +1,94 @@
+{
+  "date": "2026-09-08",
+  "numericsBaseline": "c0d67b9c52d62dc49bdbfb744ec47b9a205cc86b",
+  "bestFitBaseline": "b7327036ecd25770201597dc163945353370347e",
+  "buildCommand": "dotnet build -c Release -p:EnforceXmlDocumentation=true",
+  "buildWarnings": 0,
+  "buildErrors": 0,
+  "testCommand": "dotnet test -c Release --no-build",
+  "numerics": [
+    {
+      "framework": "net10.0",
+      "total": 2675,
+      "executed": 2675,
+      "passed": 2675,
+      "failed": 0,
+      "report": "numerics-release-final_net10.0_20260908143914.trx",
+      "reportSha256": "6b974fde57453fdd12a009bc819d6a2fe8d25da3aef48bfe1f2c16241b580327"
+    },
+    {
+      "framework": "net481",
+      "total": 2675,
+      "executed": 2675,
+      "passed": 2675,
+      "failed": 0,
+      "report": "numerics-release-final_net481_20260908143953.trx",
+      "reportSha256": "7e848030730ec27a1f7a96c544f03a6d30d1c2daa81d8ad624eb020612502156"
+    },
+    {
+      "framework": "net8.0",
+      "total": 2675,
+      "executed": 2675,
+      "passed": 2675,
+      "failed": 0,
+      "report": "numerics-release-final_net8.0_20260908143926.trx",
+      "reportSha256": "5c57f5b134ab547f26f484f7d00b277cdb96469759054acdb8db5775d317c8e7"
+    },
+    {
+      "framework": "net9.0",
+      "total": 2675,
+      "executed": 2675,
+      "passed": 2675,
+      "failed": 0,
+      "report": "numerics-release-final_net9.0_20260908143926.trx",
+      "reportSha256": "4e9e475590cb79157f52422a76de63a8c00b06a66236fdab9d8bebbed8347a53"
+    }
+  ],
+  "bestFitVerificationExecuted": false,
+  "bestFitFastGates": [
+    {
+      "project": "RMC.BestFit.Tests",
+      "framework": "net10.0",
+      "total": 3406,
+      "executed": 3406,
+      "passed": 3406,
+      "failed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "scheduling": "one test worker; internal test concurrency unchanged",
+      "report": "bestfit-core-release-closeout.trx",
+      "reportSha256": "ea086899b568765e8583de7ec25c7b67ec36f653774f6836001f22107d7fc251",
+      "numericsAssemblySha256": "f7cd36f91412d004b6865a27e1a51c28ed135a4082fef46244ea838a148e1ffc"
+    },
+    {
+      "project": "RMC.BestFit.UI.Tests",
+      "framework": "net10.0-windows",
+      "total": 593,
+      "executed": 593,
+      "passed": 593,
+      "failed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "scheduling": "project default",
+      "report": "bestfit-ui-release-closeout.trx",
+      "reportSha256": "aec8468f09152e6bc2b27f465aadaf8dd76e393666a5d360a704d517f67ffd3f",
+      "numericsAssemblySha256": "f7cd36f91412d004b6865a27e1a51c28ed135a4082fef46244ea838a148e1ffc"
+    },
+    {
+      "project": "RMC.BestFit.App.Tests",
+      "framework": "net10.0-windows",
+      "total": 443,
+      "executed": 443,
+      "passed": 443,
+      "failed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "scheduling": "project default",
+      "report": "bestfit-app-release-closeout.trx",
+      "reportSha256": "24f1a0b5830de31949d15982fcef03c07091837db07ca1480f4f068582965e58",
+      "numericsAssemblySha256": "f7cd36f91412d004b6865a27e1a51c28ed135a4082fef46244ea838a148e1ffc"
+    }
+  ],
+  "numericsProjectReference": "C:/GIT/numerics/artifacts/worktrees/distribution-robustness/Numerics/Numerics.csproj",
+  "xmlNamespaceScan": "Passed, 941 C# files; strict builds completed separately"
+}

@@ -1,0 +1,25 @@
+{
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "files": [
+    {
+      "file": "extreme-positive.csv",
+      "rows": 2497,
+      "sha256Utf8Lf": "35aa23bcebb14d300be780b8b1f9002c487d2ffd21224766ad88766016f5603e"
+    },
+    {
+      "file": "generalized-adjacent-boundaries.csv",
+      "rows": 180,
+      "sha256Utf8Lf": "121e9c7137a8a22f18d238b3a4814a73746e3ffab08adf3ec1bea92e01d81e46"
+    },
+    {
+      "file": "generalized-fisher.csv",
+      "rows": 1333,
+      "sha256Utf8Lf": "97d9f2dc8dc4d0dc363aee01e1cce2917546a4fabfea5ec08da3913240c32164"
+    },
+    {
+      "file": "normal-pearson.csv",
+      "rows": 50,
+      "sha256Utf8Lf": "3fa790f12e66d4dc0791b462e16e7042c45ec4f2c783051ad8b67e41caafd548"
+    }
+  ]
+}

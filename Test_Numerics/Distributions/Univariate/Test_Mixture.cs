@@ -476,7 +476,8 @@ namespace Distributions.Univariate
             double expected = 1.0 - distribution.CCDF(1.0) / distribution.CCDF(0.0);
 
             Assert.AreEqual(0.5, expected, 0.0);
-            Assert.AreEqual(expected, mixture.CDF(1.0), 0.0);
+            // Logarithmic normalization introduces only final binary64 rounding.
+            Assert.AreEqual(expected, mixture.CDF(1.0), 2E-15);
             Assert.IsTrue(mixture.CDF(1.0) >= 0.0 && mixture.CDF(1.0) <= 1.0);
         }
 

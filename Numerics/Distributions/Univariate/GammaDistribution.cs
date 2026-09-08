@@ -249,7 +249,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double StandardDeviation
         {
-            get { return Math.Sqrt(Kappa * Math.Pow(Theta, 2d)); }
+            get { return Theta * Math.Sqrt(Kappa); }
         }
 
         /// <inheritdoc/>
@@ -291,6 +291,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4, true);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 SetParameters(ParametersFromMoments(Statistics.ProductMoments(sample)));
@@ -336,6 +337,8 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override void SetParameters(IList<double> parameters)
         {
+            if (parameters == null || parameters.Count != NumberOfParameters)
+                throw new ArgumentOutOfRangeException(nameof(parameters), "Exactly two parameters are required.");
             SetParameters(parameters[0], parameters[1]);
         }
 
@@ -365,6 +368,12 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
+            if (parameters == null || parameters.Count != NumberOfParameters)
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(parameters), "Exactly two parameters are required.");
+                if (throwException) throw exception;
+                return exception;
+            }
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }
 
@@ -372,14 +381,16 @@ namespace Numerics.Distributions
         public double[] ParametersFromMoments(IList<double> moments)
         {
             var parms = new double[NumberOfParameters];
-            parms[0] = 1d / (moments[0] / Math.Pow(moments[1], 2d));
-            parms[1] = Math.Pow(moments[0], 2d) / Math.Pow(moments[1], 2d);
+            parms[0] = moments[1] * (moments[1] / moments[0]);
+            double ratio = moments[0] / moments[1];
+            parms[1] = ratio * ratio;
             return parms;
         }
 
         /// <inheritdoc/>
         public double[] MomentsFromParameters(IList<double> parameters)
         {
+            ValidateParameters(parameters, true);
             var dist = new GammaDistribution();
             dist.SetParameters(parameters);
             var m1 = dist.Mean;
@@ -420,6 +431,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[] LinearMomentsFromParameters(IList<double> parameters)
         {
+            ValidateParameters(parameters, true);
             double alpha = parameters[1];
             double beta = parameters[0];
             double L1 = alpha * beta;
@@ -466,19 +478,21 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Requires at least four finite, strictly positive, nonconstant observations. The
+        /// existing moment initialization is evaluated in unit coordinates to preserve small and large scales.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The sample or a finite feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
-            var initialVals = new double[NumberOfParameters];
+            DistributionNumerics.ValidateSample(sample, 4, true);
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
-            // Get initial values
-            initialVals = ParametersFromMoments(Statistics.ProductMoments(sample));
-            // Get bounds of scale
-            lowerVals[0] = Tools.DoubleMachineEpsilon;
-            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
-            // Get bounds of shape
-            lowerVals[1] = Tools.DoubleMachineEpsilon;
-            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+            double normalization = DistributionNumerics.InitializationScale(sample);
+            var normalized = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) normalized[i] = sample[i] / normalization;
+            var initialVals = ParametersFromMoments(Statistics.ProductMoments(normalized));
+            initialVals[0] *= normalization;
+            DistributionNumerics.PositiveParameterBounds(initialVals[0], out lowerVals[0], out upperVals[0]);
+            DistributionNumerics.PositiveParameterBounds(initialVals[1], out lowerVals[1], out upperVals[1]);
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
         }
 
@@ -510,6 +524,7 @@ namespace Numerics.Distributions
         /// <param name="sample">Array of sample data.</param>
         public void MLE_NR(IList<double> sample)
         {
+            DistributionNumerics.ValidateSample(sample, 2, true);
             double lnsum = 0d;
             for (int i = 0; i < sample.Count; i++)
                 lnsum += Math.Log(sample[i]);
@@ -531,6 +546,7 @@ namespace Numerics.Distributions
         /// <param name="sample">Array of sample data.</param>
         public void MLE_Bobee(IList<double> sample)
         {
+            DistributionNumerics.ValidateSample(sample, 2, true);
             double A = Statistics.Mean(sample);
             double G = Statistics.GeometricMean(sample);
             double U = Math.Log(A) - Math.Log(G);
@@ -544,11 +560,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double X)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Theta, Kappa, true);
-            if (X < Minimum || X > Maximum) return 0.0d;
-            return Math.Exp(-X / Theta + (Kappa - 1.0d) * Math.Log(X) - Kappa * Math.Log(Theta) - Gamma.LogGamma(Kappa));
+            return Math.Exp(LogPDF(X));
         }
 
         /// <inheritdoc/>
@@ -563,29 +575,48 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Theta, Kappa, true);
-            if (X < Minimum || X > Maximum) return double.NegativeInfinity;
-            double lf = -X / Theta + (Kappa - 1.0d) * Math.Log(X) - Kappa * Math.Log(Theta) - Gamma.LogGamma(Kappa);
+            if (X < Minimum || double.IsPositiveInfinity(X)) return double.NegativeInfinity;
+            if (X == 0) return Kappa == 1 ? -Math.Log(Theta) : Kappa < 1 ? double.PositiveInfinity : double.NegativeInfinity;
+            double unit = X / Theta;
+            double lf = unit == 0 && X > 0
+                ? (Kappa - 1) * (Math.Log(X) - Math.Log(Theta)) - Gamma.LogGamma(Kappa) - Math.Log(Theta)
+                : DistributionNumerics.GammaLogDensity(Kappa, unit) - Math.Log(Theta);
             return double.IsNaN(lf) ? double.NegativeInfinity : lf;
         }
 
         /// <inheritdoc/>
         public override double CDF(double X)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Theta, Kappa, true);
-            if (X <= Minimum)
-                return 0d;
-            if (X >= Maximum)
-                return 1d;
-            return Gamma.LowerIncomplete(Kappa, X / Theta);
+            return Math.Exp(LogCDF(X));
+        }
+
+        /// <inheritdoc/>
+        public override double LogCDF(double X)
+        {
+            if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
+            if (X <= 0) return double.NegativeInfinity;
+            double unit = X / Theta;
+            return unit == 0 ? Kappa * (Math.Log(X) - Math.Log(Theta)) - DistributionNumerics.LogGammaOnePlus(Kappa)
+                : DistributionNumerics.GammaLogCDF(Kappa, unit);
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double X) => Math.Exp(LogCCDF(X));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double X)
+        {
+            if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
+            if (X <= 0) return 0;
+            double unit = X / Theta;
+            return unit == 0 ? DistributionNumerics.Log1mExp(LogCDF(X)) : DistributionNumerics.GammaLogSurvival(Kappa, unit);
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -594,7 +625,15 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Theta, Kappa, true);
-            return Gamma.InverseLowerIncomplete(Kappa, probability) * Theta;
+            // Preserve the exact exponential identity, including subnormal probabilities whose
+            // unnecessary log/exp round trip loses range on .NET Framework.
+            if (Kappa == 1) return -Theta * Tools.Log1p(-probability);
+            double unitQuantile = DistributionNumerics.GammaInverseCDF(Kappa, probability);
+            // The lower-tail series has negligible higher-order terms at these unit quantiles.
+            // Combine logs before multiplication when the scale can rescue an underflowed unit value.
+            return unitQuantile < 1E-200
+                ? Math.Exp(Math.Log(Theta) + (Math.Log(probability) + DistributionNumerics.LogGammaOnePlus(Kappa)) / Kappa)
+                : unitQuantile * Theta;
         }
 
         /// <summary>
@@ -607,7 +646,7 @@ namespace Numerics.Distributions
         public double WilsonHilfertyInverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -625,8 +664,13 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="skewness">Coefficient of skewness.</param>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The named approximate frequency factor, not the actual Gamma quantile.</returns>
+        /// <remarks>Large skew magnitude is capped at 9.75 before evaluating its powers. Negative
+        /// skew uses the reflected probability and sign of the corresponding positive-skew approximation.</remarks>
         public static double FrequencyFactorKp(double skewness, double probability)
         {
+            if (!DistributionNumerics.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
+            if (!(probability >= 0 && probability <= 1)) throw new ArgumentOutOfRangeException(nameof(probability));
             double C = skewness;
             double absC = Math.Abs(C);
             // If skew is sufficiently close to zero, return standard Normal Z variate.
@@ -660,10 +704,9 @@ namespace Numerics.Distributions
             {
                 // If abs(skew) is greater than 2, use Modified Wilson-Hilferty transformation (Kirby, 1972)
                 // Only, valid if abs(skew) <= 9.75. Enforce limits.
-                if (C < -9.75d)
-                    C = -9.75d;
-                if (C > 9.75d)
-                    C = 9.75d;
+                double sign = Math.Sign(C);
+                C = Math.Min(absC, 9.75);
+                absC = Math.Abs(C);
 
                 // Hoshi and Burges (1981b) gave polynomial expressions for 1/A, B, G and H^3 as a function of Cs
                 // Compute skew orders
@@ -697,7 +740,8 @@ namespace Numerics.Distributions
                 double G = g0 + g1 * C + g2 * C2 + g3 * C3 + g4 * C4 + g5 * C5;
                 // Compute H
                 double H = Math.Pow(B - 2.0d / absC / A, 1d / 3d);
-                return Math.Sign(C) * A * (Math.Pow(Math.Max(H, 1.0d - Math.Pow(G / 6.0d, 2d) + G / 6.0d * Normal.StandardZ(probability)), 3d) - B);
+                // Reflect the normal score directly; forming 1-p would round a tiny p to one.
+                return sign * A * (Math.Pow(Math.Max(H, 1.0d - Math.Pow(G / 6.0d, 2d) + G / 6.0d * sign * Normal.StandardZ(probability)), 3d) - B);
             }
         }
 
@@ -709,6 +753,8 @@ namespace Numerics.Distributions
         /// <returns>The partial derivative of the frequency factor with respect to skewness.</returns>
         public static double PartialKp(double skewness, double probability)
         {
+            if (!DistributionNumerics.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
+            DistributionNumerics.ValidateProbability(probability);
             double C = skewness;
             double absC = Math.Abs(C);
             // Use the Cornish-Fisher derivative limit at zero skew.
@@ -760,8 +806,13 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Uses scale-theta and shape-kappa coordinates. MoM is the sample-mean/sample-variance
+        /// sandwich; MLE is the expected Fisher inverse. Both require positive sample size and valid parameters.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Parameters or sample size are invalid.</exception>
+        /// <exception cref="NotImplementedException">The estimation method is unsupported.</exception>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
             if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
                 estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
             {
@@ -775,45 +826,22 @@ namespace Numerics.Distributions
             var covar = new double[2, 2];
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
-                // MoM asymptotic covariance via (DᵀS⁻¹D)⁻¹/n.
-                // Moment conditions: g₁ = X − κθ, g₂ = (X−κθ)² − κθ².
-                // D = ∂g/∂(θ,κ) = [[-κ, -θ], [-2κθ, -θ²]].
-                // S = E[g·gᵀ] = [[μ₂, μ₃], [μ₃, μ₄−μ₂²]].
-                double t2 = t * t, t3 = t2 * t, t4 = t2 * t2;
-                // Central moments of Gamma(θ, κ)
-                double mu2 = k * t2;
-                double mu3 = 2.0 * k * t3;
-                double mu4 = 3.0 * k * (k + 2.0) * t4;
-                // S matrix and its inverse
-                double S00 = mu2, S01 = mu3, S11 = mu4 - mu2 * mu2;
-                double detS = S00 * S11 - S01 * S01;
-                double Si00 = S11 / detS, Si01 = -S01 / detS, Si11 = S00 / detS;
-                // D matrix
-                double d00 = -k, d01 = -t, d10 = -2.0 * k * t, d11 = -t2;
-                // DᵀS⁻¹
-                double ds00 = d00 * Si00 + d10 * Si01;
-                double ds01 = d00 * Si01 + d10 * Si11;
-                double ds10 = d01 * Si00 + d11 * Si01;
-                double ds11 = d01 * Si01 + d11 * Si11;
-                // Bread = (DᵀS⁻¹)D
-                double b00 = ds00 * d00 + ds01 * d10;
-                double b01 = ds00 * d01 + ds01 * d11;
-                double b11 = ds10 * d01 + ds11 * d11;
-                // Bread⁻¹ / n
-                double detB = b00 * b11 - b01 * b01;
-                covar[0, 0] = b11 / (detB * sampleSize);
-                covar[1, 1] = b00 / (detB * sampleSize);
-                covar[0, 1] = -b01 / (detB * sampleSize);
+                // Algebraic simplification of the same sample-mean/sample-variance sandwich.
+                double scaled = t / Math.Sqrt(sampleSize);
+                covar[0, 0] = (scaled * scaled) * (2 + 3 / k);
+                covar[1, 1] = 2 * (k / sampleSize) * (k + 1);
+                covar[0, 1] = -2 * (t / sampleSize) * (k + 1);
                 covar[1, 0] = covar[0, 1];
             }
             else
             {
                 // MLE: Fisher information inverse in (θ, κ) space.
                 // Transformed from (α=1/θ, κ) via delta method.
-                double NA = Gamma.Trigamma(k) - 1.0 / k;
-                covar[0, 0] = t * t * Gamma.Trigamma(k) / (sampleSize * k * NA); // Var(θ̂)
-                covar[1, 1] = 1.0 / (sampleSize * NA);                            // Var(κ̂)
-                covar[0, 1] = -t / (sampleSize * k * NA);                         // Cov(θ̂, κ̂) — negative
+                double logResidual = Math.Log(DistributionNumerics.GammaScaledFisherResidual(k));
+                double logScale = Math.Log(t), logShape = Math.Log(k), logCount = Math.Log(sampleSize);
+                covar[0, 0] = Math.Exp(2 * logScale - logCount + DistributionNumerics.LogSum(-logResidual, -logShape)); // Var(θ̂)
+                covar[1, 1] = Math.Exp(2 * logShape - logCount - logResidual); // Var(κ̂)
+                covar[0, 1] = -Math.Exp(logScale + logShape - logCount - logResidual); // Cov(θ̂, κ̂) — negative
                 covar[1, 0] = covar[0, 1];
             }
             return covar;
@@ -825,86 +853,70 @@ namespace Numerics.Distributions
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <param name="sampleSize">The sample size.</param>
         /// <param name="estimationMethod">The distribution parameter estimation method.</param>
+        /// <returns>The covariance quadratic form for the actual inverse CDF.</returns>
+        /// <remarks>Both supported methods differentiate the actual Gamma quantile. The named
+        /// Wilson-Hilferty and frequency-factor approximations are not used here. An algebraically
+        /// equivalent sum of two nonnegative terms preserves the mean-direction variance at large
+        /// shape; physical scale is restored in logarithms. Probability must be finite and strictly interior.</remarks>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
-                estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            double logCoefficient;
+            if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
+                logCoefficient = -Math.Log(DistributionNumerics.GammaScaledFisherResidual(Kappa));
+            else if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
+                logCoefficient = Math.Log(2) + DistributionNumerics.LogSum(0, -Math.Log(Kappa));
+            else throw new NotImplementedException();
+
+            double unitQuantile = DistributionNumerics.GammaInverseCDF(Kappa, probability);
+            double logQuantile, logDifference;
+            if (unitQuantile < 1E-200)
             {
-                throw new NotImplementedException();
+                // The same lower-tail log quantile and derivative used by the public gradient,
+                // with kappa cancelled before forming q-kappa*dq/dkappa.
+                logQuantile = (Math.Log(probability) + DistributionNumerics.LogGammaOnePlus(Kappa)) / Kappa;
+                if (double.IsNegativeInfinity(logQuantile)) return 0;
+                logDifference = logQuantile + Math.Log(Math.Abs(1 - Gamma.Digamma(1 + Kappa) + logQuantile));
             }
-            if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
+            else
             {
-                double CV = CoefficientOfVariation;
-                double V = Variance;
-                int N = sampleSize;
-                return V / N * (Math.Pow(1d + FrequencyFactorKp(Skewness, probability) * CV, 2d) + 0.5d * Math.Pow(FrequencyFactorKp(Skewness, probability) + 2d * CV * PartialKp(Skewness, probability), 2d) * (1d + Math.Pow(CV, 2d)));
+                logQuantile = Math.Log(unitQuantile);
+                double derivative = DistributionNumerics.GammaQuantileShapeDerivative(Kappa, unitQuantile);
+                logDifference = Math.Log(Math.Abs(unitQuantile - Kappa * derivative));
             }
-            else if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
-            {
-                var covar = ParameterCovariance(sampleSize, estimationMethod);
-                var grad = QuantileGradient(probability);
-                double varA = covar[0, 0];
-                double varB = covar[1, 1];
-                double covAB = covar[1, 0];
-                double dQx1 = grad[0];
-                double dQx2 = grad[1];
-                return Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + 2d * dQx1 * dQx2 * covAB;
-            }
-            return double.NaN;
+            // Exactly q^2/kappa + A*(q-kappa*dq/dkappa)^2, before theta^2/n.
+            double logVariance = DistributionNumerics.LogSum(2 * logQuantile - Math.Log(Kappa), logCoefficient + 2 * logDifference);
+            return Math.Exp(2 * Math.Log(Theta) - Math.Log(sampleSize) + logVariance);
         }
 
         /// <inheritdoc/>
+        /// <remarks>Returns [unit-scale quantile, theta times its implicit shape derivative]. The
+        /// convergent incomplete-Gamma equations are differentiated at the actual quantile.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Parameters are invalid or probability is not finite and strictly interior.</exception>
         public double[] QuantileGradient(double probability)
         {
+            DistributionNumerics.ValidateProbability(probability);
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_theta, _kappa, true);
-            // Q(p) = κθ + √κ·θ·Kp(γ,p) in (θ, κ) parameterization.
-            var gradient = new double[]
+            double unitQuantile = DistributionNumerics.GammaInverseCDF(Kappa, probability);
+            double shapeDerivative;
+            if (unitQuantile < 1E-200)
             {
-                PartialforTheta(probability), // ∂Q/∂θ
-                PartialforKappa(probability)  // ∂Q/∂κ
-            };
-            return gradient;
-        }
-
-        /// <summary>
-        /// Partial derivative with respect to theta.
-        /// </summary>
-        /// <param name="probability">The probability to evaluate.</param>
-        private double PartialforTheta(double probability)
-        {
-            return FrequencyFactorKp(Skewness, probability) * Math.Sqrt(Kappa) + Kappa;
-        }
-
-        /// <summary>
-        /// Partial derivative with respect to kappa.
-        /// </summary>
-        /// <param name="probability">The probability to evaluate.</param>
-        private double PartialforKappa(double probability)
-        {
-            return Theta * (FrequencyFactorKp(Skewness, probability) / (2.0d * Math.Sqrt(Kappa)) + 1.0d - PartialKp(Skewness, probability) / Kappa);
+                double logQuantile = (Math.Log(probability) + DistributionNumerics.LogGammaOnePlus(Kappa)) / Kappa;
+                double logarithmicDerivative = (Gamma.Digamma(1 + Kappa) - logQuantile) / Kappa;
+                shapeDerivative = Math.Exp(Math.Log(Theta) + logQuantile + Math.Log(logarithmicDerivative));
+            }
+            else shapeDerivative = Theta * DistributionNumerics.GammaQuantileShapeDerivative(Kappa, unitQuantile);
+            return [unitQuantile, shapeDerivative];
         }
 
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Compute determinant
-            // |a b|
-            // |c d|
-            // |A| = ad − bc
-            double a = PartialforTheta(probabilities[0]);
-            double b = PartialforKappa(probabilities[0]);
-            double c = PartialforTheta(probabilities[1]);
-            double d = PartialforKappa(probabilities[1]);
-            determinant = a * d - b * c;
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b }, { c, d } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
         /// <inheritdoc/>

@@ -282,7 +282,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(105.26315, GPA2.Mean,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(double.NaN,GPA3.Mean);
+            Assert.AreEqual(105, GPA3.Mean); // Uniform(100,110).
         }
 
         /// <summary>
@@ -295,7 +295,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(106.93147, GPA.Median,  1e-04);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(95, GPA2.Median);
+            Assert.AreEqual(105, GPA2.Median);
         }
 
         /// <summary>
@@ -308,7 +308,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(100, GPA.Mode);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(95, GPA2.Mode);
+            Assert.IsTrue(double.IsNaN(GPA2.Mode)); // A uniform density has no unique mode.
         }
 
         /// <summary>
@@ -324,7 +324,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(6.531972, GPA2.StandardDeviation,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(double.NaN, GPA3.StandardDeviation);
+            Assert.AreEqual(2.8867513459481291, GPA3.StandardDeviation, 1E-14);
         }
 
         /// <summary>
@@ -340,7 +340,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.932039, GPA2.Skewness,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(double.NaN, GPA3.Skewness);
+            Assert.AreEqual(0, GPA3.Skewness);
         }
 
         /// <summary>
@@ -356,7 +356,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(3.786748, GPA2.Kurtosis,  1e-04);
 
             var GPA3 = new GeneralizedPareto(100, 10, 1);
-            Assert.AreEqual(double.NaN, GPA3.Kurtosis);
+            Assert.AreEqual(1.8, GPA3.Kurtosis);
         }
 
         /// <summary>
@@ -389,7 +389,7 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var GPA = new GeneralizedPareto();
-            Assert.AreEqual(0.1,GPA.PDF(100));
+            Assert.AreEqual(0.1, GPA.PDF(100), 3E-17); // exp(-log(10)) differs by two ulps from the decimal literal.
             Assert.AreEqual(4.53999e-06, GPA.PDF(200),  1e-10);
 
             var GPA2 = new GeneralizedPareto(100, 10, 1);

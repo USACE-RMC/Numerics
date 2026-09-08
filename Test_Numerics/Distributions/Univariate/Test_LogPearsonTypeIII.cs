@@ -275,10 +275,11 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var LP3 = new LogPearsonTypeIII();
-            Assert.AreEqual(1000, LP3.Mode,  1e-04);
+            // Frozen defining-formula evidence: docs/distributions/oracles/normal-pearson.R.
+            Assert.AreEqual(265.67685816501944, LP3.Mode, 1e-10);
 
             var LP3ii = new LogPearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(3.16227, LP3ii.Mode,  1e-04);
+            Assert.AreEqual(0.4980296964878923, LP3ii.Mode, 1e-13);
         }
 
         /// <summary>
@@ -293,7 +294,8 @@ namespace Distributions.Univariate
             var LP3ii = new LogPearsonTypeIII(1,1,1);
             Assert.AreEqual(0.1, LP3ii.Minimum,  1e-05);
 
-            var LP3iii = new LogPearsonTypeIII(1, -1, 1);
+            // A bounded upper tail requires negative skew and a positive standard deviation.
+            var LP3iii = new LogPearsonTypeIII(1, 1, -1);
             Assert.AreEqual(0,LP3iii.Minimum);
         }
 
@@ -309,7 +311,7 @@ namespace Distributions.Univariate
             var LP3ii = new LogPearsonTypeIII(1,1,1);
             Assert.AreEqual(double.PositiveInfinity, LP3ii.Maximum);
 
-            var LP3iii = new LogPearsonTypeIII(1, -1, 1);
+            var LP3iii = new LogPearsonTypeIII(1, 1, -1);
             Assert.AreEqual(1000, LP3iii.Maximum, 1e-04);
         }
 

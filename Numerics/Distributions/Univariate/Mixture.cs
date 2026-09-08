@@ -1,4 +1,4 @@
-﻿using Numerics.Data;
+using Numerics.Data;
 using Numerics.Mathematics.Optimization;
 using Numerics.Mathematics.RootFinding;
 using Numerics.Sampling;
@@ -203,89 +203,68 @@ namespace Numerics.Distributions
             return BitConverter.Int64BitsToDouble(value > 0.0 ? bits - 1 : bits + 1);
         }
 
-        /// <summary>
-        /// Converts a unit-interval draw to a component CDF probability conditional on a positive value.
-        /// </summary>
-        /// <param name="componentIndex">The zero-based component index.</param>
-        /// <param name="conditionalProbability">The probability on the positive-conditional scale.</param>
-        /// <returns>A component CDF probability strictly above the CDF at zero and strictly below one.</returns>
-        private double PositiveConditionalQuantileProbability(int componentIndex, double conditionalProbability)
+        /// <summary>Gets the component log probability above zero without requiring representable probability mass.</summary>
+        private double PositiveLogMass(int componentIndex)
         {
-            TryGetPositiveMass(componentIndex, out double positiveMass);
-            double cdfAtZero = Distributions[componentIndex].CDF(0.0);
-            double probability = cdfAtZero + conditionalProbability * positiveMass;
-            if (probability <= cdfAtZero) probability = BitIncrement(cdfAtZero);
-            if (probability >= 1.0) probability = BitDecrement(1.0);
-            return probability;
-        }
-        /// <summary>
-        /// Gets the probability that a component produces a strictly positive value.
-        /// </summary>
-        /// <param name="componentIndex">The zero-based component index.</param>
-        /// <param name="positiveMass">The strictly positive probability mass.</param>
-        /// <returns><see langword="true"/> when the mass is finite and positive; otherwise, <see langword="false"/>.</returns>
-        private bool TryGetPositiveMass(int componentIndex, out double positiveMass)
-        {
-            positiveMass = Distributions[componentIndex].CCDF(0.0);
-            return IsFinite(positiveMass) && positiveMass > 0.0;
+            double log = Distributions[componentIndex].LogCCDF(0);
+            if (!IsFinite(log) || log > 0) throw new InvalidOperationException("The active component must have positive probability above zero.");
+            return log;
         }
 
-        /// <summary>
-        /// Evaluates a component density conditional on a strictly positive value.
-        /// </summary>
-        /// <param name="componentIndex">The zero-based component index.</param>
-        /// <param name="x">The value at which to evaluate the density.</param>
-        /// <returns>The positive-conditional density.</returns>
-        private double PositiveConditionalPDF(int componentIndex, double x)
+        /// <summary>Evaluates the positive-conditional component log density.</summary>
+        private double PositiveConditionalLogPDF(int componentIndex, double x) => x > 0
+            ? Distributions[componentIndex].LogPDF(x) - PositiveLogMass(componentIndex) : double.NegativeInfinity;
+
+        /// <summary>Evaluates the positive-conditional component log CDF through an interval probability.</summary>
+        private double PositiveConditionalLogCDF(int componentIndex, double x) => x <= 0 ? double.NegativeInfinity
+            : Distributions[componentIndex].LogLikelihood_Intervals(0, x) - PositiveLogMass(componentIndex);
+
+        /// <summary>Evaluates the positive-conditional component log survival directly.</summary>
+        private double PositiveConditionalLogCCDF(int componentIndex, double x) => x <= 0 ? 0
+            : Math.Min(0, Distributions[componentIndex].LogCCDF(x) - PositiveLogMass(componentIndex));
+
+        /// <summary>Inverts a positive-conditional component using a direct log-survival equation.</summary>
+        /// <remarks>Retains the existing root tolerance and iteration limit; it avoids constructing
+        /// an unconditional probability that can round to one when positive mass is very small.</remarks>
+        private double PositiveConditionalQuantile(int componentIndex, double probability)
         {
-            return x > 0.0 && TryGetPositiveMass(componentIndex, out double positiveMass)
-                ? Distributions[componentIndex].PDF(x) / positiveMass
-                : 0.0;
+            var distribution = Distributions[componentIndex];
+            double minimum = Math.Max(0, distribution.Minimum);
+            if (probability == 0) return minimum;
+            if (probability == 1) return distribution.Maximum;
+            double target = PositiveLogMass(componentIndex) + Tools.Log1p(-probability);
+            double scale = distribution.InverseCDF(.75) - distribution.InverseCDF(.25);
+            if (!(scale > 0) || !IsFinite(scale)) scale = Math.Max(1, Math.Abs(minimum));
+            double upper = Math.Min(distribution.Maximum, minimum + scale);
+            for (int i = 0; distribution.LogCCDF(upper) > target && i < 1024; i++)
+            {
+                scale *= 2;
+                double next = minimum + scale;
+                upper = Math.Min(distribution.Maximum, IsFinite(next) ? next : double.MaxValue);
+            }
+            if (!(upper > minimum) || distribution.LogCCDF(upper) > target)
+                throw new InvalidOperationException("The positive-conditional quantile could not be bracketed.");
+            // Solve in a unit interval so the existing tolerance does not erase a tiny physical scale.
+            double width = upper - minimum;
+            return minimum + width * Brent.Solve(t => distribution.LogCCDF(minimum + width * t) - target,
+                0, 1, 1E-6 / Math.Max(1, width), 100, true);
         }
 
-        /// <summary>
-        /// Evaluates a component log density conditional on a strictly positive value.
-        /// </summary>
-        /// <param name="componentIndex">The zero-based component index.</param>
-        /// <param name="x">The value at which to evaluate the log density.</param>
-        /// <returns>The positive-conditional log density.</returns>
-        private double PositiveConditionalLogPDF(int componentIndex, double x)
+        private string? _cachedConfiguration;
+
+        /// <summary>Refreshes cached moments and interpolation when public arrays or nested components change.</summary>
+        private void RefreshCachedConfiguration()
         {
-            return x > 0.0 && TryGetPositiveMass(componentIndex, out double positiveMass)
-                ? Distributions[componentIndex].LogPDF(x) - Math.Log(positiveMass)
-                : double.NegativeInfinity;
+            string configuration = DistributionNumerics.ConfigurationState(this);
+            if (configuration == _cachedConfiguration) return;
+            _cachedConfiguration = configuration;
+            _momentsComputed = false;
+            _empiricalCDFCreated = false;
         }
 
-        /// <summary>
-        /// Evaluates a component distribution function conditional on a strictly positive value.
-        /// </summary>
-        /// <param name="componentIndex">The zero-based component index.</param>
-        /// <param name="x">The value at which to evaluate the distribution function.</param>
-        /// <returns>The positive-conditional cumulative probability.</returns>
-        /// <remarks>
-        /// Uses the survival ratio <c>1 - S(x) / S(0)</c> so a component's direct survival
-        /// evaluation can retain upper-tail probability after its CDF has rounded to one.
-        /// </remarks>
-        private double PositiveConditionalCDF(int componentIndex, double x)
-        {
-            if (x <= 0.0 || !TryGetPositiveMass(componentIndex, out double positiveMass)) return 0.0;
-            double probability = 1.0 - Distributions[componentIndex].CCDF(x) / positiveMass;
-            return Clamp(probability, 0.0, 1.0);
-        }
+        /// <summary>Checks mutable weights and current component validity before evaluation.</summary>
+        private void ValidateEvaluation() => ValidateParameters(GetParameters, true);
 
-        /// <summary>
-        /// Evaluates a component survival function conditional on a strictly positive value.
-        /// </summary>
-        /// <param name="componentIndex">The zero-based component index.</param>
-        /// <param name="x">The value at which to evaluate the survival function.</param>
-        /// <returns>The positive-conditional survival probability.</returns>
-        private double PositiveConditionalCCDF(int componentIndex, double x)
-        {
-            if (x < 0.0) return 1.0;
-            if (!TryGetPositiveMass(componentIndex, out double positiveMass)) return double.NaN;
-            double probability = Distributions[componentIndex].CCDF(x) / positiveMass;
-            return Clamp(probability, 0.0, 1.0);
-        }
         /// <summary>
         /// Refreshes validity and cached results after zero-inflation configuration changes.
         /// </summary>
@@ -447,11 +426,50 @@ namespace Numerics.Distributions
         /// </summary>
         private void ComputeMoments()
         {
-            var mom = CentralMoments(1000);
-            u1 = mom[0];
-            u2 = mom[1];
-            u3 = mom[2];
-            u4 = mom[3];
+            ValidateEvaluation();
+            var components = new List<(double weight, double mean, double sd, double skew, double kurt)>();
+            if (IsZeroInflated && ZeroWeight > 0) components.Add((ZeroWeight, 0, 0, 0, 0));
+            for (int i = 0; i < Distributions.Length; i++)
+            {
+                if (Weights[i] == 0) continue;
+                var distribution = Distributions[i];
+                if (IsZeroInflated && distribution.LogCDF(0) != double.NegativeInfinity)
+                {
+                    int index = i;
+                    double center = PositiveConditionalQuantile(i, .5);
+                    double scale = PositiveConditionalQuantile(i, .75) - PositiveConditionalQuantile(i, .25);
+                    var moments = DistributionMomentIntegration.Compute(x => PositiveConditionalLogPDF(index, x),
+                        Math.Max(0, distribution.Minimum), distribution.Maximum, center, scale);
+                    components.Add((Weights[i], moments[0], moments[1], moments[2], moments[3]));
+                }
+                else components.Add((Weights[i], distribution.Mean, distribution.StandardDeviation, distribution.Skewness, distribution.Kurtosis));
+            }
+            double reference = components[0].mean, offset = 0, totalWeight = 0;
+            foreach (var component in components) { offset += component.weight * (component.mean - reference); totalWeight += component.weight; }
+            u1 = reference * totalWeight + offset;
+            if (!IsFinite(u1))
+            {
+                double magnitude = components.Max(c => Math.Abs(c.mean));
+                u1 = magnitude * components.Sum(c => c.weight * (c.mean / magnitude));
+            }
+            double scaleMoment = components.Max(c => Math.Max(c.sd, double.IsInfinity(c.mean - u1)
+                && IsFinite(c.mean) && IsFinite(u1) ? Math.Max(Math.Abs(c.mean), Math.Abs(u1)) : Math.Abs(c.mean - u1)));
+            if (!IsFinite(scaleMoment)) { u2 = scaleMoment; u3 = u4 = double.NaN; _momentsComputed = true; return; }
+            if (scaleMoment == 0) { u2 = 0; u3 = u4 = double.NaN; _momentsComputed = true; return; }
+            double m2 = 0, m3 = 0, m4 = 0;
+            foreach (var component in components)
+            {
+                double d = DistributionNumerics.Standardize(component.mean, u1, scaleMoment), sd = component.sd / scaleMoment;
+                double v = sd * sd, d2 = d * d;
+                double third = sd == 0 ? 0 : component.skew * v * sd;
+                double fourth = sd == 0 ? 0 : component.kurt * v * v;
+                m2 += component.weight * (v + d2);
+                m3 += component.weight * (third + 3 * d * v + d * d2);
+                m4 += component.weight * (fourth + 4 * d * third + 6 * d2 * v + d2 * d2);
+            }
+            u2 = scaleMoment * Math.Sqrt(m2);
+            u3 = m3 / m2 / Math.Sqrt(m2);
+            u4 = m4 / m2 / m2;
             _momentsComputed = true;
         }
 
@@ -460,7 +478,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                RefreshCachedConfiguration();
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u1;
             }
@@ -488,7 +507,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                RefreshCachedConfiguration();
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u2;
             }
@@ -499,7 +519,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                RefreshCachedConfiguration();
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u3;
             }
@@ -510,7 +531,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) 
+                RefreshCachedConfiguration();
+                if (!_momentsComputed)
                     ComputeMoments();
                 return u4;
             }
@@ -519,13 +541,23 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Minimum
         {
-            get { return IsZeroInflated ? 0.0 : Distributions.Min(p => p.Minimum); }
+            get
+            {
+                ValidateEvaluation();
+                if (IsZeroInflated && ZeroWeight > 0) return 0;
+                double minimum = Distributions.Where((d, i) => Weights[i] > 0).Min(d => d.Minimum);
+                return IsZeroInflated ? Math.Max(0, minimum) : minimum;
+            }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get { return Distributions.Max(p => p.Maximum); }
+            get
+            {
+                ValidateEvaluation();
+                return Distributions.Where((d, i) => Weights[i] > 0).Max(d => d.Maximum);
+            }
         }
 
         /// <inheritdoc/>
@@ -762,62 +794,47 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
-            if (IsZeroInflated && (!IsFinite(ZeroWeight) || ZeroWeight < 0.0 || ZeroWeight >= 1.0))
+            ArgumentOutOfRangeException? error = null;
+            if (_distributions is null || _weights is null || _distributions.Length == 0
+                || _distributions.Length != _weights.Length || _distributions.Any(d => d is null))
+                error = new ArgumentOutOfRangeException(nameof(Distributions), "At least one non-null component and a matching weight vector are required.");
+            else if (parameters is null || parameters.Count != _weights.Length + _distributions.Sum(d => d.GetParameters.Length))
+                error = new ArgumentOutOfRangeException(nameof(parameters), "The flattened parameter count must match the mixture.");
+            else if (IsZeroInflated && (!IsFinite(ZeroWeight) || ZeroWeight < 0 || ZeroWeight >= 1))
+                error = new ArgumentOutOfRangeException(nameof(ZeroWeight), "The zero weight must be finite and in [0,1).");
+            else
             {
-                var exception = new ArgumentOutOfRangeException(
-                    nameof(ZeroWeight),
-                    "The zero value weight must be finite and greater than or equal to 0 and less than 1.");
-                if (throwException) throw exception;
-                return exception;
-            }
-
-            for (int i = 0; i < Distributions.Count(); i++)
-            {
-                if (!IsFinite(Weights[i]) || Weights[i] < 0.0 || Weights[i] > 1.0)
+                int count = Distributions.Length;
+                double mass = IsZeroInflated ? ZeroWeight : 0;
+                for (int i = 0; i < count; i++)
                 {
-                    var exception = new ArgumentOutOfRangeException(
-                        nameof(Weights),
-                        "The weights must be finite and between 0 and 1.");
-                    if (throwException) throw exception;
-                    return exception;
+                    double weight = parameters[i];
+                    if (!IsFinite(weight) || weight < 0 || weight > 1)
+                    { error = new ArgumentOutOfRangeException(nameof(Weights), "Weights must be finite and between zero and one."); break; }
+                    mass += weight;
+                }
+                if (error is null && (!IsFinite(mass) || !mass.AlmostEquals(1, 1E-8)))
+                    error = new ArgumentOutOfRangeException(nameof(Weights), "Component and zero weights must sum to one.");
+                int offset = count;
+                for (int i = 0; i < count && error is null; i++)
+                {
+                    // Nonparametric components expose no flattened scalar parameters.
+                    var candidate = new double[Distributions[i].GetParameters.Length];
+                    for (int j = 0; j < candidate.Length; j++) candidate[j] = parameters[offset++];
+                    error = Distributions[i].ValidateParameters(candidate, false);
+                    if (error is null && IsZeroInflated && parameters[i] > 0)
+                    {
+                        var distribution = Distributions[i];
+                        if (!candidate.SequenceEqual(distribution.GetParameters))
+                        { distribution = distribution.Clone(); distribution.SetParameters(candidate); }
+                        double logMass = distribution.LogCCDF(0);
+                        if (!IsFinite(logMass) || logMass > 0)
+                            error = new ArgumentOutOfRangeException(nameof(Distributions), "Each active component must have positive probability above zero.");
+                    }
                 }
             }
-
-            double totalMass = IsZeroInflated ? ZeroWeight : 0.0;
-            for (int i = 0; i < Distributions.Count(); i++) totalMass += Weights[i];
-            if (!IsFinite(totalMass) || !totalMass.AlmostEquals(1.0, 1E-8))
-            {
-                var exception = new ArgumentOutOfRangeException(
-                    nameof(Weights),
-                    IsZeroInflated
-                        ? "The component weights must sum to 1 minus the zero value weight."
-                        : "The weights must sum to 1.0.");
-                if (throwException) throw exception;
-                return exception;
-            }
-
-            for (int i = 0; i < Distributions.Count(); i++)
-            {
-                if (!Distributions[i].ParametersValid)
-                {
-                    var exception = new ArgumentOutOfRangeException(
-                        nameof(Distributions),
-                        "Distribution " + (i + 1).ToString() + " has invalid parameters.");
-                    if (throwException) throw exception;
-                    return exception;
-                }
-
-                if (IsZeroInflated && !TryGetPositiveMass(i, out _))
-                {
-                    var exception = new ArgumentOutOfRangeException(
-                        nameof(Distributions),
-                        "Distribution " + (i + 1).ToString() + " must have finite, positive probability above zero.");
-                    if (throwException) throw exception;
-                    return exception;
-                }
-            }
-
-            return null;
+            if (throwException && error != null) throw error;
+            return error;
         }
 
         /// <inheritdoc/>
@@ -864,6 +881,11 @@ namespace Numerics.Distributions
             int distributionParameterCount = Distributions.Sum(x => x.NumberOfParameters);
             int componentCount = Distributions.Count();
 
+            for (int rowIndex = 0; rowIndex < observationCount; rowIndex++)
+                if (sample[rowIndex] < 0 && Distributions.All(d => d is GammaDistribution || d is Weibull
+                    || d is LnNormal || d is LogNormal || d is LogPearsonTypeIII))
+                    throw CreateImpossibleRowException(rowIndex, sample[rowIndex]);
+
             if (IsZeroInflated)
             {
                 for (int rowIndex = 0; rowIndex < observationCount; rowIndex++)
@@ -875,6 +897,8 @@ namespace Numerics.Distributions
                             " has negative exact value " + sample[rowIndex].ToString("R", CultureInfo.InvariantCulture) +
                             " in a zero-inflated model.");
                     }
+                    if (sample[rowIndex] == 0.0 && ZeroWeight == 0.0)
+                        throw CreateImpossibleRowException(rowIndex, sample[rowIndex]);
                 }
             }
 
@@ -913,33 +937,20 @@ namespace Numerics.Distributions
                         continue;
                     }
 
-                    double maximumLogProbability = double.NegativeInfinity;
+                    var componentLogs = new double[componentCount];
                     for (int componentIndex = 0; componentIndex < componentCount; componentIndex++)
                     {
-                        double componentLogDensity = IsZeroInflated
+                        if (mleWeights[componentIndex] == 0)
+                        {
+                            componentLogs[componentIndex] = double.NegativeInfinity;
+                            continue;
+                        }
+                        componentLogs[componentIndex] = IsZeroInflated
                             ? distribution.PositiveConditionalLogPDF(componentIndex, value)
                             : distribution.Distributions[componentIndex].LogPDF(value);
-                        double logProbability = Math.Log(mleWeights[componentIndex]) + componentLogDensity;
-                        responsibilities[rowIndex, componentIndex] = logProbability;
-                        if (logProbability > maximumLogProbability) maximumLogProbability = logProbability;
                     }
-
-                    if (!IsFinite(maximumLogProbability))
-                    {
-                        throw CreateImpossibleRowException(rowIndex, value);
-                    }
-
-                    double scaledProbabilitySum = 0.0;
-                    for (int componentIndex = 0; componentIndex < componentCount; componentIndex++)
-                    {
-                        scaledProbabilitySum += Math.Exp(responsibilities[rowIndex, componentIndex] - maximumLogProbability);
-                    }
-                    if (!IsFinite(scaledProbabilitySum) || scaledProbabilitySum <= 0.0)
-                    {
-                        throw CreateImpossibleRowException(rowIndex, value);
-                    }
-
-                    double rowLogProbability = maximumLogProbability + Math.Log(scaledProbabilitySum);
+                    var rowResponsibilities = new double[componentCount];
+                    double rowLogProbability = MixtureLogWeights.Normalize(componentLogs, mleWeights, rowResponsibilities);
                     if (!IsFinite(rowLogProbability))
                     {
                         throw CreateImpossibleRowException(rowIndex, value);
@@ -947,8 +958,7 @@ namespace Numerics.Distributions
 
                     for (int componentIndex = 0; componentIndex < componentCount; componentIndex++)
                     {
-                        responsibilities[rowIndex, componentIndex] =
-                            Math.Exp(responsibilities[rowIndex, componentIndex] - rowLogProbability);
+                        responsibilities[rowIndex, componentIndex] = rowResponsibilities[componentIndex];
                     }
                     logLikelihood += rowLogProbability;
                 }
@@ -1020,122 +1030,85 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        public override double PDF(double x)
-        {
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
-
-            if (IsZeroInflated)
-            {
-                if (x < 0.0) return 0.0;
-                if (x == 0.0) return ZeroWeight;
-
-                double positiveDensity = 0.0;
-                for (int i = 0; i < Distributions.Count(); i++)
-                {
-                    positiveDensity += Weights[i] * PositiveConditionalPDF(i, x);
-                }
-                return Math.Max(0.0, positiveDensity);
-            }
-
-            double density = 0.0;
-            for (int i = 0; i < Distributions.Count(); i++) density += Weights[i] * Distributions[i].PDF(x);
-            return Math.Max(0.0, density);
-        }
+        public override double PDF(double x) => Math.Exp(LogPDF(x));
 
         /// <inheritdoc/>
         public override double LogPDF(double x)
         {
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
-
-            if (IsZeroInflated)
+            ValidateEvaluation();
+            if (IsZeroInflated && x <= 0) return x == 0 ? Math.Log(ZeroWeight) : double.NegativeInfinity;
+            double total = double.NegativeInfinity;
+            for (int i = 0; i < Distributions.Length; i++)
             {
-                if (x < 0.0) return double.NegativeInfinity;
-                if (x == 0.0) return Math.Log(ZeroWeight);
+                if (Weights[i] == 0) continue;
+                double log = IsZeroInflated ? PositiveConditionalLogPDF(i, x) : Distributions[i].LogPDF(x);
+                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
             }
-
-            var logDensities = new List<double>();
-            for (int i = 0; i < Distributions.Count(); i++)
-            {
-                double componentLogDensity = IsZeroInflated
-                    ? PositiveConditionalLogPDF(i, x)
-                    : Distributions[i].LogPDF(x);
-                logDensities.Add(Math.Log(Weights[i]) + componentLogDensity);
-            }
-            return Tools.LogSumExp(logDensities);
+            return total;
         }
 
         /// <inheritdoc/>
-        public override double CDF(double x)
-        {
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
-
-            if (IsZeroInflated)
-            {
-                if (x < 0.0) return 0.0;
-                if (x == 0.0) return ZeroWeight;
-
-                double hurdleProbability = ZeroWeight;
-                for (int i = 0; i < Distributions.Count(); i++)
-                {
-                    hurdleProbability += Weights[i] * PositiveConditionalCDF(i, x);
-                }
-                return Clamp(hurdleProbability, 0.0, 1.0);
-            }
-
-            double probability = 0.0;
-            for (int i = 0; i < Distributions.Count(); i++) probability += Weights[i] * Distributions[i].CDF(x);
-            return Clamp(probability, 0.0, 1.0);
-        }
+        public override double CDF(double x) => Math.Exp(LogCDF(x));
 
         /// <inheritdoc/>
         public override double LogCDF(double x)
         {
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
-            if (IsZeroInflated) return Math.Log(CDF(x));
-
-            var logProbabilities = new List<double>();
-            for (int i = 0; i < Distributions.Count(); i++)
+            ValidateEvaluation();
+            if (IsZeroInflated && x < 0) return double.NegativeInfinity;
+            double total = IsZeroInflated ? Math.Log(ZeroWeight) : double.NegativeInfinity;
+            for (int i = 0; i < Distributions.Length; i++)
             {
-                logProbabilities.Add(Math.Log(Weights[i]) + Distributions[i].LogCDF(x));
+                if (Weights[i] == 0) continue;
+                double log = IsZeroInflated ? PositiveConditionalLogCDF(i, x) : Distributions[i].LogCDF(x);
+                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
             }
-            return Tools.LogSumExp(logProbabilities);
+            return Math.Min(0, total);
         }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
 
         /// <inheritdoc/>
         public override double LogCCDF(double x)
         {
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
-
-            if (IsZeroInflated)
+            ValidateEvaluation();
+            if (IsZeroInflated && x < 0) return 0;
+            double total = double.NegativeInfinity;
+            for (int i = 0; i < Distributions.Length; i++)
             {
-                if (x < 0.0) return 0.0;
-
-                double probability = 0.0;
-                for (int i = 0; i < Distributions.Count(); i++)
-                {
-                    probability += Weights[i] * PositiveConditionalCCDF(i, x);
-                }
-                return Math.Log(Clamp(probability, 0.0, 1.0));
+                if (Weights[i] == 0) continue;
+                double log = IsZeroInflated ? PositiveConditionalLogCCDF(i, x) : Distributions[i].LogCCDF(x);
+                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
             }
+            return Math.Min(0, total);
+        }
 
-            var logProbabilities = new List<double>();
-            for (int i = 0; i < Distributions.Count(); i++)
+        /// <summary>Combines component interval log probabilities while retaining the hurdle atom's endpoint convention.</summary>
+        internal double LogIntervalProbability(double lower, double upper)
+        {
+            ValidateEvaluation();
+            double total = IsZeroInflated && lower < 0 && upper >= 0 ? Math.Log(ZeroWeight) : double.NegativeInfinity;
+            if (IsZeroInflated && upper <= 0) return total;
+            for (int i = 0; i < Distributions.Length; i++)
             {
-                logProbabilities.Add(Math.Log(Weights[i]) + Distributions[i].LogCCDF(x));
+                if (Weights[i] == 0) continue;
+                double log = Distributions[i].LogLikelihood_Intervals(IsZeroInflated ? Math.Max(0, lower) : lower, upper);
+                if (IsZeroInflated) log -= Distributions[i].LogCCDF(0);
+                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
             }
-            return Tools.LogSumExp(logProbabilities);
+            return total;
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
-            if (probability < 0.0 || probability > 1.0)
+            RefreshCachedConfiguration();
+            if (!(probability >= 0.0 && probability <= 1.0))
                 throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");
+            ValidateEvaluation();
             if (probability == 0.0) return Minimum;
             if (probability == 1.0) return Maximum;
             if (IsZeroInflated && probability <= ZeroWeight) return 0.0;
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
-
             if (Distributions.Count() == 1 && !IsZeroInflated)
             {
                 return Distributions[0].InverseCDF(probability);
@@ -1153,12 +1126,9 @@ namespace Numerics.Distributions
             var componentQuantiles = new List<double>();
             for (int i = 0; i < Distributions.Count(); i++)
             {
-                double componentCdfProbability = componentProbability;
-                if (IsZeroInflated)
-                {
-                    componentCdfProbability = PositiveConditionalQuantileProbability(i, componentProbability);
-                }
-                componentQuantiles.Add(Distributions[i].InverseCDF(componentCdfProbability));
+                if (Weights[i] == 0) continue;
+                componentQuantiles.Add(IsZeroInflated ? PositiveConditionalQuantile(i, componentProbability)
+                    : Distributions[i].InverseCDF(componentProbability));
             }
 
             double lowerBound = componentQuantiles.Min();
@@ -1166,8 +1136,13 @@ namespace Numerics.Distributions
             double value;
             try
             {
-                if (lowerBound.AlmostEquals(upperBound)) return Clamp(lowerBound, Minimum, Maximum);
-                value = Brent.Solve(y => probability - CDF(y), lowerBound, upperBound, 1E-6, 100, true);
+                if (lowerBound == upperBound) return Clamp(lowerBound, Minimum, Maximum);
+                double width = upperBound - lowerBound;
+                double Argument(double t) => IsFinite(width) ? lowerBound + width * t : (1 - t) * lowerBound + t * upperBound;
+                double Residual(double t) => probability <= .5 ? LogCDF(Argument(t)) - Math.Log(probability)
+                    : LogCCDF(Argument(t)) - Tools.Log1p(-probability);
+                double scale = IsFinite(width) ? width : Math.Max(Math.Abs(lowerBound), Math.Abs(upperBound));
+                value = Argument(Brent.Solve(Residual, 0, 1, 1E-6 / Math.Max(1, scale), 100, true));
             }
             catch (Exception)
             {
@@ -1186,15 +1161,10 @@ namespace Numerics.Distributions
             // Get min & max
             double minP = 1E-16;
             double maxP = 1 - 1E-16;
-            double minX = Distributions.Min(d => d.InverseCDF(minP));
-            double maxX = IsZeroInflated
-                ? Distributions.Select((distribution, index) =>
-                {
-                    TryGetPositiveMass(index, out double positiveMass);
-                    double probability = distribution.CDF(0.0) + maxP * positiveMass;
-                    return distribution.InverseCDF(Math.Min(probability, 1.0 - 1E-15));
-                }).Max()
-                : Distributions.Max(d => d.InverseCDF(maxP));
+            RefreshCachedConfiguration();
+            var activeIndices = Enumerable.Range(0, Distributions.Length).Where(i => Weights[i] > 0).ToArray();
+            double minX = IsZeroInflated ? 0 : activeIndices.Min(i => Distributions[i].InverseCDF(minP));
+            double maxX = activeIndices.Max(i => IsZeroInflated ? PositiveConditionalQuantile(i, maxP) : Distributions[i].InverseCDF(maxP));
             // Get number of bins
             double shift = 0;
             if (minX <= 0) shift = Math.Abs(minX) + 1d;
@@ -1235,10 +1205,11 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] GenerateRandomValues(int sampleSize, int seed = -1)
         {
-            if (!_parametersValid) ValidateParameters(GetParameters, true);
+            ValidateEvaluation();
 
             var random = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
             var sample = new double[sampleSize];
+            int lastActiveComponent = Array.FindLastIndex(Weights, weight => weight > 0);
             for (int sampleIndex = 0; sampleIndex < sampleSize; sampleIndex++)
             {
                 double mixtureProbability = random.NextDouble();
@@ -1252,13 +1223,15 @@ namespace Numerics.Distributions
                 double cumulativeWeight = IsZeroInflated ? ZeroWeight : 0.0;
                 for (int componentIndex = 0; componentIndex < Distributions.Count(); componentIndex++)
                 {
+                    if (Weights[componentIndex] == 0) continue;
                     cumulativeWeight += Weights[componentIndex];
-                    if (mixtureProbability <= cumulativeWeight || componentIndex == Distributions.Count() - 1)
+                    if (mixtureProbability <= cumulativeWeight || componentIndex == lastActiveComponent)
                     {
                         double probability = componentProbability;
                         if (IsZeroInflated)
                         {
-                            probability = PositiveConditionalQuantileProbability(componentIndex, componentProbability);
+                            sample[sampleIndex] = PositiveConditionalQuantile(componentIndex, componentProbability);
+                            break;
                         }
                         sample[sampleIndex] = Distributions[componentIndex].InverseCDF(probability);
                         break;

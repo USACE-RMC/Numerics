@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
@@ -81,6 +81,8 @@ namespace Numerics.Distributions
         private double _hondo; // shape 2
         private bool _momentsComputed = false;
         private double[] u = [double.NaN, double.NaN, double.NaN, double.NaN];
+        [NonSerialized] private bool _compensatedMinimumComputed;
+        [NonSerialized] private double _compensatedMinimum;
 
         /// <summary>
         /// Gets and sets the location parameter ξ (Xi).
@@ -93,6 +95,7 @@ namespace Numerics.Distributions
                 _parametersValid = ValidateParameters([value, Alpha, Kappa, Hondo], false) is null;
                 _xi = value;
                 _momentsComputed = false;
+                _compensatedMinimumComputed = false;
             }
         }
 
@@ -107,6 +110,7 @@ namespace Numerics.Distributions
                 _parametersValid = ValidateParameters([Xi, value, Kappa, Hondo], false) is null;
                 _alpha = value;
                 _momentsComputed = false;
+                _compensatedMinimumComputed = false;
             }
         }
 
@@ -121,6 +125,7 @@ namespace Numerics.Distributions
                 _parametersValid = ValidateParameters([Xi, Alpha, value, Hondo], false) is null;
                 _kappa = value;
                 _momentsComputed = false;
+                _compensatedMinimumComputed = false;
             }
         }
 
@@ -135,6 +140,7 @@ namespace Numerics.Distributions
                 _parametersValid = ValidateParameters([Xi, Alpha, Kappa, value], false) is null;
                 _hondo = value;
                 _momentsComputed = false;
+                _compensatedMinimumComputed = false;
             }
         }
 
@@ -291,6 +297,12 @@ namespace Numerics.Distributions
         {
             get
             {
+                if (Hondo > 0)
+                {
+                    if (!_compensatedMinimumComputed)
+                        _compensatedMinimumComputed = KappaFourBoundary.TryLowerEndpoint(Xi, Alpha, Kappa, Hondo, out _compensatedMinimum);
+                    if (_compensatedMinimumComputed) return _compensatedMinimum;
+                }
                 if (Hondo <= 0d && Kappa < 0d)
                 {
                     return LocationPlusScaleOverShape();
@@ -928,8 +940,8 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         /// <remarks>
         /// Evaluates interior densities directly in log space, including finite log densities whose
-        /// ordinary density underflows or overflows. Infinite endpoint densities retain the base
-        /// likelihood convention of returning negative infinity.
+        /// ordinary density underflows or overflows. Infinite endpoint density limits remain
+        /// positive infinity; aggregate likelihood evaluation applies its own contribution convention.
         /// </remarks>
         public override double LogPDF(double x)
         {
@@ -938,7 +950,7 @@ namespace Numerics.Distributions
             if (x == Minimum || x == Maximum)
             {
                 double density = PDF(x);
-                return Tools.IsFinite(density) && density > 0d ? Math.Log(density) : double.NegativeInfinity;
+                return density > 0d ? Math.Log(density) : double.NegativeInfinity;
             }
             return InteriorLogDensity(x);
         }
@@ -1207,17 +1219,40 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        /// <exception cref="NotImplementedException">Parameter covariance has not been implemented for Kappa Four.</exception>
+        /// <remarks>
+        /// Local asymptotic MLE covariance in xi, alpha, kappa, hondo order. Finite regular
+        /// information requires kappa &lt; 1/2, hondo &lt; 1/2 and kappa*hondo &lt; 1/2.
+        /// These conditions do not narrow distribution validity or assert global-MLE existence.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Sample size, parameters or information regularity is invalid.</exception>
+        /// <exception cref="InvalidOperationException">Numerical information or its inversion cannot be resolved.</exception>
+        /// <exception cref="NotImplementedException">The requested estimator is not maximum likelihood.</exception>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            throw new NotImplementedException();
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            EnsureValidParameters();
+            if (estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+                throw new NotImplementedException("Kappa Four covariance is implemented only for local maximum-likelihood uncertainty.");
+            return KappaExpectedInformation.ParameterCovariance(Alpha, Kappa, Hondo, sampleSize, 4);
         }
 
         /// <inheritdoc/>
-        /// <exception cref="NotImplementedException">Quantile variance has not been implemented for Kappa Four.</exception>
+        /// <remarks>Applies the local-MLE delta method in common physical quantile coordinates,
+        /// avoiding underflow or overflow from forming physical covariance entries first.</remarks>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            throw new NotImplementedException();
+            DistributionNumerics.ValidateProbability(probability);
+            EnsureValidParameters();
+            var unit = new KappaFour(0, 1, Kappa, Hondo);
+            double[,] covariance = unit.ParameterCovariance(sampleSize, estimationMethod);
+            double logProbability = Math.Log(probability), w = QuantileLogT(logProbability, Hondo);
+            double argument = Kappa * w, s = Hondo * logProbability;
+            double dh = Hondo > 0 && s < -.5 ? logProbability * (Math.Exp(s) / Tools.Expm1(s)) - 1 / Hondo
+                : logProbability * LogExponentialRelativeDerivative(s);
+            double scaleGradient = DistributionNumerics.ScaledExprelProduct(Alpha, -w, argument);
+            double shapeGradient = -DistributionNumerics.ScaledExprelDerivativeProduct(Alpha, w, argument);
+            double hondoGradient = dh == 0 ? 0 : -Math.Sign(dh) * Math.Exp(Math.Log(Alpha) + argument + Math.Log(Math.Abs(dh)));
+            return DistributionNumerics.ScaledQuantileVariance(covariance, [Alpha, scaleGradient, shapeGradient, hondoGradient]);
         }
 
         /// <inheritdoc/>
@@ -1237,28 +1272,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // |a b c d|
-            // |e f g h|
-            // |i j k l|
-            // |m n o p| 
-            var jacobian = new Matrix(4);
-            for (int i = 0; i < 4; i++)
-            {
-                // Get the gradient
-                var dFdx = QuantileGradient(probabilities[i]);
-                // Populate the Jacobian matrix
-                for (int j = 0; j < 4; j++)
-                    jacobian[i, j] = dFdx[j];
-            }
-            // Solve determinant with LU decomposition
-            var LU = new LUDecomposition(jacobian);
-            determinant = LU.Determinant();
-            // Return Jacobian
-            return jacobian.ToArray();
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
     }
 }
