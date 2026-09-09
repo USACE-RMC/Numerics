@@ -371,6 +371,8 @@ namespace Numerics.Distributions
         /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
         /// <param name="sample">The validated observations.</param>
         /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is invalid, insufficient, or constant.</exception>
+        /// <exception cref="ArgumentException">The sample moments are nonfinite, have no positive dispersion, or cannot be placed inside finite bounds.</exception>
         internal Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
@@ -500,6 +502,7 @@ namespace Numerics.Distributions
         /// R8_NORMAL_01_CDF_INVERSE inverts the standard normal CDF.
         /// </summary>
         /// <param name="p">The probability value.</param>
+        /// <returns>The standard Normal quantile corresponding to <paramref name="p"/>.</returns>
         private static double r8_normal_01_cdf_inverse(double p)
         {
             //****************************************************************************80
@@ -708,6 +711,9 @@ namespace Numerics.Distributions
         /// <remarks>
         /// References: Stedinger, J. Confidence Intervals for Design Events. Journal of Hydraulic Engineering. 1983.
         /// </remarks>
+        /// <returns>A matrix with one row per quantile and one column per requested confidence percentile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="quantiles"/> or <paramref name="percentiles"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size, a probability list, an individual probability, or the distribution parameters are invalid.</exception>
         public double[,] NormalConfidenceIntervals(int sampleSize, IList<double> quantiles, IList<double> percentiles)
         {
             DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles);
@@ -743,6 +749,9 @@ namespace Numerics.Distributions
         /// <remarks>
         /// References: Stedinger, J. Confidence Intervals for Design Events. Journal of Hydraulic Engineering. 1983.
         /// </remarks>
+        /// <returns>A matrix with one row per quantile and one column per requested confidence percentile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="quantiles"/> or <paramref name="percentiles"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size, a probability list, an individual probability, or the distribution parameters are invalid.</exception>
         public double[,] NoncentralTConfidenceIntervals(int sampleSize, IList<double> quantiles, IList<double> percentiles)
         {
             DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles, 2);
@@ -777,6 +786,9 @@ namespace Numerics.Distributions
         /// <remarks>
         /// This is the same sampling approach as used in HEC-FDA.
         /// </remarks>
+        /// <returns>A matrix with one row per quantile and one column per requested confidence percentile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="quantiles"/> or <paramref name="percentiles"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size, realization count, a probability list, an individual probability, or the distribution parameters are invalid.</exception>
         public double[,] MonteCarloConfidenceIntervals(int sampleSize, int realizations, IList<double> quantiles, IList<double> percentiles)
         {
             DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles, 2);
@@ -832,6 +844,8 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sampleSize">The data sample size N used for computing the standard error.</param>
         /// <param name="probability">Exceedance probability.</param>
+        /// <returns>The expected nonexceedance probability after accounting for sampling uncertainty.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="probability"/> is not finite and strictly interior or <paramref name="sampleSize"/> is less than two.</exception>
         public double ExpectedProbability(int sampleSize, double probability)
         {
             DistributionNumerics.ValidateProbability(probability);

@@ -350,8 +350,8 @@ namespace Numerics.Distributions
         public double[] ParametersFromLinearMoments(IList<double> moments)
         {
             if (moments == null) throw new ArgumentNullException(nameof(moments));
-            if (moments.Count < 3 || !DistributionNumerics.IsFinite(moments[0]) || !DistributionNumerics.IsFinite(moments[1])
-                || moments[1] <= 0 || !DistributionNumerics.IsFinite(moments[2]) || Math.Abs(moments[2]) >= 1)
+            if (moments.Count < 3 || !Tools.IsFinite(moments[0]) || !Tools.IsFinite(moments[1])
+                || moments[1] <= 0 || !Tools.IsFinite(moments[2]) || Math.Abs(moments[2]) >= 1)
                 throw new ArgumentOutOfRangeException(nameof(moments), "Finite L-moments require positive L-scale and absolute L-skewness below one.");
             double L1 = moments[0];
             double L2 = moments[1];
@@ -465,6 +465,8 @@ namespace Numerics.Distributions
         /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
         /// <param name="sample">The validated observations.</param>
         /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is invalid, insufficient, or constant.</exception>
+        /// <exception cref="InvalidOperationException">No finite supported initializer can be placed within finite bounds.</exception>
         private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
@@ -482,7 +484,7 @@ namespace Numerics.Distributions
             initialVals[0] *= magnitude;
             initialVals[1] *= magnitude;
             var candidate = new GeneralizedNormal(initialVals[0], initialVals[1], initialVals[2]);
-            if (!candidate.ParametersValid || !DistributionNumerics.IsFinite(candidate.LogLikelihood(sample)))
+            if (!candidate.ParametersValid || !Tools.IsFinite(candidate.LogLikelihood(sample)))
                 initialVals = [moments[0] * magnitude, moments[1] * Math.Sqrt(Math.PI) * magnitude, 0];
             // Get bounds of location
             double locationMagnitude = Math.Max(Math.Abs(initialVals[0]), initialVals[1]);
@@ -500,7 +502,7 @@ namespace Numerics.Distributions
                 initialVals[2] = 0d;
             }
             candidate.SetParameters(initialVals);
-            if (!candidate.ParametersValid || !DistributionNumerics.IsFinite(candidate.LogLikelihood(sample))
+            if (!candidate.ParametersValid || !Tools.IsFinite(candidate.LogLikelihood(sample))
                 || initialVals[0] <= lowerVals[0] || initialVals[0] >= upperVals[0]
                 || initialVals[1] <= lowerVals[1] || initialVals[1] >= upperVals[1])
                 throw new InvalidOperationException("The sample does not admit a finite supported generalized-normal initializer within finite bounds.");
@@ -528,12 +530,14 @@ namespace Numerics.Distributions
             solver.Maximize();
             if (solver.Status != OptimizationStatus.Success
                 || ValidateParameters(solver.BestParameterSet.Values, false) != null
-                || !DistributionNumerics.IsFinite(new GeneralizedNormal(solver.BestParameterSet.Values[0], solver.BestParameterSet.Values[1], solver.BestParameterSet.Values[2]).LogLikelihood(sample)))
+                || !Tools.IsFinite(new GeneralizedNormal(solver.BestParameterSet.Values[0], solver.BestParameterSet.Values[1], solver.BestParameterSet.Values[2]).LogLikelihood(sample)))
                 throw new InvalidOperationException($"Generalized normal maximum likelihood estimation failed with optimizer status {solver.Status} or a nonfinite fit.");
             return solver.BestParameterSet.Values;
         }
 
         /// <summary>Analytical shifted-lognormal moments, preserving representable scale products.</summary>
+        /// <returns>The mean, standard deviation, skewness, and kurtosis in that order.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The distribution parameters are invalid.</exception>
         private double[] AnalyticalMoments()
         {
             if (!_parametersValid) ValidateParameters(Xi, Alpha, Kappa, true);
@@ -561,6 +565,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Returns unit-scale L-scale with the exact kappa=0 normal limit.</summary>
+        /// <param name="k">The generalized-normal shape.</param>
+        /// <returns>The unit-scale second L-moment.</returns>
         private static double NormalLScale(double k)
         {
             double v = k * k;
@@ -580,6 +586,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Retains the existing decimal-order bound construction while preventing overflow.</summary>
+        /// <param name="value">The positive magnitude from which to select the next decimal order.</param>
+        /// <returns>The next decimal-order bound, capped at the largest finite binary64 value.</returns>
         private static double FiniteDecimalBound(double value)
         {
             double bound = Math.Pow(10, Math.Ceiling(Math.Log10(value)) + 1);
@@ -587,6 +595,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Retains a finite support endpoint when an intermediate scale/shape quotient overflows.</summary>
+        /// <returns>The finite-shape support endpoint in physical coordinates.</returns>
         private double FiniteShapeEndpoint()
         {
             double shift = Alpha / Kappa;
@@ -595,6 +604,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Inverts the Hosking shape transform, retaining its exact nonzero shape and support residual.</summary>
+        /// <param name="x">An observation inside the distribution support.</param>
+        /// <returns>The corresponding standard Normal variate.</returns>
         private double LatentNormal(double x)
         {
             double y = DistributionNumerics.Standardize(x, Xi, Alpha);
@@ -654,6 +665,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Combines shape exponentials and physical scale before exponentiation or affine addition.</summary>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <returns>The corresponding quantile in physical coordinates.</returns>
         private double QuantileAtLatent(double z)
         {
             double v = -Kappa * z;
@@ -662,10 +675,10 @@ namespace Numerics.Distributions
             double offset = v > 50 ? -Math.Sign(Kappa) * Math.Exp(Math.Log(Alpha) + v - Math.Log(Math.Abs(Kappa)))
                 : Alpha * standard;
             double value = Xi + offset;
-            if (double.IsInfinity(value) && DistributionNumerics.IsFinite(standard))
+            if (double.IsInfinity(value) && Tools.IsFinite(standard))
             {
                 double combined = Xi / Alpha + standard;
-                if (DistributionNumerics.IsFinite(combined)) return Alpha * combined;
+                if (Tools.IsFinite(combined)) return Alpha * combined;
             }
             return value;
         }
@@ -694,13 +707,13 @@ namespace Numerics.Distributions
             covariance[1, 1] = shapedScale * shapedScale + scale * scale / 2;
             covariance[2, 2] = (Kappa / 2 / sampleSize) * Kappa + inverseR / sampleSize;
             covariance[0, 1] = -scale * shapedScale;
-            if (!DistributionNumerics.IsFinite(covariance[0, 1]) || covariance[0, 1] == 0)
+            if (!Tools.IsFinite(covariance[0, 1]) || covariance[0, 1] == 0)
                 covariance[0, 1] = -Math.Sign(Kappa) * Math.Exp(2 * logAlpha + logK - logN);
             covariance[0, 2] = c * inverseR * Alpha / sampleSize;
-            if (c > 0 && (covariance[0, 2] == 0 || !DistributionNumerics.IsFinite(covariance[0, 2])))
+            if (c > 0 && (covariance[0, 2] == 0 || !Tools.IsFinite(covariance[0, 2])))
                 covariance[0, 2] = Math.Exp(logAlpha + Math.Log(c) + logInverseR - logN);
             covariance[1, 2] = Alpha * Kappa / 2 / sampleSize;
-            if (!DistributionNumerics.IsFinite(covariance[1, 2]) || covariance[1, 2] == 0)
+            if (!Tools.IsFinite(covariance[1, 2]) || covariance[1, 2] == 0)
                 covariance[1, 2] = Math.Sign(Kappa) * Math.Exp(logAlpha + logK - Math.Log(2) - logN);
             covariance[1, 0] = covariance[0, 1];
             covariance[2, 0] = covariance[0, 2];
@@ -709,6 +722,10 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Evaluates the closed-form information factors, retaining log(1/R) after underflow.</summary>
+        /// <param name="kappa">The generalized-normal shape.</param>
+        /// <param name="c">The returned exponential divided-difference factor.</param>
+        /// <param name="inverseR">The returned reciprocal information residual, including natural underflow to zero.</param>
+        /// <param name="logInverseR">The natural logarithm of <paramref name="inverseR"/>, retained even when the value underflows.</param>
         private static void NormalInformationFactors(double kappa, out double c, out double inverseR, out double logInverseR)
         {
             double v = kappa * kappa;

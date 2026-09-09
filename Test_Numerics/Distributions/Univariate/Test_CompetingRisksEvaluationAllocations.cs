@@ -1,7 +1,7 @@
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 
-namespace Test_Numerics.Distributions
+namespace Distributions
 {
     /// <summary>Protects live evaluation from temporary collection-wrapper allocations.</summary>
     [TestClass]

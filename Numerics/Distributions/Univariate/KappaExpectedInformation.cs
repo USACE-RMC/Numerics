@@ -51,7 +51,7 @@ namespace Numerics.Distributions
         internal static double[,] ParameterCovariance(double alpha, double k, double h, int sampleSize, int parameterCount)
         {
             DistributionNumerics.ValidateSampleSize(sampleSize);
-            if (!DistributionNumerics.IsFinite(alpha) || alpha <= 0) throw new ArgumentOutOfRangeException(nameof(alpha));
+            if (!Tools.IsFinite(alpha) || alpha <= 0) throw new ArgumentOutOfRangeException(nameof(alpha));
             double[,] information = ExpectedInformation(k, h, parameterCount, out _, out _, out _);
             double[,] covariance = InvertInformation(information);
             for (int i = 0; i < parameterCount; i++)
@@ -63,7 +63,7 @@ namespace Numerics.Distributions
                     double logarithm = Math.Log(Math.Abs(value)) - Math.Log(sampleSize)
                         + (i < 2 ? Math.Log(alpha) : 0) + (j < 2 ? Math.Log(alpha) : 0);
                     value = Math.Sign(value) * Math.Exp(logarithm);
-                    if (!DistributionNumerics.IsFinite(value))
+                    if (!Tools.IsFinite(value))
                         throw new InvalidOperationException("The local MLE covariance is outside the finite floating-point range.");
                 }
                 covariance[i, j] = covariance[j, i] = value;
@@ -79,6 +79,8 @@ namespace Numerics.Distributions
         /// <param name="scoreMeanErrors">Estimated absolute errors of the score means.</param>
         /// <param name="informationErrors">Estimated absolute errors of information entries.</param>
         /// <returns>The symmetric per-observation standardized information matrix.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The shape values or requested parameter dimension are outside the regular information domain.</exception>
+        /// <exception cref="InvalidOperationException">Complete-tail quadrature fails or an integrated score mean is inconsistent with zero within its numerical error.</exception>
         internal static double[,] ExpectedInformation(double k, double h, int parameterCount,
             out double[] scoreMeans, out double[] scoreMeanErrors, out double[,] informationErrors)
         {
@@ -110,16 +112,22 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Checks information regularity without changing distribution or fitting validity.</summary>
+        /// <param name="k">The finite kappa shape.</param>
+        /// <param name="h">The finite hondo shape.</param>
+        /// <param name="count">The requested information dimension, either three or four.</param>
+        /// <exception cref="ArgumentOutOfRangeException">The dimension is unsupported, a shape is nonfinite, or the regular expected-information boundary is violated.</exception>
         private static void ValidateDomain(double k, double h, int count)
         {
             if (count != 3 && count != 4) throw new ArgumentOutOfRangeException(nameof(count));
-            if (!DistributionNumerics.IsFinite(k) || !DistributionNumerics.IsFinite(h))
+            if (!Tools.IsFinite(k) || !Tools.IsFinite(h))
                 throw new ArgumentOutOfRangeException(nameof(k), "Information requires finite shape parameters.");
             if (k >= .5 || h >= .5 || k * h >= .5)
                 throw new ArgumentOutOfRangeException(nameof(k), "Regular information requires kappa < 1/2, hondo < 1/2 and kappa*hondo < 1/2.");
         }
 
         /// <summary>Evaluates expm1(a*z)/a and its second divided difference without cancellation in weighted scores.</summary>
+        /// <param name="x">The combined exponential argument <c>a*z</c>.</param>
+        /// <returns><c>(expm1(x)-x)/x^2</c>, including its continuous value one-half at zero.</returns>
         private static double SecondExponentialRelative(double x)
         {
             if (Math.Abs(x) >= .1) return (Tools.Expm1(x) - x) / x / x;
@@ -134,9 +142,17 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Returns log(abs(expm1(x))) without overflowing the exponential.</summary>
+        /// <param name="x">The exponential argument.</param>
+        /// <returns>The natural logarithm of the absolute value of <c>expm1(x)</c>.</returns>
         private static double LogAbsoluteExpm1(double x) => x > 36 ? x + Tools.Log1p(-Math.Exp(-x)) : Math.Log(Math.Abs(Tools.Expm1(x)));
 
         /// <summary>Forms scores times the square-root integration Jacobian before multiplying exponential terms.</summary>
+        /// <param name="logp">The logarithm of the lower-tail probability.</param>
+        /// <param name="logq">The logarithm of the complementary upper-tail probability.</param>
+        /// <param name="k">The kappa shape.</param>
+        /// <param name="h">The hondo shape.</param>
+        /// <param name="logroot">The logarithm of the square root of the quadrature-coordinate Jacobian.</param>
+        /// <returns>The weighted location, scale, kappa, and hondo scores in that order.</returns>
         private static double[] WeightedScores(double logp, double logq, double k, double h, double logroot)
         {
             double u = -logp;
@@ -180,6 +196,13 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Pairs the full lower and upper p tails in a common finite quadrature coordinate.</summary>
+        /// <param name="coordinate">The finite quadrature coordinate in the open unit interval.</param>
+        /// <param name="k">The kappa shape.</param>
+        /// <param name="h">The hondo shape.</param>
+        /// <param name="count">The number of score coordinates to retain.</param>
+        /// <param name="power">The positive power used to regularize the probability-tail coordinate.</param>
+        /// <returns>The paired score means followed by the upper triangle of the score cross-products.</returns>
+        /// <exception cref="InvalidOperationException">A paired score or cross-product is nonfinite.</exception>
         private static double[] Integrand(double coordinate, double k, double h, int count, int power)
         {
             double logCoordinate = Math.Log(coordinate);
@@ -195,7 +218,7 @@ namespace Numerics.Distributions
             for (int i = 0; i < count; i++)
             for (int j = i; j < count; j++, index++) values[index] = lower[i] * lower[j] + upper[i] * upper[j];
             foreach (double value in values)
-                if (!DistributionNumerics.IsFinite(value))
+                if (!Tools.IsFinite(value))
                     throw new InvalidOperationException("A complete-tail information integrand could not be represented finitely.");
             return values;
         }
@@ -203,12 +226,24 @@ namespace Numerics.Distributions
         /// <summary>Stores a subinterval's Kronrod estimate and conservative local error indicators.</summary>
         private sealed class Interval
         {
+            /// <summary>The lower and upper quadrature-coordinate endpoints.</summary>
             internal double Lower, Upper;
+
+            /// <summary>The Kronrod estimates for the score and information components.</summary>
             internal double[] Values = Array.Empty<double>();
+
+            /// <summary>The conservative absolute-error estimates corresponding to <see cref="Values"/>.</summary>
             internal double[] Errors = Array.Empty<double>();
         }
 
         /// <summary>G10K21 rule with absolute-deviation rescaling and a floating-point roundoff floor.</summary>
+        /// <param name="a">The lower quadrature-coordinate endpoint.</param>
+        /// <param name="b">The upper quadrature-coordinate endpoint.</param>
+        /// <param name="k">The kappa shape.</param>
+        /// <param name="h">The hondo shape.</param>
+        /// <param name="count">The number of score coordinates to integrate.</param>
+        /// <param name="power">The probability-tail coordinate power.</param>
+        /// <returns>The interval estimates and conservative error indicators.</returns>
         private static Interval Evaluate(double a, double b, double k, double h, int count, int power)
         {
             double center = .5 * (a + b), half = .5 * (b - a);
@@ -252,6 +287,12 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Refines the interval with the largest normalized error until every component converges.</summary>
+        /// <param name="k">The kappa shape.</param>
+        /// <param name="h">The hondo shape.</param>
+        /// <param name="count">The number of score coordinates to integrate.</param>
+        /// <param name="power">The probability-tail coordinate power.</param>
+        /// <returns>The converged complete-tail score and information estimates with accumulated errors.</returns>
+        /// <exception cref="InvalidOperationException">The interval limit or floating-point subdivision resolution is exhausted before every component meets tolerance.</exception>
         private static Interval Integrate(double k, double h, int count, int power)
         {
             var initial = Evaluate(0, 1, k, h, count, power);
@@ -294,6 +335,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Inverts an SPD matrix with diagonal scaling and checked Cholesky solves.</summary>
+        /// <param name="information">The finite symmetric positive-definite expected-information matrix.</param>
+        /// <returns>The symmetrized inverse transformed back from diagonal scaling.</returns>
+        /// <exception cref="InvalidOperationException">The matrix is not numerically positive definite, an inverse entry is nonfinite, or a solve fails its residual check.</exception>
         private static double[,] InvertInformation(double[,] information)
         {
             int count = information.GetLength(0);
@@ -302,7 +346,7 @@ namespace Numerics.Distributions
             var lower = new double[count, count];
             for (int i = 0; i < count; i++)
             {
-                if (!(information[i, i] > 0) || !DistributionNumerics.IsFinite(information[i, i]))
+                if (!(information[i, i] > 0) || !Tools.IsFinite(information[i, i]))
                     throw new InvalidOperationException("Expected information has a nonpositive or nonfinite diagonal.");
                 scale[i] = Math.Sqrt(information[i, i]);
             }
@@ -315,7 +359,7 @@ namespace Numerics.Distributions
                 for (int m = 0; m < j; m++) value -= lower[i, m] * lower[j, m];
                 if (i == j)
                 {
-                    if (!(value > 0) || !DistributionNumerics.IsFinite(value))
+                    if (!(value > 0) || !Tools.IsFinite(value))
                         throw new InvalidOperationException("Expected information is not numerically positive definite.");
                     lower[i, j] = Math.Sqrt(value);
                 }
@@ -342,7 +386,7 @@ namespace Numerics.Distributions
                 {
                     double value = 0;
                     for (int j = 0; j < count; j++) value += normalized[i, j] * solution[j];
-                    if (!DistributionNumerics.IsFinite(value) || Math.Abs(value - (i == column ? 1 : 0)) > 1E-9)
+                    if (!Tools.IsFinite(value) || Math.Abs(value - (i == column ? 1 : 0)) > 1E-9)
                         throw new InvalidOperationException("The expected-information inverse failed its residual check.");
                 }
             }
@@ -350,7 +394,7 @@ namespace Numerics.Distributions
             for (int j = i; j < count; j++)
             {
                 double value = .5 * (inverse[i, j] + inverse[j, i]) / scale[i] / scale[j];
-                if (!DistributionNumerics.IsFinite(value)) throw new InvalidOperationException("Expected-information inversion was nonfinite.");
+                if (!Tools.IsFinite(value)) throw new InvalidOperationException("Expected-information inversion was nonfinite.");
                 inverse[i, j] = inverse[j, i] = value;
             }
             return inverse;

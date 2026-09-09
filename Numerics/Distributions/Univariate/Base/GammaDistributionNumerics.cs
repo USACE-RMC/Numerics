@@ -3,6 +3,7 @@ using Numerics.Mathematics.SpecialFunctions;
 
 namespace Numerics.Distributions
 {
+    /// <summary>Provides stable gamma-function tails, quantiles, derivatives, and asymptotic expansions for univariate distributions.</summary>
     internal static partial class DistributionNumerics
     {
         /// <summary>Immutable integer zeta values reused by the log-gamma and GEV series.</summary>
@@ -29,6 +30,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Trigamma with an exact recurrence and a sufficiently large asymptotic argument for covariance work.</summary>
+        /// <param name="shape">The finite positive gamma shape.</param>
+        /// <returns>The trigamma value at <paramref name="shape"/>.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is not finite and positive.</exception>
         internal static double AccurateTrigamma(double shape)
         {
             ValidateGammaShape(shape);
@@ -39,12 +43,24 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Log regularized lower gamma integral P(a,x).</summary>
+        /// <param name="shape">The finite positive gamma shape.</param>
+        /// <param name="x">The nonnegative unit-scale gamma variate.</param>
+        /// <returns>The natural logarithm of the regularized lower incomplete gamma integral, including endpoint and not-a-number limits.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is not finite and positive.</exception>
         internal static double GammaLogCDF(double shape, double x) => GammaLogTail(shape, x, false, out _);
 
         /// <summary>Log regularized upper gamma integral Q(a,x).</summary>
+        /// <param name="shape">The finite positive gamma shape.</param>
+        /// <param name="x">The nonnegative unit-scale gamma variate.</param>
+        /// <returns>The natural logarithm of the regularized upper incomplete gamma integral, including endpoint and not-a-number limits.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is not finite and positive.</exception>
         internal static double GammaLogSurvival(double shape, double x) => GammaLogTail(shape, x, true, out _);
 
         /// <summary>Log unit-scale gamma density, including one-sided endpoint limits.</summary>
+        /// <param name="shape">The finite positive gamma shape.</param>
+        /// <param name="x">The unit-scale gamma variate.</param>
+        /// <returns>The log density, negative infinity outside support, the appropriate zero endpoint limit, or not-a-number when <paramref name="x"/> is not-a-number.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is not finite and positive.</exception>
         internal static double GammaLogDensity(double shape, double x)
         {
             ValidateGammaShape(shape);
@@ -55,6 +71,11 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Implicit shape derivative of the actual unit-scale gamma quantile at its value.</summary>
+        /// <param name="shape">The finite positive gamma shape.</param>
+        /// <param name="unitQuantile">The nonnegative finite unit-scale gamma quantile.</param>
+        /// <returns>The derivative of the unit-scale quantile with respect to <paramref name="shape"/>, including zero at the lower endpoint.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is invalid or <paramref name="unitQuantile"/> is negative or nonfinite.</exception>
+        /// <exception cref="InvalidOperationException">A required gamma series or continued fraction does not converge.</exception>
         /// <remarks>Differentiates the convergent lower series or upper continued fraction together
         /// with the probability. The large-shape expansion is differentiated analytically. No
         /// frequency-factor approximation or perturbation across the shape boundary is used.</remarks>
@@ -62,7 +83,7 @@ namespace Numerics.Distributions
         {
             ValidateGammaShape(shape);
             if (unitQuantile == 0) return 0;
-            if (!(unitQuantile > 0) || !IsFinite(unitQuantile))
+            if (!(unitQuantile > 0) || !Tools.IsFinite(unitQuantile))
                 throw new ArgumentOutOfRangeException(nameof(unitQuantile));
             bool upper = unitQuantile >= shape;
             double log = GammaLogTail(shape, unitQuantile, upper, out double derivative);
@@ -72,6 +93,12 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Inverts a gamma tail directly, retaining tiny upper and lower probabilities.</summary>
+        /// <param name="shape">The finite positive gamma shape.</param>
+        /// <param name="probability">The lower- or upper-tail probability in the closed unit interval.</param>
+        /// <param name="upperTail"><see langword="true"/> to invert the upper tail; <see langword="false"/> to invert the lower tail.</param>
+        /// <returns>The nonnegative unit-scale gamma quantile, including zero and positive-infinity endpoint limits.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is invalid or <paramref name="probability"/> is outside the closed unit interval or not-a-number.</exception>
+        /// <exception cref="InvalidOperationException">The gamma tail evaluation or bracketed quantile solve does not converge.</exception>
         /// <remarks>Uses a tail-aware bracketed Newton solve; a normal approximation supplies only
         /// the initial point. Tiny quantiles are solved in logarithmic coordinates.</remarks>
         internal static double GammaInverseCDF(double shape, double probability, bool upperTail = false)
@@ -89,7 +116,7 @@ namespace Numerics.Distributions
             double z = Normal.StandardZ(probability) * (upperTail ? -1 : 1);
             double w = 1 - 1 / (9 * shape) + z / (3 * root);
             double guess = w > 0 ? shape * w * w * w : Math.Exp(smallLog);
-            if (!(guess > 0) || !IsFinite(guess)) guess = Math.Max(shape, 1);
+            if (!(guess > 0) || !Tools.IsFinite(guess)) guess = Math.Max(shape, 1);
             double lower = 0, upper = Math.Max(Math.Max(shape, 1), guess);
             bool Below(double value)
             {
@@ -111,7 +138,7 @@ namespace Numerics.Distributions
                 if (upperTail ? residual > 0 : residual < 0) lower = x; else upper = x;
                 double slope = Math.Exp(GammaLogDensity(shape, x) - log) * (upperTail ? -1 : 1);
                 double next = x - residual / slope;
-                if (!(next > lower && next < upper) || !IsFinite(next)) next = lower + (upper - lower) / 2;
+                if (!(next > lower && next < upper) || !Tools.IsFinite(next)) next = lower + (upper - lower) / 2;
                 if (next == x || next == lower || next == upper) return next;
                 x = next;
             }
@@ -119,12 +146,21 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Requires a positive finite gamma shape.</summary>
+        /// <param name="shape">The shape to validate.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="shape"/> is not finite and positive.</exception>
         private static void ValidateGammaShape(double shape)
         {
-            if (!(shape > 0) || !IsFinite(shape)) throw new ArgumentOutOfRangeException(nameof(shape), "Gamma shape must be positive and finite.");
+            if (!(shape > 0) || !Tools.IsFinite(shape)) throw new ArgumentOutOfRangeException(nameof(shape), "Gamma shape must be positive and finite.");
         }
 
         /// <summary>Evaluates a gamma log tail and its fixed-observation shape derivative.</summary>
+        /// <param name="a">The finite positive gamma shape.</param>
+        /// <param name="x">The unit-scale gamma variate.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the upper tail; <see langword="false"/> to evaluate the lower tail.</param>
+        /// <param name="derivative">The fixed-<paramref name="x"/> derivative of the returned log tail with respect to <paramref name="a"/>.</param>
+        /// <returns>The requested log tail, including endpoint and not-a-number limits.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="a"/> is not finite and positive.</exception>
+        /// <exception cref="InvalidOperationException">The selected lower series or upper continued fraction does not converge.</exception>
         private static double GammaLogTail(double a, double x, bool upper, out double derivative)
         {
             ValidateGammaShape(a);
@@ -205,6 +241,10 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Direct Q series at small shape/argument, avoiding a near-one lower-tail subtraction.</summary>
+        /// <param name="a">The positive gamma shape in the small-shape branch.</param>
+        /// <param name="x">The positive unit-scale variate in the small-argument branch.</param>
+        /// <param name="derivative">The fixed-<paramref name="x"/> derivative of the returned log upper tail with respect to <paramref name="a"/>.</param>
+        /// <returns>The natural logarithm of the regularized upper incomplete gamma integral.</returns>
         private static double GammaSmallUpper(double a, double x, out double derivative)
         {
             double sum = 0, dsum = 0, power = 1;
@@ -225,6 +265,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Log(x^a exp(-x)/Gamma(a)) without subtracting large near-equal terms.</summary>
+        /// <param name="a">The positive gamma shape.</param>
+        /// <param name="x">The positive unit-scale gamma variate.</param>
+        /// <returns><c>log(x^a*exp(-x)/Gamma(a))</c>.</returns>
         private static double GammaLogKernel(double a, double x)
         {
             if (a < 16) return a * Math.Log(x) - x - Gamma.LogGamma(a);
@@ -235,6 +278,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Fixed-x derivative of the log kernel, retaining its small residual at large shape.</summary>
+        /// <param name="a">The positive gamma shape.</param>
+        /// <param name="x">The positive fixed unit-scale gamma variate.</param>
+        /// <returns>The derivative of the log gamma kernel with respect to <paramref name="a"/>.</returns>
         private static double GammaKernelShapeDerivative(double a, double x)
         {
             if (a < 16) return Math.Log(x) - Gamma.Digamma(a);
@@ -245,6 +291,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Stirling log-gamma remainder for arguments at least sixteen.</summary>
+        /// <param name="a">The gamma argument, expected to be at least sixteen.</param>
+        /// <returns>The retained Stirling-series correction to the leading log-gamma terms.</returns>
         private static double StirlingRemainder(double a)
         {
             double r = 1 / a, r2 = r * r;
@@ -252,6 +300,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Cancellation-free log(1+x)-x.</summary>
+        /// <param name="x">The argument, greater than negative one in its probability-distribution uses.</param>
+        /// <returns><c>log(1+x)-x</c>, evaluated by a local series when subtraction would cancel.</returns>
         internal static double Log1pMinusX(double x)
         {
             if (Math.Abs(x) >= 0.25) return Tools.Log1p(x) - x;
@@ -267,6 +317,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Log Gamma(1+a) with the zeta Taylor series at small a.</summary>
+        /// <param name="a">The increment from one.</param>
+        /// <returns><c>log(Gamma(1+a))</c>.</returns>
         internal static double LogGammaOnePlus(double a)
         {
             if (a > 0.5) return Gamma.LogGamma(a + 1);
@@ -282,6 +334,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Integer zeta constants for the log Gamma(1+a) series.</summary>
+        /// <param name="n">The integer zeta argument, which must be at least two.</param>
+        /// <returns>The Riemann zeta value at <paramref name="n"/>.</returns>
         internal static double ZetaInteger(int n)
         {
             if (n < 60) return IntegerZetaValues[n - 2];
@@ -301,6 +355,11 @@ namespace Numerics.Distributions
         };
 
         /// <summary>Uniform gamma expansion with analytical fixed-x shape differentiation.</summary>
+        /// <param name="a">The large positive gamma shape.</param>
+        /// <param name="delta"><c>(x-a)/a</c>, restricted to the local uniform-expansion region.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the upper tail; <see langword="false"/> to evaluate the lower tail.</param>
+        /// <param name="derivative">The fixed-observation derivative of the returned log tail with respect to <paramref name="a"/>.</param>
+        /// <returns>The requested gamma log tail from the Temme uniform expansion.</returns>
         private static double GammaTemme(double a, double delta, bool upper, out double derivative)
         {
             double eta = delta == 0 ? 0 : Math.Sign(delta) * Math.Sqrt(-2 * Log1pMinusX(delta));

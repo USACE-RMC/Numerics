@@ -161,6 +161,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Log raw-moment contribution after removing the location, with each moment's existence checked separately.</summary>
+        /// <param name="order">The positive raw-moment order.</param>
+        /// <returns>The logarithm of the shape-dependent raw-moment factor, or positive infinity when that moment does not exist.</returns>
         private double LogMomentShape(int order)
         {
             double scale = order * Sigma * Math.Log(Base), argument = Gamma * scale / 2d;
@@ -176,6 +178,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Expands centered exponential moments before evaluating them, avoiding cancellation for tiny log scale.</summary>
+        /// <param name="skewness">The resulting standardized third central moment.</param>
+        /// <param name="kurtosis">The resulting standardized fourth central moment.</param>
         private void SmallScaleStandardizedMoments(out double skewness, out double kurtosis)
         {
             const int order = 12;
@@ -200,6 +204,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Multiplies equal-length truncated power series used for centered moment evaluation.</summary>
+        /// <param name="left">The first coefficient vector.</param>
+        /// <param name="right">The second coefficient vector of the same length.</param>
+        /// <returns>The product truncated to the input vector length.</returns>
         private static double[] MultiplySeries(double[] left, double[] right)
         {
             var result = new double[left.Length];
@@ -493,6 +500,9 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The product moments of the base-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfMoments(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
@@ -507,6 +517,9 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The linear moments of the base-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfLinearMoments(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
@@ -781,6 +794,8 @@ namespace Numerics.Distributions
         /// Returns the inverse CDF using the modified Wilson-Hilferty transformation.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The approximate log-Pearson type III quantile in physical coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is outside the closed unit interval or the distribution parameters are invalid.</exception>
         /// <remarks>
         /// Cornish-Fisher transformation (Fisher and Cornish, 1960) for abs(skew) less than or equal to 2. If abs(skew) > 2 then use Modified Wilson-Hilferty transformation (Kirby,1972).
         /// </remarks>
@@ -850,6 +865,8 @@ namespace Numerics.Distributions
         /// Returns a list of partial derivatives of X given probability with respect to each moment.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The physical-quantile gradient in public moment coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is not finite and strictly interior or the distribution parameters are invalid.</exception>
         public IList<double> QuantileGradientForMoments(double probability)
         {
             return QuantileGradient(probability);

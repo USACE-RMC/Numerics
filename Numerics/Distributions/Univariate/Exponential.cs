@@ -252,6 +252,8 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="parameters">A list of parameters.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
+        /// <returns><see langword="null"/> when the parameter vector is valid; otherwise, the validation exception.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="throwException"/> is <see langword="true"/> and the parameter count, location, or scale is invalid.</exception>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
             if (parameters == null || parameters.Count != NumberOfParameters)
@@ -482,7 +484,7 @@ namespace Numerics.Distributions
                 ValidateParameters([Xi, Alpha], true);
             double unitQuantile = -Tools.Log1p(-probability);
             double displacement = Alpha * unitQuantile;
-            return double.IsInfinity(displacement) && DistributionNumerics.IsFinite(unitQuantile)
+            return double.IsInfinity(displacement) && Tools.IsFinite(unitQuantile)
                 ? Alpha * (Xi / Alpha + unitQuantile) : Xi + displacement;
         }
 

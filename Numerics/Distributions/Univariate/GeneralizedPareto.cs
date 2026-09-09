@@ -559,7 +559,7 @@ namespace Numerics.Distributions
             lowerVals[2] = -10d;
             upperVals[2] = 10d;
             // Correct initial values if necessary
-            if (!DistributionNumerics.IsFinite(initialVals[2]) || initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
+            if (!Tools.IsFinite(initialVals[2]) || initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
             {
                 initialVals[2] = 0d;
             }
@@ -610,6 +610,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Maps an interior observation to its exponential coordinate without a shape-zero plateau.</summary>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <returns>The corresponding unit-exponential coordinate.</returns>
         private double TransformedValue(double x)
         {
             return DistributionNumerics.HoskingShapeTransform(x, Xi, Alpha, Kappa);
@@ -653,7 +655,7 @@ namespace Numerics.Distributions
             double product = Kappa * logarithm;
             double unitQuantile = double.IsNegativeInfinity(product) ? 1 / Kappa : DistributionNumerics.ScaledExprelProduct(1, -logarithm, product);
             double displacement = double.IsNegativeInfinity(product) ? Alpha / Kappa : DistributionNumerics.ScaledExprelProduct(Alpha, -logarithm, product);
-            return double.IsInfinity(displacement) && DistributionNumerics.IsFinite(unitQuantile)
+            return double.IsInfinity(displacement) && Tools.IsFinite(unitQuantile)
                 ? Alpha * (Xi / Alpha + unitQuantile) : Xi + displacement;
         }
 

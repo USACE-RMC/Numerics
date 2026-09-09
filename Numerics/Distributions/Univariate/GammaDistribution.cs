@@ -565,6 +565,9 @@ namespace Numerics.Distributions
         /// Estimates parameters using a Newton-Raphson method.
         /// </summary>
         /// <param name="sample">Array of sample data.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, or contains a nonpositive or nonfinite observation.</exception>
+        /// <exception cref="ArgumentException">The transformed observation statistic is not-a-number.</exception>
         public void MLE_NR(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 2, true);
@@ -683,6 +686,8 @@ namespace Numerics.Distributions
         /// Returns the inverse CDF using the modified Wilson-Hilferty transformation.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The approximate gamma quantile in physical coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is outside the closed unit interval or the distribution parameters are invalid.</exception>
         /// <remarks>
         /// Cornish-Fisher transformation (Fisher and Cornish, 1960) for abs(skew) less than or equal to 2. If abs(skew) > 2 then use Modified Wilson-Hilferty transformation (Kirby,1972).
         /// </remarks>
@@ -708,11 +713,12 @@ namespace Numerics.Distributions
         /// <param name="skewness">Coefficient of skewness.</param>
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <returns>The named approximate frequency factor, not the actual Gamma quantile.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="skewness"/> is nonfinite or <paramref name="probability"/> is outside the closed unit interval or not-a-number.</exception>
         /// <remarks>Large skew magnitude is capped at 9.75 before evaluating its powers. Negative
         /// skew uses the reflected probability and sign of the corresponding positive-skew approximation.</remarks>
         public static double FrequencyFactorKp(double skewness, double probability)
         {
-            if (!DistributionNumerics.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
+            if (!Tools.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
             if (!(probability >= 0 && probability <= 1)) throw new ArgumentOutOfRangeException(nameof(probability));
             double C = skewness;
             double absC = Math.Abs(C);
@@ -794,9 +800,10 @@ namespace Numerics.Distributions
         /// <param name="skewness">Coefficient of skewness.</param>
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <returns>The partial derivative of the frequency factor with respect to skewness.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="skewness"/> is nonfinite or <paramref name="probability"/> is not finite and strictly between zero and one.</exception>
         public static double PartialKp(double skewness, double probability)
         {
-            if (!DistributionNumerics.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
+            if (!Tools.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
             DistributionNumerics.ValidateProbability(probability);
             double C = skewness;
             double absC = Math.Abs(C);
@@ -901,6 +908,9 @@ namespace Numerics.Distributions
         /// Wilson-Hilferty and frequency-factor approximations are not used here. An algebraically
         /// equivalent sum of two nonnegative terms preserves the mean-direction variance at large
         /// shape; physical scale is restored in logarithms. Probability must be finite and strictly interior.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The probability, sample size, or distribution parameters are invalid.</exception>
+        /// <exception cref="NotImplementedException"><paramref name="estimationMethod"/> is not maximum likelihood or method of moments.</exception>
+        /// <exception cref="InvalidOperationException">A gamma tail or quantile calculation does not converge.</exception>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
             DistributionNumerics.ValidateProbability(probability);

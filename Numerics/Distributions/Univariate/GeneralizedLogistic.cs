@@ -221,6 +221,7 @@ namespace Numerics.Distributions
         private static readonly double[] FourthCoefficients = BuildMomentCoefficients(4);
 
         /// <summary>Coefficients of pi*k/sin(pi*k) as a power series in k squared.</summary>
+        /// <returns>The reciprocal-sinc series coefficients indexed by powers of squared shape.</returns>
         private static double[] BuildReciprocalCoefficients()
         {
             var sinc = new double[15];
@@ -235,6 +236,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Multiplies truncated power series used to remove exact central-moment zeros algebraically.</summary>
+        /// <param name="left">The first coefficient vector.</param>
+        /// <param name="right">The second coefficient vector of the same length.</param>
+        /// <returns>The product truncated to the input vector length.</returns>
         private static double[] Multiply(double[] left, double[] right)
         {
             var result = new double[left.Length];
@@ -244,6 +248,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Forms central-moment numerator coefficients before evaluation, avoiding cancellation near zero shape.</summary>
+        /// <param name="order">The central-moment order, expected to be two, three, or four.</param>
+        /// <returns>The numerator coefficients indexed by powers of squared shape.</returns>
         private static double[] BuildMomentCoefficients(int order)
         {
             var b1 = ReciprocalCoefficients;
@@ -267,6 +273,10 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Horner evaluation after dividing out the exact leading power of kappa squared.</summary>
+        /// <param name="coefficients">The power-series coefficients.</param>
+        /// <param name="squaredShape">The squared shape at which to evaluate the reduced series.</param>
+        /// <param name="first">The first coefficient retained after removing the exact leading zero.</param>
+        /// <returns>The reduced polynomial value.</returns>
         private static double Polynomial(double[] coefficients, double squaredShape, int first)
         {
             double value = 0;
@@ -275,14 +285,20 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Returns pi*k/sin(pi*k), including its removable singularity.</summary>
+        /// <param name="k">The generalized-logistic shape.</param>
+        /// <returns><c>pi*k/sin(pi*k)</c>, using its power series near zero.</returns>
         private static double ReciprocalSinc(double k) => Math.Abs(k) <= .05
             ? 1 + k * k * Polynomial(ReciprocalCoefficients, k * k, 1) : Math.PI * k / Math.Sin(Math.PI * k);
 
         /// <summary>Returns the standardized mean shift without subtracting nearly equal raw moments.</summary>
+        /// <param name="k">The generalized-logistic shape.</param>
+        /// <returns>The standardized mean displacement from location.</returns>
         private static double StandardMean(double k) => Math.Abs(k) <= .05
             ? -k * Polynomial(ReciprocalCoefficients, k * k, 1) : (1 - ReciprocalSinc(k)) / k;
 
         /// <summary>Returns standardized variance after dividing out its exact kappa-squared zero.</summary>
+        /// <param name="k">The generalized-logistic shape.</param>
+        /// <returns>The standardized variance.</returns>
         private static double StandardVariance(double k) => Math.Abs(k) <= .05
             ? Polynomial(VarianceCoefficients, k * k, 1)
             : (ReciprocalSinc(2 * k) - Math.Pow(ReciprocalSinc(k), 2)) / k / k;
@@ -424,11 +440,14 @@ namespace Numerics.Distributions
         /// Gets the parameters using the direct method of moments. Moments are derived from the real-space data.
         /// </summary>
         /// <param name="moments">The array of sample moments.</param>
+        /// <returns>The location, scale, and shape derived from the supplied product moments.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="moments"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The moment vector is too short or contains an invalid mean, dispersion, or skewness.</exception>
         public double[] DirectMethodOfMoments(IList<double> moments)
         {
             if (moments == null) throw new ArgumentNullException(nameof(moments));
-            if (moments.Count < 3 || !DistributionNumerics.IsFinite(moments[0]) || !DistributionNumerics.IsFinite(moments[1])
-                || moments[1] <= 0 || !DistributionNumerics.IsFinite(moments[2]))
+            if (moments.Count < 3 || !Tools.IsFinite(moments[0]) || !Tools.IsFinite(moments[1])
+                || moments[1] <= 0 || !Tools.IsFinite(moments[2]))
                 throw new ArgumentOutOfRangeException(nameof(moments));
             double k = SolveForKappa(moments[2]);
             double a = moments[1] / Math.Sqrt(StandardVariance(k));
@@ -454,9 +473,10 @@ namespace Numerics.Distributions
         /// <returns>
         /// Kappa
         /// </returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="skew"/> is nonfinite.</exception>
         public double SolveForKappa(double skew)
         {
-            if (!DistributionNumerics.IsFinite(skew)) throw new ArgumentOutOfRangeException(nameof(skew));
+            if (!Tools.IsFinite(skew)) throw new ArgumentOutOfRangeException(nameof(skew));
             if (skew == 0) return 0;
             if (Math.Abs(skew) >= 10) return double.NaN;
             // Retain Brent and its convergence settings, evaluating finite moment values inside the open moment domain.
@@ -467,8 +487,8 @@ namespace Numerics.Distributions
         public double[] ParametersFromLinearMoments(IList<double> moments)
         {
             if (moments == null) throw new ArgumentNullException(nameof(moments));
-            if (moments.Count < 3 || !DistributionNumerics.IsFinite(moments[0]) || !DistributionNumerics.IsFinite(moments[1])
-                || moments[1] <= 0 || !DistributionNumerics.IsFinite(moments[2]) || Math.Abs(moments[2]) >= 1)
+            if (moments.Count < 3 || !Tools.IsFinite(moments[0]) || !Tools.IsFinite(moments[1])
+                || moments[1] <= 0 || !Tools.IsFinite(moments[2]) || Math.Abs(moments[2]) >= 1)
                 throw new ArgumentOutOfRangeException(nameof(moments));
             double kappa = -moments[2];
             double alpha = moments[1] / ReciprocalSinc(kappa);
@@ -558,6 +578,8 @@ namespace Numerics.Distributions
         /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
         /// <param name="sample">The validated observations.</param>
         /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is invalid, insufficient, or constant.</exception>
+        /// <exception cref="InvalidOperationException">No finite supported initializer can be placed within finite bounds.</exception>
         private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
@@ -576,7 +598,7 @@ namespace Numerics.Distributions
             initialVals[0] *= magnitude;
             initialVals[1] *= magnitude;
             var candidate = new GeneralizedLogistic(initialVals[0], initialVals[1], initialVals[2]);
-            if (!candidate.ParametersValid || !DistributionNumerics.IsFinite(candidate.LogLikelihood(sample)))
+            if (!candidate.ParametersValid || !Tools.IsFinite(candidate.LogLikelihood(sample)))
                 initialVals = [moments[0] * magnitude, moments[1] * magnitude, 0];
             // Get bounds of location
             double locationMagnitude = Math.Max(Math.Abs(initialVals[0]), initialVals[1]);
@@ -594,7 +616,7 @@ namespace Numerics.Distributions
                 initialVals[2] = 0d;
             }
             candidate.SetParameters(initialVals);
-            if (!candidate.ParametersValid || !DistributionNumerics.IsFinite(candidate.LogLikelihood(sample))
+            if (!candidate.ParametersValid || !Tools.IsFinite(candidate.LogLikelihood(sample))
                 || initialVals[0] <= lowerVals[0] || initialVals[0] >= upperVals[0]
                 || initialVals[1] <= lowerVals[1] || initialVals[1] >= upperVals[1])
                 throw new InvalidOperationException("The sample does not admit a finite supported generalized-logistic initializer within finite bounds.");
@@ -622,12 +644,14 @@ namespace Numerics.Distributions
             solver.Maximize();
             if (solver.Status != OptimizationStatus.Success
                 || ValidateParameters(solver.BestParameterSet.Values, false) != null
-                || !DistributionNumerics.IsFinite(new GeneralizedLogistic(solver.BestParameterSet.Values[0], solver.BestParameterSet.Values[1], solver.BestParameterSet.Values[2]).LogLikelihood(sample)))
+                || !Tools.IsFinite(new GeneralizedLogistic(solver.BestParameterSet.Values[0], solver.BestParameterSet.Values[1], solver.BestParameterSet.Values[2]).LogLikelihood(sample)))
                 throw new InvalidOperationException($"Generalized logistic maximum likelihood estimation failed with optimizer status {solver.Status} or a nonfinite fit.");
             return solver.BestParameterSet.Values;
         }
 
         /// <summary>Retains decimal-order fitting bounds without overflow or a zero-centered collapse.</summary>
+        /// <param name="value">The positive magnitude from which to select the next decimal order.</param>
+        /// <returns>The next decimal-order bound, capped at the largest finite binary64 value.</returns>
         private static double FiniteDecimalBound(double value)
         {
             double bound = Math.Pow(10, Math.Ceiling(Math.Log10(value)) + 1);
@@ -635,6 +659,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Retains a finite support endpoint when an intermediate scale/shape quotient overflows.</summary>
+        /// <returns>The finite-shape support endpoint in physical coordinates.</returns>
         private double FiniteShapeEndpoint()
         {
             double shift = Alpha / Kappa;
@@ -643,6 +668,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Inverts the exact Hosking transformation, including compensated endpoint residuals.</summary>
+        /// <param name="x">An observation inside the distribution support.</param>
+        /// <returns>The corresponding standard logistic variate.</returns>
         private double LatentLogistic(double x)
         {
             double y = DistributionNumerics.Standardize(x, Xi, Alpha);
@@ -708,6 +735,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Combines shape exponentials and physical scale before exponentiation or affine addition.</summary>
+        /// <param name="z">The standard logistic quantile.</param>
+        /// <returns>The corresponding quantile in physical coordinates.</returns>
         private double QuantileAtLatent(double z)
         {
             double v = -Kappa * z;
@@ -716,10 +745,10 @@ namespace Numerics.Distributions
             double offset = v > 50 ? -Math.Sign(Kappa) * Math.Exp(Math.Log(Alpha) + v - Math.Log(Math.Abs(Kappa)))
                 : Alpha * standard;
             double value = Xi + offset;
-            if (double.IsInfinity(value) && DistributionNumerics.IsFinite(standard))
+            if (double.IsInfinity(value) && Tools.IsFinite(standard))
             {
                 double combined = Xi / Alpha + standard;
-                if (DistributionNumerics.IsFinite(combined)) return Alpha * combined;
+                if (Tools.IsFinite(combined)) return Alpha * combined;
             }
             return value;
         }

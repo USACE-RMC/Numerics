@@ -343,6 +343,9 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The product moments of the base-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfMoments(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
@@ -356,6 +359,9 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The linear moments of the base-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfLinearMoments(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
@@ -369,6 +375,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="mean">The real-space mean of the data.</param>
         /// <param name="standardDeviation">The real-space standard deviation of the data.</param>
+        /// <returns>The configured-base logarithmic mean and standard deviation, including propagated not-a-number values for invalid physical moments.</returns>
         public double[] DirectMethodOfMoments(double mean, double standardDeviation)
         {
             double[] natural = LnNormal.DirectMethodOfMoments(mean, standardDeviation);
@@ -539,6 +546,9 @@ namespace Numerics.Distributions
         /// This is the same sampling approach as used in HEC-FDA.
         /// Each simulated distribution retains the configured <see cref="Base"/>.
         /// </remarks>
+        /// <returns>A matrix with one row per quantile and one column per requested confidence percentile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="quantiles"/> or <paramref name="percentiles"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size, realization count, a probability list, an individual probability, or the distribution parameters are invalid.</exception>
         public double[,] MonteCarloConfidenceIntervals(int sampleSize, int realizations, IList<double> quantiles, IList<double> percentiles)
         {
             DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles, 2);

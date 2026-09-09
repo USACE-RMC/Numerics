@@ -401,7 +401,9 @@ namespace Numerics.Distributions
         /// <summary>
         /// This function is used to calculate the maximum likelihood estimates of location and scale parameters.
         /// </summary>
-        /// <param name="sample"></param>
+        /// <param name="sample">The finite, nonconstant observations used to estimate location and scale.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, or contains a nonfinite observation.</exception>
         /// <references>
         /// Handbook of Statistical Distributions with Application
         /// </references>
@@ -531,7 +533,7 @@ namespace Numerics.Distributions
                 ValidateParameters(Xi, _alpha, true);
             double unitQuantile = -Math.Log(-Math.Log(probability));
             double displacement = Alpha * unitQuantile;
-            return double.IsInfinity(displacement) && DistributionNumerics.IsFinite(unitQuantile)
+            return double.IsInfinity(displacement) && Tools.IsFinite(unitQuantile)
                 ? Alpha * (Xi / Alpha + unitQuantile) : Xi + displacement;
         }
 

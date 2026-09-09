@@ -123,6 +123,10 @@ namespace Numerics.Distributions
         public override double LogCCDF(double x) => LogTail(x, true);
 
         /// <summary>Evaluates the signed gamma tail without subtracting a rounded probability from one.</summary>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the survival probability; <see langword="false"/> to evaluate the cumulative probability.</param>
+        /// <returns>The requested log probability, including support-endpoint limits.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The distribution parameters are invalid.</exception>
         private double LogTail(double x, bool upper)
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
@@ -149,10 +153,19 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Forms the unit gamma coordinate in centered form for large shape.</summary>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="z">The standardized observation <c>(x-mu)/sigma</c>.</param>
+        /// <returns>The corresponding nonnegative unit-scale gamma coordinate.</returns>
         private double UnitGammaValue(double x, double z)
             => UnitGammaValue(Mu, Sigma, Gamma, x, z);
 
         /// <summary>Forms the unit gamma coordinate directly from validated Pearson parameters.</summary>
+        /// <param name="mu">The finite Pearson mean.</param>
+        /// <param name="sigma">The finite positive Pearson standard deviation.</param>
+        /// <param name="gamma">The finite Pearson skew.</param>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="z">The standardized observation <c>(x-mu)/sigma</c>.</param>
+        /// <returns>The corresponding nonnegative unit-scale gamma coordinate.</returns>
         private static double UnitGammaValue(double mu, double sigma, double gamma, double x, double z)
         {
             if (x == mu - sigma * (2d / gamma)) return 0d;
@@ -161,22 +174,32 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Bounds local tail-expansion error while retaining every nonzero skew.</summary>
+        /// <param name="z">The standardized observation.</param>
+        /// <returns><see langword="true"/> when the configured skew and observation satisfy the local tail-expansion error bound; otherwise, <see langword="false"/>.</returns>
         private bool UseLocalTailExpansion(double z)
             => UseLocalTailExpansion(Gamma, z);
 
         /// <summary>Bounds local tail-expansion error directly from a validated skew.</summary>
+        /// <param name="gamma">The validated Pearson skew.</param>
+        /// <param name="z">The standardized observation.</param>
+        /// <returns><see langword="true"/> when the skew and observation satisfy the local tail-expansion error bound; otherwise, <see langword="false"/>.</returns>
         private static bool UseLocalTailExpansion(double gamma, double z)
         {
             return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 1E-3;
         }
 
         /// <summary>Avoids cancellation in centered gamma quantiles only where the skew expansion is accurate.</summary>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <returns><see langword="true"/> when the configured skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
         private bool UseLocalQuantileExpansion(double z)
         {
             return Math.Abs(Gamma) <= 1E-3 && Math.Abs(Gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 0.02d;
         }
 
         /// <summary>Evaluates the smooth gamma quantile expansion and its skew derivative through cubic order.</summary>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <param name="derivative">The derivative of the returned standardized quantile with respect to the configured skew.</param>
+        /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
         private double LocalStandardQuantile(double z, out double derivative)
         {
             double z2 = z * z;
@@ -689,6 +712,8 @@ namespace Numerics.Distributions
         /// Returns the inverse CDF using the modified Wilson-Hilferty transformation.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The approximate Pearson type III quantile in physical coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is outside the closed unit interval or the distribution parameters are invalid.</exception>
         /// <remarks>
         /// Cornish-Fisher transformation (Fisher and Cornish, 1960) for abs(skew) less than or equal to 2. If abs(skew) > 2 then use Modified Wilson-Hilferty transformation (Kirby,1972).
         /// </remarks>
@@ -800,6 +825,8 @@ namespace Numerics.Distributions
         /// Returns a list of partial derivatives of X given probability with respect to each moment.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The quantile gradient in public moment coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is not finite and strictly interior or the distribution parameters are invalid.</exception>
         public double[] QuantileGradientForMoments(double probability)
         {
             return QuantileGradient(probability);

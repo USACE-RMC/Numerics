@@ -2,6 +2,7 @@ using System;
 
 namespace Numerics.Distributions
 {
+    /// <summary>Provides overflow-resistant transforms used by Hosking-form distribution tails.</summary>
     internal static partial class DistributionNumerics
     {
         /// <summary>Evaluates the Hosking shape transform without losing a finite logarithm to affine or product overflow.</summary>
@@ -18,12 +19,12 @@ namespace Numerics.Distributions
             double standardized = Standardize(x, location, scale);
             if (shape == 0 || double.IsNaN(standardized)) return standardized;
             double product = shape * standardized;
-            if (IsFinite(product)) return product == 0 ? standardized : -Tools.Log1p(-product) / shape;
-            if (!IsFinite(x) || !IsFinite(location)) return -Tools.Log1p(-product) / shape;
+            if (Tools.IsFinite(product)) return product == 0 ? standardized : -Tools.Log1p(-product) / shape;
+            if (!Tools.IsFinite(x) || !Tools.IsFinite(location)) return -Tools.Log1p(-product) / shape;
 
             double difference = x - location;
             double logDifference;
-            if (IsFinite(difference)) logDifference = Math.Log(Math.Abs(difference));
+            if (Tools.IsFinite(difference)) logDifference = Math.Log(Math.Abs(difference));
             else
             {
                 double magnitude = Math.Max(Math.Abs(x), Math.Abs(location));

@@ -1,6 +1,6 @@
 using Numerics.Distributions;
 
-namespace Test_Numerics.Distributions
+namespace Distributions
 {
     /// <summary>Preserves usable constraint envelopes for nonpositive observations from the pre-hardening baseline.</summary>
     [TestClass]

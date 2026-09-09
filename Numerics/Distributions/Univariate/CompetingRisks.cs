@@ -82,11 +82,17 @@ namespace Numerics.Distributions
             /// <summary>Publishes the lazily computed step atomically for concurrent readers of unchanged state.</summary>
             private sealed class DensityStep
             {
+                /// <summary>The cached finite-difference step in physical coordinates.</summary>
                 internal readonly double Value;
+
+                /// <summary>Initializes an immutable derivative-step publication.</summary>
+                /// <param name="value">The component-derived finite-difference step.</param>
                 internal DensityStep(double value) { Value = value; }
             }
 
             /// <summary>Returns a previously computed component-derived step, excluding observation-dependent fallbacks.</summary>
+            /// <param name="step">The cached derivative step, or zero when no step has been published.</param>
+            /// <returns><see langword="true"/> when a component-derived step is available; otherwise, <see langword="false"/>.</returns>
             internal bool TryGetDensityStep(out double step)
             {
                 var cached = Volatile.Read(ref _densityStep);
@@ -95,8 +101,11 @@ namespace Numerics.Distributions
             }
 
             /// <summary>Stores the unchanged derivative-step expression for this exact component configuration.</summary>
+            /// <param name="step">The component-derived finite-difference step to publish.</param>
             internal void CacheDensityStep(double step) => Volatile.Write(ref _densityStep, new DensityStep(step));
 
+            /// <summary>Captures the mutable state that affects the exact built-in Weibull evaluation path.</summary>
+            /// <param name="owner">The competing-risks distribution whose current state is captured.</param>
             private WeibullConfiguration(CompetingRisks owner)
             {
                 _minimum = owner.MinimumOfRandomVariables;
@@ -125,6 +134,8 @@ namespace Numerics.Distributions
             }
 
             /// <summary>Captures only exact built-in Weibulls; derived and custom XML callbacks retain the generic path.</summary>
+            /// <param name="owner">The competing-risks distribution to inspect.</param>
+            /// <returns>An immutable snapshot for an exact built-in Weibull configuration, or <see langword="null"/> when the optimized path is not applicable.</returns>
             internal static WeibullConfiguration? Capture(CompetingRisks owner)
             {
                 if (owner._distributions is null) return null;
@@ -134,6 +145,8 @@ namespace Numerics.Distributions
             }
 
             /// <summary>Compares live values without allocating wrappers, parameter arrays, or XML.</summary>
+            /// <param name="owner">The competing-risks distribution whose live state is compared with this snapshot.</param>
+            /// <returns><see langword="true"/> when every captured scalar, Weibull parameter, and correlation entry is bitwise unchanged; otherwise, <see langword="false"/>.</returns>
             internal bool Matches(CompetingRisks owner)
             {
                 if (owner._distributions is null || owner._distributions.Length != _parameterBits.Length / 2
@@ -488,6 +501,7 @@ namespace Numerics.Distributions
         /// Set the distribution parameters.
         /// </summary>
         /// <param name="distributions">The competing distributions.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="distributions"/> is <see langword="null"/>.</exception>
         public void SetParameters(UnivariateDistributionBase[] distributions)
         {
             if (distributions == null) throw new ArgumentNullException(nameof(Distributions));
@@ -502,6 +516,8 @@ namespace Numerics.Distributions
         /// Set the distribution parameters.
         /// </summary>
         /// <param name="distributions">The competing distributions.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="distributions"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidCastException">An element does not derive from <see cref="UnivariateDistributionBase"/>.</exception>
         public void SetParameters(IUnivariateDistribution[] distributions)
         {
             if (distributions == null) throw new ArgumentNullException(nameof(Distributions));
@@ -665,6 +681,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Combines endpoint tail exponents before evaluating the one-sided density limit.</summary>
+        /// <param name="x">The finite support endpoint at which the independent log-density limit is required.</param>
+        /// <returns>The logarithm of the endpoint density limit, including positive or negative infinity.</returns>
+        /// <exception cref="InvalidOperationException">A component with a zero endpoint tail has no recognized analytical expansion.</exception>
         /// <remarks>For a product tail c*t^a*log(1/t)^b, its density tends to zero for a&gt;1,
         /// infinity for a&lt;1, and c times the logarithmic limit for a=1.</remarks>
         private double IndependentEndpointLogDensity(double x)
@@ -699,6 +718,7 @@ namespace Numerics.Distributions
         /// <param name="maximum">Upper support bound already read by the caller.</param>
         /// <param name="reuseBounds">Whether exact built-in Weibulls permit reuse of the caller's support bounds.</param>
         /// <returns>The resolved finite CDF derivative.</returns>
+        /// <exception cref="InvalidOperationException">No positive floating-point stencil can be formed, or numerical differentiation produces an invalid boundary density.</exception>
         /// <remarks>A centered local step is used in the interior; endpoints use a one-sided
         /// step. Finite negative interior slopes are returned for candidate rejection by
         /// <see cref="LogPDF(double)"/>. Negative boundary or nonfinite density remains a failure.</remarks>
@@ -716,9 +736,9 @@ namespace Numerics.Distributions
                 foreach (var distribution in Distributions)
                 {
                     double width = distribution.InverseCDF(.75) - distribution.InverseCDF(.25);
-                    if (width > 0 && DistributionNumerics.IsFinite(width)) scale = Math.Min(scale, width);
+                    if (width > 0 && Tools.IsFinite(width)) scale = Math.Min(scale, width);
                 }
-                bool componentScale = DistributionNumerics.IsFinite(scale);
+                bool componentScale = Tools.IsFinite(scale);
                 if (!componentScale) scale = Math.Max(1, Math.Abs(x));
                 step = Math.Pow(Tools.DoubleMachineEpsilon, 1.0 / 3) * scale;
                 if (componentScale && configuration is not null) configuration.CacheDensityStep(step);
@@ -730,7 +750,7 @@ namespace Numerics.Distributions
             double density = reuseBounds
                 ? (DependentCDFCore(right) - DependentCDFCore(left)) / (right - left)
                 : (CDF(right) - CDF(left)) / (right - left);
-            if (!DistributionNumerics.IsFinite(density) || (density < 0 && (x == (reuseBounds ? minimum : Minimum) || x == (reuseBounds ? maximum : Maximum))))
+            if (!Tools.IsFinite(density) || (density < 0 && (x == (reuseBounds ? minimum : Minimum) || x == (reuseBounds ? maximum : Maximum))))
                 throw new InvalidOperationException("Numerical differentiation of the dependent CDF did not produce a nonnegative finite density.");
             return density;
         }
@@ -866,13 +886,13 @@ namespace Numerics.Distributions
                 {
                     double reference = minX / 2 + maxX / 2;
                     double scale = maxX / 2 - minX / 2;
-                    if (!(scale > 0) || !DistributionNumerics.IsFinite(scale))
+                    if (!(scale > 0) || !Tools.IsFinite(scale))
                         scale = Distributions.Select(d => d.InverseCDF(.75) - d.InverseCDF(.25))
-                            .Where(width => width > 0 && DistributionNumerics.IsFinite(width)).DefaultIfEmpty(1).Min();
+                            .Where(width => width > 0 && Tools.IsFinite(width)).DefaultIfEmpty(1).Min();
                     double Argument(double t)
                     {
                         double value = reference + scale * t;
-                        if (double.IsInfinity(value) && DistributionNumerics.IsFinite(t)) value = scale * (reference / scale + t);
+                        if (double.IsInfinity(value) && Tools.IsFinite(t)) value = scale * (reference / scale + t);
                         return Math.Max(Minimum, Math.Min(Maximum, value));
                     }
                     double Residual(double t) => probability <= .5 ? LogCDF(Argument(t)) - Math.Log(probability)
@@ -898,6 +918,7 @@ namespace Numerics.Distributions
         /// Returns a list of cumulative incidence functions. 
         /// </summary>
         /// <param name="bins">Optional. The stratification bins to integrate over. Default is 200 bins.</param>
+        /// <returns>One empirical cumulative-incidence function for each competing distribution.</returns>
         public List<EmpiricalDistribution> CumulativeIncidenceFunctions(List<StratificationBin>? bins = null)
         {
             RefreshCachedConfiguration();

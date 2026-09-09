@@ -94,6 +94,11 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Validates the internal natural-log coordinates without applying physical-mean constraints.</summary>
+        /// <param name="mean">The proposed finite natural-log mean.</param>
+        /// <param name="standardDeviation">The proposed finite positive natural-log standard deviation.</param>
+        /// <param name="throwException"><see langword="true"/> to throw the validation error; <see langword="false"/> to return it.</param>
+        /// <returns><see langword="null"/> when both log-coordinate parameters are valid; otherwise, the corresponding validation exception.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="throwException"/> is <see langword="true"/> and either log-coordinate parameter is invalid.</exception>
         private static ArgumentOutOfRangeException? ValidateLogParameters(double mean, double standardDeviation, bool throwException)
         {
             ArgumentOutOfRangeException? error = null;
@@ -354,6 +359,9 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The product moments of the natural-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public static double[] IndirectMethodOfMoments(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
@@ -367,6 +375,9 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The linear moments of the natural-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfLinearMoments(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
@@ -380,6 +391,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="mean">The real-space mean of the data.</param>
         /// <param name="standardDeviation">The real-space standard deviation of the data.</param>
+        /// <returns>The natural-log mean and standard deviation, or two not-a-number values when the physical moments are invalid.</returns>
         public static double[] DirectMethodOfMoments(double mean, double standardDeviation)
         {
             if (!(mean > 0d) || !(standardDeviation > 0d) || double.IsInfinity(mean) || double.IsInfinity(standardDeviation))

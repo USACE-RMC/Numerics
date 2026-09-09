@@ -7,6 +7,12 @@ namespace Numerics.Distributions
     internal static class DistributionEndpointTail
     {
         /// <summary>Returns tail ~ exp(logCoefficient)*distance^power*log(1/distance)^logPower.</summary>
+        /// <param name="distribution">The distribution whose finite endpoint behavior is requested.</param>
+        /// <param name="lower"><see langword="true"/> to describe the lower CDF tail; <see langword="false"/> to describe the upper survival tail.</param>
+        /// <param name="power">The exponent applied to distance from the finite endpoint.</param>
+        /// <param name="logPower">The exponent applied to the logarithm of the reciprocal endpoint distance.</param>
+        /// <param name="logCoefficient">The logarithm of the expansion coefficient.</param>
+        /// <returns><see langword="true"/> when the distribution has a recognized expansion; otherwise, <see langword="false"/>.</returns>
         /// <remarks>These are finite lower CDF or upper survival endpoint limits. Infinite power denotes
         /// faster-than-polynomial decay. No numerical endpoint offset or density floor is used.</remarks>
         internal static bool TryExpansion(UnivariateDistributionBase distribution, bool lower,

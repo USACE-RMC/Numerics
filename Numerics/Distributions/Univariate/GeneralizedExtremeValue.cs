@@ -591,7 +591,7 @@ namespace Numerics.Distributions
             lowerVals[2] = -10;
             upperVals[2] = 10d;
             // Correct initial value of kappa if necessary
-            if (!DistributionNumerics.IsFinite(initialVals[2]) || initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
+            if (!Tools.IsFinite(initialVals[2]) || initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
             {
                 initialVals[2] = 0d;
             }
@@ -679,6 +679,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Maps an interior observation to its Gumbel coordinate using the exact nonzero shape.</summary>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <returns>The corresponding Gumbel coordinate.</returns>
         private double TransformedValue(double x)
         {
             return DistributionNumerics.HoskingShapeTransform(x, Xi, Alpha, Kappa);
@@ -701,7 +703,7 @@ namespace Numerics.Distributions
             double product = Kappa * logarithm;
             double unitQuantile = double.IsNegativeInfinity(product) ? 1 / Kappa : DistributionNumerics.ScaledExprelProduct(1, -logarithm, product);
             double displacement = double.IsNegativeInfinity(product) ? Alpha / Kappa : DistributionNumerics.ScaledExprelProduct(Alpha, -logarithm, product);
-            return double.IsInfinity(displacement) && DistributionNumerics.IsFinite(unitQuantile)
+            return double.IsInfinity(displacement) && Tools.IsFinite(unitQuantile)
                 ? Alpha * (Xi / Alpha + unitQuantile) : Xi + displacement;
         }
 
@@ -728,7 +730,7 @@ namespace Numerics.Distributions
                     double logarithm = Math.Log(Math.Abs(value)) + Math.Log(sampleSize)
                         - (i < 2 ? Math.Log(Alpha) : 0) - (j < 2 ? Math.Log(Alpha) : 0);
                     value = Math.Sign(value) * Math.Exp(logarithm);
-                    if (!DistributionNumerics.IsFinite(value))
+                    if (!Tools.IsFinite(value))
                         throw new InvalidOperationException("Expected information is outside the finite floating-point range.");
                 }
                 information[i, j] = information[j, i] = value;
@@ -802,6 +804,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Returns log Var(T^power), T unit exponential, without forming raw gamma moments.</summary>
+        /// <param name="power">The real exponent, established by the caller to be greater than negative one-half.</param>
+        /// <returns>The logarithm of the variance of a unit-exponential variate raised to <paramref name="power"/>, including positive infinity when the second moment overflows.</returns>
         /// <remarks>The caller establishes power &gt; -1/2 and uses a divided series near zero.</remarks>
         internal static double LogPowerVariance(double power)
         {
@@ -811,6 +815,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Evaluates analytical standardized central moments with log-Gamma divided differences near zero shape.</summary>
+        /// <returns>The standardized mean shift, standard deviation, skewness, and kurtosis in that order.</returns>
         /// <remarks>Finite differences of log Gamma remove the cancelling powers before evaluation.
         /// Exponential polynomial identities then retain the second through fourth centered moments.
         /// The exact zero is the analytical Gumbel limit; every nonzero kappa remains in the series.</remarks>
@@ -838,6 +843,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Returns the order-r forward difference of log Gamma(1+j*kappa), divided by kappa to power r.</summary>
+        /// <param name="kappa">The nonzero shape increment.</param>
+        /// <param name="order">The forward-difference order, expected to be two, three, or four.</param>
+        /// <returns>The normalized log-gamma forward difference.</returns>
         private static double NormalizedLogGammaDifference(double kappa, int order)
         {
             double sum = 0, power = 1;

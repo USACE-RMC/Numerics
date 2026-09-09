@@ -70,9 +70,15 @@ namespace Numerics.Distributions
         /// <summary>An immutable weight/log pair published atomically to concurrent density readers.</summary>
         private sealed class WeightLogEntry
         {
+            /// <summary>The exact binary representation of the cached weight.</summary>
             internal readonly long WeightBits;
+
+            /// <summary>The natural logarithm associated with <see cref="WeightBits"/>.</summary>
             internal readonly double LogValue;
 
+            /// <summary>Initializes an immutable cache entry for one exact weight value.</summary>
+            /// <param name="weightBits">The binary64 bits of the weight read by the caller.</param>
+            /// <param name="logValue">The natural logarithm of that weight.</param>
             internal WeightLogEntry(long weightBits, double logValue)
             {
                 WeightBits = weightBits;
@@ -197,6 +203,9 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Gets the component log probability above zero without requiring representable probability mass.</summary>
+        /// <param name="componentIndex">The zero-based component index.</param>
+        /// <returns>The component log survival probability at zero.</returns>
+        /// <exception cref="InvalidOperationException">The component does not have a finite, nonpositive log probability above zero.</exception>
         private double PositiveLogMass(int componentIndex)
         {
             double log = Distributions[componentIndex] is Normal normal
@@ -206,18 +215,34 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Evaluates the positive-conditional component log density.</summary>
+        /// <param name="componentIndex">The zero-based component index.</param>
+        /// <param name="x">The value in the component's physical coordinates.</param>
+        /// <returns>The component log density conditional on a value above zero, or negative infinity when <paramref name="x"/> is not positive.</returns>
+        /// <exception cref="InvalidOperationException">The component has no valid positive log mass.</exception>
         private double PositiveConditionalLogPDF(int componentIndex, double x) => x > 0
             ? Distributions[componentIndex].LogPDF(x) - PositiveLogMass(componentIndex) : double.NegativeInfinity;
 
         /// <summary>Evaluates the positive-conditional component log CDF through an interval probability.</summary>
+        /// <param name="componentIndex">The zero-based component index.</param>
+        /// <param name="x">The positive upper evaluation endpoint.</param>
+        /// <returns>The log conditional probability in the interval from zero through <paramref name="x"/>, or negative infinity when <paramref name="x"/> is not positive.</returns>
+        /// <exception cref="InvalidOperationException">The component has no valid positive log mass.</exception>
         private double PositiveConditionalLogCDF(int componentIndex, double x) => x <= 0 ? double.NegativeInfinity
             : Distributions[componentIndex].LogLikelihood_Intervals(0, x) - PositiveLogMass(componentIndex);
 
         /// <summary>Evaluates the positive-conditional component log survival directly.</summary>
+        /// <param name="componentIndex">The zero-based component index.</param>
+        /// <param name="x">The physical-coordinate survival threshold.</param>
+        /// <returns>Zero when <paramref name="x"/> is not positive; otherwise, the component log survival probability conditional on a value above zero.</returns>
+        /// <exception cref="InvalidOperationException">The component has no valid positive log mass.</exception>
         private double PositiveConditionalLogCCDF(int componentIndex, double x) => x <= 0 ? 0
             : Math.Min(0, Distributions[componentIndex].LogCCDF(x) - PositiveLogMass(componentIndex));
 
         /// <summary>Inverts a positive-conditional component using a direct log-survival equation.</summary>
+        /// <param name="componentIndex">The zero-based component index.</param>
+        /// <param name="probability">The conditional cumulative probability in the closed unit interval.</param>
+        /// <returns>The component quantile conditional on a value above zero, including its endpoint limits.</returns>
+        /// <exception cref="InvalidOperationException">The component has no valid positive mass or a finite quantile bracket cannot be formed.</exception>
         /// <remarks>Retains the existing root tolerance and iteration limit; it avoids constructing
         /// an unconditional probability that can round to one when positive mass is very small.</remarks>
         private double PositiveConditionalQuantile(int componentIndex, double probability)
@@ -257,6 +282,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Checks mutable weights and current component validity before evaluation.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">The component collection, weights, zero weight, total mass, or a component's parameters are invalid.</exception>
         /// <remarks>Validates live component parameters directly so evaluation does not flatten and re-slice
         /// the same state. Sealed Normal components delegate to their existing scalar validator without
         /// allocating parameter arrays; other components retain their list validator. Every component is
@@ -1146,6 +1172,10 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Combines component interval log probabilities while retaining the hurdle atom's endpoint convention.</summary>
+        /// <param name="lower">The open lower interval endpoint.</param>
+        /// <param name="upper">The closed upper interval endpoint.</param>
+        /// <returns>The logarithm of the total mixture probability in <c>(lower, upper]</c>, including the zero hurdle mass when applicable.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The live mixture configuration or a component interval is invalid.</exception>
         internal double LogIntervalProbability(double lower, double upper)
         {
             ValidateEvaluation();

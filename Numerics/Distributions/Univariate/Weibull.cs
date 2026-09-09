@@ -338,6 +338,7 @@ namespace Numerics.Distributions
         /// <summary>Retains the established constraint initializer arithmetic for ordinary samples.</summary>
         /// <param name="samples">Observations.</param>
         /// <returns>The legacy initial parameter values.</returns>
+        /// <exception cref="Exception">Fewer than two observations are supplied.</exception>
         private double[] LegacyConstraintSolveMLE(IList<double> samples)
         {
             double n = samples.Count;
@@ -393,6 +394,8 @@ namespace Numerics.Distributions
         /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
         /// <param name="sample">The validated observations.</param>
         /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is invalid, insufficient, constant, or produces an invalid positive parameter.</exception>
+        /// <exception cref="InvalidOperationException">The initialization iteration is numerically unresolved.</exception>
         private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 2, true);
@@ -486,7 +489,7 @@ namespace Numerics.Distributions
                 QofC = n * s2 / (n * s3 - s1 * s2);
                 previousC = c;
                 c = (c + QofC) / 2d;
-                if (!(c > 0) || !DistributionNumerics.IsFinite(c))
+                if (!(c > 0) || !Tools.IsFinite(c))
                     throw new InvalidOperationException("The Weibull initialization iteration did not produce a finite positive shape.");
             }
 
@@ -562,6 +565,8 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Forms log(x/lambda) without an overflowing or underflowing intermediate ratio.</summary>
+        /// <param name="x">The positive observation in physical coordinates.</param>
+        /// <returns>The logarithm of <c>x/lambda</c>.</returns>
         private double LogStandardizedValue(double x)
         {
             double ratio = x / Lambda;

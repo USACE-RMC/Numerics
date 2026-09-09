@@ -375,6 +375,7 @@ namespace Numerics
             return result;
         }
 
+
         /// <summary>
         /// Returns the standardized values. 
         /// </summary>

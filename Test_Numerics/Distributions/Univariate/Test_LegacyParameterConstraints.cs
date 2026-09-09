@@ -1,6 +1,6 @@
 using Numerics.Distributions;
 
-namespace Test_Numerics.Distributions
+namespace Distributions
 {
     /// <summary>Freezes valid prior envelopes and initial values from the pre-hardening baseline.</summary>
     [TestClass]

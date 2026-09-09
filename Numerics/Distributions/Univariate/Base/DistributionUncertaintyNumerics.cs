@@ -2,6 +2,7 @@ using System;
 
 namespace Numerics.Distributions
 {
+    /// <summary>Provides range-preserving covariance contractions and divided-exponential products for distribution uncertainty calculations.</summary>
     internal static partial class DistributionNumerics
     {
         /// <summary>Contracts an unchanged covariance and quantile gradient without forming avoidable overflowing products.</summary>
@@ -16,7 +17,7 @@ namespace Numerics.Distributions
         /// diagonal inflation or negative-variance floor is applied.</remarks>
         internal static double ScaledQuantileVariance(double[,] covariance, double[] gradient, double scale = 1)
         {
-            if (!(scale > 0) || !IsFinite(scale)) throw new ArgumentOutOfRangeException(nameof(scale));
+            if (!(scale > 0) || !Tools.IsFinite(scale)) throw new ArgumentOutOfRangeException(nameof(scale));
             if (covariance.GetLength(0) != gradient.Length || covariance.GetLength(1) != gradient.Length)
                 throw new ArgumentOutOfRangeException(nameof(covariance), "Covariance and gradient dimensions must agree.");
             var gradientLogs = new double[gradient.Length];
@@ -28,7 +29,7 @@ namespace Numerics.Distributions
                 gradientLogs[i] = Math.Log(Math.Abs(gradient[i]));
                 for (int j = 0; j < gradient.Length; j++)
                 {
-                    if (!IsFinite(covariance[i, j])) throw new InvalidOperationException("The parameter covariance is outside the finite floating-point range.");
+                    if (!Tools.IsFinite(covariance[i, j])) throw new InvalidOperationException("The parameter covariance is outside the finite floating-point range.");
                 }
             }
             double largestLogTerm = double.NegativeInfinity;
@@ -52,7 +53,7 @@ namespace Numerics.Distributions
                 quadratic = next;
             }
             quadratic += correction;
-            if (!IsFinite(quadratic) || quadratic < 0)
+            if (!Tools.IsFinite(quadratic) || quadratic < 0)
                 throw new InvalidOperationException("The quantile variance could not be resolved as a nonnegative quadratic form.");
             if (quadratic == 0) return 0;
             return Math.Exp(2 * Math.Log(scale) + largestLogTerm + Math.Log(quadratic));
@@ -67,7 +68,7 @@ namespace Numerics.Distributions
         /// avoids squaring a large shape or forming an underflowed unscaled residual.</remarks>
         internal static double GammaScaledFisherResidual(double shape)
         {
-            if (!(shape > 0) || !IsFinite(shape)) throw new ArgumentOutOfRangeException(nameof(shape));
+            if (!(shape > 0) || !Tools.IsFinite(shape)) throw new ArgumentOutOfRangeException(nameof(shape));
             double shifted = shape, recurrence = 0;
             while (shifted < 32)
             {
@@ -84,18 +85,31 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Forms scale times value times exprel(argument), retaining a finite product after unit-scale overflow.</summary>
+        /// <param name="scale">The signed outer multiplier.</param>
+        /// <param name="value">The signed value multiplying the divided exponential.</param>
+        /// <param name="argument">The argument of the exponential relative function.</param>
+        /// <returns><paramref name="scale"/> times <paramref name="value"/> times <c>exprel(argument)</c>, evaluated with extended logarithmic range when necessary.</returns>
         internal static double ScaledExprelProduct(double scale, double value, double argument)
         {
             return ScaledExprelProductCore(scale, value, argument, false);
         }
 
         /// <summary>Forms scale times value squared times exprel'(argument) without squaring a tiny value prematurely.</summary>
+        /// <param name="scale">The signed outer multiplier.</param>
+        /// <param name="value">The value whose square multiplies the derivative.</param>
+        /// <param name="argument">The argument of the exponential relative derivative.</param>
+        /// <returns><paramref name="scale"/> times the square of <paramref name="value"/> times <c>exprel'(argument)</c>, evaluated with extended logarithmic range when necessary.</returns>
         internal static double ScaledExprelDerivativeProduct(double scale, double value, double argument)
         {
             return ScaledExprelProductCore(scale, value, argument, true);
         }
 
         /// <summary>Combines signed multipliers and divided-exponential logarithms when ordinary product arithmetic loses range.</summary>
+        /// <param name="scale">The signed outer multiplier.</param>
+        /// <param name="value">The signed value, or the value to square when <paramref name="derivative"/> is <see langword="true"/>.</param>
+        /// <param name="argument">The divided-exponential argument.</param>
+        /// <param name="derivative"><see langword="true"/> to use the derivative and square <paramref name="value"/>; otherwise, <see langword="false"/> to use the function itself.</param>
+        /// <returns>The requested signed product, including its natural zero, infinity, or not-a-number limit.</returns>
         private static double ScaledExprelProductCore(double scale, double value, double argument, bool derivative)
         {
             if (value == 0) return 0;
@@ -104,7 +118,7 @@ namespace Numerics.Distributions
             double divided = derivative ? ExprelDerivative(argument) : Exprel(argument);
             double factor = derivative ? value * value : value;
             double result = scale * (factor * divided);
-            if (IsFinite(result) && result != 0) return result;
+            if (Tools.IsFinite(result) && result != 0) return result;
             double logDivided;
             if (argument > 50)
                 logDivided = derivative ? argument + Math.Log(argument - 1) + Tools.Log1p(Math.Exp(-argument) / (argument - 1)) - 2 * Math.Log(argument)
