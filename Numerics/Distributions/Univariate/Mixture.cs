@@ -270,15 +270,26 @@ namespace Numerics.Distributions
         }
 
         private string? _cachedConfiguration;
+        [NonSerialized] private DistributionSnapshot? _configurationCache;
 
         /// <summary>Refreshes cached moments and interpolation when public arrays or nested components change.</summary>
+        /// <remarks>A published bitwise snapshot short-circuits the canonical-string serialization on the
+        /// unchanged path; a mismatch or an uncapturable component tree falls back to the string
+        /// comparison, which remains the deciding authority for cache invalidation.</remarks>
         private void RefreshCachedConfiguration()
         {
+            var previous = Volatile.Read(ref _configurationCache);
+            if (previous is not null && previous.Matches(this)) return;
+            // Capture before canonical serialization: fallback callbacks may mutate their configuration.
+            var next = DistributionSnapshot.TryCapture(this);
             string configuration = DistributionNumerics.ConfigurationState(this);
-            if (configuration == _cachedConfiguration) return;
-            _cachedConfiguration = configuration;
-            _momentsComputed = false;
-            _empiricalCDFCreated = false;
+            if (configuration != _cachedConfiguration)
+            {
+                _cachedConfiguration = configuration;
+                _momentsComputed = false;
+                _empiricalCDFCreated = false;
+            }
+            Volatile.Write(ref _configurationCache, next);
         }
 
         /// <summary>Checks mutable weights and current component validity before evaluation.</summary>
