@@ -9,6 +9,48 @@ namespace Numerics.Distributions
     /// <summary>Numerical primitives shared by the reviewed univariate distributions.</summary>
     internal static partial class DistributionNumerics
     {
+
+        /// <summary>Uses the established prior envelope whenever its initialization and bounds are usable.</summary>
+        /// <param name="legacy">The original family-specific initialization and bounds.</param>
+        /// <param name="fallback">The exceptional-input hardened initialization and bounds.</param>
+        /// <returns>The legacy constraints if finite and within ordered bounds; otherwise the hardened constraints.</returns>
+        /// <remarks>The fallback must not narrow previously valid prior envelopes or alter their rounding.</remarks>
+        internal static Tuple<double[], double[], double[]> PreferLegacyConstraints(
+            Func<Tuple<double[], double[], double[]>> legacy, Func<Tuple<double[], double[], double[]>> fallback)
+        {
+            Exception? legacyFailure = null;
+            try
+            {
+                var constraints = legacy();
+                bool usable = true;
+                for (int i = 0; i < constraints.Item1.Length; i++)
+                {
+                    double initial = constraints.Item1[i], lower = constraints.Item2[i], upper = constraints.Item3[i];
+                    if (!IsFinite(initial) || !IsFinite(lower) || !IsFinite(upper) || !(lower < upper && lower <= initial && initial <= upper))
+                    {
+                        usable = false;
+                        break;
+                    }
+                }
+                if (usable) return constraints;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException || exception is ArithmeticException)
+            {
+                // Preserve initialization context if the exceptional-input path also fails.
+                legacyFailure = exception;
+            }
+            try
+            {
+                return fallback();
+            }
+            catch (Exception exception) when (legacyFailure != null &&
+                (exception is ArgumentException || exception is InvalidOperationException || exception is ArithmeticException))
+            {
+                exception.Data["LegacyParameterConstraintsFailure"] = legacyFailure;
+                throw;
+            }
+        }
+
         /// <summary>A cache key including nested distribution settings omitted from flattened parameter vectors.</summary>
         internal static string ConfigurationState(UnivariateDistributionBase distribution)
         {

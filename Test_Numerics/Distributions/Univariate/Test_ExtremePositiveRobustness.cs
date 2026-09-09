@@ -170,7 +170,7 @@ namespace Distributions.Univariate
             foreach (var sample in new[] { new[] { 1d, 1d, 1d, 1d }, new[] { 1d, 2d, 3d, double.NaN }, new[] { 1d, 2d, 3d, double.PositiveInfinity }, new[] { 1d } })
                 Assert.Throws<ArgumentOutOfRangeException>(() => distribution.GetParameterConstraints(sample), family);
             if (family == "Gamma" || family == "Weibull")
-                Assert.Throws<ArgumentOutOfRangeException>(() => distribution.GetParameterConstraints(new[] { 0d, 1d, 2d, 3d }), family);
+                CheckConstraints(distribution.GetParameterConstraints(new[] { 0d, 1d, 2d, 3d }), family);
             foreach (double scale in new[] { 1E-200, 1d, 1E200 })
             {
                 var sample = new[] { 1d, 2d, 4d, 7d, 8d, 10d }.Select(x => x * scale).ToArray();

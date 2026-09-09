@@ -478,10 +478,53 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        /// <remarks>Requires at least four finite, strictly positive, nonconstant observations. The
-        /// existing moment initialization is evaluated in unit coordinates to preserve small and large scales.</remarks>
+        /// <remarks>Requires at least four finite, nonconstant observations. Preserves the
+        /// legacy moment initialization and family-specific bounds whenever they are finite, ordered, and
+        /// contain the initial values, including usable samples containing nonpositive observations.
+        /// Otherwise, the exceptional-input fallback requires positive observations and evaluates the moment
+        /// initialization in unit coordinates to preserve small and large scales.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The sample or a finite feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            initialVals = LegacyConstraintParametersFromMoments(Statistics.ProductMoments(sample));
+            // Get bounds of scale
+            lowerVals[0] = Tools.DoubleMachineEpsilon;
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
+            // Get bounds of shape
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Retains the established constraint initializer arithmetic for ordinary samples.</summary>
+        /// <param name="moments">Sample moments.</param>
+        /// <returns>The legacy initial parameter values.</returns>
+        private double[] LegacyConstraintParametersFromMoments(IList<double> moments)
+        {
+            var parms = new double[NumberOfParameters];
+            parms[0] = 1d / (moments[0] / Math.Pow(moments[1], 2d));
+            parms[1] = Math.Pow(moments[0], 2d) / Math.Pow(moments[1], 2d);
+            return parms;
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, true);
             var lowerVals = new double[NumberOfParameters];

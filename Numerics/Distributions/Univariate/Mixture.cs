@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Numerics.Distributions
@@ -64,6 +65,20 @@ namespace Numerics.Distributions
         private bool _momentsComputed = false;
         private double u1, u2, u3, u4;
         private bool _empiricalCDFCreated = false;
+        [NonSerialized] private WeightLogEntry?[]? _logWeightCache;
+
+        /// <summary>An immutable weight/log pair published atomically to concurrent density readers.</summary>
+        private sealed class WeightLogEntry
+        {
+            internal readonly long WeightBits;
+            internal readonly double LogValue;
+
+            internal WeightLogEntry(long weightBits, double logValue)
+            {
+                WeightBits = weightBits;
+                LogValue = logValue;
+            }
+        }
 
         /// <summary>
         /// Returns the array of distribution weights.
@@ -184,7 +199,8 @@ namespace Numerics.Distributions
         /// <summary>Gets the component log probability above zero without requiring representable probability mass.</summary>
         private double PositiveLogMass(int componentIndex)
         {
-            double log = Distributions[componentIndex].LogCCDF(0);
+            double log = Distributions[componentIndex] is Normal normal
+                ? normal.LogCCDFAtZero() : Distributions[componentIndex].LogCCDF(0);
             if (!Tools.IsFinite(log) || log > 0) throw new InvalidOperationException("The active component must have positive probability above zero.");
             return log;
         }
@@ -241,7 +257,51 @@ namespace Numerics.Distributions
         }
 
         /// <summary>Checks mutable weights and current component validity before evaluation.</summary>
-        private void ValidateEvaluation() => ValidateParameters(GetParameters, true);
+        /// <remarks>Validates live component parameters directly so evaluation does not flatten and re-slice
+        /// the same state. Sealed Normal components delegate to their existing scalar validator without
+        /// allocating parameter arrays; other components retain their list validator. Every component is
+        /// checked on every call because public arrays and nested component settings remain mutable.</remarks>
+        private void ValidateEvaluation()
+        {
+            ArgumentOutOfRangeException? error = null;
+            if (_distributions is null || _weights is null || _distributions.Length == 0
+                || _distributions.Length != _weights.Length || Array.Exists(_distributions, d => d is null))
+                error = new ArgumentOutOfRangeException(nameof(Distributions), "At least one non-null component and a matching weight vector are required.");
+            else if (IsZeroInflated && (!Tools.IsFinite(ZeroWeight) || ZeroWeight < 0 || ZeroWeight >= 1))
+                error = new ArgumentOutOfRangeException(nameof(ZeroWeight), "The zero weight must be finite and in [0,1).");
+            else
+            {
+                int count = Distributions.Length;
+                double mass = IsZeroInflated ? ZeroWeight : 0;
+                for (int i = 0; i < count; i++)
+                {
+                    double weight = Weights[i];
+                    if (!Tools.IsFinite(weight) || weight < 0 || weight > 1)
+                    { error = new ArgumentOutOfRangeException(nameof(Weights), "Weights must be finite and between zero and one."); break; }
+                    mass += weight;
+                }
+                if (error is null && (!Tools.IsFinite(mass) || !mass.AlmostEquals(1, 1E-8)))
+                    error = new ArgumentOutOfRangeException(nameof(Weights), "Component and zero weights must sum to one.");
+                for (int i = 0; i < count && error is null; i++)
+                {
+                    if (Distributions[i] is Normal normal)
+                        error = normal.ValidateParameters(normal.Mu, normal.Sigma, false);
+                    else
+                    {
+                        double[] parameters = Distributions[i].GetParameters;
+                        error = Distributions[i].ValidateParameters(parameters, false);
+                    }
+                    if (error is null && IsZeroInflated && Weights[i] > 0)
+                    {
+                        double logMass = Distributions[i] is Normal zeroNormal
+                            ? zeroNormal.LogCCDFAtZero() : Distributions[i].LogCCDF(0);
+                        if (!Tools.IsFinite(logMass) || logMass > 0)
+                            error = new ArgumentOutOfRangeException(nameof(Distributions), "Each active component must have positive probability above zero.");
+                    }
+                }
+            }
+            if (error != null) throw error;
+        }
 
         /// <summary>
         /// Refreshes validity and cached results after zero-inflation configuration changes.
@@ -1010,6 +1070,30 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x) => Math.Exp(LogPDF(x));
 
+        /// <summary>Reuses the exact logarithm of a weight read at its existing post-callback evaluation point.</summary>
+        /// <param name="index">The component index.</param>
+        /// <param name="weight">The live weight already read after the component callback.</param>
+        /// <returns>The value of <see cref="Math.Log(double)"/> for the supplied weight.</returns>
+        /// <remarks>Entries are immutable and published with release/acquire semantics. No other live weight
+        /// is read, and field-based deserialization starts with an empty transient cache.</remarks>
+        private double LogWeight(int index, double weight)
+        {
+            var cache = Volatile.Read(ref _logWeightCache);
+            if (cache is null || index >= cache.Length)
+            {
+                var expanded = new WeightLogEntry?[_weights.Length];
+                if (cache is not null) Array.Copy(cache, expanded, cache.Length);
+                Volatile.Write(ref _logWeightCache, expanded);
+                cache = expanded;
+            }
+            long bits = BitConverter.DoubleToInt64Bits(weight);
+            var entry = Volatile.Read(ref cache[index]);
+            if (entry is not null && entry.WeightBits == bits) return entry.LogValue;
+            double log = Math.Log(weight);
+            Volatile.Write(ref cache[index], new WeightLogEntry(bits, log));
+            return log;
+        }
+
         /// <inheritdoc/>
         public override double LogPDF(double x)
         {
@@ -1020,7 +1104,7 @@ namespace Numerics.Distributions
             {
                 if (Weights[i] == 0) continue;
                 double log = IsZeroInflated ? PositiveConditionalLogPDF(i, x) : Distributions[i].LogPDF(x);
-                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
+                total = DistributionNumerics.LogSum(total, LogWeight(i, Weights[i]) + log);
             }
             return total;
         }

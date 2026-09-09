@@ -150,15 +150,24 @@ namespace Numerics.Distributions
 
         /// <summary>Forms the unit gamma coordinate in centered form for large shape.</summary>
         private double UnitGammaValue(double x, double z)
+            => UnitGammaValue(Mu, Sigma, Gamma, x, z);
+
+        /// <summary>Forms the unit gamma coordinate directly from validated Pearson parameters.</summary>
+        private static double UnitGammaValue(double mu, double sigma, double gamma, double x, double z)
         {
-            if (x == Xi) return 0d;
-            return Math.Abs(Gamma) < 1d ? Alpha * (1d + (Gamma / 2d) * z) : DistributionNumerics.Standardize(x, Xi, Beta);
+            if (x == mu - sigma * (2d / gamma)) return 0d;
+            return Math.Abs(gamma) < 1d ? Math.Pow(2d / gamma, 2d) * (1d + (gamma / 2d) * z)
+                : DistributionNumerics.Standardize(x, mu - sigma * (2d / gamma), 0.5d * sigma * gamma);
         }
 
         /// <summary>Bounds local tail-expansion error while retaining every nonzero skew.</summary>
         private bool UseLocalTailExpansion(double z)
+            => UseLocalTailExpansion(Gamma, z);
+
+        /// <summary>Bounds local tail-expansion error directly from a validated skew.</summary>
+        private static bool UseLocalTailExpansion(double gamma, double z)
         {
-            return Math.Abs(Gamma) <= 1E-3 && Math.Abs(Gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 1E-3;
+            return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 1E-3;
         }
 
         /// <summary>Avoids cancellation in centered gamma quantiles only where the skew expansion is accurate.</summary>
@@ -538,7 +547,46 @@ namespace Numerics.Distributions
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
-            var normal = new Normal().GetParameterConstraints(sample);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            var moments = Statistics.ProductMoments(sample);
+            initialVals = moments.Subset(0, 2);
+            // Get bounds of mean
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
+            // Get bounds of standard deviation
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+            // Get bounds of skew
+            lowerVals[2] = -6d;
+            upperVals[2] = 6d;
+
+            // Correct initial value of skew if necessary
+            if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
+            {
+                initialVals[2] = 0.01;
+            }
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        internal Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            var normal = new Normal().GetRobustParameterConstraints(sample);
             var scaled = new double[sample.Count];
             for (int i = 0; i < sample.Count; i++) scaled[i] = DistributionNumerics.Standardize(sample[i], normal.Item1[0], normal.Item1[1]);
             double skew = Statistics.ProductMoments(scaled)[2];
@@ -586,21 +634,34 @@ namespace Numerics.Distributions
         public override double LogPDF(double x)
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
-            if (x < Minimum || x > Maximum || double.IsInfinity(x)) return double.NegativeInfinity;
-            double z = DistributionNumerics.Standardize(x, Mu, Sigma);
-            if (Gamma == 0d) return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI);
-            if (UseLocalTailExpansion(z))
+            return LogPDF(Mu, Sigma, Gamma, x);
+        }
+
+        /// <summary>Evaluates a Pearson log density from parameters already validated by an equivalent public contract.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="x">The value at which to evaluate the density.</param>
+        /// <returns>The log density, including the established support and endpoint limits.</returns>
+        internal static double LogPDF(double mu, double sigma, double gamma, double x)
+        {
+            if (x < (gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity)
+                || x > (gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity)
+                || double.IsInfinity(x)) return double.NegativeInfinity;
+            double z = DistributionNumerics.Standardize(x, mu, sigma);
+            if (gamma == 0d) return -0.5d * z * z - Math.Log(sigma) - Math.Log(Tools.Sqrt2PI);
+            if (UseLocalTailExpansion(gamma, z))
             {
                 // Log gamma density expanded in skew; the gate bounds the omitted fourth-order term.
-                double z2 = z * z, g2 = Gamma * Gamma;
-                double correction = Gamma * z * (z2 / 6d - 0.5d)
+                double z2 = z * z, g2 = gamma * gamma;
+                double correction = gamma * z * (z2 / 6d - 0.5d)
                     + g2 * (-z2 * z2 / 16d + z2 / 8d - 1d / 48d)
-                    + g2 * Gamma * z * z2 * (z2 / 40d - 1d / 24d)
+                    + g2 * gamma * z * z2 * (z2 / 40d - 1d / 24d)
                     + g2 * g2 * z2 * z2 * (1d / 64d - z2 / 96d);
-                return -0.5d * z2 - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI) + correction;
+                return -0.5d * z2 - Math.Log(sigma) - Math.Log(Tools.Sqrt2PI) + correction;
             }
-            double unit = UnitGammaValue(x, z);
-            return DistributionNumerics.GammaLogDensity(Alpha, unit) - Math.Log(Sigma) - Math.Log(Math.Abs(Gamma) / 2d);
+            double unit = UnitGammaValue(mu, sigma, gamma, x, z);
+            return DistributionNumerics.GammaLogDensity(Math.Pow(2d / gamma, 2d), unit) - Math.Log(sigma) - Math.Log(Math.Abs(gamma) / 2d);
         }
 
         /// <inheritdoc/>

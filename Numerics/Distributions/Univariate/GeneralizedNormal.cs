@@ -406,6 +406,68 @@ namespace Numerics.Distributions
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            // Estimate initial values using the method of moments (a.k.a product moments).
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            initialVals = LegacyConstraintParametersFromLinearMoments(Statistics.LinearMoments(sample));
+            // Get bounds of location
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            // Get bounds of scale
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[1]))) + 1d);
+            // Get bounds of shape
+            lowerVals[2] = -10d;
+            upperVals[2] = 10d;
+            // Correct initial value of kappa if necessary
+            if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
+            {
+                initialVals[2] = 0d;
+            }
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Retains the established constraint initializer arithmetic for ordinary samples.</summary>
+        /// <param name="moments">Sample moments.</param>
+        /// <returns>The legacy initial parameter values.</returns>
+        private double[] LegacyConstraintParametersFromLinearMoments(IList<double> moments)
+        {
+            double L1 = moments[0];
+            double L2 = moments[1];
+            double T3 = moments[2];
+
+            double E0 = 2.0466534;
+            double E1 = -3.6544371;
+            double E2 = 1.8396733;
+            double E3 = -0.20360244;
+            double F1 = -2.0182173;
+            double F2 = 1.2420401;
+            double F3 = -0.21741801;
+
+            double kappa = -T3 * (E0 + E1 * Math.Pow(T3, 2d) + E2 * Math.Pow(T3, 4d) + E3 * Math.Pow(T3, 6d)) / (1d + F1 * Math.Pow(T3, 2d) + F2 * Math.Pow(T3, 4d) + F3 * Math.Pow(T3, 6d));
+            double alpha = (L2 * kappa * Math.Exp(-(kappa * kappa) / 2d)) / (1d - 2 * Normal.StandardCDF(-kappa / Tools.Sqrt2));
+            double xi = L1 - alpha * (1.0d - Math.Exp(kappa * kappa / 2d)) / kappa;
+            return [xi, alpha, kappa];
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
             // Estimate initial values using the method of moments (a.k.a product moments).
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];

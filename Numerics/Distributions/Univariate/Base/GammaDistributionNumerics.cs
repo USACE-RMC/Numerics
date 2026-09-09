@@ -5,6 +5,29 @@ namespace Numerics.Distributions
 {
     internal static partial class DistributionNumerics
     {
+        /// <summary>Immutable integer zeta values reused by the log-gamma and GEV series.</summary>
+        private static readonly double[] IntegerZetaValues = CreateIntegerZetaValues();
+
+        /// <summary>Precomputes the exact integer zeta range consumed by the bounded series.</summary>
+        /// <returns>The zeta values for integer arguments 2 through 59, indexed by argument minus two.</returns>
+        /// <remarks>The existing ordered power sum for arguments 17 through 59 is evaluated once during static initialization.</remarks>
+        private static double[] CreateIntegerZetaValues()
+        {
+            double[] values = { 1.6449340668482264365, 1.2020569031595942854, 1.0823232337111381915,
+                1.0369277551433699263, 1.0173430619844491397, 1.0083492773819228268,
+                1.0040773561979443394, 1.0020083928260822144, 1.0009945751278180853,
+                1.0004941886041194646, 1.0002460865533080483, 1.0001227133475784891,
+                1.0000612481350587048, 1.0000305882363070205, 1.0000152822594086519 };
+            Array.Resize(ref values, 58);
+            for (int n = 17; n < 60; n++)
+            {
+                double sum = 1;
+                for (int k = 2; k <= 32; k++) sum += Math.Pow(k, -n);
+                values[n - 2] = sum;
+            }
+            return values;
+        }
+
         /// <summary>Trigamma with an exact recurrence and a sufficiently large asymptotic argument for covariance work.</summary>
         internal static double AccurateTrigamma(double shape)
         {
@@ -261,12 +284,7 @@ namespace Numerics.Distributions
         /// <summary>Integer zeta constants for the log Gamma(1+a) series.</summary>
         internal static double ZetaInteger(int n)
         {
-            double[] values = { 1.6449340668482264365, 1.2020569031595942854, 1.0823232337111381915,
-                1.0369277551433699263, 1.0173430619844491397, 1.0083492773819228268,
-                1.0040773561979443394, 1.0020083928260822144, 1.0009945751278180853,
-                1.0004941886041194646, 1.0002460865533080483, 1.0001227133475784891,
-                1.0000612481350587048, 1.0000305882363070205, 1.0000152822594086519 };
-            if (n <= 16) return values[n - 2];
+            if (n < 60) return IntegerZetaValues[n - 2];
             double sum = 1;
             for (int k = 2; k <= 32; k++) sum += Math.Pow(k, -n);
             return sum;

@@ -321,10 +321,58 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        /// <remarks>Requires at least four finite, nonconstant observations. The existing initialization
-        /// estimator is evaluated in unit coordinates before finite location and positive scale bounds are formed.</remarks>
+        /// <remarks>Requires at least four finite, nonconstant observations. Preserves the legacy initialization
+        /// and family-specific bounds whenever they are finite, ordered, and contain the initial values.
+        /// Otherwise, the exceptional-input fallback evaluates the estimator in unit coordinates before
+        /// forming finite location and positive scale bounds.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The sample or a representable feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+
+            // Get initial values
+            var moments = Statistics.ProductMoments(sample);
+            double minData = Statistics.Minimum(sample);
+            initialVals[0] = (sample.Count * minData - moments[0]) / (sample.Count - 1);
+            initialVals[1] = sample.Count * (moments[0] - minData) / (sample.Count - 1);
+
+            // Get bounds of location
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = initialVals[0] - Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0]))));
+            upperVals[0] = minData;
+
+            // Get bounds of scale
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+
+            // Correct initial values if necessary
+            if (initialVals[0] <= lowerVals[0] || initialVals[0] >= upperVals[0])
+            {
+                initialVals[0] = Statistics.Mean([lowerVals[0], upperVals[0]]);
+            }
+            if (initialVals[1] <= lowerVals[1] || initialVals[1] >= upperVals[1])
+            {
+                initialVals[1] = Statistics.Mean([lowerVals[1], upperVals[1]]);
+            }
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
             var initialVals = new double[NumberOfParameters];
