@@ -188,10 +188,11 @@ namespace Numerics.Distributions
                 case 12:
                 {
                     var x = (GeneralizedPareto)distribution;
-                    if (k + 3 > bits.Length || bits[k] != BitConverter.DoubleToInt64Bits(x.Xi)
+                    if (k + 4 > bits.Length || bits[k] != BitConverter.DoubleToInt64Bits(x.Xi)
                         || bits[k + 1] != BitConverter.DoubleToInt64Bits(x.Alpha)
-                        || bits[k + 2] != BitConverter.DoubleToInt64Bits(x.Kappa)) return false;
-                    index = k + 3;
+                        || bits[k + 2] != BitConverter.DoubleToInt64Bits(x.Kappa)
+                        || bits[k + 3] != BitConverter.DoubleToInt64Bits(x.Lambda)) return false;
+                    index = k + 4;
                     return true;
                 }
                 case 13:
@@ -505,8 +506,10 @@ namespace Numerics.Distributions
             }
             case 12:
             {
+                // Lambda is carried peaks-per-block metadata outside the flattened parameters;
+                // it is captured so every public settable scalar participates uniformly.
                 var x = (GeneralizedPareto)distribution;
-                return cursor.Visit(x.Xi) && cursor.Visit(x.Alpha) && cursor.Visit(x.Kappa);
+                return cursor.Visit(x.Xi) && cursor.Visit(x.Alpha) && cursor.Visit(x.Kappa) && cursor.Visit(x.Lambda);
             }
             case 13:
             {
