@@ -63,20 +63,17 @@ namespace Numerics.Distributions
         private int _prngSeed = MultivariateNormal.DefaultMVNUNISeed;
 
         private string? _cachedConfiguration;
-        [NonSerialized] private WeibullConfiguration? _weibullConfiguration;
+        [NonSerialized] private DependentConfigurationCache? _dependentConfiguration;
 
-        /// <summary>Immutable scalar state whose equality implies identical built-in Weibull configuration XML.</summary>
-        private sealed class WeibullConfiguration
+        /// <summary>Immutable configuration state whose equality implies identical canonical configuration XML,
+        /// carrying the lazily published dependent-density derivative step.</summary>
+        private sealed class DependentConfigurationCache
         {
-            private readonly bool _minimum;
-            private readonly Probability.DependencyType _dependency;
-            private readonly int _seed;
-            private readonly Transform _xTransform;
-            private readonly Transform _probabilityTransform;
-            private readonly long[] _parameterBits;
-            private readonly long[]? _matrixBits;
-            private readonly int _matrixRows;
-            private readonly int _matrixColumns;
+            private readonly DistributionSnapshot _state;
+
+            /// <summary>Whether every component is an exact built-in Weibull, enabling the fixed-support dependent fast arm.</summary>
+            internal readonly bool AllExactWeibull;
+
             private DensityStep? _densityStep;
 
             /// <summary>Publishes the lazily computed step atomically for concurrent readers of unchanged state.</summary>
@@ -104,81 +101,42 @@ namespace Numerics.Distributions
             /// <param name="step">The component-derived finite-difference step to publish.</param>
             internal void CacheDensityStep(double step) => Volatile.Write(ref _densityStep, new DensityStep(step));
 
-            /// <summary>Captures the mutable state that affects the exact built-in Weibull evaluation path.</summary>
-            /// <param name="owner">The competing-risks distribution whose current state is captured.</param>
-            private WeibullConfiguration(CompetingRisks owner)
+            /// <summary>Initializes an immutable configuration cache around a captured snapshot.</summary>
+            /// <param name="state">The captured bitwise configuration snapshot.</param>
+            /// <param name="allExactWeibull">Whether every component is an exact built-in Weibull.</param>
+            private DependentConfigurationCache(DistributionSnapshot state, bool allExactWeibull)
             {
-                _minimum = owner.MinimumOfRandomVariables;
-                _dependency = owner.Dependency;
-                _seed = owner.PRNGSeed;
-                _xTransform = owner.XTransform;
-                _probabilityTransform = owner.ProbabilityTransform;
-                _parameterBits = new long[2 * owner._distributions.Length];
-                for (int i = 0; i < owner._distributions.Length; i++)
-                {
-                    var weibull = (Weibull)owner._distributions[i];
-                    _parameterBits[2 * i] = BitConverter.DoubleToInt64Bits(weibull.Lambda);
-                    _parameterBits[2 * i + 1] = BitConverter.DoubleToInt64Bits(weibull.Kappa);
-                }
-                var matrix = owner._correlationMatrix;
-                if (matrix is not null)
-                {
-                    _matrixRows = matrix.GetLength(0);
-                    _matrixColumns = matrix.GetLength(1);
-                    _matrixBits = new long[matrix.Length];
-                    int rowStart = matrix.GetLowerBound(0), columnStart = matrix.GetLowerBound(1), index = 0;
-                    for (int row = 0; row < _matrixRows; row++)
-                        for (int column = 0; column < _matrixColumns; column++)
-                            _matrixBits[index++] = BitConverter.DoubleToInt64Bits(matrix[rowStart + row, columnStart + column]);
-                }
+                _state = state;
+                AllExactWeibull = allExactWeibull;
             }
 
-            /// <summary>Captures only exact built-in Weibulls; derived and custom XML callbacks retain the generic path.</summary>
+            /// <summary>Captures exact supported built-ins; derived and custom XML callbacks retain the generic path.</summary>
             /// <param name="owner">The competing-risks distribution to inspect.</param>
-            /// <returns>An immutable snapshot for an exact built-in Weibull configuration, or <see langword="null"/> when the optimized path is not applicable.</returns>
-            internal static WeibullConfiguration? Capture(CompetingRisks owner)
+            /// <returns>An immutable snapshot for an exact supported configuration, or <see langword="null"/> when the optimized path is not applicable.</returns>
+            internal static DependentConfigurationCache? Capture(CompetingRisks owner)
             {
-                if (owner._distributions is null) return null;
-                foreach (var distribution in owner._distributions)
-                    if (distribution is null || distribution.GetType() != typeof(Weibull)) return null;
-                return new WeibullConfiguration(owner);
+                var state = DistributionSnapshot.TryCapture(owner);
+                if (state is null) return null;
+                var components = owner._distributions;
+                bool allExactWeibull = true;
+                for (int i = 0; i < components.Length; i++)
+                    if (components[i].GetType() != typeof(Weibull)) { allExactWeibull = false; break; }
+                return new DependentConfigurationCache(state, allExactWeibull);
             }
 
             /// <summary>Compares live values without allocating wrappers, parameter arrays, or XML.</summary>
             /// <param name="owner">The competing-risks distribution whose live state is compared with this snapshot.</param>
-            /// <returns><see langword="true"/> when every captured scalar, Weibull parameter, and correlation entry is bitwise unchanged; otherwise, <see langword="false"/>.</returns>
-            internal bool Matches(CompetingRisks owner)
-            {
-                if (owner._distributions is null || owner._distributions.Length != _parameterBits.Length / 2
-                    || owner.MinimumOfRandomVariables != _minimum || owner.Dependency != _dependency
-                    || owner.PRNGSeed != _seed || owner.XTransform != _xTransform
-                    || owner.ProbabilityTransform != _probabilityTransform) return false;
-                for (int i = 0; i < owner._distributions.Length; i++)
-                {
-                    var distribution = owner._distributions[i];
-                    if (distribution is null || distribution.GetType() != typeof(Weibull)) return false;
-                    var weibull = (Weibull)distribution;
-                    if (BitConverter.DoubleToInt64Bits(weibull.Lambda) != _parameterBits[2 * i]
-                        || BitConverter.DoubleToInt64Bits(weibull.Kappa) != _parameterBits[2 * i + 1]) return false;
-                }
-                var matrix = owner._correlationMatrix;
-                if (matrix is null) return _matrixBits is null;
-                if (_matrixBits is null || matrix.GetLength(0) != _matrixRows || matrix.GetLength(1) != _matrixColumns) return false;
-                int rowStart = matrix.GetLowerBound(0), columnStart = matrix.GetLowerBound(1), index = 0;
-                for (int row = 0; row < _matrixRows; row++)
-                    for (int column = 0; column < _matrixColumns; column++)
-                        if (BitConverter.DoubleToInt64Bits(matrix[rowStart + row, columnStart + column]) != _matrixBits[index++]) return false;
-                return true;
-            }
+            /// <returns><see langword="true"/> when every captured scalar, component parameter, and correlation entry is bitwise unchanged; otherwise, <see langword="false"/>.</returns>
+            internal bool Matches(CompetingRisks owner) => _state.Matches(owner);
         }
 
         /// <summary>Invalidates derived caches when mutable components or configuration change.</summary>
         private void RefreshCachedConfiguration()
         {
-            var previous = Volatile.Read(ref _weibullConfiguration);
+            var previous = Volatile.Read(ref _dependentConfiguration);
             if (previous is not null && previous.Matches(this)) return;
             // Capture before canonical serialization: fallback callbacks may mutate their configuration.
-            var next = WeibullConfiguration.Capture(this);
+            var next = DependentConfigurationCache.Capture(this);
             string configuration = DistributionNumerics.ConfigurationState(this);
             if (configuration != _cachedConfiguration)
             {
@@ -187,13 +145,19 @@ namespace Numerics.Distributions
                 _empiricalCDFCreated = false;
                 _mvnCreated = false;
             }
-            Volatile.Write(ref _weibullConfiguration, next);
+            Volatile.Write(ref _dependentConfiguration, next);
         }
 
         /// <summary>
         /// Returns the array of univariate probability distributions.
         /// </summary>
         public ReadOnlyCollection<UnivariateDistributionBase> Distributions => new(_distributions);
+
+        /// <summary>The live component array, for snapshot capture without collection wrappers.</summary>
+        internal UnivariateDistributionBase[]? ComponentArray => _distributions;
+
+        /// <summary>The live correlation matrix, for snapshot capture without cloning.</summary>
+        internal double[,]? CorrelationMatrixArray => _correlationMatrix;
 
         /// <summary>
         /// The seed for the multivariate normal's quadrature randomizer, used by the dependent
@@ -724,11 +688,11 @@ namespace Numerics.Distributions
         /// <see cref="LogPDF(double)"/>. Negative boundary or nonfinite density remains a failure.</remarks>
         private double DependentDensity(double x, double minimum, double maximum, out bool reuseBounds)
         {
-            var configuration = Volatile.Read(ref _weibullConfiguration);
+            var configuration = Volatile.Read(ref _dependentConfiguration);
             if (configuration is not null && !configuration.Matches(this)) configuration = null;
             // Exact built-in Weibulls have fixed support and no custom evaluation callbacks.
             // Derived owners and generic components retain every live support read.
-            reuseBounds = configuration is not null && GetType() == typeof(CompetingRisks);
+            reuseBounds = configuration is not null && configuration.AllExactWeibull && GetType() == typeof(CompetingRisks);
             double step;
             if (configuration is null || !configuration.TryGetDensityStep(out step))
             {
