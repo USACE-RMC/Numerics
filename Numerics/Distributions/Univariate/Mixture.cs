@@ -292,13 +292,92 @@ namespace Numerics.Distributions
             Volatile.Write(ref _configurationCache, next);
         }
 
+        [NonSerialized] private ValidationCertificate? _validationCertificate;
+
+        /// <summary>Publishes the exact bitwise state that has already passed full evaluation validation.</summary>
+        /// <remarks>A certificate exists only for capturable component trees, so a bitwise match
+        /// proves the full validator - including the zero-inflated positive-mass checks, which are
+        /// pure functions of the captured component parameters - already accepted exactly this
+        /// state. Any mutation changes the bits and routes the next evaluation back through the
+        /// full validator, preserving every exception and its precedence.</remarks>
+        private sealed class ValidationCertificate
+        {
+            /// <summary>The captured configuration whose bits passed the full validator.</summary>
+            internal readonly DistributionSnapshot State;
+
+            /// <summary>The lazily published support minimum for the certified state.</summary>
+            private CachedValue? _minimum;
+
+            /// <summary>The lazily published support maximum for the certified state.</summary>
+            private CachedValue? _maximum;
+
+            /// <summary>An immutable value publication for concurrent readers of unchanged state.</summary>
+            private sealed class CachedValue
+            {
+                /// <summary>The cached value.</summary>
+                internal readonly double Value;
+
+                /// <summary>Initializes an immutable value publication.</summary>
+                /// <param name="value">The value to publish.</param>
+                internal CachedValue(double value) { Value = value; }
+            }
+
+            /// <summary>Initializes a certificate for a validated state.</summary>
+            /// <param name="state">The captured configuration that passed validation.</param>
+            internal ValidationCertificate(DistributionSnapshot state) { State = state; }
+
+            /// <summary>Returns the cached support minimum for the certified state.</summary>
+            /// <param name="value">The cached minimum, or zero when none has been published.</param>
+            /// <returns><see langword="true"/> when a minimum is available; otherwise, <see langword="false"/>.</returns>
+            internal bool TryGetMinimum(out double value)
+            {
+                var cached = Volatile.Read(ref _minimum);
+                value = cached is null ? 0d : cached.Value;
+                return cached is not null;
+            }
+
+            /// <summary>Publishes the support minimum for the certified state.</summary>
+            /// <param name="value">The computed minimum.</param>
+            internal void CacheMinimum(double value) => Volatile.Write(ref _minimum, new CachedValue(value));
+
+            /// <summary>Returns the cached support maximum for the certified state.</summary>
+            /// <param name="value">The cached maximum, or zero when none has been published.</param>
+            /// <returns><see langword="true"/> when a maximum is available; otherwise, <see langword="false"/>.</returns>
+            internal bool TryGetMaximum(out double value)
+            {
+                var cached = Volatile.Read(ref _maximum);
+                value = cached is null ? 0d : cached.Value;
+                return cached is not null;
+            }
+
+            /// <summary>Publishes the support maximum for the certified state.</summary>
+            /// <param name="value">The computed maximum.</param>
+            internal void CacheMaximum(double value) => Volatile.Write(ref _maximum, new CachedValue(value));
+        }
+
         /// <summary>Checks mutable weights and current component validity before evaluation.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">The component collection, weights, zero weight, total mass, or a component's parameters are invalid.</exception>
+        /// <remarks>A published certificate for the bitwise-identical state skips re-validation
+        /// without allocating; any mutation, and every uncapturable component tree, runs the full
+        /// validator exactly as before.</remarks>
+        private void ValidateEvaluation()
+        {
+            var certificate = Volatile.Read(ref _validationCertificate);
+            if (certificate is not null && certificate.State.Matches(this)) return;
+            ValidateEvaluationSlow();
+            // Prefer the refresh-published snapshot instance so steady-state callers can unify
+            // the two checks by reference identity instead of walking twice.
+            var state = Volatile.Read(ref _configurationCache);
+            if (state is null || !state.Matches(this)) state = DistributionSnapshot.TryCapture(this);
+            if (state is not null) Volatile.Write(ref _validationCertificate, new ValidationCertificate(state));
+        }
+
+        /// <summary>Runs the full evaluation validator against live state.</summary>
         /// <exception cref="ArgumentOutOfRangeException">The component collection, weights, zero weight, total mass, or a component's parameters are invalid.</exception>
         /// <remarks>Validates live component parameters directly so evaluation does not flatten and re-slice
         /// the same state. Sealed Normal components delegate to their existing scalar validator without
-        /// allocating parameter arrays; other components retain their list validator. Every component is
-        /// checked on every call because public arrays and nested component settings remain mutable.</remarks>
-        private void ValidateEvaluation()
+        /// allocating parameter arrays; other components retain their list validator.</remarks>
+        private void ValidateEvaluationSlow()
         {
             ArgumentOutOfRangeException? error = null;
             if (_distributions is null || _weights is null || _distributions.Length == 0
@@ -389,7 +468,7 @@ namespace Numerics.Distributions
             {
                 int sum = 0;
                 sum += Distributions.Count();
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                     sum += Distributions[i].NumberOfParameters;
                 return sum;
             }
@@ -442,7 +521,7 @@ namespace Numerics.Distributions
                 {
                     result.Add("Weight " + i.ToString());
                 }
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     for (int j = 0; j < Distributions[i].ParameterNames.Length; j++)
                     {
@@ -464,7 +543,7 @@ namespace Numerics.Distributions
                 {
                     result.Add("W" + i.ToString());
                 }
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     for (int j = 0; j < Distributions[i].ParameterNamesShortForm.Length; j++)
                     {
@@ -482,7 +561,7 @@ namespace Numerics.Distributions
             {
                 var result = new List<double>();
                 result.AddRange(Weights);
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.AddRange(Distributions[i].GetParameters);
                 }                  
@@ -618,10 +697,20 @@ namespace Numerics.Distributions
         {
             get
             {
+                var certificate = Volatile.Read(ref _validationCertificate);
+                if (certificate is not null && certificate.TryGetMinimum(out double cached)
+                    && certificate.State.Matches(this)) return cached;
                 ValidateEvaluation();
-                if (IsZeroInflated && ZeroWeight > 0) return 0;
-                double minimum = Distributions.Where((d, i) => Weights[i] > 0).Min(d => d.Minimum);
-                return IsZeroInflated ? Math.Max(0, minimum) : minimum;
+                double minimum;
+                if (IsZeroInflated && ZeroWeight > 0) minimum = 0;
+                else
+                {
+                    minimum = Distributions.Where((d, i) => Weights[i] > 0).Min(d => d.Minimum);
+                    if (IsZeroInflated) minimum = Math.Max(0, minimum);
+                }
+                certificate = Volatile.Read(ref _validationCertificate);
+                if (certificate is not null && certificate.State.Matches(this)) certificate.CacheMinimum(minimum);
+                return minimum;
             }
         }
 
@@ -630,8 +719,14 @@ namespace Numerics.Distributions
         {
             get
             {
+                var certificate = Volatile.Read(ref _validationCertificate);
+                if (certificate is not null && certificate.TryGetMaximum(out double cached)
+                    && certificate.State.Matches(this)) return cached;
                 ValidateEvaluation();
-                return Distributions.Where((d, i) => Weights[i] > 0).Max(d => d.Maximum);
+                double maximum = Distributions.Where((d, i) => Weights[i] > 0).Max(d => d.Maximum);
+                certificate = Volatile.Read(ref _validationCertificate);
+                if (certificate is not null && certificate.State.Matches(this)) certificate.CacheMaximum(maximum);
+                return maximum;
             }
         }
 
@@ -642,11 +737,11 @@ namespace Numerics.Distributions
             {
                 var result = new List<double>();
                 if (IsZeroInflated) { result.Add(0.0); }
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.Add(0.0);
                 }
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.AddRange(Distributions[i].MinimumOfParameters);
                 }
@@ -661,11 +756,11 @@ namespace Numerics.Distributions
             {
                 var result = new List<double>();
                 if (IsZeroInflated) { result.Add(1.0); }
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.Add(1.0);
                 }
-                for (int i = 0; i < Distributions.Count(); i++)
+                for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.AddRange(Distributions[i].MaximumOfParameters);
                 }
@@ -761,7 +856,7 @@ namespace Numerics.Distributions
             _weights = weights.ToArray();
             // Set distribution parameters
             int t = 0;
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
             {
                 var parms = new List<double>();
                 for (int j = t; j < t + Distributions[i].NumberOfParameters; j++)
@@ -789,13 +884,13 @@ namespace Numerics.Distributions
 
             // Set the weights.
             int parameterIndex = 0;
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
             {
                 Weights[i] = parameterCopy[parameterIndex++];
             }
 
             // Set the distribution parameters.
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
             {
                 double[] distributionParameters = parameterCopy
                     .Skip(parameterIndex)
@@ -921,7 +1016,7 @@ namespace Numerics.Distributions
 
             // Weights are first
             int t = 0;
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
             {
                 initialVals[i] = IsZeroInflated ? (1d - ZeroWeight) / Distributions.Count() : 1d / Distributions.Count();
                 lowerVals[i] = 0.0;
@@ -929,7 +1024,7 @@ namespace Numerics.Distributions
                 t += 1;
             }
 
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
             {
                 var tuple = ((IMaximumLikelihoodEstimation)Distributions[i]).GetParameterConstraints(sample);
                 var initials = tuple.Item1;
@@ -1159,7 +1254,7 @@ namespace Numerics.Distributions
             {
                 if (Weights[i] == 0) continue;
                 double log = IsZeroInflated ? PositiveConditionalLogCDF(i, x) : Distributions[i].LogCDF(x);
-                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
+                total = DistributionNumerics.LogSum(total, LogWeight(i, Weights[i]) + log);
             }
             return Math.Min(0, total);
         }
@@ -1177,7 +1272,7 @@ namespace Numerics.Distributions
             {
                 if (Weights[i] == 0) continue;
                 double log = IsZeroInflated ? PositiveConditionalLogCCDF(i, x) : Distributions[i].LogCCDF(x);
-                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
+                total = DistributionNumerics.LogSum(total, LogWeight(i, Weights[i]) + log);
             }
             return Math.Min(0, total);
         }
@@ -1197,7 +1292,7 @@ namespace Numerics.Distributions
                 if (Weights[i] == 0) continue;
                 double log = Distributions[i].LogLikelihood_Intervals(IsZeroInflated ? Math.Max(0, lower) : lower, upper);
                 if (IsZeroInflated) log -= Distributions[i].LogCCDF(0);
-                total = DistributionNumerics.LogSum(total, Math.Log(Weights[i]) + log);
+                total = DistributionNumerics.LogSum(total, LogWeight(i, Weights[i]) + log);
             }
             return total;
         }
@@ -1205,14 +1300,24 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
-            RefreshCachedConfiguration();
+            // One snapshot walk covers refresh and validation on the unchanged path: the
+            // certificate holding the refresh-published instance proves both checks at once.
+            var certificate = Volatile.Read(ref _validationCertificate);
+            bool certified = certificate is not null
+                && ReferenceEquals(Volatile.Read(ref _configurationCache), certificate.State)
+                && certificate.State.Matches(this);
+            if (!certified)
+            {
+                RefreshCachedConfiguration();
+                certificate = null;
+            }
             if (!(probability >= 0.0 && probability <= 1.0))
                 throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");
-            ValidateEvaluation();
+            if (!certified) ValidateEvaluation();
             if (probability == 0.0) return Minimum;
             if (probability == 1.0) return Maximum;
             if (IsZeroInflated && probability <= ZeroWeight) return 0.0;
-            if (Distributions.Count() == 1 && !IsZeroInflated)
+            if (Distributions.Length == 1 && !IsZeroInflated)
             {
                 return Distributions[0].InverseCDF(probability);
             }
@@ -1220,14 +1325,18 @@ namespace Numerics.Distributions
             if (_empiricalCDFCreated)
             {
                 double empiricalValue = _empiricalCDF.InverseCDF(probability);
-                return Tools.Clamp(empiricalValue, Minimum, Maximum);
+                double clampMinimum = certificate is not null && certificate.TryGetMinimum(out double cachedMinimum)
+                    ? cachedMinimum : Minimum;
+                double clampMaximum = certificate is not null && certificate.TryGetMaximum(out double cachedMaximum)
+                    ? cachedMaximum : Maximum;
+                return Tools.Clamp(empiricalValue, clampMinimum, clampMaximum);
             }
 
             double componentProbability = IsZeroInflated
                 ? (probability - ZeroWeight) / (1.0 - ZeroWeight)
                 : probability;
             var componentQuantiles = new List<double>();
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
             {
                 if (Weights[i] == 0) continue;
                 componentQuantiles.Add(IsZeroInflated ? PositiveConditionalQuantile(i, componentProbability)
@@ -1349,7 +1458,7 @@ namespace Numerics.Distributions
         public override UnivariateDistributionBase Clone()
         {
             var dists = new UnivariateDistributionBase[Distributions.Count()];
-            for (int i = 0; i < Distributions.Count(); i++)
+            for (int i = 0; i < Distributions.Length; i++)
                 dists[i] = Distributions[i].Clone();
 
             return new Mixture(Weights.ToArray(), dists)

@@ -64,6 +64,15 @@ namespace Numerics.Distributions
         private double _physicalMean;
         private double _physicalStandardDeviation;
 
+        /// <summary>Whether the stored physical-moment surface is active, for snapshot capture without computing moments.</summary>
+        internal bool PhysicalMomentModeForSnapshot => _hasPhysicalMoments;
+
+        /// <summary>The stored physical mean field, for snapshot capture without computing moments.</summary>
+        internal double PhysicalMeanForSnapshot => _physicalMean;
+
+        /// <summary>The stored physical standard-deviation field, for snapshot capture without computing moments.</summary>
+        internal double PhysicalStandardDeviationForSnapshot => _physicalStandardDeviation;
+
         /// <summary>
         /// Gets and sets the mean µ (Mu) of the natural logarithm of the observation.
         /// </summary>
