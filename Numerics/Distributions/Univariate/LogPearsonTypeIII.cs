@@ -145,7 +145,7 @@ namespace Numerics.Distributions
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
             if (x <= Minimum) return double.NegativeInfinity;
             if (x >= Maximum) return 0d;
-            return new PearsonTypeIII(Mu, Sigma, Gamma).LogCDF(Math.Log(x, Base));
+            return PearsonTypeIII.LogTail(Mu, Sigma, Gamma, Math.Log(x, Base), false);
         }
 
         /// <inheritdoc/>
@@ -157,7 +157,7 @@ namespace Numerics.Distributions
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
             if (x <= Minimum) return 0d;
             if (x >= Maximum) return double.NegativeInfinity;
-            return new PearsonTypeIII(Mu, Sigma, Gamma).LogCCDF(Math.Log(x, Base));
+            return PearsonTypeIII.LogTail(Mu, Sigma, Gamma, Math.Log(x, Base), true);
         }
 
         /// <summary>Log raw-moment contribution after removing the location, with each moment's existence checked separately.</summary>
@@ -787,7 +787,7 @@ namespace Numerics.Distributions
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
             if (probability == 0d) return Minimum;
             if (probability == 1d) return Maximum;
-            return Math.Exp(new PearsonTypeIII(Mu, Sigma, Gamma).InverseCDF(probability) * Math.Log(Base));
+            return Math.Exp(PearsonTypeIII.InverseCDF(Mu, Sigma, Gamma, probability) * Math.Log(Base));
         }
 
         /// <summary>

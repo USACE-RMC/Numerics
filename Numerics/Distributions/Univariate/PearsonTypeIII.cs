@@ -130,26 +130,39 @@ namespace Numerics.Distributions
         private double LogTail(double x, bool upper)
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
-            if (x <= Minimum) return upper ? 0d : double.NegativeInfinity;
-            if (x >= Maximum) return upper ? double.NegativeInfinity : 0d;
-            double z = DistributionNumerics.Standardize(x, Mu, Sigma);
+            return LogTail(Mu, Sigma, Gamma, x, upper);
+        }
+
+        /// <summary>Evaluates the signed gamma tail from parameters already validated by an equivalent public contract.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the survival probability; <see langword="false"/> to evaluate the cumulative probability.</param>
+        /// <returns>The requested log probability, including support-endpoint limits.</returns>
+        internal static double LogTail(double mu, double sigma, double gamma, double x, bool upper)
+        {
+            if (x <= (gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity)) return upper ? 0d : double.NegativeInfinity;
+            if (x >= (gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity)) return upper ? double.NegativeInfinity : 0d;
+            double z = DistributionNumerics.Standardize(x, mu, sigma);
             double normal = upper ? DistributionNumerics.NormalLogSurvival(z) : DistributionNumerics.NormalLogCDF(z);
-            if (Gamma == 0d) return normal;
-            if (UseLocalTailExpansion(z))
+            if (gamma == 0d) return normal;
+            if (UseLocalTailExpansion(gamma, z))
             {
                 // Integrate the gamma cumulant expansion analytically using probabilists' Hermite polynomials.
-                double z2 = z * z, g2 = Gamma * Gamma;
+                double z2 = z * z, g2 = gamma * gamma;
                 double h2 = z2 - 1d, h3 = z * (z2 - 3d), h4 = z2 * z2 - 6d * z2 + 3d;
                 double h5 = z * (z2 * z2 - 10d * z2 + 15d);
                 double h6 = z2 * z2 * z2 - 15d * z2 * z2 + 45d * z2 - 15d;
                 double h8 = z2 * z2 * z2 * z2 - 28d * z2 * z2 * z2 + 210d * z2 * z2 - 420d * z2 + 105d;
-                double correction = Gamma * h2 / 6d + g2 * (h3 / 16d + h5 / 72d)
-                    + g2 * Gamma * (h4 / 40d + h6 / 96d + h8 / 1296d);
+                double correction = gamma * h2 / 6d + g2 * (h3 / 16d + h5 / 72d)
+                    + g2 * gamma * (h4 / 40d + h6 / 96d + h8 / 1296d);
                 double relative = Math.Exp(-0.5d * z2 - Math.Log(Tools.Sqrt2PI) - normal) * correction;
                 return normal + Tools.Log1p(upper ? relative : -relative);
             }
-            double unit = UnitGammaValue(x, z);
-            return upper == (Gamma > 0d) ? DistributionNumerics.GammaLogSurvival(Alpha, unit) : DistributionNumerics.GammaLogCDF(Alpha, unit);
+            double unit = UnitGammaValue(mu, sigma, gamma, x, z);
+            double alpha = Math.Pow(2d / gamma, 2d);
+            return upper == (gamma > 0d) ? DistributionNumerics.GammaLogSurvival(alpha, unit) : DistributionNumerics.GammaLogCDF(alpha, unit);
         }
 
         /// <summary>Forms the unit gamma coordinate in centered form for large shape.</summary>
@@ -192,8 +205,15 @@ namespace Numerics.Distributions
         /// <param name="z">The standard Normal quantile.</param>
         /// <returns><see langword="true"/> when the configured skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
         private bool UseLocalQuantileExpansion(double z)
+            => UseLocalQuantileExpansion(Gamma, z);
+
+        /// <summary>Bounds local quantile-expansion error directly from a validated skew.</summary>
+        /// <param name="gamma">The validated Pearson skew.</param>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <returns><see langword="true"/> when the skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
+        private static bool UseLocalQuantileExpansion(double gamma, double z)
         {
-            return Math.Abs(Gamma) <= 1E-3 && Math.Abs(Gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 0.02d;
+            return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 0.02d;
         }
 
         /// <summary>Evaluates the smooth gamma quantile expansion and its skew derivative through cubic order.</summary>
@@ -201,13 +221,21 @@ namespace Numerics.Distributions
         /// <param name="derivative">The derivative of the returned standardized quantile with respect to the configured skew.</param>
         /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
         private double LocalStandardQuantile(double z, out double derivative)
+            => LocalStandardQuantile(Gamma, z, out derivative);
+
+        /// <summary>Evaluates the smooth gamma quantile expansion directly from a validated skew.</summary>
+        /// <param name="gamma">The validated Pearson skew.</param>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <param name="derivative">The derivative of the returned standardized quantile with respect to the skew.</param>
+        /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
+        private static double LocalStandardQuantile(double gamma, double z, out double derivative)
         {
             double z2 = z * z;
             double first = (z2 - 1d) / 6d;
             double second = z * (z2 - 7d) / 144d;
             double third = -(3d * z2 * z2 + 7d * z2 - 16d) / 6480d;
-            derivative = first + Gamma * (2d * second + 3d * Gamma * third);
-            return z + Gamma * (first + Gamma * (second + Gamma * third));
+            derivative = first + gamma * (2d * second + 3d * gamma * third);
+            return z + gamma * (first + gamma * (second + gamma * third));
         }
 
         /// <inheritdoc/>
@@ -699,13 +727,25 @@ namespace Numerics.Distributions
             if (double.IsNaN(probability) || probability < 0d || probability > 1d)
                 throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between zero and one.");
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
-            if (probability == 0d) return Minimum;
-            if (probability == 1d) return Maximum;
+            return InverseCDF(Mu, Sigma, Gamma, probability);
+        }
+
+        /// <summary>Evaluates the quantile from parameters already validated by an equivalent public contract.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="probability">The nonexceedance probability, in the closed unit interval.</param>
+        /// <returns>The Pearson quantile, including the support-endpoint limits.</returns>
+        internal static double InverseCDF(double mu, double sigma, double gamma, double probability)
+        {
+            if (probability == 0d) return gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity;
+            if (probability == 1d) return gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity;
             double z = Normal.StandardZ(probability);
-            if (Gamma == 0d) return Mu + Sigma * z;
-            if (UseLocalQuantileExpansion(z)) return Mu + Sigma * LocalStandardQuantile(z, out _);
-            double unit = DistributionNumerics.GammaInverseCDF(Alpha, probability, Gamma < 0d);
-            return Mu + Sigma * ((Gamma / 2d) * (unit - Alpha));
+            if (gamma == 0d) return mu + sigma * z;
+            if (UseLocalQuantileExpansion(gamma, z)) return mu + sigma * LocalStandardQuantile(gamma, z, out _);
+            double alpha = Math.Pow(2d / gamma, 2d);
+            double unit = DistributionNumerics.GammaInverseCDF(alpha, probability, gamma < 0d);
+            return mu + sigma * ((gamma / 2d) * (unit - alpha));
         }
 
         /// <summary>
