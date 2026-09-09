@@ -318,9 +318,9 @@ namespace Numerics.Distributions
         public void SetParameters(double location, double scale, double shape)
         {
             _parametersValid = ValidateParameters(location, scale, shape, false) is null;
-            Xi = location;
+            _xi = location;
             _alpha = scale;
-            Kappa = shape;
+            _kappa = shape;
         }
 
         /// <inheritdoc/>
@@ -534,6 +534,46 @@ namespace Numerics.Distributions
         /// the existing linear-moment estimator and preserves the fitting shape bounds.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The sample or a finite feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            // initialVals = DirectMethodOfMoments(Statistics.ComputeProductMoments(sample))
+            initialVals = ParametersFromLinearMoments(Statistics.LinearMoments(sample));
+            // Get bounds of location
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            // Get bounds of scale
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[1])) + 1d));
+            // Get bounds of shape
+            lowerVals[2] = -10;
+            upperVals[2] = 10d;
+            // Correct initial value of kappa if necessary
+            if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
+            {
+                initialVals[2] = 0d;
+            }
+            //
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
             var lowerVals = new double[NumberOfParameters];

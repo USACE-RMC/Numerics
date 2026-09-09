@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Numerics.Distributions
@@ -62,16 +63,118 @@ namespace Numerics.Distributions
         private int _prngSeed = MultivariateNormal.DefaultMVNUNISeed;
 
         private string? _cachedConfiguration;
+        [NonSerialized] private WeibullConfiguration? _weibullConfiguration;
+
+        /// <summary>Immutable scalar state whose equality implies identical built-in Weibull configuration XML.</summary>
+        private sealed class WeibullConfiguration
+        {
+            private readonly bool _minimum;
+            private readonly Probability.DependencyType _dependency;
+            private readonly int _seed;
+            private readonly Transform _xTransform;
+            private readonly Transform _probabilityTransform;
+            private readonly long[] _parameterBits;
+            private readonly long[]? _matrixBits;
+            private readonly int _matrixRows;
+            private readonly int _matrixColumns;
+            private DensityStep? _densityStep;
+
+            /// <summary>Publishes the lazily computed step atomically for concurrent readers of unchanged state.</summary>
+            private sealed class DensityStep
+            {
+                internal readonly double Value;
+                internal DensityStep(double value) { Value = value; }
+            }
+
+            /// <summary>Returns a previously computed component-derived step, excluding observation-dependent fallbacks.</summary>
+            internal bool TryGetDensityStep(out double step)
+            {
+                var cached = Volatile.Read(ref _densityStep);
+                step = cached is null ? 0d : cached.Value;
+                return cached is not null;
+            }
+
+            /// <summary>Stores the unchanged derivative-step expression for this exact component configuration.</summary>
+            internal void CacheDensityStep(double step) => Volatile.Write(ref _densityStep, new DensityStep(step));
+
+            private WeibullConfiguration(CompetingRisks owner)
+            {
+                _minimum = owner.MinimumOfRandomVariables;
+                _dependency = owner.Dependency;
+                _seed = owner.PRNGSeed;
+                _xTransform = owner.XTransform;
+                _probabilityTransform = owner.ProbabilityTransform;
+                _parameterBits = new long[2 * owner._distributions.Length];
+                for (int i = 0; i < owner._distributions.Length; i++)
+                {
+                    var weibull = (Weibull)owner._distributions[i];
+                    _parameterBits[2 * i] = BitConverter.DoubleToInt64Bits(weibull.Lambda);
+                    _parameterBits[2 * i + 1] = BitConverter.DoubleToInt64Bits(weibull.Kappa);
+                }
+                var matrix = owner._correlationMatrix;
+                if (matrix is not null)
+                {
+                    _matrixRows = matrix.GetLength(0);
+                    _matrixColumns = matrix.GetLength(1);
+                    _matrixBits = new long[matrix.Length];
+                    int rowStart = matrix.GetLowerBound(0), columnStart = matrix.GetLowerBound(1), index = 0;
+                    for (int row = 0; row < _matrixRows; row++)
+                        for (int column = 0; column < _matrixColumns; column++)
+                            _matrixBits[index++] = BitConverter.DoubleToInt64Bits(matrix[rowStart + row, columnStart + column]);
+                }
+            }
+
+            /// <summary>Captures only exact built-in Weibulls; derived and custom XML callbacks retain the generic path.</summary>
+            internal static WeibullConfiguration? Capture(CompetingRisks owner)
+            {
+                if (owner._distributions is null) return null;
+                foreach (var distribution in owner._distributions)
+                    if (distribution is null || distribution.GetType() != typeof(Weibull)) return null;
+                return new WeibullConfiguration(owner);
+            }
+
+            /// <summary>Compares live values without allocating wrappers, parameter arrays, or XML.</summary>
+            internal bool Matches(CompetingRisks owner)
+            {
+                if (owner._distributions is null || owner._distributions.Length != _parameterBits.Length / 2
+                    || owner.MinimumOfRandomVariables != _minimum || owner.Dependency != _dependency
+                    || owner.PRNGSeed != _seed || owner.XTransform != _xTransform
+                    || owner.ProbabilityTransform != _probabilityTransform) return false;
+                for (int i = 0; i < owner._distributions.Length; i++)
+                {
+                    var distribution = owner._distributions[i];
+                    if (distribution is null || distribution.GetType() != typeof(Weibull)) return false;
+                    var weibull = (Weibull)distribution;
+                    if (BitConverter.DoubleToInt64Bits(weibull.Lambda) != _parameterBits[2 * i]
+                        || BitConverter.DoubleToInt64Bits(weibull.Kappa) != _parameterBits[2 * i + 1]) return false;
+                }
+                var matrix = owner._correlationMatrix;
+                if (matrix is null) return _matrixBits is null;
+                if (_matrixBits is null || matrix.GetLength(0) != _matrixRows || matrix.GetLength(1) != _matrixColumns) return false;
+                int rowStart = matrix.GetLowerBound(0), columnStart = matrix.GetLowerBound(1), index = 0;
+                for (int row = 0; row < _matrixRows; row++)
+                    for (int column = 0; column < _matrixColumns; column++)
+                        if (BitConverter.DoubleToInt64Bits(matrix[rowStart + row, columnStart + column]) != _matrixBits[index++]) return false;
+                return true;
+            }
+        }
 
         /// <summary>Invalidates derived caches when mutable components or configuration change.</summary>
         private void RefreshCachedConfiguration()
         {
+            var previous = Volatile.Read(ref _weibullConfiguration);
+            if (previous is not null && previous.Matches(this)) return;
+            // Capture before canonical serialization: fallback callbacks may mutate their configuration.
+            var next = WeibullConfiguration.Capture(this);
             string configuration = DistributionNumerics.ConfigurationState(this);
-            if (configuration == _cachedConfiguration) return;
-            _cachedConfiguration = configuration;
-            _momentsComputed = false;
-            _empiricalCDFCreated = false;
-            _mvnCreated = false;
+            if (configuration != _cachedConfiguration)
+            {
+                _cachedConfiguration = configuration;
+                _momentsComputed = false;
+                _empiricalCDFCreated = false;
+                _mvnCreated = false;
+            }
+            Volatile.Write(ref _weibullConfiguration, next);
         }
 
         /// <summary>
@@ -320,13 +423,13 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Minimum
         {
-            get { return MinimumOfRandomVariables ? Distributions.Min(p => p.Minimum) : Distributions.Max(p => p.Minimum); }
+            get { return MinimumOfRandomVariables ? _distributions.Min(p => p.Minimum) : _distributions.Max(p => p.Minimum); }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get { return MinimumOfRandomVariables ? Distributions.Min(p => p.Maximum) : Distributions.Max(p => p.Maximum); }
+            get { return MinimumOfRandomVariables ? _distributions.Min(p => p.Maximum) : _distributions.Max(p => p.Maximum); }
         }
 
         /// <inheritdoc/>
@@ -521,14 +624,25 @@ namespace Numerics.Distributions
         public override double PDF(double x) => Math.Exp(LogPDF(x));
 
         /// <inheritdoc/>
+        /// <remarks>Dependent densities use a support-bounded CDF derivative. An interior
+        /// derivative that does not exceed 1E-300 returns negative infinity, retaining the
+        /// established rejection of unresolved estimation candidates.</remarks>
         public override double LogPDF(double x)
         {
             ValidateEvaluation();
             if (double.IsNaN(x)) return double.NaN;
-            if (x < Minimum || x > Maximum || double.IsInfinity(x)) return double.NegativeInfinity;
-            if (Distributions.Count == 1) return Distributions[0].LogPDF(x);
+            double minimum = Minimum;
+            if (x < minimum) return double.NegativeInfinity;
+            double maximum = Maximum;
+            if (x > maximum || double.IsInfinity(x)) return double.NegativeInfinity;
+            if (_distributions.Length == 1) return _distributions[0].LogPDF(x);
             if (Dependency != Probability.DependencyType.Independent)
-                return Math.Log(DependentDensity(x));
+            {
+                double density = DependentDensity(x, minimum, maximum, out bool reuseBounds);
+                if (x > (reuseBounds ? minimum : Minimum) && x < (reuseBounds ? maximum : Maximum))
+                    return density > 1E-300 ? Math.Log(density) : double.NegativeInfinity;
+                return Math.Log(density);
+            }
 
             // Sum f_i times the other factors, without dividing by possibly zero tails.
             // Computing each excluded product also avoids infinity-minus-infinity in the log sum.
@@ -576,27 +690,47 @@ namespace Numerics.Distributions
         /// <summary>Checks current component validity, including mutations through public component references.</summary>
         private void ValidateEvaluation()
         {
-            if (!_parametersValid || Distributions.Any(d => !d.ParametersValid)) ValidateParameters(GetParameters, true);
+            if (!_parametersValid || Array.Exists(_distributions, d => !d.ParametersValid)) ValidateParameters(GetParameters, true);
         }
 
-        /// <summary>Numerically differentiates the existing dependent CDF within its mathematical support.</summary>
-        /// <remarks>The dependence model and its probability-combination rule are unchanged. A centered
-        /// local step is used in the interior; endpoints use a one-sided step. Negative or unresolved
-        /// density is reported rather than replaced by a positive likelihood floor.</remarks>
-        private double DependentDensity(double x)
+        /// <summary>Numerically differentiates the dependent CDF with a support-bounded stencil.</summary>
+        /// <param name="x">Observation at which to evaluate the density.</param>
+        /// <param name="minimum">Lower support bound already read by the caller.</param>
+        /// <param name="maximum">Upper support bound already read by the caller.</param>
+        /// <param name="reuseBounds">Whether exact built-in Weibulls permit reuse of the caller's support bounds.</param>
+        /// <returns>The resolved finite CDF derivative.</returns>
+        /// <remarks>A centered local step is used in the interior; endpoints use a one-sided
+        /// step. Finite negative interior slopes are returned for candidate rejection by
+        /// <see cref="LogPDF(double)"/>. Negative boundary or nonfinite density remains a failure.</remarks>
+        private double DependentDensity(double x, double minimum, double maximum, out bool reuseBounds)
         {
-            double scale = double.PositiveInfinity;
-            foreach (var distribution in Distributions)
+            var configuration = Volatile.Read(ref _weibullConfiguration);
+            if (configuration is not null && !configuration.Matches(this)) configuration = null;
+            // Exact built-in Weibulls have fixed support and no custom evaluation callbacks.
+            // Derived owners and generic components retain every live support read.
+            reuseBounds = configuration is not null && GetType() == typeof(CompetingRisks);
+            double step;
+            if (configuration is null || !configuration.TryGetDensityStep(out step))
             {
-                double width = distribution.InverseCDF(.75) - distribution.InverseCDF(.25);
-                if (width > 0 && DistributionNumerics.IsFinite(width)) scale = Math.Min(scale, width);
+                double scale = double.PositiveInfinity;
+                foreach (var distribution in Distributions)
+                {
+                    double width = distribution.InverseCDF(.75) - distribution.InverseCDF(.25);
+                    if (width > 0 && DistributionNumerics.IsFinite(width)) scale = Math.Min(scale, width);
+                }
+                bool componentScale = DistributionNumerics.IsFinite(scale);
+                if (!componentScale) scale = Math.Max(1, Math.Abs(x));
+                step = Math.Pow(Tools.DoubleMachineEpsilon, 1.0 / 3) * scale;
+                if (componentScale && configuration is not null) configuration.CacheDensityStep(step);
             }
-            if (!DistributionNumerics.IsFinite(scale)) scale = Math.Max(1, Math.Abs(x));
-            double step = Math.Pow(Tools.DoubleMachineEpsilon, 1.0 / 3) * scale;
-            double left = Math.Max(Minimum, x - step), right = Math.Min(Maximum, x + step);
+            double left = Math.Max(reuseBounds ? minimum : Minimum, x - step), right = Math.Min(reuseBounds ? maximum : Maximum, x + step);
             if (!(right > left)) throw new InvalidOperationException("The dependent density cannot be resolved at this floating-point scale.");
-            double density = (CDF(right) - CDF(left)) / (right - left);
-            if (!DistributionNumerics.IsFinite(density) || density < 0)
+            // The matching built-in case has already validated this fixed configuration and
+            // clamped both endpoints to support. Generic and derived cases retain virtual calls.
+            double density = reuseBounds
+                ? (DependentCDFCore(right) - DependentCDFCore(left)) / (right - left)
+                : (CDF(right) - CDF(left)) / (right - left);
+            if (!DistributionNumerics.IsFinite(density) || (density < 0 && (x == (reuseBounds ? minimum : Minimum) || x == (reuseBounds ? maximum : Maximum))))
                 throw new InvalidOperationException("Numerical differentiation of the dependent CDF did not produce a nonnegative finite density.");
             return density;
         }
@@ -642,18 +776,28 @@ namespace Numerics.Distributions
             RefreshCachedConfiguration();
             if (x < Minimum) return 0;
             if (x > Maximum) return 1;
-            if (Distributions.Count == 1)
+            if (_distributions.Length == 1)
             {
-                return Distributions[0].CDF(x);
+                return _distributions[0].CDF(x);
             }
 
+            return DependentCDFCore(x);
+        }
+
+        /// <summary>Combines component CDFs after validation, configuration refresh, and support checks.</summary>
+        /// <param name="x">Observation within the current support.</param>
+        /// <returns>The dependent composite probability with the existing probability bounds.</returns>
+        /// <remarks>The density reuses this body only for an already validated, unchanged exact
+        /// built-in Weibull configuration. Public and generic evaluation retain their live guards.</remarks>
+        private double DependentCDFCore(double x)
+        {
             double p = double.NaN;
-            var ind = new int[Distributions.Count];
-            var cdf = new double[Distributions.Count];
-            for (int i = 0; i < Distributions.Count; i++)
+            var ind = new int[_distributions.Length];
+            var cdf = new double[_distributions.Length];
+            for (int i = 0; i < _distributions.Length; i++)
             {
                 ind[i] = 1;
-                cdf[i] = Distributions[i].CDF(x);
+                cdf[i] = _distributions[i].CDF(x);
             }
 
             if (MinimumOfRandomVariables == true)

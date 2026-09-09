@@ -641,12 +641,64 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Preserves the legacy 0.01 substitution for nonpositive observations when constructing
+        /// initial values and rounded prior bounds. This does not modify the sample or density support.</remarks>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            //
+            // Estimate initial values using the method of moments.
+            var transformedSample = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++)
+                transformedSample[i] = Math.Log(sample[i] > 0d ? sample[i] : 0.01d, Base);
+            var mom = Statistics.ProductMoments(transformedSample);
+            initialVals = [mom[0], mom[1], mom[2]];
+            // Get bounds of mean. The mean is a location parameter on the log scale and is
+            // legitimately negative whenever the data are mostly below 1, so the bounds are
+            // symmetric about zero from the magnitude of the initial value, matching Normal's
+            // location bounds. A machine-epsilon floor here would reject any sub-unity sample
+            // before a fit could start.
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            // Get bounds of standard deviation
+            double real = Math.Exp(initialVals[1] / K);
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real) + 1d)), Base));
+            upperVals[1] = double.IsNaN(upperVals[1]) ? 4 : upperVals[1];
+
+            // Get bounds of skew
+            lowerVals[2] = -6d;
+            upperVals[2] = 6d;
+            // Correct initial value of skew if necessary
+            if (initialVals[2] <= lowerVals[2] || initialVals[2] >= upperVals[2])
+            {
+                initialVals[2] = 0.01;
+            }
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
             var transformed = new double[sample.Count];
             for (int i = 0; i < sample.Count; i++) transformed[i] = Math.Log(sample[i], Base);
-            return new PearsonTypeIII().GetParameterConstraints(transformed);
+            return new PearsonTypeIII().GetRobustParameterConstraints(transformed);
         }
 
         /// <inheritdoc/>
@@ -689,20 +741,23 @@ namespace Numerics.Distributions
         public override double LogPDF(double x)
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
-            if (x < Minimum || x > Maximum || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
+            double logBase = Math.Log(Base);
+            double boundary = Gamma == 0d ? double.NaN : Math.Exp(Xi * logBase);
+            double minimum = Gamma > 0d ? boundary : 0d;
+            double maximum = Gamma < 0d ? boundary : double.PositiveInfinity;
+            if (x < minimum || x > maximum || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
             if (x == 0d)
             {
                 if (Gamma >= 0d) return double.NegativeInfinity;
-                double rate = -1d / (Beta * Math.Log(Base));
+                double rate = -1d / (Beta * logBase);
                 if (rate > 1d) return double.NegativeInfinity;
                 if (rate < 1d || Alpha > 1d) return double.PositiveInfinity;
-                return Alpha == 1d ? -Xi * Math.Log(Base) : double.NegativeInfinity;
+                return Alpha == 1d ? -Xi * logBase : double.NegativeInfinity;
             }
-            double logX = Math.Log(x), logBase = Math.Log(Base);
-            var pearson = new PearsonTypeIII(Mu, Sigma, Gamma);
+            double logX = Math.Log(x);
             // Preserve exact transformed endpoint density limits despite logarithm roundoff.
-            double transformed = (Gamma > 0d && x == Minimum) || (Gamma < 0d && x == Maximum) ? Xi : logX / logBase;
-            return pearson.LogPDF(transformed) - Math.Log(logBase) - logX;
+            double transformed = (Gamma > 0d && x == boundary) || (Gamma < 0d && x == boundary) ? Xi : logX / logBase;
+            return PearsonTypeIII.LogPDF(Mu, Sigma, Gamma, transformed) - Math.Log(logBase) - logX;
         }
 
         /// <inheritdoc/>
@@ -785,7 +840,8 @@ namespace Numerics.Distributions
             DistributionNumerics.ValidateProbability(probability);
             if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
             double[] gradient = new PearsonTypeIII(Mu, Sigma, Gamma).QuantileGradient(probability);
-            double factor = InverseCDF(probability) * Math.Log(Base);
+            double quantile = Math.Exp((Mu + Sigma * gradient[1]) * Math.Log(Base));
+            double factor = quantile * Math.Log(Base);
             for (int i = 0; i < gradient.Length; i++) gradient[i] *= factor;
             return gradient;
         }

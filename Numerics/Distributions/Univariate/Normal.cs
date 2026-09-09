@@ -64,6 +64,11 @@ namespace Numerics.Distributions
 
         private double _mu;
         private double _sigma;
+        private static readonly double _logSqrt2PI = Math.Log(Tools.Sqrt2PI);
+        [NonSerialized] private double _logSigma;
+        [NonSerialized] private volatile bool _logSigmaInitialized;
+        [NonSerialized] private double _logSurvivalAtZero;
+        [NonSerialized] private volatile bool _logSurvivalAtZeroInitialized;
 
         /// <summary>
         /// Gets and sets the location parameter µ (Mu).
@@ -75,6 +80,7 @@ namespace Numerics.Distributions
             {
                 _parametersValid = ValidateParameters(value, Sigma, false) is null;
                 _mu = value;
+                _logSurvivalAtZeroInitialized = false;
             }
         }
 
@@ -89,6 +95,9 @@ namespace Numerics.Distributions
                 if (value < 1E-16 && Math.Sign(value) != -1) value = 1E-16;
                 _parametersValid = ValidateParameters(Mu, value, false) is null;
                 _sigma = value;
+                _logSigma = Math.Log(value);
+                _logSigmaInitialized = true;
+                _logSurvivalAtZeroInitialized = false;
             }
         }
 
@@ -333,6 +342,38 @@ namespace Numerics.Distributions
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Estimate initial values using the method of moments (a.k.a product moments).
+            var moments = Statistics.ProductMoments(sample);
+            initialVals[0] = moments[0];
+            initialVals[1] = moments[1];
+            // Get bounds of mean
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            // Get bounds of standard deviation
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        internal Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
             // Scale before computing sample moments so squaring large observations cannot overflow.
             double magnitude = 0d;
             for (int i = 0; i < sample.Count; i++) magnitude = Math.Max(magnitude, Math.Abs(sample[i]));
@@ -394,7 +435,13 @@ namespace Numerics.Distributions
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
             double z = DistributionNumerics.Standardize(x, Mu, Sigma);
-            return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI);
+            // Field-based deserialization does not invoke the scale setter or restore transient caches.
+            if (!_logSigmaInitialized)
+            {
+                _logSigma = Math.Log(Sigma);
+                _logSigmaInitialized = true;
+            }
+            return -0.5d * z * z - _logSigma - _logSqrt2PI;
         }
 
         /// <inheritdoc/>
@@ -425,6 +472,21 @@ namespace Numerics.Distributions
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
             return DistributionNumerics.NormalLogSurvival(DistributionNumerics.Standardize(x, Mu, Sigma));
+        }
+
+        /// <summary>Gets the existing log probability above zero, cached until either parameter changes.</summary>
+        /// <returns>The value of <see cref="LogCCDF(double)"/> at zero.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the distribution parameters are invalid.</exception>
+        /// <remarks>The transient cache is initialized lazily after field-based deserialization.</remarks>
+        internal double LogCCDFAtZero()
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            if (!_logSurvivalAtZeroInitialized)
+            {
+                _logSurvivalAtZero = LogCCDF(0d);
+                _logSurvivalAtZeroInitialized = true;
+            }
+            return _logSurvivalAtZero;
         }
 
         private static readonly double[] a = [3.3871328727963666080, 1.3314166789178437745e+2, 1.9715909503065514427e+3, 1.3731693765509461125e+4, 4.5921953931549871457e+4, 6.7265770927008700853e+4, 3.3430575583588128105e+4, 2.5090809287301226727e+3];

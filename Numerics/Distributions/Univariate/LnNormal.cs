@@ -430,10 +430,43 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Preserves usable legacy physical-moment initialization and rounded prior bounds,
+        /// including samples containing nonpositive observations. Density support is unchanged.</remarks>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            var moments = Statistics.ProductMoments(sample);
+            initialVals[0] = moments[0];
+            initialVals[1] = moments[1];
+            // Get bounds of mean
+            lowerVals[0] = Tools.DoubleMachineEpsilon;
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
+            // Get bounds of standard deviation
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
             DistributionNumerics.ValidateSample(sample, 4, positive: true);
-            var constraints = new Normal().GetParameterConstraints(sample);
+            var constraints = new Normal().GetRobustParameterConstraints(sample);
             constraints.Item2[0] = Math.Min(Tools.DoubleMachineEpsilon, constraints.Item1[0] / 10d);
             return constraints;
         }

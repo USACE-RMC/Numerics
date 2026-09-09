@@ -304,10 +304,96 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        /// <remarks>Requires finite, strictly positive, nonconstant observations. Returned bounds
-        /// retain a representable small scale and the existing Weibull MLE initialization.</remarks>
+        /// <remarks>Requires finite, nonconstant observations. Preserves the legacy initializer's treatment
+        /// of nonpositive observations whenever its initial values and rounded prior bounds are usable.
+        /// The exceptional-input fallback requires positive observations and retains representable small scales.
+        /// Density support is unchanged.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The sample or a finite feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 2);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            initialVals = LegacyConstraintSolveMLE(sample);
+            // Get bounds of scale
+            lowerVals[0] = Tools.DoubleMachineEpsilon;
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
+            // Get bounds of shape
+            lowerVals[1] = Tools.DoubleMachineEpsilon;
+            upperVals[1] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[1]) + 1d));
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Retains the established constraint initializer arithmetic for ordinary samples.</summary>
+        /// <param name="samples">Observations.</param>
+        /// <returns>The legacy initial parameter values.</returns>
+        private double[] LegacyConstraintSolveMLE(IList<double> samples)
+        {
+            double n = samples.Count;
+            if (n <= 1d)
+            {
+                throw new Exception("Observations not sufficient. There must be more than 1 data point.");
+            }
+
+            double s1 = 0d;
+            double s2 = 0d;
+            double s3 = 0d;
+            double previousC = int.MinValue;
+            double QofC = 0d;
+            double c = 10d; // shape
+            double b = 0d; // scale
+
+            // solve for the shape parameter
+            while (Math.Abs(c - previousC) >= 0.0001d)
+            {
+                s1 = 0d;
+                s2 = 0d;
+                s3 = 0d;
+                foreach (double x in samples)
+                {
+                    if (x > 0d)
+                    {
+                        s1 += Math.Log(x);
+                        s2 += Math.Pow(x, c);
+                        s3 += Math.Pow(x, c) * Math.Log(x);
+                    }
+                }
+
+                QofC = n * s2 / (n * s3 - s1 * s2);
+                previousC = c;
+                c = (c + QofC) / 2d;
+            }
+
+            // solve for scale
+            foreach (double x in samples)
+            {
+                if (x > 0d)
+                {
+                    b += Math.Pow(x, c);
+                }
+            }
+
+            b = Math.Pow(b / n, 1d / c);
+
+            // return parameters
+            return [b, c];
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
         {
             DistributionNumerics.ValidateSample(sample, 2, true);
             var lowerVals = new double[NumberOfParameters];
