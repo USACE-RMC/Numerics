@@ -353,7 +353,7 @@ namespace Numerics.Distributions
             // Get bounds of location
             if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
             lowerVals[0] = initialVals[0] - Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0]))));
-            upperVals[0] = minData;
+            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d)); 
 
             // Get bounds of scale
             lowerVals[1] = Tools.DoubleMachineEpsilon;

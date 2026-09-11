@@ -500,7 +500,7 @@ namespace Numerics.Distributions
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
             // Get initial values
-            initialVals = LegacyConstraintParametersFromMoments(Statistics.ProductMoments(sample));
+            initialVals = ParametersFromMoments(Statistics.ProductMoments(sample));
             // Get bounds of scale
             lowerVals[0] = Tools.DoubleMachineEpsilon;
             upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));

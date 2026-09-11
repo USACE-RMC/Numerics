@@ -683,11 +683,12 @@ namespace Numerics.Distributions
             // symmetric about zero from the magnitude of the initial value, matching Normal's
             // location bounds. A machine-epsilon floor here would reject any sub-unity sample
             // before a fit could start.
+            double real = Math.Exp(initialVals[0] / K);
             if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
-            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
-            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0])) + 1d));
+            lowerVals[0] = Math.Floor(Math.Log(Math.Pow(10d, Math.Floor(Math.Log10(real)) - 1d), Base));
+            upperVals[0] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real)) + 1d), Base));
             // Get bounds of standard deviation
-            double real = Math.Exp(initialVals[1] / K);
+            real = Math.Exp(initialVals[1] / K);
             lowerVals[1] = Tools.DoubleMachineEpsilon;
             upperVals[1] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real) + 1d)), Base));
             upperVals[1] = double.IsNaN(upperVals[1]) ? 4 : upperVals[1];
