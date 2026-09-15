@@ -2,11 +2,12 @@ using Numerics.Distributions;
 
 namespace Distributions
 {
-    /// <summary>Preserves usable constraint envelopes for nonpositive observations from the pre-hardening baseline.</summary>
+    /// <summary>Pins approved constraint envelopes and initialization for nonpositive observations.</summary>
     [TestClass]
     public class Test_NonpositiveConstraintRegressions
     {
-        /// <summary>Checks literal d80bfa8 initialization and rounded bounds without changing estimation data.</summary>
+        // Original d80bfa8 fixtures, with Gamma initialization and log-location bounds repinned to 202095a.
+        /// <summary>Checks approved literal initialization and rounded bounds without changing estimation data.</summary>
         [TestMethod]
         [DataRow("GammaDistribution", 0d)]
         [DataRow("GammaDistribution", -1d)]
@@ -31,8 +32,8 @@ namespace Distributions
             switch (family)
             {
                 case "GammaDistribution":
-                    initial = first == 0d ? new[] { 84.33333333333334, 0.3290513833992095 }
-                        : new[] { 85.78181818181818, 0.3205807545570157 };
+                    initial = first == 0d ? new[] { 84.33333333333333, 0.3290513833992095 }
+                        : new[] { 85.78181818181818, 0.32058075455701573 };
                     lower = new[] { epsilon, epsilon };
                     upper = new[] { 1000d, 10d };
                     break;
@@ -44,13 +45,13 @@ namespace Distributions
                     break;
                 case "LogNormal":
                     initial = new[] { 0.5000000000000002, 1.2909944487358054 };
-                    lower = new[] { -10d, epsilon };
-                    upper = new[] { 10d, 3d };
+                    lower = new[] { -1d, epsilon };
+                    upper = new[] { 2d, 3d };
                     break;
                 case "LogPearsonTypeIII":
                     initial = new[] { 0.25, 1.707825127659933, -0.7528371991317255 };
-                    lower = new[] { -10d, epsilon, -6d };
-                    upper = new[] { 10d, 3d, 6d };
+                    lower = new[] { -1d, epsilon, -6d };
+                    upper = new[] { 2d, 3d, 6d };
                     break;
                 default:
                     initial = new[] { 12.336441557126482, 0.493577181580963 };

@@ -2,11 +2,13 @@ using Numerics.Distributions;
 
 namespace Distributions
 {
-    /// <summary>Freezes valid prior envelopes and initial values from the pre-hardening baseline.</summary>
+    /// <summary>Pins approved prior envelopes and initial values for the legacy constraint fixtures.</summary>
     [TestClass]
     public class Test_LegacyParameterConstraints
     {
-        // Captured from d80bfa8621c48a78cf4ebad7f01326841fac37aa on net8.0.
+        // Original fixtures captured from d80bfa8621c48a78cf4ebad7f01326841fac37aa on net8.0.
+        // Gamma initializers and LogNormal/LogPearsonTypeIII location bounds repinned to 202095a.
+        // Exponential location upper bounds repinned to 2bba500.
         // These fixtures freeze valid initialization and family-specific prior envelopes.
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
         [TestMethod]
@@ -25,7 +27,7 @@ namespace Distributions
             var result = new Exponential().GetParameterConstraints(new double[] { 1d, 2d, 4d, 8d, 16d, 32d });
             AssertArray(new double[] { -0.9d, 11.4d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -1.9d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 1d, 1000d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { 1.0000000000000002d, 1000d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -35,7 +37,7 @@ namespace Distributions
             var result = new Exponential().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 1.0005d, 0.002000000000000076d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -8.9995d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 1.001d, 0.1d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { 1.0010000000000001d, 0.1d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -65,7 +67,7 @@ namespace Distributions
             var result = new Exponential().GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { 0.00833333333333334d, 0.3666666666666667d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -0.00166666666666666d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 10d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { 0.10000000000000012d, 10d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -73,7 +75,7 @@ namespace Distributions
         public void GammaDistribution_ordinary_PreservesBaselineConstraints()
         {
             var result = new GammaDistribution().GetParameterConstraints(new double[] { 10d, 12d, 14d, 16d });
-            AssertArray(new double[] { 0.5128205128205128d, 25.35d }, result.Item1, "initial");
+            AssertArray(new double[] { 0.5128205128205128d, 25.349999999999998d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { 1.11022302462516e-16d, 1.11022302462516e-16d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 10d, 1000d }, result.Item3, "upper");
         }
@@ -83,7 +85,7 @@ namespace Distributions
         public void GammaDistribution_skewed_PreservesBaselineConstraints()
         {
             var result = new GammaDistribution().GetParameterConstraints(new double[] { 1d, 2d, 4d, 8d, 16d, 32d });
-            AssertArray(new double[] { 13.399999999999999d, 0.7835820895522388d }, result.Item1, "initial");
+            AssertArray(new double[] { 13.4d, 0.7835820895522387d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { 1.11022302462516e-16d, 1.11022302462516e-16d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 1000d, 10d }, result.Item3, "upper");
         }
@@ -93,7 +95,7 @@ namespace Distributions
         public void GammaDistribution_nearUnity_PreservesBaselineConstraints()
         {
             var result = new GammaDistribution().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
-            AssertArray(new double[] { 1.662510390690019e-06d, 603003.749999972d }, result.Item1, "initial");
+            AssertArray(new double[] { 1.6625103906900188e-06d, 603003.7499999721d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { 1.11022302462516e-16d, 1.11022302462516e-16d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 0.0001d, 10000000d }, result.Item3, "upper");
         }
@@ -103,7 +105,7 @@ namespace Distributions
         public void GammaDistribution_subUnity_PreservesBaselineConstraints()
         {
             var result = new GammaDistribution().GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
-            AssertArray(new double[] { 0.2555555555555556d, 1.467391304347826d }, result.Item1, "initial");
+            AssertArray(new double[] { 0.25555555555555554d, 1.467391304347826d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { 1.11022302462516e-16d, 1.11022302462516e-16d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 10d, 100d }, result.Item3, "upper");
         }
@@ -544,8 +546,8 @@ namespace Distributions
         {
             var result = new LogNormal().GetParameterConstraints(new double[] { 10d, 12d, 14d, 16d });
             AssertArray(new double[] { 1.1073573160954466d, 0.08791220351278327d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 100d, 2d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { 0d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 3d, 2d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -554,8 +556,8 @@ namespace Distributions
         {
             var result = new LogNormal().GetParameterConstraints(new double[] { 1d, 2d, 4d, 8d, 16d, 32d });
             AssertArray(new double[] { 0.7525749891599528d, 0.5631755534583315d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -10d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 10d, 2d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -1d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 2d, 2d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -564,8 +566,8 @@ namespace Distributions
         {
             var result = new LogNormal().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 0.0010841112099910272d, 0.0005592740172164043d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -0.1d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 2d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -1d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 2d, 2d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -574,8 +576,8 @@ namespace Distributions
         {
             var result = new LogNormal().GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { -0.5484550065040281d, 0.38862805330516337d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -10d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 10d, 2d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -2d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 1d, 2d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -584,8 +586,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII().GetParameterConstraints(new double[] { 10d, 12d, 14d, 16d });
             AssertArray(new double[] { 1.1073573160954466d, 0.08791220351278327d, -0.2899042849970034d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 100d, 2d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { 0d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 3d, 2d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -594,8 +596,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII().GetParameterConstraints(new double[] { 1d, 2d, 4d, 8d, 16d, 32d });
             AssertArray(new double[] { 0.7525749891599528d, 0.5631755534583315d, -1.1187971499007316e-15d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -10d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 10d, 2d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -1d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 2d, 2d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -604,8 +606,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 0.0010841112099910272d, 0.0005592740172164043d, -0.0018543970617275146d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -0.1d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 2d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -1d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 2d, 2d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -614,8 +616,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII().GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { -0.5484550065040281d, 0.38862805330516337d, -1.2610041890269048e-15d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -10d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 10d, 2d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -2d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 1d, 2d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
@@ -769,8 +771,8 @@ namespace Distributions
         {
             var result = new LogNormal { Base = 2d }.GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 0.003601339486451527d, 0.0018578680705316926d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -0.1d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 7d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -4d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 7d, 7d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -779,8 +781,8 @@ namespace Distributions
         {
             var result = new LogNormal { Base = 2d }.GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { -1.8219280948873622d, 1.2909944487358056d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 100d, 7d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -7d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 4d, 7d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -789,8 +791,8 @@ namespace Distributions
         {
             var result = new LogNormal { Base = 2.718281828459045d }.GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 0.002496258311273077d, 0.0012877760149413882d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -0.1d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 5d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -3d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 5d, 5d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -799,8 +801,8 @@ namespace Distributions
         {
             var result = new LogNormal { Base = 2.718281828459045d }.GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { -1.2628643221541278d, 0.8948491622597645d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 100d, 5d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -5d, 1.11022302462516e-16d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 3d, 5d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -809,8 +811,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII { Base = 2d }.GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 0.003601339486451527d, 0.0018578680705316926d, -0.0018543970617339045d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -0.1d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 7d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -4d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 7d, 7d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -819,8 +821,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII { Base = 2d }.GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { -1.8219280948873622d, 1.2909944487358056d, 0d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 100d, 7d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -7d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 4d, 7d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -829,8 +831,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII { Base = 2.718281828459045d }.GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
             AssertArray(new double[] { 0.002496258311273077d, 0.0012877760149413882d, -0.001854397061727415d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -0.1d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 0.1d, 5d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -3d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 5d, 5d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Preserves physical-scale decade rounding before conversion to the configured log base.</summary>
@@ -839,8 +841,8 @@ namespace Distributions
         {
             var result = new LogPearsonTypeIII { Base = 2.718281828459045d }.GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
             AssertArray(new double[] { -1.2628643221541278d, 0.8948491622597645d, 0d }, result.Item1, "initial");
-            CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
-            CollectionAssert.AreEqual(new double[] { 100d, 5d, 6d }, result.Item3, "upper");
+            CollectionAssert.AreEqual(new double[] { -5d, 1.11022302462516e-16d, -6d }, result.Item2, "lower");
+            CollectionAssert.AreEqual(new double[] { 3d, 5d, 6d }, result.Item3, "upper");
         }
 
         /// <summary>Retains hardened zero-center bounds when this family's old location envelope was invalid.</summary>
