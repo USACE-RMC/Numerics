@@ -539,6 +539,77 @@ namespace Mathematics.LinearAlgebra
             }
         }
 
+        /// <summary>
+        /// The internal non-throwing entry point retains known factors and the public failure diagnostics.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryFactorize_KnownFactorAndRejectedPivot()
+        {
+            var matrix = new Matrix(new[,] { { 16d, 4d, 8d }, { 4d, 5d, -4d }, { 8d, -4d, 22d } });
+            Assert.IsTrue(CholeskyDecomposition.TryFactorize(matrix, CholeskyDecomposition.DefaultRelativeTolerance(3),
+                out Matrix lower, out int row, out double pivot));
+            var expected = new[,] { { 4d, 0d, 0d }, { 1d, 2d, 0d }, { 2d, -3d, 3d } };
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                    Assert.AreEqual(expected[i, j], lower[i, j], 0d);
+            }
+            Assert.AreEqual(-1, row);
+            Assert.IsTrue(double.IsNaN(pivot));
+            Assert.AreEqual(8d, matrix[0, 2], 0d);
+
+            matrix = new Matrix(new[,] { { 1d, 2d }, { 2d, 1d } });
+            Assert.IsFalse(CholeskyDecomposition.TryFactorize(matrix, CholeskyDecomposition.DefaultRelativeTolerance(2),
+                out _, out row, out pivot));
+            Assert.AreEqual(1, row);
+            Assert.AreEqual(-3d, pivot, 0d);
+            Assert.AreEqual("Cholesky Decomposition failed. The input matrix is not positive-definite.",
+                AssertThrowsAny(() => new CholeskyDecomposition(matrix)).Message);
+        }
+
+        /// <summary>
+        /// Adjacent correlations straddling the existing default pivot threshold retain opposite decisions.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryFactorize_ExistingPivotThresholdIsUnchanged()
+        {
+            double tolerance = CholeskyDecomposition.DefaultRelativeTolerance(2);
+            double rho = 0.99999999999999978d;
+            var below = new Matrix(new[,] { { 1d, rho }, { rho, 1d } });
+            Assert.IsFalse(CholeskyDecomposition.TryFactorize(below, tolerance, out _, out int row, out double pivot));
+            Assert.AreEqual(1, row);
+            Assert.AreEqual(4.440892098500626E-16d, pivot, 0d);
+            string message = "Cholesky Decomposition failed. The input matrix is not positive-definite. The pivot at row 1 is "
+                + "4.440892E-016 times its diagonal entry, at or below the relative tolerance 4.440892E-016, so the matrix is numerically rank-deficient.";
+            Assert.AreEqual(message, AssertThrowsAny(() => new CholeskyDecomposition(below)).Message);
+            Assert.IsTrue(CholeskyDecomposition.TryFactorize(below, 0d, out _, out _, out _));
+
+            rho = ThreeUlpCorrelation;
+            var above = new Matrix(new[,] { { 1d, rho }, { rho, 1d } });
+            Assert.IsTrue(CholeskyDecomposition.TryFactorize(above, tolerance, out Matrix lower, out _, out _));
+            Assert.AreEqual(Math.Sqrt(6.661338147750939E-16d), lower[1, 1], 0d);
+            var mixedScale = new Matrix(new[,] { { 1E12d, 1d }, { 1d, 1E-11d } });
+            Assert.IsTrue(CholeskyDecomposition.TryFactorize(mixedScale, tolerance, out lower, out _, out _));
+            Assert.AreEqual(1E6d, lower[0, 0], 0d);
+            Assert.AreEqual(1E-6d, lower[1, 0], 0d);
+            Assert.AreEqual(3E-6d, lower[1, 1], 1E-21d);
+        }
+
+        /// <summary>
+        /// Invalid shapes and tolerances still throw rather than masquerading as rejected pivots.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryFactorize_InvalidArgumentsStillThrow()
+        {
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryFactorize(
+                new Matrix(2, 3), 0d, out _, out _, out _));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryFactorize(
+                new Matrix(2), double.NaN, out _, out _, out _));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new CholeskyDecomposition(new Matrix(2, 3)));
+            var exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new CholeskyDecomposition(null, double.NaN));
+            Assert.AreEqual("relativeTolerance", exception.ParamName);
+        }
+
     }
 }
 

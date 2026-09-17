@@ -113,64 +113,94 @@ namespace Numerics.Mathematics.LinearAlgebra
         {
 
             IsPositiveDefinite = false;
-            int i, j, k;
-            if (double.IsNaN(relativeTolerance) || double.IsInfinity(relativeTolerance) || relativeTolerance < 0d || relativeTolerance >= 1d)
-            {
-                throw new ArgumentOutOfRangeException(nameof(relativeTolerance), "The relative tolerance must be a finite value in the interval [0, 1).");
-            }
-            RelativeTolerance = relativeTolerance;
+            ValidateRelativeTolerance(relativeTolerance);
             n = A.NumberOfRows;
             this.A = new Matrix(A.ToArray());
-            L = new Matrix(A.ToArray()); // Lower triangular matrix
-            double sum;
-            if (A.NumberOfColumns != A.NumberOfRows)
+            RelativeTolerance = relativeTolerance;
+            if (!TryFactorize(this.A, relativeTolerance, out Matrix lower, out int failedRow, out double failedPivot))
             {
-                throw new ArgumentOutOfRangeException(nameof(A), "The matrix A must be square.");
+                if (double.IsNaN(failedPivot) || failedPivot <= 0d)
+                    throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite.");
+                throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite. The pivot at row "
+                    + failedRow.ToString(CultureInfo.InvariantCulture) + " is "
+                    + (failedPivot / this.A[failedRow, failedRow]).ToString("E6", CultureInfo.InvariantCulture)
+                    + " times its diagonal entry, at or below the relative tolerance "
+                    + relativeTolerance.ToString("E6", CultureInfo.InvariantCulture)
+                    + ", so the matrix is numerically rank-deficient.");
             }
+            L = lower;
+            IsPositiveDefinite = true;
+        }
 
-            //Decomposing a matrix into Lower triangular
-            for (i = 0; i < n; i++)
+        /// <summary>
+        /// Factors a symmetric matrix using the same pivot decisions as the public constructor,
+        /// without throwing for an expected rejected pivot.
+        /// </summary>
+        /// <param name="matrix">The symmetric input matrix, which is not modified.</param>
+        /// <param name="relativeTolerance">The finite pivot tolerance in [0, 1).</param>
+        /// <param name="lower">The lower triangular factor on success; an incomplete factor on failure.</param>
+        /// <param name="failedRow">The rejected pivot's row, or -1 on success.</param>
+        /// <param name="failedPivot">The rejected pivot before its square root, or NaN on success.</param>
+        /// <returns>True when every pivot passes the existing positive-definiteness checks.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the matrix is not square or the tolerance is outside its permitted range.
+        /// </exception>
+        /// <remarks>
+        /// Preserves the constructor's upper-triangle input convention, reverse-order inner products,
+        /// and diagonal-relative threshold. Invalid arguments remain distinct from rejected pivots.
+        /// </remarks>
+        internal static bool TryFactorize(Matrix matrix, double relativeTolerance, out Matrix lower,
+            out int failedRow, out double failedPivot)
+        {
+            ValidateRelativeTolerance(relativeTolerance);
+            if (matrix.NumberOfColumns != matrix.NumberOfRows)
+                throw new ArgumentOutOfRangeException("A", "The matrix A must be square.");
+
+            int dimension = matrix.NumberOfRows;
+            lower = new Matrix(matrix.ToArray());
+            failedRow = -1;
+            failedPivot = double.NaN;
+            for (int i = 0; i < dimension; i++)
             {
-                for (j = i; j < n; j++)
+                for (int j = i; j < dimension; j++)
                 {
-                    sum = L[i, j];
-
-                    for (k = i - 1; k >= 0; k -= 1)
-                        sum -= L[i, k] * L[j, k]; // Cholesky formula
+                    double sum = lower[i, j];
+                    for (int k = i - 1; k >= 0; k--)
+                        sum -= lower[i, k] * lower[j, k];
                     if (i == j)
                     {
-                        // Reject a pivot that is negligible relative to its own diagonal entry. The diagonal
-                        // guard keeps the threshold at zero (the absolute test) whenever A[i,i] is not a
-                        // positive finite number.
-                        double diagonal = this.A[i, i];
+                        double diagonal = matrix[i, i];
                         double threshold = diagonal > 0d && !double.IsInfinity(diagonal) ? relativeTolerance * diagonal : 0d;
-                        if (double.IsNaN(sum) || sum <= 0d)
-                            throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite.");
-                        if (sum <= threshold)
-                            throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite. The pivot at row "
-                                + i.ToString(CultureInfo.InvariantCulture) + " is "
-                                + (sum / diagonal).ToString("E6", CultureInfo.InvariantCulture)
-                                + " times its diagonal entry, at or below the relative tolerance "
-                                + relativeTolerance.ToString("E6", CultureInfo.InvariantCulture)
-                                + ", so the matrix is numerically rank-deficient.");
-                        L[i, i] = Math.Sqrt(sum);
+                        if (double.IsNaN(sum) || sum <= 0d || sum <= threshold)
+                        {
+                            failedRow = i;
+                            failedPivot = sum;
+                            return false;
+                        }
+                        lower[i, i] = Math.Sqrt(sum);
                     }
                     else
                     {
-                        L[j, i] = sum / L[i, i]; // Upper Triangular matrix
+                        lower[j, i] = sum / lower[i, i];
                     }
                 }
             }
-
-            // Making sure 0 entries for upper triangular matrix
-            for (i = 0; i < n; i++)
+            for (int i = 0; i < dimension; i++)
             {
-                for (j = 0; j < i; j++)
-                    L[j, i] = 0.0d;
+                for (int j = 0; j < i; j++)
+                    lower[j, i] = 0.0d;
             }
-            // Failure of the decomposition indicates that the matrix A is not positive-definite.
-            // Success, means it is.
-            IsPositiveDefinite = true;
+            return true;
+        }
+
+        /// <summary>Validates the pivot tolerance before accessing the input matrix.</summary>
+        /// <param name="relativeTolerance">The finite relative pivot tolerance in [0, 1).</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the tolerance is invalid.</exception>
+        /// <remarks>Preserves the public constructor's original argument-validation order.</remarks>
+        private static void ValidateRelativeTolerance(double relativeTolerance)
+        {
+            if (double.IsNaN(relativeTolerance) || double.IsInfinity(relativeTolerance) || relativeTolerance < 0d || relativeTolerance >= 1d)
+                throw new ArgumentOutOfRangeException(nameof(relativeTolerance), "The relative tolerance must be a finite value in the interval [0, 1).");
         }
 
         /// <summary>
