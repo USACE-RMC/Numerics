@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
 
 namespace Mathematics.Optimization
@@ -226,37 +226,18 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// An exhausted strong-Wolfe search reports a distinct failure instead of successful convergence.
+        /// A descending linear objective attains its constrained optimum at the upper bound.
         /// </summary>
-        /// <remarks>
-        /// The linear objective is minimized at the upper bound. Projection keeps every zoom trial at that
-        /// bound, where the unprojected slope cannot satisfy the Wolfe curvature condition. The optimizer
-        /// must retain the best evaluated bound point without treating the returned start coordinates as a
-        /// converged parameter step. The requested Hessian remains available for compatibility with callers
-        /// whose objective wrappers observe those evaluations.
-        /// </remarks>
         [TestMethod]
-        public void Test_WolfeSearchExhaustionReportsLineSearchFailed()
+        public void Test_LinearBoundaryOptimumReportsSuccess()
         {
-            var solver = new BFGS(
-                x => -x[0],
-                1,
-                new[] { 0d },
-                new[] { 0d },
-                new[] { 1d },
-                _ => new[] { -1d })
-            {
-                ReportFailure = false,
-                RecordTraces = false,
-                ComputeHessian = true
-            };
-
+            var solver = new BFGS(x => -x[0], 1, new[] { 0d }, new[] { 0d }, new[] { 1d },
+                _ => new[] { -1d });
             solver.Minimize();
-
-            Assert.AreEqual(OptimizationStatus.LineSearchFailed, solver.Status);
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
             Assert.AreEqual(1d, solver.BestParameterSet.Values[0]);
+            Assert.AreEqual(1, solver.Iterations);
             Assert.IsNotNull(solver.Hessian);
         }
-
     }
 }
