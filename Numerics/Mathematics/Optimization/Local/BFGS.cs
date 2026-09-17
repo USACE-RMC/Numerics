@@ -153,7 +153,7 @@ namespace Numerics.Mathematics.Optimization
                 {
                     // A stale metric can exhaust the search even with a negative slope. As in
                     // classical BFGS implementations (for example R's vmmin), restart the metric
-                    // once at this point. Both searches must satisfy the same Wolfe conditions.
+                    // once at this point. Both searches use the same acceptance conditions.
                     inverseHessian = Matrix.Identity(n);
                     for (int i = 0; i < n; i++) direction[i] = -projected[i];
                     accepted = LineSearch(x, f, g, direction, stpmax, out nextX, out nextF, out nextG, ref cancel);
@@ -292,7 +292,8 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="cancel">The evaluation-budget cancellation flag.</param>
         /// <returns>Whether a step was accepted.</returns>
         /// <remarks>A bound can truncate a descending ray before Wolfe curvature is attainable; subsequent
-        /// convergence still requires the projected gradient tolerance. Interior searches use c1=1e-4 and c2=0.9.</remarks>
+        /// convergence still requires the projected gradient tolerance. Interior searches use c1=1e-4 and c2=0.9.
+        /// A supplied gradient may independently certify termination when objective rounding obscures decrease.</remarks>
         private bool LineSearch(double[] x0, double f0, double[] g0, double[] p, double stpmax,
             out double[] x, out double f, out double[] g, ref bool cancel)
         {
@@ -317,8 +318,16 @@ namespace Numerics.Mathematics.Optimization
                 double value = EvaluateObjective(trial, ref cancel);
                 if (cancel) return false;
                 if (!Tools.IsFinite(value) || value > f0 + 1e-4 * alpha * slope0)
+                {
+                    if (TryRoundoffConvergence(trial, value, f0, out var stationaryGradient, ref cancel))
+                    {
+                        x = trial; f = value; g = stationaryGradient;
+                        return true;
+                    }
+                    if (cancel) return false;
                     return Zoom(x0, f0, g0, p, slope0, previous, fPrevious, slopePrevious,
                         alpha, value, double.NaN, out x, out f, out g, ref cancel);
+                }
 
                 var gradient = EvaluateGradient(trial, ref cancel);
                 if (cancel) return false;
@@ -344,6 +353,34 @@ namespace Numerics.Mathematics.Optimization
                 if (alpha == previous) return false;
             }
             return false;
+        }
+
+        /// <summary>Checks stationarity independently when rounding can obscure objective decrease.</summary>
+        /// <param name="trial">The feasible trial point.</param>
+        /// <param name="value">Its scaled objective value.</param>
+        /// <param name="initialValue">The objective at the start of the line search.</param>
+        /// <param name="gradient">The validated trial gradient when stationarity is confirmed.</param>
+        /// <param name="cancel">The evaluation-budget cancellation flag.</param>
+        /// <returns>Whether the existing projected-gradient convergence condition is satisfied.</returns>
+        /// <remarks>
+        /// A small objective difference alone never establishes convergence. Only a supplied gradient
+        /// can independently confirm a rounding-ambiguous trial; finite differences reuse the noisy
+        /// function values. The eight-machine-epsilon relative window applies only to this terminal
+        /// check, has no unit-scale floor, and does not change Wolfe conditions for continuing steps
+        /// or the requested gradient tolerance. Non-finite values and resolvable increases are rejected.
+        /// </remarks>
+        private bool TryRoundoffConvergence(double[] trial, double value, double initialValue,
+            out double[] gradient, ref bool cancel)
+        {
+            gradient = null!;
+            double roundoff = 8d * Tools.DoubleMachineEpsilon * Math.Abs(initialValue);
+            if (Gradient == null || !Tools.IsFinite(value) || Math.Abs(value - initialValue) > roundoff)
+                return false;
+            var candidateGradient = EvaluateGradient(trial, ref cancel);
+            if (cancel || ProjectedGradient(trial, candidateGradient, new double[NumberOfParameters]) > AbsoluteTolerance)
+                return false;
+            gradient = candidateGradient;
+            return true;
         }
 
         /// <summary>Constructs a point on a feasible ray, correcting only boundary roundoff.</summary>
@@ -375,7 +412,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="f">The returned point's objective.</param>
         /// <param name="g">The returned point's gradient.</param>
         /// <param name="cancel">The evaluation-budget cancellation flag.</param>
-        /// <returns>Whether a Wolfe step was found.</returns>
+        /// <returns>Whether a Wolfe step or an independently stationary roundoff-limited point was found.</returns>
         /// <remarks>Uses the bracket logic of Nocedal and Wright, Numerical Optimization, algorithm 3.6;
         /// compare SciPy 1.16.2 optimize/_linesearch.py. Interpolation is safeguarded away from both endpoints.</remarks>
         private bool Zoom(double[] x0, double f0, double[] g0, double[] p, double slope0,
@@ -395,6 +432,12 @@ namespace Numerics.Mathematics.Optimization
                 if (cancel) return false;
                 if (!Tools.IsFinite(value) || value > f0 + 1e-4 * alpha * slope0)
                 {
+                    if (TryRoundoffConvergence(trial, value, f0, out var stationaryGradient, ref cancel))
+                    {
+                        x = trial; f = value; g = stationaryGradient;
+                        return true;
+                    }
+                    if (cancel) return false;
                     high = alpha; fHigh = value; slopeHigh = double.NaN;
                 }
                 else

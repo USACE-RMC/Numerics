@@ -190,6 +190,84 @@ public class Test_BFGSRegression
         Assert.IsLessThanOrEqualTo(solver.AbsoluteTolerance, Math.Abs(1e12 * solver.BestParameterSet.Values[0]));
     }
 
+    /// <summary>Roundoff in a sum of squares must not reject its independently stationary minimum.</summary>
+    /// <param name="offset">An additive objective constant, including a negative minimum.</param>
+    /// <param name="maximize">Whether to maximize the negative quadratic.</param>
+    /// <remarks>The exact objective is offset + 1 + x squared. Its unique minimum is x=0.</remarks>
+    [TestMethod]
+    [DataRow(0d, false)]
+    [DataRow(-1.25d, false)]
+    [DataRow(0d, true)]
+    public void RoundedUpMinimum_WithSuppliedGradient_Converges(double offset, bool maximize)
+    {
+        double sign = maximize ? -1d : 1d;
+        Func<double[], double> objective = p => sign * (offset + 0.5 *
+            ((p[0] - 1) * (p[0] - 1) + (p[0] + 1) * (p[0] + 1)));
+        Assert.IsLessThan(sign * objective(new[] { 0d }),
+            sign * objective(new[] { 6.8000000000000005e-9 }));
+        var solver = new BFGS(objective, 1, new[] { 6.8000000000000005e-9 },
+            new[] { -10d }, new[] { 10d }, p => new[] { sign * 2 * p[0] })
+        { ComputeHessian = false, ReportFailure = false };
+        if (maximize) solver.Maximize(); else solver.Minimize();
+        Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+        Assert.AreEqual(0d, solver.BestParameterSet.Values[0], 1e-12);
+        Assert.IsLessThanOrEqualTo(solver.AbsoluteTolerance, Math.Abs(2 * solver.BestParameterSet.Values[0]));
+        // Optimizer stores minimization-scaled fitness for both optimization directions.
+        Assert.AreEqual(sign * objective(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness);
+        Assert.AreEqual(1, solver.Iterations);
+    }
+
+    /// <summary>A rounding-sized increase must not establish success when the supplied gradient is nonzero.</summary>
+    [TestMethod]
+    public void RoundoffRise_WithoutStationarity_StillFails()
+    {
+        var solver = new BFGS(p => p[0] == 0 ? 1d : 1d + 4 * Numerics.Tools.DoubleMachineEpsilon,
+            1, new[] { 0d }, new[] { -10d }, new[] { 10d }, _ => new[] { 1e-7 })
+        { ComputeHessian = false, ReportFailure = false };
+        solver.Minimize();
+        Assert.AreEqual(OptimizationStatus.LineSearchFailed, solver.Status);
+        Assert.AreEqual(0, solver.Iterations);
+    }
+
+    /// <summary>A stationary trial with a resolvable objective increase must still be rejected.</summary>
+    /// <remarks>The initial unit step reaches the local maximum at zero; backtracking reaches x=5/6.</remarks>
+    [TestMethod]
+    public void StationaryUphillTrial_OutsideRoundoff_Backtracks()
+    {
+        var solver = new BFGS(p => 1 + 2 * p[0] * p[0] * p[0] - 2.5 * p[0] * p[0],
+            1, new[] { 1d }, new[] { -2d }, new[] { 2d }, p => new[] { 6 * p[0] * p[0] - 5 * p[0] })
+        { ComputeHessian = false, ReportFailure = false };
+        solver.Minimize();
+        Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+        Assert.AreEqual(5d / 6d, solver.BestParameterSet.Values[0], 1e-8);
+        Assert.IsLessThan(0.5, solver.BestParameterSet.Fitness);
+    }
+
+    /// <summary>An invalid derivative at a rounding-ambiguous trial must remain an explicit failure.</summary>
+    [TestMethod]
+    public void RoundoffTrial_InvalidSuppliedGradient_ReportsFailure()
+    {
+        var solver = new BFGS(p => 0.5 * ((p[0] - 1) * (p[0] - 1) + (p[0] + 1) * (p[0] + 1)),
+            1, new[] { 6.8000000000000005e-9 }, new[] { -10d }, new[] { 10d },
+            p => new[] { Math.Abs(p[0]) < 1e-12 ? double.NaN : 2 * p[0] })
+        { ComputeHessian = false, ReportFailure = false };
+        solver.Minimize();
+        Assert.AreEqual(OptimizationStatus.Failure, solver.Status);
+    }
+
+    /// <summary>Extra gradient checks on ambiguous trials must not overwrite evaluation-budget termination.</summary>
+    [TestMethod]
+    public void RoundoffTrial_PreservesEvaluationBudget()
+    {
+        var solver = new BFGS(p => p[0] == 0 ? 1d : 1d + 4 * Numerics.Tools.DoubleMachineEpsilon,
+            1, new[] { 0d }, new[] { -10d }, new[] { 10d }, _ => new[] { 1e-7 })
+        { ComputeHessian = false, ReportFailure = false, MaxFunctionEvaluations = 10 };
+        solver.Minimize();
+        Assert.AreEqual(OptimizationStatus.MaximumFunctionEvaluationsReached, solver.Status);
+        Assert.AreEqual(10, solver.FunctionEvaluations);
+        Assert.AreEqual(0, solver.Iterations);
+    }
+
     /// <summary>Creates a Rosenbrock problem with its analytical derivative.</summary>
     /// <returns>The configured optimizer.</returns>
     private static BFGS RosenbrockSolver() => new BFGS(
