@@ -1750,10 +1750,13 @@ namespace Data.TimeSeriesAnalysis
 
         #region BOM (Australia) Tests
 
+        // Live BOM checks remain available locally but are excluded from PR integration.
+        // Run them with: dotnet test -c Release --filter "TestCategory=BOMIntegration"
+
         /// <summary>
         /// Validates a full-period-of-record download for the BOM Cotter River station (discharge).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_FullPor_CotterRiver_Discharge()
         {
             if (!await BomAvailable()) return;
@@ -1764,7 +1767,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the BOM Goodradigbee River station (discharge).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_FullPor_Goodradigbee_Discharge()
         {
             if (!await BomAvailable()) return;
@@ -1775,7 +1778,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the BOM Murray River station (stage).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_FullPor_MurrayRiver_Stage()
         {
             if (!await BomAvailable()) return;
@@ -1786,7 +1789,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests discharge unit conversions (cms ↔ cfs) for BOM data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_UnitConversion_Discharge_CmsCfs()
         {
             if (!await BomAvailable()) return;
@@ -1812,7 +1815,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests stage unit conversions (m ↔ ft) for BOM data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_UnitConversion_Stage_MFt()
         {
             if (!await BomAvailable()) return;
@@ -1859,7 +1862,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests BOM with a windowed date range to verify date filtering works correctly.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_WindowedDownload_Works()
         {
             if (!await BomAvailable()) return;
@@ -1884,7 +1887,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates instantaneous discharge download from BOM.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_InstantaneousDischarge_Works()
         {
             if (!await BomAvailable()) return;
@@ -1898,7 +1901,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates instantaneous stage download from BOM.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_InstantaneousStage_Works()
         {
             if (!await BomAvailable()) return;
@@ -1912,7 +1915,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates daily precipitation download from BOM.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_DailyPrecipitation_Works()
         {
             if (!await BomAvailable()) return;
@@ -1926,7 +1929,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests precipitation unit conversions (mm ↔ inches) for BOM data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("BOMIntegration")]
         public async Task BOM_UnitConversion_Precip_MmIn()
         {
             if (!await BomAvailable()) return;
