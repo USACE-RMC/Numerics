@@ -31,6 +31,6 @@ jobs:
       - name: Test
         env:
           VSTEST_CONNECTION_TIMEOUT: '600'
-        # BOM's live WDP backend intermittently returns HTTP 500 DatasourceError.
-        # Keep offline BOM validation and all other tests in the PR gate.
-        run: dotnet test -c Release --no-build --filter "TestCategory!=BOMIntegration"
+        # Live provider outages and full-record download timeouts must not block PRs.
+        # Keep deterministic download, parsing, validation, and numerical tests in the gate.
+        run: dotnet test -c Release --no-build --filter "TestCategory!=LiveServiceIntegration"

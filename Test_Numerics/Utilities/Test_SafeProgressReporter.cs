@@ -1,6 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Utilities;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -77,6 +78,7 @@ namespace Utilities
         /// cancellation source rather than the source that was current before registration.
         /// </summary>
         [TestMethod]
+        [DoNotParallelize]
         public void Test_CreateProgressModifier_ResetHandoffIsAtomic()
         {
             var parent = new SafeProgressReporter("parent");
@@ -87,29 +89,86 @@ namespace Utilities
 
             object registryLock = lockField.GetValue(parent)!;
             SafeProgressReporter child = null!;
-            var registrationThread = new Thread(() => child = parent.CreateProgressModifier(1f, "child"));
-            bool registrationBlocked;
+            using var registrationWaiting = new ManualResetEventSlim();
+            var registrationContext = new WaitNotifyingSynchronizationContext(registrationWaiting);
+            ExceptionDispatchInfo registrationException = null!;
+            var registrationThread = new Thread(() =>
+            {
+                var previousContext = SynchronizationContext.Current;
+                try
+                {
+                    SynchronizationContext.SetSynchronizationContext(registrationContext);
+                    child = parent.CreateProgressModifier(1f, "child");
+                }
+                catch (Exception ex)
+                {
+                    registrationException = ExceptionDispatchInfo.Capture(ex);
+                }
+                finally
+                {
+                    SynchronizationContext.SetSynchronizationContext(previousContext);
+                }
+            }) { IsBackground = true };
+            bool registrationStarted = false;
+            bool registrationBlocked = false;
+            bool registrationCompleted = false;
 
             Monitor.Enter(registryLock);
             try
             {
                 registrationThread.Start();
-                registrationBlocked = SpinWait.SpinUntil(
-                    () => (registrationThread.ThreadState & ThreadState.WaitSleepJoin) != 0,
-                    5000);
+                registrationStarted = true;
+                // The worker performs no other waits after installing the context, so this
+                // notification comes from Monitor.Enter inside CreateProgressModifier.
+                registrationBlocked = registrationWaiting.Wait(5000);
                 if (registrationBlocked)
                     sourceField.SetValue(parent, new CancellationTokenSource());
             }
             finally
             {
                 Monitor.Exit(registryLock);
+                if (registrationStarted)
+                    registrationCompleted = registrationThread.Join(5000);
             }
 
+            Assert.IsTrue(registrationCompleted, "Child registration did not complete.");
+            registrationException?.Throw();
             Assert.IsTrue(registrationBlocked, "Child registration did not reach the registry lock.");
-            Assert.IsTrue(registrationThread.Join(5000), "Child registration did not complete.");
 
             parent.RequestCancel();
             Assert.IsTrue(child.IsCancelRequested, "The child retained the cancellation source from before the reset handoff.");
+        }
+
+        /// <summary>
+        /// Signals when the registration thread enters a blocking wait, then preserves the
+        /// normal wait behavior so the test can replace the source while holding the registry lock.
+        /// </summary>
+        private sealed class WaitNotifyingSynchronizationContext : SynchronizationContext
+        {
+            private readonly ManualResetEventSlim _waiting;
+
+            /// <summary>
+            /// Creates a context that notifies the test when a blocking wait begins.
+            /// </summary>
+            /// <param name="waiting">The event to signal when the worker begins waiting.</param>
+            public WaitNotifyingSynchronizationContext(ManualResetEventSlim waiting)
+            {
+                _waiting = waiting;
+                SetWaitNotificationRequired();
+            }
+
+            /// <summary>
+            /// Signals the blocking wait and delegates to the default synchronization context.
+            /// </summary>
+            /// <param name="waitHandles">The native handles to wait on.</param>
+            /// <param name="waitAll">Whether all handles must be signaled.</param>
+            /// <param name="millisecondsTimeout">The maximum wait duration in milliseconds.</param>
+            /// <returns>The result of the default synchronization-context wait.</returns>
+            public override int Wait(IntPtr[] waitHandles, bool waitAll, int millisecondsTimeout)
+            {
+                _waiting.Set();
+                return base.Wait(waitHandles, waitAll, millisecondsTimeout);
+            }
         }
     }
 }
