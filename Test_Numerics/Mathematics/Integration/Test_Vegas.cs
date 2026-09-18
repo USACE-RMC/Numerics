@@ -291,6 +291,71 @@ namespace Mathematics.Integration
 
         }
 
-    }
+    
+        /// <summary>
+        /// Integrates a separable product above twenty dimensions, where the stratification
+        /// self-limits to one stratum per axis and the algorithm runs as pure adaptive importance
+        /// sampling.
+        /// </summary>
+        [TestMethod()]
+        public void Test_HighDimension()
+        {
+            const int dimensions = 30;
+            var min = new double[dimensions];
+            var max = new double[dimensions];
+            for (int i = 0; i < dimensions; i++) { min[i] = 0d; max[i] = 1d; }
 
+            // Mean of 2*x_i over the axes; the exact integral over the unit cube is one. A
+            // PRODUCT of the same factors would concentrate its mass in a single corner and is
+            // hopeless at this dimension for any sample budget -- the curse of dimensionality,
+            // not a property of the integrator.
+            var vegas = new Vegas((x, w) =>
+            {
+                double sum = 0d;
+                for (int i = 0; i < dimensions; i++) sum += 2d * x[i];
+                return sum / dimensions;
+            }, dimensions, min, max)
+            {
+                UseSobolSequence = false,
+                Random = new Numerics.Sampling.MersenneTwister(12345),
+                FunctionCalls = 20000,
+            };
+
+            vegas.Integrate();
+
+            Assert.AreEqual(1d, vegas.Result, 0.01d);
+        }
+
+        /// <summary>
+        /// Test the seeded scrambled-Sobol driver's default inertness and reproducibility: an
+        /// explicit null seed reproduces the unrandomized default bit-for-bit, identical seeds
+        /// reproduce each other, distinct seeds and the unrandomized sequence all diverge, and
+        /// every configuration lands on the analytic integral.
+        /// </summary>
+        [TestMethod]
+        public void Test_SobolSeed_DefaultInert_And_Reproducible()
+        {
+            static double Run(int? seed, bool assign)
+            {
+                var vegas = new Vegas((x, w) => x[0] * x[0] + x[1] * x[1], 2,
+                    new[] { 0d, 0d }, new[] { 1d, 1d });
+                if (assign) vegas.SobolSeed = seed;
+                vegas.Integrate();
+                return vegas.Result;
+            }
+
+            double untouched = Run(null, assign: false);
+            double explicitNull = Run(null, assign: true);
+            double seeded = Run(123, assign: true);
+            double seededRepeat = Run(123, assign: true);
+            double seededOther = Run(456, assign: true);
+
+            Assert.AreEqual(untouched, explicitNull, 0d, "An explicit null seed must reproduce the unrandomized default bit-for-bit.");
+            Assert.AreEqual(seeded, seededRepeat, 0d, "Identical Sobol seeds must reproduce bit-for-bit.");
+            Assert.AreNotEqual(seeded, seededOther, "Distinct Sobol seeds must diverge.");
+            Assert.AreNotEqual(untouched, seeded, "A scrambled sequence must diverge from the unrandomized one.");
+            Assert.AreEqual(2d / 3d, untouched, 0.01d);
+            Assert.AreEqual(2d / 3d, seeded, 0.01d);
+        }
+    }
 }

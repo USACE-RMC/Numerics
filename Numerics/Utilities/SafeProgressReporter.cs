@@ -51,6 +51,7 @@ namespace Numerics.Utilities
         private MessageType _previousMessageType = MessageType.Status;
         private Process? _externalProcess;
         private List<SafeProgressReporter> _subProgReporterCollection = new List<SafeProgressReporter>();
+        private readonly object _subProgReporterLock = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         /// <summary>
         /// Callback for invoking progress event handlers on the synchronization context.
@@ -110,7 +111,14 @@ namespace Numerics.Utilities
         /// </summary>
         public ReadOnlyCollection<SafeProgressReporter> ChildReporters
         {
-            get { return new ReadOnlyCollection<SafeProgressReporter>(_subProgReporterCollection); }
+            get
+            {
+                // A snapshot, so callers can enumerate while other threads register children
+                lock (_subProgReporterLock)
+                {
+                    return new ReadOnlyCollection<SafeProgressReporter>(_subProgReporterCollection.ToArray());
+                }
+            }
         }
 
         /// <summary>
@@ -341,11 +349,14 @@ namespace Numerics.Utilities
         /// </para>
         /// </remarks>
         public void ResetCancel()    
-        { 
-            _cancellationTokenSource = new CancellationTokenSource();
-            foreach (var subProg in _subProgReporterCollection)
+        {
+            lock (_subProgReporterLock)
             {
-                subProg._cancellationTokenSource = _cancellationTokenSource;
+                _cancellationTokenSource = new CancellationTokenSource();
+                foreach (var subProg in _subProgReporterCollection)
+                {
+                    subProg._cancellationTokenSource = _cancellationTokenSource;
+                }
             }
         }
 
@@ -368,8 +379,11 @@ namespace Numerics.Utilities
             child._previousProgress = 0d;
             child.ProgressReported += (reporter, prog, progDelta) => ReportProgress(_previousProgress + progDelta * fractionOfTotal);
             child.MessageReported += msg => ReportMessage(msg);
-            child._cancellationTokenSource = _cancellationTokenSource;
-            _subProgReporterCollection.Add(child);
+            lock (_subProgReporterLock)
+            {
+                child._cancellationTokenSource = _cancellationTokenSource;
+                _subProgReporterCollection.Add(child);
+            }
             var invokeChildCreatedHandlers = new SendOrPostCallback(state => ChildReporterCreated?.Invoke(child));
             _synchronizationContext?.Post(invokeChildCreatedHandlers, child);
             return child;

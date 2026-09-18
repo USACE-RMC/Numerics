@@ -132,13 +132,17 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Mean
         {
-            get { return Lambda * Gamma.Function(1.0d + 1.0d / Kappa); }
+            get
+            {
+                if (Kappa == 1) return Lambda;
+                return Math.Exp(Math.Log(Lambda) + Gamma.LogGamma(1 + 1 / Kappa));
+            }
         }
 
         /// <inheritdoc/>
         public override double Median
         {
-            get { return Lambda * Math.Pow(Math.Log(2.0d), 1.0d / Kappa); }
+            get { return InverseCDF(.5); }
         }
 
         /// <inheritdoc/>
@@ -158,9 +162,20 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Uses the exact exponential-power relationship to GEV and restores scale in
+        /// logarithms, without forming lambda squared or overflowing raw Gamma moments.</remarks>
         public override double StandardDeviation
         {
-            get { return Math.Sqrt(Lambda * Lambda * Gamma.Function(1.0d + 2.0d / Kappa) - Mean * Mean); }
+            get
+            {
+                if (Kappa == 1) return Lambda;
+                double power = 1 / Kappa;
+                if (double.IsPositiveInfinity(power)) return double.PositiveInfinity;
+                double logarithm = power <= .05
+                    ? Math.Log(power) + Math.Log(new GeneralizedExtremeValue(0, 1, power).StandardDeviation)
+                    : .5 * GeneralizedExtremeValue.LogPowerVariance(power);
+                return Math.Exp(Math.Log(Lambda) + logarithm);
+            }
         }
 
         /// <inheritdoc/>
@@ -168,9 +183,10 @@ namespace Numerics.Distributions
         {
             get
             {
-                double mu = Mean;
-                double sigma = StandardDeviation;
-                return (Gamma.Function(1.0d + 3.0d / Kappa) * Math.Pow(Lambda, 3.0d) - 3.0d * mu * sigma * sigma - Math.Pow(mu, 3.0d)) / Math.Pow(sigma, 3.0d);
+                double power = 1 / Kappa;
+                // For T unit exponential, T^power = 1 - power*GEV(0,1,power).
+                return double.IsPositiveInfinity(power) ? double.PositiveInfinity
+                    : -new GeneralizedExtremeValue(0, 1, power).Skewness;
             }
         }
 
@@ -179,13 +195,9 @@ namespace Numerics.Distributions
         {
             get
             {
-                double g1 = Gamma.Function(1d + 1d / Kappa);
-                double g2 = Gamma.Function(1d + 2d / Kappa);
-                double g3 = Gamma.Function(1d + 3d / Kappa);
-                double g4 = Gamma.Function(1d + 4d / Kappa);
-                double num = -6 * Math.Pow(g1, 4d) + 12d * g2 * Math.Pow(g1, 2d) - 3d * Math.Pow(g2, 2d) - 4d * g1 * g3 + g4;
-                double den = Math.Pow(g2 - Math.Pow(g1, 2d), 2d);
-                return 3d + num / den;
+                double power = 1 / Kappa;
+                return double.IsPositiveInfinity(power) ? double.PositiveInfinity
+                    : new GeneralizedExtremeValue(0, 1, power).Kurtosis;
             }
         }
 
@@ -251,6 +263,8 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override void SetParameters(IList<double> parameters)
         {
+            if (parameters == null || parameters.Count != NumberOfParameters)
+                throw new ArgumentOutOfRangeException(nameof(parameters), "Exactly two parameters are required.");
             SetParameters(parameters[0], parameters[1]);
         }
 
@@ -280,17 +294,38 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
+            if (parameters == null || parameters.Count != NumberOfParameters)
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(parameters), "Exactly two parameters are required.");
+                if (throwException) throw exception;
+                return exception;
+            }
             return ValidateParameters(parameters[0], parameters[1], throwException);
         }
 
         /// <inheritdoc/>
+        /// <remarks>Requires finite, nonconstant observations. Preserves the legacy initializer's treatment
+        /// of nonpositive observations whenever its initial values and rounded prior bounds are usable.
+        /// The exceptional-input fallback requires positive observations and retains representable small scales.
+        /// Density support is unchanged.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The sample or a finite feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 2);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
         {
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
             // Get initial values
-            initialVals = SolveMLE(sample);
+            initialVals = LegacyConstraintSolveMLE(sample);
             // Get bounds of scale
             lowerVals[0] = Tools.DoubleMachineEpsilon;
             upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
@@ -300,45 +335,11 @@ namespace Numerics.Distributions
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
         }
 
-        /// <inheritdoc/>
-        public double[] MLE(IList<double> sample)
-        {
-            // Set constraints
-            var tuple = GetParameterConstraints(sample);
-            var Initials = tuple.Item1;
-            var Lowers = tuple.Item2;
-            var Uppers = tuple.Item3;
-
-            // Solve using Nelder-Mead (Downhill Simplex)
-            double logLH(double[] x)
-            {
-                var W = new Weibull();
-                W.SetParameters(x);
-                return W.LogLikelihood(sample);
-            }
-            var solver = new NelderMead(logLH, NumberOfParameters, Initials, Lowers, Uppers);
-            solver.ReportFailure = true;
-            solver.Maximize();
-            return solver.BestParameterSet.Values;
-        }
-
-        /// <summary>
-        /// The Maximum Likelihood Estimation method for the Weibull distribution.
-        /// </summary>
-        /// <param name="samples">The array of sample data.</param>
-        /// <remarks>
-        /// Implemented according to: Parameter estimation of the Weibull probability distribution, 1994, Hongzhu Qiao, Chris P. Tsokos
-        /// <para>
-        /// References:
-        /// This code was copied and modified from the Math.NET Library.
-        /// <list type="bullet">
-        /// <item><description>
-        /// Math.NET Numerics Library, http://numerics.mathdotnet.com
-        /// </description></item>
-        /// </list>
-        /// </para>
-        /// </remarks>
-        public double[] SolveMLE(IList<double> samples)
+        /// <summary>Retains the established constraint initializer arithmetic for ordinary samples.</summary>
+        /// <param name="samples">Observations.</param>
+        /// <returns>The legacy initial parameter values.</returns>
+        /// <exception cref="Exception">Fewer than two observations are supplied.</exception>
+        private double[] LegacyConstraintSolveMLE(IList<double> samples)
         {
             double n = samples.Count;
             if (n <= 1d)
@@ -390,21 +391,145 @@ namespace Numerics.Distributions
             return [b, c];
         }
 
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is invalid, insufficient, constant, or produces an invalid positive parameter.</exception>
+        /// <exception cref="InvalidOperationException">The initialization iteration is numerically unresolved.</exception>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 2, true);
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            // Get initial values
+            var initialVals = SolveMLE(sample);
+            DistributionNumerics.PositiveParameterBounds(initialVals[0], out lowerVals[0], out upperVals[0]);
+            DistributionNumerics.PositiveParameterBounds(initialVals[1], out lowerVals[1], out upperVals[1]);
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <inheritdoc/>
+        public double[] MLE(IList<double> sample)
+        {
+            // Set constraints
+            var tuple = GetParameterConstraints(sample);
+            var Initials = tuple.Item1;
+            var Lowers = tuple.Item2;
+            var Uppers = tuple.Item3;
+
+            // Solve using Nelder-Mead (Downhill Simplex)
+            double logLH(double[] x)
+            {
+                var W = new Weibull();
+                W.SetParameters(x);
+                return W.LogLikelihood(sample);
+            }
+            var solver = new NelderMead(logLH, NumberOfParameters, Initials, Lowers, Uppers);
+            solver.ReportFailure = true;
+            solver.Maximize();
+            return solver.BestParameterSet.Values;
+        }
+
+        /// <summary>
+        /// The Maximum Likelihood Estimation method for the Weibull distribution.
+        /// </summary>
+        /// <param name="samples">The array of sample data.</param>
+        /// <remarks>
+        /// Implemented according to: Parameter estimation of the Weibull probability distribution, 1994, Hongzhu Qiao, Chris P. Tsokos
+        /// <para>All observations must be finite and strictly positive, with at least two distinct
+        /// observations. The same fixed-point iteration is evaluated with log-relative bounded
+        /// weights, retaining every observation and the existing convergence threshold.</para>
+        /// <para>
+        /// References:
+        /// This code was copied and modified from the Math.NET Library.
+        /// <list type="bullet">
+        /// <item><description>
+        /// Math.NET Numerics Library, http://numerics.mathdotnet.com
+        /// </description></item>
+        /// </list>
+        /// </para>
+        /// </remarks>
+        /// <returns>The initial scale and shape estimates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The observations are invalid, insufficient or constant.</exception>
+        /// <exception cref="InvalidOperationException">The initialization iteration is numerically unresolved.</exception>
+        public double[] SolveMLE(IList<double> samples)
+        {
+            DistributionNumerics.ValidateSample(samples, 2, true);
+            double n = samples.Count;
+            double scale = DistributionNumerics.InitializationScale(samples);
+            var logRatios = new double[samples.Count];
+            for (int i = 0; i < samples.Count; i++)
+            {
+                double ratio = samples[i] / scale;
+                logRatios[i] = ratio > 0 ? Math.Log(ratio) : Math.Log(samples[i]) - Math.Log(scale);
+            }
+
+            double s1 = 0d;
+            double s2 = 0d;
+            double s3 = 0d;
+            double previousC = int.MinValue;
+            double QofC = 0d;
+            double c = 10d; // shape
+            double b = 0d; // scale
+
+            // solve for the shape parameter
+            while (Math.Abs(c - previousC) >= 0.0001d)
+            {
+                s1 = 0d;
+                s2 = 0d;
+                s3 = 0d;
+                foreach (double logarithm in logRatios)
+                {
+                    double weight = Math.Exp(c * logarithm);
+                    s1 += logarithm;
+                    s2 += weight;
+                    s3 += weight * logarithm;
+                }
+
+                QofC = n * s2 / (n * s3 - s1 * s2);
+                previousC = c;
+                c = (c + QofC) / 2d;
+                if (!(c > 0) || !Tools.IsFinite(c))
+                    throw new InvalidOperationException("The Weibull initialization iteration did not produce a finite positive shape.");
+            }
+
+            // solve for scale
+            foreach (double logarithm in logRatios)
+            {
+                b += Math.Exp(c * logarithm);
+            }
+
+            b = scale * Math.Pow(b / n, 1d / c);
+
+            // return parameters
+            return [b, c];
+        }
+
         /// <inheritdoc/>
         public override double PDF(double x)
+        {
+            return Math.Exp(LogPDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space, so far-tail densities that underflow <see cref="PDF(double)"/>
+        /// keep a finite log density.
+        /// When <c>x = 0</c> and the shape <c>κ &lt; 1</c>, the Weibull density has a genuine
+        /// integrable singularity and this method intentionally returns positive infinity.
+        /// </remarks>
+        public override double LogPDF(double x)
         {
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Lambda, Kappa, true);
-            if (x < Minimum) return 0.0d;
-            if (x == 0.0d && Kappa == 1.0d)
-            {
-                return Kappa / Lambda;
-            }
-            else
-            {
-                return Kappa / Lambda * Math.Pow(x / Lambda, Kappa - 1.0d) * Math.Exp(-Math.Pow(x / Lambda, Kappa));
-            }
+            if (x < Minimum || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
+            if (x == 0) return Kappa == 1 ? -Math.Log(Lambda) : Kappa < 1 ? double.PositiveInfinity : double.NegativeInfinity;
+            double logarithm = LogStandardizedValue(x);
+            double power = Math.Exp(Kappa * logarithm);
+            if (double.IsPositiveInfinity(power)) return double.NegativeInfinity;
+            double lf = Math.Log(Kappa) - Math.Log(Lambda) + (Kappa - 1) * logarithm - power;
+            return double.IsNaN(lf) ? double.NegativeInfinity : lf;
         }
 
         /// <inheritdoc/>
@@ -413,16 +538,46 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Lambda, Kappa, true);
-            if (x < Minimum)
+            if (x <= Minimum)
                 return 0d;
-            return 1d - Math.Exp(-Math.Pow(x / Lambda, Kappa));
+            return -Tools.Expm1(-Math.Exp(Kappa * LogStandardizedValue(x)));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Retains the lower-tail logarithm when the positive power underflows.</remarks>
+        public override double LogCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Lambda, Kappa, true);
+            if (x <= 0) return double.NegativeInfinity;
+            double logarithm = Kappa * LogStandardizedValue(x);
+            double power = Math.Exp(logarithm);
+            return power == 0 ? logarithm : DistributionNumerics.Log1mExp(-power);
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Lambda, Kappa, true);
+            return x <= 0 ? 0 : -Math.Exp(Kappa * LogStandardizedValue(x));
+        }
+
+        /// <summary>Forms log(x/lambda) without an overflowing or underflowing intermediate ratio.</summary>
+        /// <param name="x">The positive observation in physical coordinates.</param>
+        /// <returns>The logarithm of <c>x/lambda</c>.</returns>
+        private double LogStandardizedValue(double x)
+        {
+            double ratio = x / Lambda;
+            return ratio > 0 && !double.IsInfinity(ratio) ? Math.Log(ratio) : Math.Log(x) - Math.Log(Lambda);
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -432,7 +587,12 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters(Lambda, Kappa, true);
             // Compute the inverse CDF
-            return Lambda * Math.Pow(Math.Log(1d / (1d - probability)), 1d / Kappa);
+            // The exact exponential identity preserves subnormal probabilities on .NET Framework.
+            if (Kappa == 1) return -Lambda * Tools.Log1p(-probability);
+            double logarithm = Math.Log(-Tools.Log1p(-probability)) / Kappa;
+            double unitQuantile = Math.Exp(logarithm);
+            return unitQuantile < 1E-200 || double.IsInfinity(unitQuantile)
+                ? Math.Exp(Math.Log(Lambda) + logarithm) : Lambda * unitQuantile;
         }
 
         /// <inheritdoc/>
@@ -442,8 +602,12 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Retains the published rounded MLE covariance constants in scale and shape coordinates.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Parameters are invalid or sample size is not positive.</exception>
+        /// <exception cref="NotImplementedException">The method is not maximum likelihood.</exception>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
             if (estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
             {
                 throw new NotImplementedException();
@@ -456,38 +620,41 @@ namespace Numerics.Distributions
             double a = Lambda;
             double b = Kappa;
             var covar = new double[2, 2];
-            covar[0, 0] = 1.108665d * a * a / (sampleSize * b * b); // scale
-            covar[1, 1] = 0.607927d * b * b / sampleSize; // shape
+            double scaledA = (a / b) / Math.Sqrt(sampleSize);
+            double scaledB = b / Math.Sqrt(sampleSize);
+            covar[0, 0] = 1.108665d * (scaledA * scaledA); // scale
+            covar[1, 1] = 0.607927d * (scaledB * scaledB); // shape
             covar[0, 1] = 0.257022d * a / sampleSize;
             covar[1, 0] = covar[0, 1];
             return covar;
         }
 
         /// <inheritdoc/>
+        /// <remarks>Uses the actual inverse-CDF gradient and restores scale after the normalized covariance contraction.</remarks>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            var covar = ParameterCovariance(sampleSize, estimationMethod);
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateParameters(Lambda, Kappa, true);
+            var covar = new Weibull(1, Kappa).ParameterCovariance(sampleSize, estimationMethod);
             var grad = QuantileGradient(probability);
-            double varA = covar[0, 0];
-            double varB = covar[1, 1];
-            double covAB = covar[1, 0];
-            double dQx1 = grad[0];
-            double dQx2 = grad[1];
-            return Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + 2d * dQx1 * dQx2 * covAB;
+            return DistributionNumerics.ScaledQuantileVariance(covar, [InverseCDF(probability), grad[1]]);
         }
 
         /// <inheritdoc/>
+        /// <remarks>For t=-log(1-p), returns [Q/lambda, -Q*log(t)/kappa squared].</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Parameters are invalid or probability is not finite and strictly interior.</exception>
         public double[] QuantileGradient(double probability)
         {
+            DistributionNumerics.ValidateProbability(probability);
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_lambda, _kappa, true);
-            double a = Lambda;
-            double b = Kappa;
+            double logT = Math.Log(-Tools.Log1p(-probability));
+            double quantile = InverseCDF(probability);
             var gradient = new double[]
             {
-                Math.Log(Math.Pow(1d / (1d - probability), 1d / Kappa)), // scale
-                a * Math.Log(1d - probability) / (b * b) // shape
+                Math.Exp(logT / Kappa), // scale
+                -(quantile / Kappa) * (logT / Kappa) // shape
             };
             return gradient;
         }
@@ -495,25 +662,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Get gradients
-            var dQp1 = QuantileGradient(probabilities[0]);
-            var dQp2 = QuantileGradient(probabilities[1]);
-            // Compute determinant
-            // |a b|
-            // |c d|
-            // |A| = ad − bc
-            double a = dQp1[0];
-            double b = dQp1[1];
-            double c = dQp2[0];
-            double d = dQp2[1];
-            determinant = a * d - b * c;
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b }, { c, d } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
     }

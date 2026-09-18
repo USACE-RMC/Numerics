@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -25,6 +25,38 @@ namespace Distributions.Univariate
     [TestClass]
     public class Test_LogPearsonTypeIII
     {
+
+        /// <summary>
+        /// Verifies cloning preserves the configured logarithm base and resulting distribution.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_PreservesBase()
+        {
+            var source = new LogPearsonTypeIII(4.2d, 0.4d, 0.25d) { Base = Math.E };
+
+            var clone = (LogPearsonTypeIII)source.Clone();
+
+            Assert.AreNotSame(source, clone);
+            Assert.AreEqual(source.Mu, clone.Mu, 0d);
+            Assert.AreEqual(source.Sigma, clone.Sigma, 0d);
+            Assert.AreEqual(source.Gamma, clone.Gamma, 0d);
+            Assert.AreEqual(source.Base, clone.Base, 0d);
+            Assert.AreEqual(source.CDF(75d), clone.CDF(75d), 0d);
+        }
+
+        /// <summary>
+        /// Verifies bootstrap distributions retain the configured logarithm base.
+        /// </summary>
+        [TestMethod]
+        public void Test_Bootstrap_PreservesBase()
+        {
+            var source = new LogPearsonTypeIII(4.2d, 0.4d, 0.25d) { Base = Math.E };
+
+            var bootstrap = (LogPearsonTypeIII)source.Bootstrap(
+                ParameterEstimationMethod.MethodOfMoments, 40, 12345);
+
+            Assert.AreEqual(source.Base, bootstrap.Base, 0d);
+        }
 
         // Reference: "The Gamma Family and Derived Distributions Applied in Hydrology", B. Bobee & F. Ashkar, Water Resources Publications, 1991.
         // Table 1.2 Maximum annual peak discharge values in cms, observed at the Harricana River at Amos (Quebec, Canada)
@@ -243,10 +275,11 @@ namespace Distributions.Univariate
         public void Test_Mode()
         {
             var LP3 = new LogPearsonTypeIII();
-            Assert.AreEqual(1000, LP3.Mode,  1e-04);
+            // Frozen defining-formula evidence: docs/distributions/oracles/normal-pearson.R.
+            Assert.AreEqual(265.67685816501944, LP3.Mode, 1e-10);
 
             var LP3ii = new LogPearsonTypeIII(1, 1, 1);
-            Assert.AreEqual(3.16227, LP3ii.Mode,  1e-04);
+            Assert.AreEqual(0.4980296964878923, LP3ii.Mode, 1e-13);
         }
 
         /// <summary>
@@ -261,7 +294,8 @@ namespace Distributions.Univariate
             var LP3ii = new LogPearsonTypeIII(1,1,1);
             Assert.AreEqual(0.1, LP3ii.Minimum,  1e-05);
 
-            var LP3iii = new LogPearsonTypeIII(1, -1, 1);
+            // A bounded upper tail requires negative skew and a positive standard deviation.
+            var LP3iii = new LogPearsonTypeIII(1, 1, -1);
             Assert.AreEqual(0,LP3iii.Minimum);
         }
 
@@ -277,7 +311,7 @@ namespace Distributions.Univariate
             var LP3ii = new LogPearsonTypeIII(1,1,1);
             Assert.AreEqual(double.PositiveInfinity, LP3ii.Maximum);
 
-            var LP3iii = new LogPearsonTypeIII(1, -1, 1);
+            var LP3iii = new LogPearsonTypeIII(1, 1, -1);
             Assert.AreEqual(1000, LP3iii.Maximum, 1e-04);
         }
 
@@ -364,5 +398,44 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.3d, recovered[1], 1E-5);
             Assert.AreEqual(-0.1d, recovered[2], 1E-4);
         }
+        /// <summary>
+        /// Verify the parameter constraints admit a negative log10-space mean.
+        /// </summary>
+        /// <remarks>
+        /// See the matching LogNormal test: the location parameter is the mean of the
+        /// log10-transformed data, negative whenever the data are mostly below 1; a machine-epsilon
+        /// lower bound would reject any such sample before a fit could start.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LP3_ParameterConstraints_AllowNegativeLogMean()
+        {
+            var sample = new double[] { 0.12, 0.31, 0.45, 0.08, 0.90, 1.4, 0.25, 0.6, 0.5, 0.75, 0.2, 0.33 };
+            var constraints = new LogPearsonTypeIII().GetParameterConstraints(sample);
+            var initials = constraints.Item1;
+            var lowers = constraints.Item2;
+            var uppers = constraints.Item3;
+            Assert.IsLessThan(0d, initials[0], "Fixture precondition: the log10 mean is negative.");
+            Assert.IsLessThan(uppers[0], lowers[0], "The mean bounds must not be inverted.");
+            Assert.IsTrue(initials[0] >= lowers[0] && initials[0] <= uppers[0],
+                "The initial mean must sit inside its own bounds.");
+            Assert.AreEqual(double.NegativeInfinity, new LogPearsonTypeIII().MinimumOfParameters[0]);
+        }
+
+        /// <summary>
+        /// Log-Pearson III shapes below one have a genuine density singularity at the
+        /// transformed support boundary for both skew directions.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_ShapeBelowOneIsPositiveInfinityAtLocation()
+        {
+            var positiveSkew = new LogPearsonTypeIII(1.0, 1.5, 3.0);
+            var negativeSkew = new LogPearsonTypeIII(-1.0, 1.5, -3.0);
+
+            Assert.AreEqual(0.0, positiveSkew.Xi, 0.0);
+            Assert.AreEqual(0.0, negativeSkew.Xi, 0.0);
+            Assert.AreEqual(double.PositiveInfinity, positiveSkew.LogPDF(1.0));
+            Assert.AreEqual(double.PositiveInfinity, negativeSkew.LogPDF(1.0));
+        }
+
     }
 }

@@ -122,12 +122,21 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] InverseCDF(double u, double v)
+        /// <remarks>
+        /// Uses the Clayton closed-form conditional inversion
+        /// v = (u^(−θ)·(t^(−θ/(θ+1)) − 1) + 1)^(−1/θ).
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
-            v = Math.Pow(Math.Pow(u, -Theta) * (Math.Pow(v, -Theta / (Theta + 1d)) - 1d) + 1d, -1d / Theta);
-            return [u, v];
+            return Math.Pow(Math.Pow(u, -Theta) * (Math.Pow(t, -Theta / (Theta + 1d)) - 1d) + 1d, -1d / Theta);
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
         /// <summary>

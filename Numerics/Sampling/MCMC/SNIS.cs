@@ -69,19 +69,37 @@ namespace Numerics.Sampling.MCMC
         /// <inheritdoc/>
         protected override void ValidateSettings()
         {
-            if (NumberOfChains != 1) throw new ArgumentException(nameof(InitialIterations), "There can only be 1 chain with this method.");
-            if (OutputLength < 100) throw new ArgumentException(nameof(OutputLength), "The output length must be at least 100.");
-            if (Iterations < OutputLength) throw new ArgumentException(nameof(Iterations), "The number of iterations cannot be less than the output length.");
-            if (WarmupIterations != 0) throw new ArgumentException(nameof(WarmupIterations), "There are no warmup iterations with this method.");
-            if (ThinningInterval != 1) throw new ArgumentException(nameof(ThinningInterval), "The thinning interval must be 1 for this method.");
-            if (InitialIterations != 1) throw new ArgumentException(nameof(InitialIterations), "The initial population must be 1 for this method.");
+            if (NumberOfChains != 1) throw new ArgumentException("There can only be 1 chain with this method.", nameof(NumberOfChains));
+            if (OutputLength < 100) throw new ArgumentException("The output length must be at least 100.", nameof(OutputLength));
+            if (Iterations < OutputLength) throw new ArgumentException("The number of iterations cannot be less than the output length.", nameof(Iterations));
+            if (WarmupIterations != 0) throw new ArgumentException("There are no warmup iterations with this method.", nameof(WarmupIterations));
+            if (ThinningInterval != 1) throw new ArgumentException("The thinning interval must be 1 for this method.", nameof(ThinningInterval));
+            if (InitialIterations != 1) throw new ArgumentException("The initial population must be 1 for this method.", nameof(InitialIterations));
             if (mvn != null && mvn.ParametersValid == false)
-                throw new ArgumentException(nameof(MultivariateNormal), "The multivariate Normal importance distribution is invalid.");
+                throw new ArgumentException("The multivariate Normal importance distribution is invalid.", nameof(MultivariateNormal));
         }
 
         /// <summary>
         /// Perform importance sampling.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The resampling list is ordered by <c>Fitness</c>, not by <c>Weight</c>. After the normalized
+        /// posterior weights are computed, the sample list is sorted ascending on
+        /// <c>ParameterSet.Fitness</c>, and the resampling CDF is then accumulated from
+        /// <c>ParameterSet.Weight</c> in that order. With no importance distribution supplied the weight
+        /// is the log-likelihood itself, so the two keys coincide; with an importance distribution the
+        /// weight is the log-likelihood minus the proposal log-density, so the list is not ordered by the
+        /// quantity the CDF accumulates. The CDF is non-decreasing either way, because every increment is
+        /// clamped non-negative, so the ordering affects which sample each plotting position selects
+        /// rather than the validity of the draw.
+        /// </para>
+        /// <para>
+        /// The sort is stable, so draws with tied fitness — commonly many -Infinity values under wide
+        /// priors — keep their original draw order and a seeded run resamples the same output on every
+        /// run and platform.
+        /// </para>
+        /// </remarks>
         public override void Sample()
         {
             InitializeChains();
@@ -138,38 +156,42 @@ namespace Numerics.Sampling.MCMC
        
             // Get the maximum a posteriori
             for (int i = 0; i < Iterations; i++)
-                if (IsFinite(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight > MAP.Weight)
+                if (Tools.IsFinite(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight > MAP.Weight)
                     MAP = MarkovChains[0][i].Clone();
 
             // Get the normalization factor
             double max = MAP.Weight;
-            if (!IsFinite(max))
+            if (!Tools.IsFinite(max))
                 throw new InvalidOperationException("SNIS failed because all importance weights are non-finite.");
 
             double sum = 0;
             for (int i = 0; i < Iterations; i++)
             {
-                if (IsFinite(MarkovChains[0][i].Weight))
+                if (Tools.IsFinite(MarkovChains[0][i].Weight))
                 {
                     sum += Math.Exp(MarkovChains[0][i].Weight - max);
                 }            
             }
-            if (!IsFinite(sum) || sum <= 0d)
+            if (!Tools.IsFinite(sum) || sum <= 0d)
                 throw new InvalidOperationException("SNIS failed because the finite importance weights could not be normalized.");
 
             double normalization = max + Math.Log(sum);
-            if (!IsFinite(normalization))
+            if (!Tools.IsFinite(normalization))
                 throw new InvalidOperationException("SNIS failed because the importance-weight normalization is non-finite.");
 
             // Compute the posterior weights
             Parallel.For(0, Iterations, (idx) => 
             {
-                double w = IsFinite(MarkovChains[0][idx].Weight) ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
+                double w = Tools.IsFinite(MarkovChains[0][idx].Weight) ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
                 MarkovChains[0][idx] = new ParameterSet(MarkovChains[0][idx].Values, MarkovChains[0][idx].Fitness, w);
             });
 
-            // Sort list in ascending order of posterior weights
-            MarkovChains[0].Sort((x, y) => x.Fitness.CompareTo(y.Fitness));
+            // The list is sorted ascending on Fitness while the CDF below accumulates Weight; the two
+            // keys coincide only when no importance distribution is supplied. See the remarks on Sample().
+            // OrderBy is a stable sort, so tied fitness values (commonly many -Infinity draws under wide
+            // priors) keep their draw order; List<T>.Sort's tie order is implementation-defined and
+            // differs between target frameworks, so a seeded run would resample differently per runtime.
+            MarkovChains[0] = MarkovChains[0].OrderBy(x => x.Fitness).ToList();
             var cdf = new double[Iterations];
             cdf[0] = Math.Max(0.0, MarkovChains[0][0].Weight);
 
@@ -186,16 +208,6 @@ namespace Numerics.Sampling.MCMC
                 //idx = Math.Max(0, Math.Min(OutputLength - 1, idx));
                 Output[0].Add(MarkovChains[0][idx].Clone());
             }
-        }
-
-        /// <summary>
-        /// Determines whether a value is finite.
-        /// </summary>
-        /// <param name="value">The value to evaluate.</param>
-        /// <returns><c>true</c> when the value is neither NaN nor infinite; otherwise <c>false</c>.</returns>
-        private static bool IsFinite(double value)
-        {
-            return !double.IsNaN(value) && !double.IsInfinity(value);
         }
 
     }

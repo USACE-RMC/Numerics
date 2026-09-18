@@ -40,7 +40,9 @@ namespace Numerics.Sampling.MCMC
                 MarkovChains[i] = sampler.MarkovChains[i].ToList();
                 Output.AddRange(sampler.Output[i].ToList());
             }
-            AcceptanceRates = sampler.AcceptanceRates.ToArray();
+            AcceptanceRates = sampler is NUTS nuts
+                ? nuts.HamiltonianAcceptanceRates.ToArray()
+                : sampler.AcceptanceRates.ToArray();
             MeanLogLikelihood = sampler.MeanLogLikelihood.ToList();
             MAP = sampler.MAP.Clone();
             ProcessParameterResults(sampler, alpha);
@@ -79,10 +81,13 @@ namespace Numerics.Sampling.MCMC
         public List<double>? MeanLogLikelihood { get; private set; }
 
         /// <summary>
-        /// The acceptance rate for each chain.
+        /// The acceptance rate for each chain. For NUTS samplers this is the mean Hamiltonian
+        /// acceptance statistic (the quantity step-size adaptation targets); for every other
+        /// sampler it is the fraction of iterations whose proposal was accepted.
         /// </summary>
         [JsonInclude]
         public double[] AcceptanceRates { get; private set; } = null!;
+
 
         /// <summary>
         /// Parameter results using the output posterior parameter sets.

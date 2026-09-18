@@ -228,6 +228,75 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
+        /// The indexed divide overload rejects a zero divisor with the same exception contract as
+        /// its all-values twin and leaves the selected values unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_Divide_Indexed_RejectsZeroLikeTwin()
+        {
+            var plain = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 2d, 4d });
+            var indexed = plain.Clone();
+
+            var expected = Assert.Throws<ArgumentException>(() => plain.Divide(0d));
+            var actual = Assert.Throws<ArgumentException>(() => indexed.Divide(0d, new[] { 1 }));
+
+            Assert.AreEqual(expected.ParamName, actual.ParamName);
+            Assert.AreEqual(expected.Message, actual.Message);
+            Assert.AreEqual(2d, indexed[0].Value, 0d);
+            Assert.AreEqual(4d, indexed[1].Value, 0d);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed log transform skips out-of-range indexes like its sibling overloads.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogTransform_Indexed_SkipsOutOfRangeIndexes()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 10, 100, 1000 });
+            ts.LogTransform(new[] { 1, 7, -1 });
+            Assert.AreEqual(10d, ts[0].Value, 1E-6);
+            Assert.AreEqual(2d, ts[1].Value, 1E-6);
+            Assert.AreEqual(1000d, ts[2].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed log transform still marks in-range non-positive values as missing.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogTransform_Indexed_MarksNonPositiveInRangeValuesMissing()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { -5, 100, 1000 });
+            ts.LogTransform(new[] { 0, 1 });
+            Assert.IsTrue(double.IsNaN(ts[0].Value));
+            Assert.AreEqual(2d, ts[1].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed inverse skips out-of-range indexes like its sibling overloads.
+        /// </summary>
+        [TestMethod]
+        public void Test_Inverse_Indexed_SkipsOutOfRangeIndexes()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 2, 4, 8 });
+            ts.Inverse(new[] { 0, 5, -2 });
+            Assert.AreEqual(0.5, ts[0].Value, 1E-6);
+            Assert.AreEqual(4d, ts[1].Value, 1E-6);
+            Assert.AreEqual(8d, ts[2].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed inverse still marks in-range zero and missing values as missing.
+        /// </summary>
+        [TestMethod]
+        public void Test_Inverse_Indexed_MarksZeroInRangeValuesMissing()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 0, 4, 8 });
+            ts.Inverse(new[] { 0, 2 });
+            Assert.IsTrue(double.IsNaN(ts[0].Value));
+            Assert.AreEqual(0.125, ts[2].Value, 1E-6);
+        }
+
+        /// <summary>
         /// Test the CumulativeSum method
         /// </summary>
         [TestMethod]
@@ -241,6 +310,17 @@ namespace Data.TimeSeriesAnalysis
             var newTS = ts.CumulativeSum();
             Equal(newTS, values);
 
+        }
+
+        /// <summary>
+        /// Verifies that the cumulative sum preserves the source series' time interval.
+        /// </summary>
+        [TestMethod]
+        public void Test_Cumulative_PreservesTimeInterval()
+        {
+            var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 01, 01), new double[] { 22, 16, 33, 5, 12, 36, 48, 10, 18, 15, 22, 13 });
+            var newTS = ts.CumulativeSum();
+            Assert.AreEqual(ts.TimeInterval, newTS.TimeInterval);
         }
 
         /// <summary>
@@ -285,6 +365,22 @@ namespace Data.TimeSeriesAnalysis
             Assert.AreEqual(0, missing);
             Assert.AreEqual(11.9, ts[10].Value, 1E-6);
             Assert.AreEqual(8.9, ts[11].Value, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that the indexed interpolation matches its non-indexed twin at the series start instead of reading before the first ordinate.
+        /// </summary>
+        [TestMethod]
+        public void Test_InterpolateMissingData_Indexed_MatchesTwinAtSeriesStart()
+        {
+            var indexed = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1, double.NaN, double.NaN });
+            var plain = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), new double[] { 1, double.NaN, double.NaN });
+            indexed.InterpolateMissingData(1, new[] { 1 });
+            plain.InterpolateMissingData(1);
+            for (int i = 0; i < plain.Count; i++)
+            {
+                Assert.AreEqual(plain[i].Value, indexed[i].Value);
+            }
         }
 
         /// <summary>
@@ -595,9 +691,9 @@ namespace Data.TimeSeriesAnalysis
         public void Test_PeaksOverThreshold_MovingSum_NaN()
         {
             // One legitimate 2-day exceedance (5 + 6 = 11). The trailing 8.0 sits at the very end
-            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0].
-            // Pre-fix: [NaN, 8.0] silently became 8.0 -> spurious extra event above threshold 7.
-            // Post-fix: that window is NaN -> excluded. Only [5, 6] = 11 remains.
+            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0] —
+            // a NaN window carries no event, so nothing above threshold 7 may come from it and
+            // only [5, 6] = 11 remains.
             var values = new double[] { 0.1, 0.2, 5.0, 6.0, 0.1, 0.0, 0.1, 0.2, 0.0, double.NaN, 8.0 };
             var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 01, 01), values);
 
@@ -764,6 +860,27 @@ namespace Data.TimeSeriesAnalysis
             trueValues = new double[] { 5840, 5840, 5840, 5840, 7020, 7020, 7020, 7020, 1412.25, 1412.25, 1412.25, 1412.25, 1043, 1043, 1043, 1043 };
             for (int i = 0; i < trueValues.Length; i++)
                 Assert.AreEqual(trueValues[i], newTS[i].Value, 1E-2);
+        }
+
+        /// <summary>
+        /// The standard deviation of a series with missing values must equal the sample standard
+        /// deviation of its observed values.
+        /// </summary>
+        /// <remarks>
+        /// Reference values verified against Python pandas 2.3.3 (Series.std(), which skips NaN)
+        /// and exact rational arithmetic. The observed values of { 1, NaN, 2, 3 } have sample
+        /// standard deviation exactly 1, and those of { NaN, 3.1, NaN, 4.7, 2.2, NaN, 5.9, 1.4 }
+        /// have 1.8338484124921557, with pandas within two units in the last place of the exact
+        /// rational value.
+        /// </remarks>
+        [TestMethod]
+        public void Test_StandardDeviation_WithMissingValues()
+        {
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 01, 01), new double[] { 1, double.NaN, 2, 3 });
+            Assert.AreEqual(1.0, ts.StandardDeviation(), 1E-14);
+
+            var gappy = new TimeSeries(TimeInterval.OneDay, new DateTime(2024, 01, 01), new double[] { double.NaN, 3.1, double.NaN, 4.7, 2.2, double.NaN, 5.9, 1.4 });
+            Assert.AreEqual(1.8338484124921557, gappy.StandardDeviation(), 1E-14);
         }
 
         /// <summary>
@@ -941,6 +1058,41 @@ namespace Data.TimeSeriesAnalysis
                     Assert.AreEqual(validP[i, j], percentiles[i, j], 1E-10);
                     Assert.AreEqual(validS[i, j], summary[i, j], 1E-10);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Test that the mean column of MonthlySummaryStatistics() is the sequential arithmetic
+        /// mean of each month's values, reproduced bit-for-bit by Statistics.Mean.
+        /// </summary>
+        /// <remarks>
+        /// The summary sorts each month's values ascending before reducing them, so the oracle
+        /// applies the same order. Sequential accumulation makes the reduction deterministic on
+        /// every host regardless of processor count, and the delta of zero detects any
+        /// reassociation of the summation order.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MonthlySummaryStats_MeanColumnIsSequentialMean()
+        {
+            // Three years of monthly values spanning several orders of magnitude so a change in
+            // summation order would alter the last bits of the mean.
+            var values = new double[36];
+            for (int i = 0; i < values.Length; i++)
+            {
+                values[i] = Math.Pow(10d, (i % 5) - 2) * (1d + i / 35d);
+            }
+            var ts = new TimeSeries(TimeInterval.OneMonth, new DateTime(2021, 01, 01), values);
+
+            var summary = ts.MonthlySummaryStatistics();
+            for (int month = 1; month <= 12; month++)
+            {
+                var monthlyData = new List<double>();
+                for (int j = 0; j < ts.Count; j++)
+                {
+                    if (ts[j].Index.Month == month) { monthlyData.Add(ts[j].Value); }
+                }
+                monthlyData.Sort();
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(monthlyData), summary[month - 1, 7], 0d);
             }
         }
 
@@ -1249,12 +1401,11 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
-        /// Regression test for the off-by-one bug.
         /// On a strongly trended series x[t] = t, the conditional KNN bootstrap (Lall-Sharma)
-        /// should advance through the trend, accumulating mean drift of ≈ +1 per step. The
-        /// pre-fix implementation took the neighbor's own value rather than x[j+1], which
-        /// kept the trajectory hovering near the starting value (zero net drift).
-        /// We average drift over multiple seeds to crush the random-walk noise.
+        /// advances through the trend, accumulating mean drift of ≈ +1 per step: each step
+        /// must take the neighbor's successor value x[j+1], never the neighbor's own value,
+        /// or the trajectory hovers near the starting value (zero net drift). Drift is
+        /// averaged over multiple seeds to suppress the random-walk noise.
         /// </summary>
         [TestMethod]
         public void Test_ResampleWithKNN_AdvancesThroughTime()
@@ -1273,11 +1424,11 @@ namespace Data.TimeSeriesAnalysis
             }
             avgDrift /= trials;
 
-            // Pre-fix: avgDrift ~ N(0, ~5) — fails this assertion clearly.
-            // Post-fix: avgDrift ~ +50 (drift = +1 per step over 50 steps).
+            // Successor sampling gives avgDrift ≈ +50 (+1 per step over 50 steps);
+            // neighbor-value sampling gives avgDrift ~ N(0, ~5) and fails clearly.
             Assert.IsGreaterThan(25.0, avgDrift,
                 $"Expected KNN trajectory to advance through the trend (avgDrift > 25 over {steps} steps); " +
-                $"observed avgDrift = {avgDrift:F2}. The pre-fix off-by-one keeps the trajectory near the starting value.");
+                $"observed avgDrift = {avgDrift:F2}. Sampling the neighbor's own value keeps the trajectory near the starting value.");
         }
 
         /// <summary>
@@ -1355,8 +1506,9 @@ namespace Data.TimeSeriesAnalysis
             }
             double avgLag1 = sumLag1 / trials;
 
-            // Post-fix: avgLag1 should be > 0.4 (close to phiTrue=0.7, allow shrinkage).
-            // Pre-fix: avgLag1 is dominated by KNN-neighbor random walk near a fixed point, NOT phi.
+            // The resampler must recover the AR(1) persistence: avgLag1 above 0.4 (near
+            // phiTrue = 0.7 with shrinkage), not the near-zero autocorrelation of a
+            // KNN-neighbor random walk about a fixed point.
             Assert.IsTrue(avgLag1 > 0.4 && avgLag1 < 0.95,
                 $"KNN should recover lag-1 autocorrelation in the AR(1) regime; expected ~{phiTrue}, got {avgLag1:F3}.");
         }
@@ -1480,9 +1632,9 @@ namespace Data.TimeSeriesAnalysis
         /// Clear should empty the series and raise a single reset event.
         /// </summary>
         /// <remarks>
-        /// Clear used to remove elements one at a time, costing two full equality scans per
-        /// element (O(n²) on large downloads). This locks in the single-reset contract of the
-        /// rewritten implementation.
+        /// Clearing must raise a single Reset rather than per-element notifications;
+        /// element-by-element removal costs two full equality scans per element
+        /// (O(n²) on large downloads).
         /// </remarks>
         [TestMethod]
         public void Test_Clear_EmptiesSeriesAndRaisesSingleReset()
@@ -1502,8 +1654,8 @@ namespace Data.TimeSeriesAnalysis
         /// Clearing a large series should complete quickly.
         /// </summary>
         /// <remarks>
-        /// Guards against reintroducing the element-by-element removal that made clearing a
-        /// century of daily data take seconds to minutes.
+        /// Clearing a century of daily data must complete immediately; element-by-element
+        /// removal takes seconds to minutes at this size.
         /// </remarks>
         [TestMethod]
         [Timeout(5000, CooperativeCancellation = true)]
@@ -1521,8 +1673,8 @@ namespace Data.TimeSeriesAnalysis
         /// ordinate appears earlier in the series.
         /// </summary>
         /// <remarks>
-        /// RemoveAt used to delegate to Remove(item), which removed the first equal element, so
-        /// removing a duplicate by index silently deleted the wrong ordinate.
+        /// RemoveAt must remove by position: delegating to Remove(item) removes the first equal
+        /// element, silently deleting the wrong ordinate when duplicates exist.
         /// </remarks>
         [TestMethod]
         public void Test_RemoveAt_WithDuplicateOrdinates_RemovesRequestedIndex()
@@ -1550,6 +1702,55 @@ namespace Data.TimeSeriesAnalysis
         }
 
         #endregion
+
+        /// <summary>
+        /// Verify SmoothedSeries reproduces the exact preprocessing PeaksOverThresholdSeries applies.
+        /// </summary>
+        /// <remarks>
+        /// The smoothing branch was extracted from PeaksOverThresholdSeries so threshold-selection
+        /// diagnostics can operate on the same series the extraction thresholds; this test pins the
+        /// branch behavior — moving average and moving sum smooth for periods above 1 and clone at
+        /// a period of 1, differencing applies at every period, and None clones — and that the
+        /// smoothed values genuinely differ from the raw values when smoothing is configured.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SmoothedSeries_MatchesPeaksOverThresholdPreprocessing()
+        {
+            var series = new TimeSeries(TimeInterval.OneDay, new DateTime(2020, 1, 1), new double[] { 5, 9, 2, 14, 7, 11, 3, 16, 8, 12 });
+
+            // Moving average over 3 steps matches the direct transform and differs from the raw values.
+            var smoothed = series.SmoothedSeries(SmoothingFunctionType.MovingAverage, 3);
+            var direct = series.MovingAverage(3);
+            Assert.AreEqual(direct.Count, smoothed.Count);
+            bool anyDifferent = false;
+            for (int i = 0; i < direct.Count; i++)
+            {
+                Assert.AreEqual(direct[i].Value, smoothed[i].Value, 0d);
+                if (!double.IsNaN(smoothed[i].Value) && smoothed[i].Value != series[i].Value)
+                    anyDifferent = true;
+            }
+            Assert.IsTrue(anyDifferent, "Smoothing must change the diagnostic value scale.");
+
+            // A period of 1 is an identity clone for moving average and moving sum.
+            var identity = series.SmoothedSeries(SmoothingFunctionType.MovingAverage, 1);
+            for (int i = 0; i < series.Count; i++)
+                Assert.AreEqual(series[i].Value, identity[i].Value, 0d);
+
+            // Moving sum and differencing route to their transforms.
+            var movingSum = series.SmoothedSeries(SmoothingFunctionType.MovingSum, 3);
+            var directSum = series.MovingSum(3);
+            for (int i = 0; i < directSum.Count; i++)
+                Assert.AreEqual(directSum[i].Value, movingSum[i].Value, 0d);
+            var difference = series.SmoothedSeries(SmoothingFunctionType.Difference, 1);
+            var directDifference = series.Difference(1);
+            for (int i = 0; i < directDifference.Count; i++)
+                Assert.AreEqual(directDifference[i].Value, difference[i].Value, 0d);
+
+            // None clones the series.
+            var none = series.SmoothedSeries(SmoothingFunctionType.None);
+            for (int i = 0; i < series.Count; i++)
+                Assert.AreEqual(series[i].Value, none[i].Value, 0d);
+        }
 
     }
 }

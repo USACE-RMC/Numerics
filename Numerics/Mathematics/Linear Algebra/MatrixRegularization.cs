@@ -104,32 +104,84 @@
         }
 
         /// <summary>
-        /// Makes the matrix symmetric and positive definite.
+        /// Determines whether the Cholesky decomposition accepts a matrix as positive definite.
         /// </summary>
-        /// <param name="M">The matrix to adjust.</param>
-        /// <returns>A symmetric and positive definite matrix.</returns>
+        /// <param name="matrix">The symmetric matrix to test.</param>
+        /// <returns><see langword="true"/> when the decomposition succeeds; otherwise, <see langword="false"/>.</returns>
+        private static bool CholeskyAccepts(Matrix matrix)
+        {
+            return CholeskyDecomposition.TryFactorize(matrix, CholeskyDecomposition.DefaultRelativeTolerance(matrix.NumberOfRows), out _, out _, out _);
+        }
+
+        /// <summary>
+        /// Makes the matrix symmetric and, when necessary, adds a ridge until Cholesky accepts it as
+        /// positive definite.
+        /// </summary>
+        /// <param name="M">The finite square matrix to adjust.</param>
+        /// <returns>A finite symmetric matrix accepted by the default Cholesky pivot test.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when M is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when M is not square or contains non-finite entries.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when symmetrization or the ridge scale is not representable, or no finite candidate
+        /// on the ridge ladder passes the Cholesky test before a ridge or diagonal overflows.
+        /// </exception>
+        /// <remarks>
+        /// The symmetric input is returned without a ridge when its Cholesky decomposition succeeds.
+        /// Otherwise the base ridge remains 1E-10 times the mean diagonal for a positive trace, or
+        /// 1E-10 for a non-positive trace. The original first eight candidates retain their arithmetic;
+        /// subsequent candidates multiply the previous ridge by ten. Every returned candidate is checked.
+        /// The maximum permitted ridge is the largest finite value on this decade ladder for which all
+        /// adjusted diagonal entries remain finite. Exhaustion throws rather than returning an unchecked
+        /// or smaller ridge. No pivot tolerance or eigenvalue floor is changed.
+        /// </remarks>
         public static Matrix MakeSymmetricPositiveDefinite(Matrix M)
         {
-            // Symmetrize
+            if (M == null) throw new ArgumentNullException(nameof(M));
+            if (M.NumberOfRows != M.NumberOfColumns)
+                throw new ArgumentException("The matrix must be square.", nameof(M));
+            for (int i = 0; i < M.NumberOfRows; i++)
+            {
+                for (int j = 0; j < M.NumberOfColumns; j++)
+                {
+                    if (!Tools.IsFinite(M[i, j]))
+                        throw new ArgumentException("The matrix must contain only finite entries.", nameof(M));
+                }
+            }
+
             var S = 0.5 * (M + M.Transpose());
-            // Tiny trace-scaled ridge
+            for (int i = 0; i < S.NumberOfRows; i++)
+            {
+                for (int j = 0; j < S.NumberOfColumns; j++)
+                {
+                    if (!Tools.IsFinite(S[i, j]))
+                        throw new InvalidOperationException("Matrix symmetrization produced a non-finite entry.");
+                }
+            }
+            if (CholeskyAccepts(S)) return S;
+
             double tr = 0.0;
             for (int i = 0; i < S.NumberOfRows; i++) tr += S[i, i];
             double baseRidge = (tr > 0 ? 1e-10 * tr / S.NumberOfRows : 1e-10);
+            if (!Tools.IsFinite(tr) || !Tools.IsFinite(baseRidge) || baseRidge <= 0d)
+                throw new InvalidOperationException("The trace-scaled matrix ridge is not a positive finite number.");
 
-            // Try increasing ridge until Cholesky succeeds
-            for (int k = 0; k < 8; k++)
+            double ridge = baseRidge;
+            for (int k = 0; Tools.IsFinite(ridge); k++)
             {
                 var T = S.Clone();
-                double ridge = baseRidge * Math.Pow(10.0, k);
-                for (int i = 0; i < T.NumberOfRows; i++) T[i, i] += ridge;
-                try { var _ = new CholeskyDecomposition(T); return T; } catch { /* retry bigger ridge */ }
+                for (int i = 0; i < T.NumberOfRows; i++)
+                {
+                    T[i, i] += ridge;
+                    if (!Tools.IsFinite(T[i, i]))
+                        throw new InvalidOperationException("Matrix ridge escalation overflowed a diagonal before positive definiteness was achieved.");
+                }
+                if (CholeskyAccepts(T)) return T;
+
+                // Preserve established candidates exactly, then continue monotonically. Multiplying the
+                // ridge itself avoids overflowing an unscaled power of ten for very small trace scales.
+                ridge = k < 7 ? baseRidge * Math.Pow(10.0, k + 1) : ridge * 10.0;
             }
-            // Last resort: add a biggish ridge
-            var U = S.Clone();
-            double big = (tr > 0 ? 1e-4 * tr / S.NumberOfRows : 1e-4);
-            for (int i = 0; i < U.NumberOfRows; i++) U[i, i] += big;
-            return U;
-        }   
+            throw new InvalidOperationException("Matrix ridge escalation exhausted finite candidates before positive definiteness was achieved.");
+        }
     }
 }

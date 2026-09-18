@@ -103,5 +103,51 @@ namespace MachineLearning
             }
 
         }
+        /// <summary>
+        /// A feature that is constant within a class classifies through the variance floor rather
+        /// than failing, and the predictions match the reference classifier.
+        /// </summary>
+        /// <remarks>
+        /// Reference predictions computed with Python scikit-learn 1.8.0 GaussianNB, whose
+        /// var_smoothing floor is 1E-9 times the largest pooled feature variance: classes
+        /// { 0, 1, 0, 1 } for the four test rows.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NaiveBayes_ConstantFeatureWithinClass()
+        {
+            var x = new double[,] { { 1.2, 1.0 }, { 1.9, 1.0 }, { 0.8, 1.0 }, { 1.5, 1.0 }, { 1.1, 1.0 }, { 1.7, 1.0 },
+                { 6.1, 0.0 }, { 5.8, 0.0 }, { 6.6, 0.0 }, { 5.2, 0.0 }, { 6.9, 0.0 }, { 5.5, 0.0 } };
+            var y = new double[] { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
+            var nb = new NaiveBayes(x, y);
+            nb.Train();
+            var predictions = nb.Predict(new double[,] { { 1.4, 1.0 }, { 6.3, 0.0 }, { 3.4, 0.6 }, { 1.0, 0.0 } });
+            CollectionAssert.AreEqual(new double[] { 0, 1, 0, 1 }, predictions);
+        }
+
+        /// <summary>
+        /// A feature recorded against a large datum keeps its within-class variance, and the
+        /// predictions match the reference classifier.
+        /// </summary>
+        /// <remarks>
+        /// Reference predictions { 0, 1, 0 } computed with Python scikit-learn 1.8.0 GaussianNB on
+        /// the same fixture. The pinned standard deviations are the exact Bessel-corrected sample
+        /// values from rational arithmetic; scikit-learn's var_ stores the population-normalized
+        /// variance of the same data, so the two agree after the n/(n-1) conversion.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NaiveBayes_LargeDatumFeature()
+        {
+            double off = 1E10;
+            var x = new double[,] { { off + 0.0, 1.2 }, { off + 1.0, 1.9 }, { off + 2.0, 0.8 }, { off + 3.0, 1.5 }, { off + 4.0, 1.1 }, { off + 5.0, 1.7 },
+                { off + 50.0, 6.1 }, { off + 51.0, 5.8 }, { off + 52.0, 6.6 }, { off + 53.0, 5.2 }, { off + 54.0, 6.9 }, { off + 55.0, 5.5 } };
+            var y = new double[] { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
+            var nb = new NaiveBayes(x, y);
+            nb.Train();
+            Assert.AreEqual(1.8708286933869707, nb.StandardDeviations[0, 0], 1E-9);
+            Assert.AreEqual(0.408248290463863, nb.StandardDeviations[0, 1], 1E-9);
+            var predictions = nb.Predict(new double[,] { { off + 2.5, 1.4 }, { off + 52.5, 6.3 }, { off + 27.0, 3.4 } });
+            CollectionAssert.AreEqual(new double[] { 0, 1, 0 }, predictions);
+        }
+
     }
 }

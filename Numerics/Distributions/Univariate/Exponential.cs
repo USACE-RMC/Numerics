@@ -196,6 +196,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 SetParameters(ParametersFromMoments(Statistics.ProductMoments(sample)));
@@ -241,6 +242,8 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override void SetParameters(IList<double> parameters)
         {
+            if (parameters == null || parameters.Count != NumberOfParameters)
+                throw new ArgumentOutOfRangeException(nameof(parameters), "Exactly two parameters are required.");
             SetParameters(parameters[0], parameters[1]);
         }
 
@@ -249,8 +252,16 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="parameters">A list of parameters.</param>
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
+        /// <returns><see langword="null"/> when the parameter vector is valid; otherwise, the validation exception.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="throwException"/> is <see langword="true"/> and the parameter count, location, or scale is invalid.</exception>
         public override ArgumentOutOfRangeException? ValidateParameters(IList<double> parameters, bool throwException)
         {
+            if (parameters == null || parameters.Count != NumberOfParameters)
+            {
+                var exception = new ArgumentOutOfRangeException(nameof(parameters), "Exactly two parameters are required.");
+                if (throwException) throw exception;
+                return exception;
+            }
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]))
             {
                 if (throwException)
@@ -278,6 +289,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[] MomentsFromParameters(IList<double> parameters)
         {
+            ValidateParameters(parameters, true);
             var dist = new Exponential();
             dist.SetParameters(parameters);
             var m1 = dist.Mean;
@@ -300,6 +312,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[] LinearMomentsFromParameters(IList<double> parameters)
         {
+            ValidateParameters(parameters, true);
             double xi = parameters[0];
             double alpha = parameters[1];
             double L1 = xi + alpha;
@@ -310,7 +323,22 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Requires at least four finite, nonconstant observations. Preserves the legacy initialization
+        /// and family-specific bounds whenever they are finite, ordered, and contain the initial values.
+        /// Otherwise, the exceptional-input fallback evaluates the estimator in unit coordinates before
+        /// forming finite location and positive scale bounds.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The sample or a representable feasible initialization is invalid.</exception>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
         {
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];
@@ -325,7 +353,7 @@ namespace Numerics.Distributions
             // Get bounds of location
             if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
             lowerVals[0] = initialVals[0] - Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(initialVals[0]))));
-            upperVals[0] = Math.Pow(10d, Math.Ceiling(Math.Log10(initialVals[0]) + 1d));
+            upperVals[0] = minData + Tools.DoubleMachineEpsilon;
 
             // Get bounds of scale
             lowerVals[1] = Tools.DoubleMachineEpsilon;
@@ -340,6 +368,31 @@ namespace Numerics.Distributions
             {
                 initialVals[1] = Statistics.Mean([lowerVals[1], upperVals[1]]);
             }
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            var initialVals = new double[NumberOfParameters];
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            double normalization = DistributionNumerics.InitializationScale(sample);
+            var normalized = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) normalized[i] = sample[i] / normalization;
+            // The existing bias-corrected start is evaluated in unit coordinates.
+            var moments = Statistics.ProductMoments(normalized);
+            double minData = Statistics.Minimum(sample);
+            double unitMinimum = minData / normalization;
+            double n = sample.Count;
+            initialVals[0] = (unitMinimum - (moments[0] - unitMinimum) / (n - 1)) * normalization;
+            initialVals[1] = (n / (n - 1)) * (moments[0] - unitMinimum) * normalization;
+            DistributionNumerics.LocationParameterBounds(ref initialVals[0], initialVals[1], minData,
+                Statistics.Maximum(sample), true, out lowerVals[0], out upperVals[0]);
+            DistributionNumerics.PositiveParameterBounds(initialVals[1], out lowerVals[1], out upperVals[1]);
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
         }
 
@@ -368,11 +421,22 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double X)
         {
+            return Math.Exp(LogPDF(X));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space, so far-tail densities that underflow <see cref="PDF(double)"/>
+        /// keep a finite log density.
+        /// </remarks>
+        public override double LogPDF(double X)
+        {
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([Xi, Alpha], true);
-            if (X < Minimum || X > Maximum) return 0.0d;
-            return 1d / Alpha * Math.Exp(-((X - Xi) / Alpha));
+            if (X < Minimum || X > Maximum) return double.NegativeInfinity;
+            double lf = -Math.Log(Alpha) - DistributionNumerics.Standardize(X, Xi, Alpha);
+            return double.IsNaN(lf) ? double.NegativeInfinity : lf;
         }
 
         /// <inheritdoc/>
@@ -383,14 +447,33 @@ namespace Numerics.Distributions
                 ValidateParameters([Xi, Alpha], true);
             if (X <= Minimum) return 0d;
             if (X >= Maximum) return 1d;
-            return 1d - Math.Exp(-((X - Xi) / Alpha));
+            return -Tools.Expm1(-DistributionNumerics.Standardize(X, Xi, Alpha));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Computes the logarithm directly without subtracting a near-unit exponential.</remarks>
+        public override double LogCDF(double X)
+        {
+            if (!_parametersValid) ValidateParameters([Xi, Alpha], true);
+            if (X <= Xi) return double.NegativeInfinity;
+            return DistributionNumerics.Log1mExp(-DistributionNumerics.Standardize(X, Xi, Alpha));
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double X) => Math.Exp(LogCCDF(X));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double X)
+        {
+            if (!_parametersValid) ValidateParameters([Xi, Alpha], true);
+            return X <= Xi ? 0 : -DistributionNumerics.Standardize(X, Xi, Alpha);
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -399,7 +482,10 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([Xi, Alpha], true);
-            return Xi - Alpha * Math.Log(1d - probability);
+            double unitQuantile = -Tools.Log1p(-probability);
+            double displacement = Alpha * unitQuantile;
+            return double.IsInfinity(displacement) && Tools.IsFinite(unitQuantile)
+                ? Alpha * (Xi / Alpha + unitQuantile) : Xi + displacement;
         }
 
         /// <inheritdoc/>
@@ -409,8 +495,13 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>The actual MLE uses the sample minimum and mean minus minimum. Its covariance is
+        /// diagonal with alpha squared times [1/n squared, (n-1)/n squared]. The MoM covariance is unchanged.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Parameters are invalid or sample size is not positive.</exception>
+        /// <exception cref="NotImplementedException">The requested estimation method is unsupported.</exception>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
             if (estimationMethod != ParameterEstimationMethod.MethodOfMoments && 
                 estimationMethod != ParameterEstimationMethod.MaximumLikelihood) 
             { 
@@ -421,48 +512,50 @@ namespace Numerics.Distributions
                 ValidateParameters([Xi, _alpha], true);
 
             // Compute covariance
-            double a = Alpha;
+            double n = sampleSize;
+            double a = Alpha / Math.Sqrt(n);
             var covar = new double[2, 2];
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
-                covar[0, 0] = a * a / sampleSize; // location
-                covar[1, 1] = 2d * a * a / sampleSize; // scale
-                covar[0, 1] = -(a * a) / sampleSize; // location & scale
+                covar[0, 0] = a * a; // location
+                covar[1, 1] = 2d * (a * a); // scale
+                covar[0, 1] = -(a * a); // location & scale
                 covar[1, 0] = covar[0, 1];
             }
             else if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
             {
-                covar[0, 0] = a * a / (sampleSize * (sampleSize - 1)); // location
-                covar[1, 1] = a * a / (sampleSize - 1); // scale
-                covar[0, 1] = -(a * a) / (sampleSize * (sampleSize - 1)); // location & scale
-                covar[1, 0] = covar[0, 1];
+                // Actual MLE: location=min(sample), scale=mean(sample)-min(sample).
+                double locationScale = Alpha / n;
+                covar[0, 0] = locationScale * locationScale;
+                covar[1, 1] = (a * a) * ((n - 1) / n);
             }
             return covar;
         }
 
         /// <inheritdoc/>
+        /// <remarks>Uses the same covariance quadratic form in normalized coordinates; probability must be finite and strictly between zero and one.</remarks>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            var covar = ParameterCovariance(sampleSize, estimationMethod);
-            var grad = QuantileGradient(probability);
-            double varA = covar[0, 0];
-            double varB = covar[1, 1];
-            double covAB = covar[1, 0];
-            double dQx1 = grad[0];
-            double dQx2 = grad[1];
-            return Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + 2d * dQx1 * dQx2 * covAB;
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateParameters([Xi, Alpha], true);
+            var unit = new Exponential(0, 1);
+            return DistributionNumerics.ScaledQuantileVariance(unit.ParameterCovariance(sampleSize, estimationMethod),
+                unit.QuantileGradient(probability), Alpha);
         }
 
         /// <inheritdoc/>
+        /// <remarks>Returns the derivative of the actual inverse CDF in location and scale coordinates.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Parameters are invalid or probability is not finite and strictly interior.</exception>
         public double[] QuantileGradient(double probability)
         {
+            DistributionNumerics.ValidateProbability(probability);
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([Xi, _alpha], true);
             var gradient = new double[]
             {
                 1.0d, // location
-                -Math.Log(1d - probability) // scale
+                -Tools.Log1p(-probability) // scale
             };
             return gradient;
         }
@@ -470,25 +563,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }        
-            // Get gradients
-            var dQp1 = QuantileGradient(probabilities[0]);
-            var dQp2 = QuantileGradient(probabilities[1]);
-            // Compute determinant
-            // |a b|
-            // |c d|
-            // |A| = ad − bc
-            double a = dQp1[0];
-            double b = dQp1[1];
-            double c = dQp2[0];
-            double d = dQp2[1];
-            determinant = a * d - b * c;
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b }, { c, d } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
         /// <inheritdoc/>

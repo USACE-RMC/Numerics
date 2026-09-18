@@ -498,5 +498,25 @@ namespace Utilities
                     Assert.AreEqual(fillValue, matrix[i, j]);
         }
 
+        /// <summary>
+        /// Sampling integers without replacement draws by removing the selected bin, so a seeded
+        /// sequence is a stable contract.
+        /// </summary>
+        /// <remarks>
+        /// The pinned sequences hold the order-preserving removal semantics in place: selecting a
+        /// bin removes it and shifts the remaining bins without reordering them, so any change to
+        /// the draw mechanics is observable here.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NextIntegers_WithoutReplacement_SeededSequences()
+        {
+            CollectionAssert.AreEqual(new int[] { 0, 7, 6, 4, 1, 5, 8, 9, 3, 2 },
+                new MersenneTwister(12345).NextIntegers(0, 10, 10, false));
+            CollectionAssert.AreEqual(new int[] { 35, 17, 53, 58, 24, 40, 91, 70, 90, 72, 11, 82, 88, 50, 78 },
+                new MersenneTwister(777).NextIntegers(0, 100, 15, false));
+            CollectionAssert.AreEqual(new int[] { 7, 19, 23, 18, 16, 11, 22, 14, 21, 8, 20, 12, 9, 15, 13, 10, 24, 6, 17, 5 },
+                new MersenneTwister(42).NextIntegers(5, 25, 20, false));
+        }
+
     }
 }

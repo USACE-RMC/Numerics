@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Numerics.Data.Statistics;
@@ -94,7 +94,7 @@ namespace Numerics.Distributions
         /// </summary>
         public double Xi
         {
-            get { return Mu - 2.0d * Sigma / Gamma; }
+            get { return Mu - Sigma * (2d / Gamma); }
         }
 
         /// <summary>
@@ -110,7 +110,132 @@ namespace Numerics.Distributions
         /// </summary>
         public double Alpha
         {
-            get { return 4.0d / Math.Pow(Gamma, 2d); }
+            get { return Math.Pow(2d / Gamma, 2d); }
+        }
+
+        /// <inheritdoc/>
+        public override double LogCDF(double x) => LogTail(x, false);
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double x) => LogTail(x, true);
+
+        /// <summary>Evaluates the signed gamma tail without subtracting a rounded probability from one.</summary>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the survival probability; <see langword="false"/> to evaluate the cumulative probability.</param>
+        /// <returns>The requested log probability, including support-endpoint limits.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The distribution parameters are invalid.</exception>
+        private double LogTail(double x, bool upper)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
+            return LogTail(Mu, Sigma, Gamma, x, upper);
+        }
+
+        /// <summary>Evaluates the signed gamma tail from parameters already validated by an equivalent public contract.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the survival probability; <see langword="false"/> to evaluate the cumulative probability.</param>
+        /// <returns>The requested log probability, including support-endpoint limits.</returns>
+        internal static double LogTail(double mu, double sigma, double gamma, double x, bool upper)
+        {
+            if (x <= (gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity)) return upper ? 0d : double.NegativeInfinity;
+            if (x >= (gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity)) return upper ? double.NegativeInfinity : 0d;
+            double z = DistributionNumerics.Standardize(x, mu, sigma);
+            double normal = upper ? DistributionNumerics.NormalLogSurvival(z) : DistributionNumerics.NormalLogCDF(z);
+            if (gamma == 0d) return normal;
+            if (UseLocalTailExpansion(gamma, z))
+            {
+                // Integrate the gamma cumulant expansion analytically using probabilists' Hermite polynomials.
+                double z2 = z * z, g2 = gamma * gamma;
+                double h2 = z2 - 1d, h3 = z * (z2 - 3d), h4 = z2 * z2 - 6d * z2 + 3d;
+                double h5 = z * (z2 * z2 - 10d * z2 + 15d);
+                double h6 = z2 * z2 * z2 - 15d * z2 * z2 + 45d * z2 - 15d;
+                double h8 = z2 * z2 * z2 * z2 - 28d * z2 * z2 * z2 + 210d * z2 * z2 - 420d * z2 + 105d;
+                double correction = gamma * h2 / 6d + g2 * (h3 / 16d + h5 / 72d)
+                    + g2 * gamma * (h4 / 40d + h6 / 96d + h8 / 1296d);
+                double relative = Math.Exp(-0.5d * z2 - Math.Log(Tools.Sqrt2PI) - normal) * correction;
+                return normal + Tools.Log1p(upper ? relative : -relative);
+            }
+            double unit = UnitGammaValue(mu, sigma, gamma, x, z);
+            double alpha = Math.Pow(2d / gamma, 2d);
+            return upper == (gamma > 0d) ? DistributionNumerics.GammaLogSurvival(alpha, unit) : DistributionNumerics.GammaLogCDF(alpha, unit);
+        }
+
+        /// <summary>Forms the unit gamma coordinate in centered form for large shape.</summary>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="z">The standardized observation <c>(x-mu)/sigma</c>.</param>
+        /// <returns>The corresponding nonnegative unit-scale gamma coordinate.</returns>
+        private double UnitGammaValue(double x, double z)
+            => UnitGammaValue(Mu, Sigma, Gamma, x, z);
+
+        /// <summary>Forms the unit gamma coordinate directly from validated Pearson parameters.</summary>
+        /// <param name="mu">The finite Pearson mean.</param>
+        /// <param name="sigma">The finite positive Pearson standard deviation.</param>
+        /// <param name="gamma">The finite Pearson skew.</param>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="z">The standardized observation <c>(x-mu)/sigma</c>.</param>
+        /// <returns>The corresponding nonnegative unit-scale gamma coordinate.</returns>
+        private static double UnitGammaValue(double mu, double sigma, double gamma, double x, double z)
+        {
+            if (x == mu - sigma * (2d / gamma)) return 0d;
+            return Math.Abs(gamma) < 1d ? Math.Pow(2d / gamma, 2d) * (1d + (gamma / 2d) * z)
+                : DistributionNumerics.Standardize(x, mu - sigma * (2d / gamma), 0.5d * sigma * gamma);
+        }
+
+        /// <summary>Bounds local tail-expansion error while retaining every nonzero skew.</summary>
+        /// <param name="z">The standardized observation.</param>
+        /// <returns><see langword="true"/> when the configured skew and observation satisfy the local tail-expansion error bound; otherwise, <see langword="false"/>.</returns>
+        private bool UseLocalTailExpansion(double z)
+            => UseLocalTailExpansion(Gamma, z);
+
+        /// <summary>Bounds local tail-expansion error directly from a validated skew.</summary>
+        /// <param name="gamma">The validated Pearson skew.</param>
+        /// <param name="z">The standardized observation.</param>
+        /// <returns><see langword="true"/> when the skew and observation satisfy the local tail-expansion error bound; otherwise, <see langword="false"/>.</returns>
+        private static bool UseLocalTailExpansion(double gamma, double z)
+        {
+            return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 1E-3;
+        }
+
+        /// <summary>Avoids cancellation in centered gamma quantiles only where the skew expansion is accurate.</summary>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <returns><see langword="true"/> when the configured skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
+        private bool UseLocalQuantileExpansion(double z)
+            => UseLocalQuantileExpansion(Gamma, z);
+
+        /// <summary>Bounds local quantile-expansion error directly from a validated skew.</summary>
+        /// <param name="gamma">The validated Pearson skew.</param>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <returns><see langword="true"/> when the skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
+        private static bool UseLocalQuantileExpansion(double gamma, double z)
+        {
+            return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 0.02d;
+        }
+
+        /// <summary>Evaluates the smooth gamma quantile expansion and its skew derivative through cubic order.</summary>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <param name="derivative">The derivative of the returned standardized quantile with respect to the configured skew.</param>
+        /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
+        private double LocalStandardQuantile(double z, out double derivative)
+            => LocalStandardQuantile(Gamma, z, out derivative);
+
+        /// <summary>Evaluates the smooth gamma quantile expansion directly from a validated skew.</summary>
+        /// <param name="gamma">The validated Pearson skew.</param>
+        /// <param name="z">The standard Normal quantile.</param>
+        /// <param name="derivative">The derivative of the returned standardized quantile with respect to the skew.</param>
+        /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
+        private static double LocalStandardQuantile(double gamma, double z, out double derivative)
+        {
+            double z2 = z * z;
+            double first = (z2 - 1d) / 6d;
+            double second = z * (z2 - 7d) / 144d;
+            double third = -(3d * z2 * z2 + 7d * z2 - 16d) / 6480d;
+            derivative = first + gamma * (2d * second + 3d * gamma * third);
+            return z + gamma * (first + gamma * (second + gamma * third));
         }
 
         /// <inheritdoc/>
@@ -189,18 +314,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Mode
         {
-            get
-            {
-                if (Math.Abs(Gamma) <= NearZero)
-                {
-                    // Use Normal
-                    return Mu;
-                }
-                else
-                {
-                    return Xi + (Alpha - 1d) * Beta;
-                }
-            }
+            get { return Math.Abs(Gamma) >= 2d ? Xi : Mu - Sigma * (Gamma / 2d); }
         }
 
         /// <inheritdoc/>
@@ -233,43 +347,13 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Minimum
         {
-            get
-            {
-                if (Math.Abs(Gamma) <= NearZero)
-                {
-                    // Use Normal
-                    return double.NegativeInfinity;
-                }
-                else if (Beta > 0d)
-                {
-                    return Xi;
-                }
-                else
-                {
-                    return double.NegativeInfinity;
-                }
-            }
+            get { return Gamma > 0d ? Xi : double.NegativeInfinity; }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get
-            {
-                if (Math.Abs(Skewness) <= NearZero)
-                {
-                    // Use Normal
-                    return double.PositiveInfinity;
-                }
-                else if (Beta > 0d)
-                {
-                    return double.PositiveInfinity;
-                }
-                else
-                {
-                    return Xi;
-                }
-            }
+            get { return Gamma < 0d ? Xi : double.PositiveInfinity; }
         }
 
         /// <inheritdoc/>
@@ -287,6 +371,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 SetParameters(Statistics.ProductMoments(sample));
@@ -512,6 +597,16 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
+        {
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
@@ -534,6 +629,20 @@ namespace Numerics.Distributions
                 initialVals[2] = 0.01;
             }
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        internal Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            var normal = new Normal().GetRobustParameterConstraints(sample);
+            var scaled = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) scaled[i] = DistributionNumerics.Standardize(sample[i], normal.Item1[0], normal.Item1[1]);
+            double skew = Statistics.ProductMoments(scaled)[2];
+            if (double.IsNaN(skew) || double.IsInfinity(skew) || skew <= -6d || skew >= 6d) skew = 0.01d;
+            return Tuple.Create(new[] { normal.Item1[0], normal.Item1[1], skew }, new[] { normal.Item2[0], normal.Item2[1], -6d }, new[] { normal.Item3[0], normal.Item3[1], 6d });
         }
 
         /// <inheritdoc/>
@@ -562,94 +671,96 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, Gamma, true);
-            if (x < Minimum || x > Maximum) return 0.0d;
+            return Math.Exp(LogPDF(x));
+        }
 
-            if (Math.Abs(Gamma) <= NearZero)
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space, so far-tail densities that underflow <see cref="PDF(double)"/>
+        /// keep a finite log density.
+        /// When the shape <c>α &lt; 1</c>, the density has a genuine integrable singularity at
+        /// the support boundary <c>x = ξ</c> and this method intentionally returns positive
+        /// infinity for either skew direction.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
+            return LogPDF(Mu, Sigma, Gamma, x);
+        }
+
+        /// <summary>Evaluates a Pearson log density from parameters already validated by an equivalent public contract.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="x">The value at which to evaluate the density.</param>
+        /// <returns>The log density, including the established support and endpoint limits.</returns>
+        internal static double LogPDF(double mu, double sigma, double gamma, double x)
+        {
+            if (x < (gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity)
+                || x > (gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity)
+                || double.IsInfinity(x)) return double.NegativeInfinity;
+            double z = DistributionNumerics.Standardize(x, mu, sigma);
+            if (gamma == 0d) return -0.5d * z * z - Math.Log(sigma) - Math.Log(Tools.Sqrt2PI);
+            if (UseLocalTailExpansion(gamma, z))
             {
-                // Use Normal distribution
-                double z = (x - Mu) / Sigma;
-                return Math.Exp(-0.5d * z * z) / (Tools.Sqrt2PI * Sigma);
+                // Log gamma density expanded in skew; the gate bounds the omitted fourth-order term.
+                double z2 = z * z, g2 = gamma * gamma;
+                double correction = gamma * z * (z2 / 6d - 0.5d)
+                    + g2 * (-z2 * z2 / 16d + z2 / 8d - 1d / 48d)
+                    + g2 * gamma * z * z2 * (z2 / 40d - 1d / 24d)
+                    + g2 * g2 * z2 * z2 * (1d / 64d - z2 / 96d);
+                return -0.5d * z2 - Math.Log(sigma) - Math.Log(Tools.Sqrt2PI) + correction;
             }
-            // Use Gamma distribution
-            if (Beta > 0d)
-            {
-                double shiftedX = x - Xi;
-                return Math.Exp(-shiftedX / Math.Abs(Beta) + (Alpha - 1.0d) * Math.Log(shiftedX) - Alpha * Math.Log(Math.Abs(Beta)) - Mathematics.SpecialFunctions.Gamma.LogGamma(Alpha));
-            }
-            else
-            {
-                double shiftedX = Xi - x;
-                return Math.Exp(-shiftedX / Math.Abs(Beta) + (Alpha - 1.0d) * Math.Log(shiftedX) - Alpha * Math.Log(Math.Abs(Beta)) - Mathematics.SpecialFunctions.Gamma.LogGamma(Alpha));
-            }
+            double unit = UnitGammaValue(mu, sigma, gamma, x, z);
+            return DistributionNumerics.GammaLogDensity(Math.Pow(2d / gamma, 2d), unit) - Math.Log(sigma) - Math.Log(Math.Abs(gamma) / 2d);
         }
 
         /// <inheritdoc/>
         public override double CDF(double x)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, Gamma, true);
-            if (x <= Minimum)
-                return 0d;
-            if (x >= Maximum)
-                return 1d;
-            if (Math.Abs(Gamma) <= NearZero)
-            {
-                return 0.5d * (1.0d + Mathematics.SpecialFunctions.Erf.Function((x - Mu) / (Sigma * Math.Sqrt(2.0d))));
-            }
-            else if (Beta > 0d)
-            {
-                double shiftedX = x - Xi;
-                return Mathematics.SpecialFunctions.Gamma.LowerIncomplete(Alpha, shiftedX / Math.Abs(Beta));
-            }
-            else
-            {
-                double shiftedX = Xi - x;
-                return 1.0d - Mathematics.SpecialFunctions.Gamma.LowerIncomplete(Alpha, shiftedX / Math.Abs(Beta));
-            }
+            return Math.Exp(LogCDF(x));
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
-            // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
-                throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
-            if (probability == 0.0d)
-                return Minimum;
-            if (probability == 1.0d)
-                return Maximum;
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, Gamma, true);
-            if (Math.Abs(Gamma) <= NearZero)
-            {
-                return Mu + Sigma * Normal.StandardZ(probability);
-            }
-            else if (Beta > 0d)
-            {
-                return Xi + Mathematics.SpecialFunctions.Gamma.InverseLowerIncomplete(Alpha, probability) * Math.Abs(Beta);
-            }
-            else
-            {
-                return Xi - Mathematics.SpecialFunctions.Gamma.InverseLowerIncomplete(Alpha, 1d - probability) * Math.Abs(Beta);
-            }
+            if (double.IsNaN(probability) || probability < 0d || probability > 1d)
+                throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between zero and one.");
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
+            return InverseCDF(Mu, Sigma, Gamma, probability);
+        }
+
+        /// <summary>Evaluates the quantile from parameters already validated by an equivalent public contract.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="probability">The nonexceedance probability, in the closed unit interval.</param>
+        /// <returns>The Pearson quantile, including the support-endpoint limits.</returns>
+        internal static double InverseCDF(double mu, double sigma, double gamma, double probability)
+        {
+            if (probability == 0d) return gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity;
+            if (probability == 1d) return gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity;
+            double z = Normal.StandardZ(probability);
+            if (gamma == 0d) return mu + sigma * z;
+            if (UseLocalQuantileExpansion(gamma, z)) return mu + sigma * LocalStandardQuantile(gamma, z, out _);
+            double alpha = Math.Pow(2d / gamma, 2d);
+            double unit = DistributionNumerics.GammaInverseCDF(alpha, probability, gamma < 0d);
+            return mu + sigma * ((gamma / 2d) * (unit - alpha));
         }
 
         /// <summary>
         /// Returns the inverse CDF using the modified Wilson-Hilferty transformation.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The approximate Pearson type III quantile in physical coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is outside the closed unit interval or the distribution parameters are invalid.</exception>
         /// <remarks>
         /// Cornish-Fisher transformation (Fisher and Cornish, 1960) for abs(skew) less than or equal to 2. If abs(skew) > 2 then use Modified Wilson-Hilferty transformation (Kirby,1972).
         /// </remarks>
         public double WilsonHilfertyInverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (double.IsNaN(probability) || probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -669,179 +780,102 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Uses the public mean, standard deviation and skew coordinates for both estimators.
+        /// Regular maximum-likelihood information exists only for absolute skew below sqrt(2),
+        /// including the full zero-skew limit diag(sigma^2, sigma^2/2, 6)/n.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size is nonpositive, the parameters are invalid, or maximum-likelihood covariance is requested outside its regular domain.</exception>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
-                estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
-            {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments && estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
                 throw new NotImplementedException();
-            }
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(_mu, _sigma, _gamma, true);
-            // Compute covariance in user-facing (μ, σ, γ) parameterization.
-            var covar = new double[3, 3];
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
+            double h = Gamma * Gamma / 4d;
+            double scaledSigma = Sigma / Math.Sqrt(sampleSize), s2 = scaledSigma * scaledSigma;
+            var covariance = new double[3, 3];
+            covariance[0, 0] = s2;
+            covariance[0, 1] = covariance[1, 0] = Gamma * s2 / 2d;
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
-                // MoM asymptotic covariance via Cov = D⁻¹·S·D⁻ᵀ / n.
-                // Moment conditions centered on model mean μ(θ):
-                //   g₁ = X−μ, g₂ = (X−μ)²−σ², g₃ = (X−μ)³−γσ³.
-                // Jacobian D = ∂E[g]/∂(μ,σ,γ) is lower-triangular:
-                //   D = [[-1, 0, 0], [0, -2σ, 0], [-3σ², -3γσ², -σ³]]
-                // Note: D[2,0] = E[∂g₃/∂μ] = E[-3(X−μ)²] = -3σ² ≠ 0 because
-                // g₃ centers on μ(θ), not on x̄.
-                // D⁻¹ = [[-1, 0, 0], [0, -1/(2σ), 0], [3/σ, 3γ/(2σ²), -1/σ³]]
-                double s = _sigma, g = _gamma;
-                double s2 = s * s, s3 = s2 * s, s4 = s2 * s2, s5 = s4 * s, s6 = s4 * s2;
-                double g2 = g * g, g4 = g2 * g2;
-                // Central moments for Pearson III family
-                double mu2 = s2;
-                double mu3 = g * s3;
-                double mu4 = s4 * (3.0 + 1.5 * g2);
-                double mu5 = s5 * g * (10.0 + 3.0 * g2);
-                double mu6 = s6 * (15.0 + 32.5 * g2 + 7.5 * g4);
-                // S matrix elements: S = E[g·gᵀ]
-                double S00 = mu2;
-                double S01 = mu3;
-                double S02 = mu4;
-                double S11 = mu4 - mu2 * mu2;
-                double S12 = mu5 - mu2 * mu3;
-                double S22 = mu6 - mu3 * mu3;
-                // D⁻¹ elements (lower-triangular)
-                double a = -1.0;                    // D⁻¹[0,0]
-                double b = -1.0 / (2.0 * s);       // D⁻¹[1,1]
-                double e = 3.0 / s;                 // D⁻¹[2,0] — from D[2,0] = -3σ²
-                double c = 3.0 * g / (2.0 * s2);   // D⁻¹[2,1]
-                double d = -1.0 / s3;               // D⁻¹[2,2]
-                // Cov = D⁻¹ · S · D⁻ᵀ / n (exploit triangular structure)
-                covar[0, 0] = a * a * S00 / sampleSize;
-                covar[0, 1] = a * b * S01 / sampleSize;
-                covar[0, 2] = a * (e * S00 + c * S01 + d * S02) / sampleSize;
-                covar[1, 1] = b * b * S11 / sampleSize;
-                covar[1, 2] = b * (e * S01 + c * S11 + d * S12) / sampleSize;
-                covar[2, 2] = (e * e * S00 + 2.0 * e * c * S01 + 2.0 * e * d * S02
-                             + c * c * S11 + 2.0 * c * d * S12 + d * d * S22) / sampleSize;
-                covar[1, 0] = covar[0, 1];
-                covar[2, 0] = covar[0, 2];
-                covar[2, 1] = covar[1, 2];
+                covariance[1, 1] = s2 * (0.5d + 1.5d * h);
+                covariance[1, 2] = covariance[2, 1] = 1.5d * Sigma * Gamma * (1d + h) / sampleSize;
+                covariance[2, 2] = 6d * (1d + h) * (1d + 5d * h) / sampleSize;
             }
             else
             {
-                // MLE: Fisher information inverse in internal (μ, α=1/β, λ=4/γ²) parameterization.
-                // This parameterization matches QuantileGradient for MLE QuantileVariance computation.
-                double alpha = 1d / Beta;
-                double lambda = Alpha;
-                double A = 2d * Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) - 2d / (lambda - 1d) + 1d / Math.Pow(lambda - 1d, 2d);
-                covar[0, 0] = (lambda - 2d) / (sampleSize * A) * (1d / Math.Pow(alpha, 2d)) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) * lambda - 1d); // location
-                covar[1, 1] = (lambda - 2d) * Math.Pow(alpha, 2d) / (sampleSize * A) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) / (lambda - 2d) - 1d / Math.Pow(lambda - 1d, 2d)); // scale
-                covar[2, 2] = 2d / (sampleSize * A); // shape
-                covar[0, 1] = 1d / sampleSize * ((lambda - 2d) / A) * (Mathematics.SpecialFunctions.Gamma.Trigamma(lambda) - 1d / (lambda - 1d)); // location & scale
-                covar[1, 0] = covar[0, 1];
-                covar[0, 2] = (2d - lambda) / (sampleSize * alpha * A * (lambda - 1d)); // location & shape
-                covar[2, 0] = covar[0, 2];
-                covar[1, 2] = alpha / (sampleSize * A * (lambda - 1d)); // scale & shape
-                covar[2, 1] = covar[1, 2];
+                if (!(Math.Abs(Gamma) < Math.Sqrt(2d)))
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Regular three-parameter maximum-likelihood covariance requires absolute skew below sqrt(2), equivalently gamma shape above two.");
+                // T = a^3 [trigamma(a)-1/(a-1)+1/(2(a-1)^2)], a=4/gamma^2.
+                // Expand only the cancellation-prone trigamma residual; the rational contribution is exact.
+                double t;
+                if (h < 0.05d)
+                {
+                    double h2 = h * h;
+                    t = 1d / 6d + h2 * (-1d / 30d + h2 * (1d / 42d + h2 * (-1d / 30d + h2 * (5d / 66d - h2 * 691d / 2730d))))
+                        + h / (2d * (1d - h) * (1d - h));
+                }
+                else
+                {
+                    double shape = 1d / h;
+                    t = (DistributionNumerics.AccurateTrigamma(shape) - 1d / (shape - 1d) + 0.5d / Math.Pow(shape - 1d, 2d)) / (h * h * h);
+                }
+                covariance[1, 1] = s2 * (0.5d + h / (4d * (1d - h) * (1d - h) * t));
+                covariance[1, 2] = covariance[2, 1] = Sigma * Gamma / (4d * (1d - h) * t * sampleSize);
+                covariance[2, 2] = 1d / (t * sampleSize);
             }
-            return covar;
+            return covariance;
         }
 
         /// <inheritdoc/>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
-            {
-                double u2 = _sigma;
-                double c = _gamma;
-                double c2 = Math.Pow(c, 2d);
-                int N = sampleSize;
-                return Math.Pow(u2, 2d) / N * (1d + Math.Pow(GammaDistribution.FrequencyFactorKp(c, probability), 2d) / 2d * (1d + 0.75d * c2) + GammaDistribution.FrequencyFactorKp(c, probability) * c + 6d * (1d + 0.25d * c2) * GammaDistribution.PartialKp(c, probability) * (GammaDistribution.PartialKp(c, probability) * (1d + 5d * c2 / 4d) + GammaDistribution.FrequencyFactorKp(c, probability) / 2d * c));
-            }
-            else if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
-            {
-                var covar = ParameterCovariance(sampleSize, estimationMethod);
-                var grad = QuantileGradient(probability);
-                double varA = covar[0, 0];
-                double varB = covar[1, 1];
-                double varG = covar[2, 2];
-                double covAB = covar[1, 0];
-                double covAG = covar[2, 0];
-                double covBG = covar[2, 1];
-                double dQx1 = grad[0];
-                double dQx2 = grad[1];
-                double dQx3 = grad[2];
-                return Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + Math.Pow(dQx3, 2d) * varG + 2d * dQx1 * dQx2 * covAB + 2d * dQx1 * dQx3 * covAG + 2d * dQx2 * dQx3 * covBG;
-            }
-
-            return double.NaN;
+            DistributionNumerics.ValidateProbability(probability);
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments && estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+                return double.NaN;
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
+            var standardized = new PearsonTypeIII(0, 1, Gamma);
+            double[,] covariance = standardized.ParameterCovariance(sampleSize, estimationMethod);
+            return DistributionNumerics.ScaledQuantileVariance(covariance, standardized.QuantileGradient(probability), Sigma);
         }
 
         /// <inheritdoc/>
+        /// <remarks>Differentiates the actual signed-gamma quantile implicitly in public mean, SD and skew coordinates. A smooth local gamma expansion avoids cancellation at zero skew.</remarks>
         public double[] QuantileGradient(double probability)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, Gamma, true);
-            // Gradient in internal (μ, α=1/β, λ=4/γ²) parameterization.
-            // Matches ParameterCovariance(MLE) for MLE QuantileVariance computation.
-            double alpha = 1d / Beta;
-            double lambda = Alpha;
-            double eps = Math.Sign(alpha);
-            var gradient = new double[]
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, Gamma, true);
+            double z = Normal.StandardZ(probability);
+            if (Gamma == 0d) return [1d, z, Sigma * (z * z - 1d) / 6d];
+            if (UseLocalQuantileExpansion(z))
             {
-                1.0d, // location
-                -lambda / Math.Pow(alpha, 2d) * (1.0d + eps / Math.Sqrt(lambda) * GammaDistribution.FrequencyFactorKp(Gamma, probability)), // scale
-                1.0d / alpha * (1.0d + eps / Math.Sqrt(lambda) * (GammaDistribution.FrequencyFactorKp(Gamma, probability) / 2.0d) - 1.0d / lambda * GammaDistribution.PartialKp(Gamma, probability)) // shape
-            };
-            return gradient;
+                double quantile = LocalStandardQuantile(z, out double derivative);
+                return [1d, quantile, Sigma * derivative];
+            }
+            double unit = DistributionNumerics.GammaInverseCDF(Alpha, probability, Gamma < 0d);
+            double shapeDerivative = DistributionNumerics.GammaQuantileShapeDerivative(Alpha, unit);
+            double standardized = Gamma / 2d * (unit - Alpha);
+            double skewDerivative = (unit + Alpha) / 2d - Alpha * shapeDerivative;
+            return [1d, standardized, Sigma * skewDerivative];
         }
 
         /// <summary>
         /// Returns a list of partial derivatives of X given probability with respect to each moment.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
+        /// <returns>The quantile gradient in public moment coordinates.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The probability is not finite and strictly interior or the distribution parameters are invalid.</exception>
         public double[] QuantileGradientForMoments(double probability)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, Gamma, true);
-            var gradient = new double[]
-            {
-                1.0d,
-                GammaDistribution.FrequencyFactorKp(Gamma, probability),
-                Sigma * GammaDistribution.PartialKp(Gamma, probability)
-            };
-            return gradient;
+            return QuantileGradient(probability);
         }
 
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Get gradients
-            var dQp1 = QuantileGradientForMoments(probabilities[0]);
-            var dQp2 = QuantileGradientForMoments(probabilities[1]);
-            var dQp3 = QuantileGradientForMoments(probabilities[2]);
-            // Compute determinant
-            // |a b c|
-            // |d e f|
-            // |g h i|
-            // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
-            double a = dQp1[0];
-            double b = dQp1[1];
-            double c = dQp1[2];
-            double d = dQp2[0];
-            double e = dQp2[1];
-            double f = dQp2[2];
-            double g = dQp3[0];
-            double h = dQp3[1];
-            double i = dQp3[2];
-            determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b, c }, { d, e, f }, { g, h, i } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
         /// <inheritdoc/>

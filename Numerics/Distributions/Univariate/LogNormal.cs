@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Numerics.Data.Statistics;
@@ -80,21 +80,17 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Gets and sets the base of the logarithm
+        /// Gets and sets the finite logarithm base, which must be greater than one.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The value is nonfinite or no greater than one.</exception>
         public double Base
         {
             get { return _base; }
             set
             {
-                if (value < 1d)
-                {
-                    _base = 1d;
-                }
-                else
-                {
-                    _base = value;
-                }
+                if (!(value > 1d) || double.IsInfinity(value))
+                    throw new ArgumentOutOfRangeException(nameof(Base), "The logarithm base must be finite and greater than one.");
+                _base = value;
             }
         }
 
@@ -104,6 +100,23 @@ namespace Numerics.Distributions
         private double K
         {
             get { return 1d / Math.Log(Base); }
+        }
+
+        /// <inheritdoc/>
+        public override double LogCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            return x <= 0d ? double.NegativeInfinity : DistributionNumerics.NormalLogCDF(DistributionNumerics.Standardize(Math.Log(x, Base), Mu, Sigma));
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x) => Math.Exp(LogCCDF(x));
+
+        /// <inheritdoc/>
+        public override double LogCCDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            return x <= 0d ? 0d : DistributionNumerics.NormalLogSurvival(DistributionNumerics.Standardize(Math.Log(x, Base), Mu, Sigma));
         }
 
         /// <inheritdoc/>
@@ -183,10 +196,7 @@ namespace Numerics.Distributions
         /// </summary>
         public override double Mode
         {
-            get
-            {    
-                return Math.Exp(Mu / K);
-            }
+            get { double logBase = Math.Log(Base); return Math.Exp(Mu * logBase - Math.Pow(Sigma * logBase, 2d)); }
         }
 
         /// <inheritdoc/>
@@ -194,13 +204,10 @@ namespace Numerics.Distributions
         {
             get
             {
-                double lnB = Math.Log(Base);
-                double a = Sigma * Sigma * lnB;
-                double logPrefactor = (2.0 * Mu + a) * lnB;
-                double expA = Math.Exp(a * lnB);
-                double variance = Math.Exp(logPrefactor) * (expA - 1.0);
-                return Math.Sqrt(variance);
-            } 
+                double logBase = Math.Log(Base), variance = Math.Pow(Sigma * logBase, 2d);
+                double logExcess = variance > 0.5d ? variance + Tools.Log1p(-Math.Exp(-variance)) : Math.Log(Tools.Expm1(variance));
+                return Math.Exp(Mu * logBase + 0.5d * variance + 0.5d * logExcess);
+            }
         }
 
         /// <inheritdoc/>
@@ -208,16 +215,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                double lnB = Math.Log(Base);
-                double a = Sigma * Sigma * lnB;        
-                double mu1 = (Mu + 0.5 * a) * lnB;
-                double mu2 = (2 * Mu + 2 * a) * lnB;
-                double mu3 = (3 * Mu + 4.5 * a) * lnB;
-                double m1 = Math.Exp(mu1);   // E[X]
-                double m2 = Math.Exp(mu2);   // E[X²]
-                double m3 = Math.Exp(mu3);   // E[X³]
-                double thirdCentralMoment = m3 - 3 * m2 * m1 + 2 * m1 * m1 * m1;
-                return thirdCentralMoment / Math.Pow(StandardDeviation, 3);
+                double variance = Math.Pow(Sigma * Math.Log(Base), 2d);
+                return (Math.Exp(variance) + 2d) * Math.Sqrt(Tools.Expm1(variance));
             }
         }
 
@@ -226,18 +225,8 @@ namespace Numerics.Distributions
         {
             get
             {
-                double lnB = Math.Log(Base);
-                double a = Sigma * Sigma * lnB;
-                double mu1 = (Mu + 0.5 * a) * lnB;
-                double mu2 = (2 * Mu + 2 * a) * lnB;
-                double mu3 = (3 * Mu + 4.5 * a) * lnB;
-                double mu4 = (4 * Mu + 8.0 * a) * lnB;
-                double m1 = Math.Exp(mu1); // E[X]
-                double m2 = Math.Exp(mu2); // E[X²]
-                double m3 = Math.Exp(mu3); // E[X³]
-                double m4 = Math.Exp(mu4); // E[X⁴]
-                double fourthCentralMoment = m4 - 4.0 * m3 * m1 + 6.0 * m2 * m1 * m1 - 3.0 * m1 * m1 * m1 * m1;
-                return fourthCentralMoment / Math.Pow(StandardDeviation, 4);
+                double variance = Math.Pow(Sigma * Math.Log(Base), 2d);
+                return 3d + Tools.Expm1(4d * variance) + 2d * Tools.Expm1(3d * variance) + 3d * Tools.Expm1(2d * variance);
             }
         }
 
@@ -256,7 +245,9 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double[] MinimumOfParameters
         {
-            get { return [0.0d, 0.0d]; }
+            // The mean of the base-log observations is a location parameter and can be any
+            // finite value; only the log-space standard deviation is bounded below by zero.
+            get { return [double.NegativeInfinity, 0.0d]; }
         }
 
         /// <inheritdoc/>
@@ -268,6 +259,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 SetParameters(IndirectMethodOfMoments(sample));
@@ -287,9 +279,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>The bootstrap distribution retains the configured <see cref="Base"/>.</remarks>
         public IUnivariateDistribution Bootstrap(ParameterEstimationMethod estimationMethod, int sampleSize, int seed = -1)
         {
-            var newDistribution = new LogNormal(Mu, Sigma);
+            var newDistribution = new LogNormal(Mu, Sigma) { Base = Base };
             var sample = newDistribution.GenerateRandomValues(sampleSize, seed);
             newDistribution.Estimate(sample, estimationMethod);
             if (newDistribution.ParametersValid == false)
@@ -350,21 +343,14 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The product moments of the base-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfMoments(IList<double> sample)
         {
-            // Transform the sample
-            var transformedSample = new List<double>();
-            for (int i = 0; i < sample.Count; i++)
-            {
-                if (sample[i] > 0d)
-                {
-                    transformedSample.Add(Math.Log(sample[i], Base));
-                }
-                else
-                {
-                    transformedSample.Add(Math.Log(0.1d, Base));
-                }
-            }
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
+            var transformedSample = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) transformedSample[i] = Math.Log(sample[i], Base);
             return Statistics.ProductMoments(transformedSample);
         }
 
@@ -373,21 +359,14 @@ namespace Numerics.Distributions
         /// This method was proposed by the U.S. Water Resources Council (WRC, 1967).
         /// </summary>
         /// <param name="sample">The array of sample data.</param>
+        /// <returns>The linear moments of the base-log-transformed observations.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is insufficient, constant, nonfinite, or contains a nonpositive observation.</exception>
         public double[] IndirectMethodOfLinearMoments(IList<double> sample)
         {
-            // Transform the sample
-            var transformedSample = new List<double>();
-            for (int i = 0; i < sample.Count; i++)
-            {
-                if (sample[i] > 0d)
-                {
-                    transformedSample.Add(Math.Log(sample[i], Base));
-                }
-                else
-                {
-                    transformedSample.Add(Math.Log(0.1d, Base));
-                }
-            }
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
+            var transformedSample = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) transformedSample[i] = Math.Log(sample[i], Base);
             return Statistics.LinearMoments(transformedSample);
         }
 
@@ -396,29 +375,24 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="mean">The real-space mean of the data.</param>
         /// <param name="standardDeviation">The real-space standard deviation of the data.</param>
+        /// <returns>The configured-base logarithmic mean and standard deviation, including propagated not-a-number values for invalid physical moments.</returns>
         public double[] DirectMethodOfMoments(double mean, double standardDeviation)
         {
-            double variance = Math.Pow(standardDeviation, 2d);
-            double mu = Math.Log(Math.Pow(mean, 2d) / Math.Sqrt(variance + Math.Pow(mean, 2d)), Base);
-            double sigma = Math.Sqrt(Math.Log(1.0d + variance / Math.Pow(mean, 2d), Base));
-            return [mu, sigma];
+            double[] natural = LnNormal.DirectMethodOfMoments(mean, standardDeviation);
+            double logBase = Math.Log(Base);
+            return [natural[0] / logBase, natural[1] / logBase];
         }
 
         /// <inheritdoc/>
         public double[] ParametersFromMoments(IList<double> moments)
         {
-            var mean = moments[0];
-            var standardDeviation = moments[1];
-            double variance = Math.Pow(standardDeviation, 2d);
-            double mu = Math.Log(Math.Pow(mean, 2d) / Math.Sqrt(variance + Math.Pow(mean, 2d)), Base);
-            double sigma = Math.Sqrt(Math.Log(1.0d + variance / Math.Pow(mean, 2d), Base));
-            return [mu, sigma];
+            return DirectMethodOfMoments(moments[0], moments[1]);
         }
 
         /// <inheritdoc/>
         public double[] MomentsFromParameters(IList<double> parameters)
         {
-            var dist = new LogNormal();
+            var dist = new LogNormal() { Base = Base };
             dist.SetParameters(parameters);
             var m1 = dist.Mean;
             var m2 = dist.StandardDeviation;
@@ -446,25 +420,55 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>Preserves the legacy 0.1 substitution for nonpositive observations when constructing
+        /// initial values and rounded prior bounds. This does not modify the sample or density support.</remarks>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4);
+            return DistributionNumerics.PreferLegacyConstraints(
+                () => GetLegacyParameterConstraints(sample), () => GetRobustParameterConstraints(sample));
+        }
+
+        /// <summary>Preserves the established initialization and family-specific prior envelope.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private Tuple<double[], double[], double[]> GetLegacyParameterConstraints(IList<double> sample)
         {
             var initialVals = new double[NumberOfParameters];
             var lowerVals = new double[NumberOfParameters];
             var upperVals = new double[NumberOfParameters];
             // Estimate initial values using the method of moments (a.k.a product moments).
-            var mom = IndirectMethodOfMoments(sample);
+            var transformedSample = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++)
+                transformedSample[i] = Math.Log(sample[i] > 0d ? sample[i] : 0.1d, Base);
+            var mom = Statistics.ProductMoments(transformedSample);
             initialVals = new double[] { mom[0], mom[1] };
-            // Get bounds of mean
+            // Get bounds of mean. The mean is a location parameter on the log scale and is
+            // legitimately negative whenever the data are mostly below 1, so the bounds are
+            // symmetric about zero from the magnitude of the initial value, matching Normal's
+            // location bounds. A machine-epsilon floor here would reject any sub-unity sample
+            // before a fit could start.
             double real = Math.Exp(initialVals[0] / K);
-            lowerVals[0] = Tools.DoubleMachineEpsilon;
-            upperVals[0] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real) + 1d)), Base));
-            upperVals[0] = double.IsNaN(upperVals[0]) ? 5 : upperVals[0];
+            if (initialVals[0] == 0d) initialVals[0] = Tools.DoubleMachineEpsilon;
+            lowerVals[0] = Math.Floor(Math.Log(Math.Pow(10d, Math.Floor(Math.Log10(real)) - 1d), Base));
+            upperVals[0] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real)) + 1d), Base));
             // Get bounds of standard deviation
             real = Math.Exp(initialVals[1] / K);
             lowerVals[1] = Tools.DoubleMachineEpsilon;
             upperVals[1] = Math.Ceiling(Math.Log(Math.Pow(10d, Math.Ceiling(Math.Log10(real) + 1d)), Base));
             upperVals[1] = double.IsNaN(upperVals[1]) ? 4 : upperVals[1];
             return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Handles samples whose legacy initialization or bounds are not finite or outside ordered bounds.</summary>
+        /// <param name="sample">The validated observations.</param>
+        /// <returns>Finite initial values and bounds from the hardened initialization path.</returns>
+        private Tuple<double[], double[], double[]> GetRobustParameterConstraints(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 4, positive: true);
+            var transformed = new double[sample.Count];
+            for (int i = 0; i < sample.Count; i++) transformed[i] = Math.Log(sample[i], Base);
+            return new Normal().GetRobustParameterConstraints(transformed);
         }
 
         /// <inheritdoc/>
@@ -493,28 +497,34 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x)
         {
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            if (x <= Minimum) return 0.0d;
-            double d = (Math.Log(x, Base) - Mu) / Sigma;
-            return Math.Exp(-0.5d * d * d) / (Tools.Sqrt2PI * Sigma) * (K / x);
+            return Math.Exp(LogPDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space, so far-tail densities that underflow <see cref="PDF(double)"/>
+        /// keep a finite log density.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            if (x <= 0d || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
+            double logX = Math.Log(x), logBase = Math.Log(Base);
+            double z = DistributionNumerics.Standardize(logX / logBase, Mu, Sigma);
+            return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI) - Math.Log(logBase) - logX;
         }
 
         /// <inheritdoc/>
         public override double CDF(double x)
         {
-            if (_parametersValid == false)
-                ValidateParameters(Mu, Sigma, true);
-            if (x <= Minimum)
-                return 0d;
-            return 0.5d * (1.0d + Erf.Function((Math.Log(x, Base) - Mu) / (Sigma * Math.Sqrt(2.0d))));
+            return Math.Exp(LogCDF(x));
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (double.IsNaN(probability) || probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -523,7 +533,7 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, Sigma, true);
-            return Math.Exp((Mu - Sigma * Math.Sqrt(2.0d) * Erf.InverseErfc(2.0d * probability)) / K);
+            return Math.Exp((Mu + Sigma * Normal.StandardZ(probability)) / K);
         }
 
         /// <summary>
@@ -535,9 +545,15 @@ namespace Numerics.Distributions
         /// <param name="percentiles">List of confidence percentiles for confidence interval output.</param>
         /// <remarks>
         /// This is the same sampling approach as used in HEC-FDA.
+        /// Each simulated distribution retains the configured <see cref="Base"/>.
         /// </remarks>
+        /// <returns>A matrix with one row per quantile and one column per requested confidence percentile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="quantiles"/> or <paramref name="percentiles"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample size, realization count, a probability list, an individual probability, or the distribution parameters are invalid.</exception>
         public double[,] MonteCarloConfidenceIntervals(int sampleSize, int realizations, IList<double> quantiles, IList<double> percentiles)
         {
+            DistributionNumerics.ValidateConfidenceInputs(sampleSize, quantiles, percentiles, 2);
+            if (realizations <= 0) throw new ArgumentOutOfRangeException(nameof(realizations), "At least one realization is required.");
             // validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Mu, _sigma, true);
@@ -568,7 +584,7 @@ namespace Numerics.Distributions
                 var Chi = new ChiSquared(sampleSize - 1);
                 double NewSigma = Math.Sqrt((sampleSize - 1) * Math.Pow(OriginalStdDev, 2d) / Chi.InverseCDF(rndStdDev[idx]));
                 // Create a new distribution with the new parameters
-                MonteCarloDistributions[idx] = new LogNormal(NewMu, NewSigma);
+                MonteCarloDistributions[idx] = new LogNormal(NewMu, NewSigma) { Base = Base };
             });
 
             // Create confidence intervals
@@ -590,12 +606,13 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new LogNormal(Mu, Sigma);
+            return new LogNormal(Mu, Sigma) { Base = Base };
         }
 
         /// <inheritdoc/>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
         {
+            DistributionNumerics.ValidateSampleSize(sampleSize);
             if (estimationMethod != ParameterEstimationMethod.MethodOfMoments &&
                 estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
             {
@@ -606,70 +623,48 @@ namespace Numerics.Distributions
                 ValidateParameters(Mu, _sigma, true);
             // Compute covariance in (μ, σ) parameterization of log-space.
             // Var(μ̂) = σ²/n, Var(σ̂) = σ²/(2n), Cov = 0.
-            // Both MoM and MLE give the same result for Normal (UMVUE).
-            double s2 = Sigma * Sigma;
+            // Log-moment and maximum-likelihood estimators share this leading asymptotic covariance.
+            double scaled = Sigma / Math.Sqrt(sampleSize);
+            double s2 = scaled * scaled;
             var covar = new double[2, 2];
-            covar[0, 0] = s2 / sampleSize; // Var(μ̂)
-            covar[1, 1] = s2 / (2.0 * sampleSize); // Var(σ̂)
+            covar[0, 0] = s2; // Var(μ̂)
+            covar[1, 1] = s2 / 2d; // Var(σ̂)
             covar[0, 1] = 0.0;
             covar[1, 0] = covar[0, 1];
             return covar;
         }
 
         /// <inheritdoc/>
+        /// <remarks>Combines the physical quantile and parameter standard errors in log space before squaring, so representable variance is retained when the quantile square would overflow.</remarks>
         public double QuantileVariance(double probability, int sampleSize, ParameterEstimationMethod estimationMethod)
         {
-            var covar = ParameterCovariance(sampleSize, estimationMethod);
-            var grad = QuantileGradient(probability);
-            double varA = covar[0, 0];
-            double varB = covar[1, 1];
-            double covAB = covar[1, 0];
-            double dQx1 = grad[0];
-            double dQx2 = grad[1];
-            double varQ = Math.Pow(dQx1, 2d) * varA + Math.Pow(dQx2, 2d) * varB + 2d * dQx1 * dQx2 * covAB;
-            return varQ * Math.Pow(InverseCDF(probability) / K, 2d);
+            DistributionNumerics.ValidateProbability(probability);
+            DistributionNumerics.ValidateSampleSize(sampleSize);
+            if (estimationMethod != ParameterEstimationMethod.MethodOfMoments && estimationMethod != ParameterEstimationMethod.MaximumLikelihood)
+                throw new NotImplementedException();
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
+            double z = Normal.StandardZ(probability), logBase = Math.Log(Base);
+            double logQuantile = (Mu + Sigma * z) * logBase;
+            double logStandardError = logQuantile + Math.Log(logBase) + Math.Log(Sigma) - 0.5d * Math.Log(sampleSize);
+            // For the mean and SD of base-log observations, covariance is zero and the SD variance is half the mean variance.
+            return Math.Exp(2d * logStandardError + Tools.Log1p(0.5d * z * z));
         }
 
         /// <inheritdoc/>
+        /// <remarks>Returns derivatives of the physical quantile with respect to the configured base-log <see cref="Mu"/> and <see cref="Sigma"/>. The change-of-base and exponential Jacobian are applied exactly once.</remarks>
         public double[] QuantileGradient(double probability)
         {
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(Mu, _sigma, true);
+            DistributionNumerics.ValidateProbability(probability);
+            if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
             double z = Normal.StandardZ(probability);
-            // Q(p) = μ + σ·z(p) in log-space, so ∂Q/∂μ = 1, ∂Q/∂σ = z(p).
-            var gradient = new double[]
-            {
-                1.0d, // ∂Q/∂μ
-                z     // ∂Q/∂σ
-            };
-            return gradient;
+            double factor = InverseCDF(probability) * Math.Log(Base);
+            return [factor, factor * z];
         }
 
         /// <inheritdoc/>
         public double[,] QuantileJacobian(IList<double> probabilities, out double determinant)
         {
-            if (probabilities.Count != NumberOfParameters)
-            {
-                throw new ArgumentOutOfRangeException(nameof(probabilities), "The number of probabilities must be the same length as the number of distribution parameters.");
-            }
-            // Get gradients
-            var dQp1 = QuantileGradient(probabilities[0]);
-            var dQp2 = QuantileGradient(probabilities[1]);
-            // Compute determinant
-            // |a b|
-            // |c d|
-            // |A| = ad − bc
-            double p0 = InverseCDF(probabilities[0]) / K;
-            double p1 = InverseCDF(probabilities[1]) / K;
-            double a = dQp1[0] * p0;
-            double b = dQp1[1] * p0;
-            double c = dQp2[0] * p1;
-            double d = dQp2[1] * p1;
-            determinant = a * d - b * c;
-            // Return Jacobian
-            var jacobian = new double[,] { { a, b }, { c, d } };
-            return jacobian;
+            return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
 

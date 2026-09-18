@@ -1,6 +1,6 @@
-# Multivariate Distributions
+﻿# Multivariate Distributions
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Machine Learning →](../machine-learning/machine-learning.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Univariate Functions →](../functions/index.md)
 
 The ***Numerics*** library provides several multivariate distributions for modeling correlated random variables: the **Multivariate Normal**, **Multivariate Student-t**, **Dirichlet**, and **Multinomial** distributions. These are fundamental in multivariate statistics, risk assessment, and uncertainty quantification.
 
@@ -947,4 +947,4 @@ Console.WriteLine($"P(Stage > 16 AND/OR Duration > 48hr) = {jointExceedance:F4}"
 
 ---
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Machine Learning →](../machine-learning/machine-learning.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Univariate Functions →](../functions/index.md)

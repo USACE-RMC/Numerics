@@ -33,17 +33,20 @@ namespace Numerics.Data
             Count = xValues.Count;
 
             // Validate 
-            if (yValues.Count != Count) throw new ArgumentException(nameof(xValues), "The x and y lists must be the same length.");
-            if (Count < 2) throw new ArgumentException(nameof(xValues), "The x list is too small. It must have at least 2 values.");
+            if (yValues.Count != Count) throw new ArgumentException("The x and y lists must be the same length.", nameof(xValues));
+            if (Count < 2) throw new ArgumentException("The x list is too small. It must have at least 2 values.", nameof(xValues));
             for (int i = 1; i < xValues.Count; ++i)
             {
-                if (xValues[i] == xValues[i - 1]) throw new ArgumentException(nameof(xValues), "All x values should be unique.");
-                if (sortOrder == SortOrder.Ascending && xValues[i] < xValues[i - 1]) throw new ArgumentException(nameof(xValues), "The x values are not in ascending order.");
-                if (sortOrder == SortOrder.Descending && xValues[i] > xValues[i - 1]) throw new ArgumentException(nameof(xValues), "The x values are not in descending order.");
+                if (xValues[i] == xValues[i - 1]) throw new ArgumentException("All x values should be unique.", nameof(xValues));
+                if (sortOrder == SortOrder.Ascending && xValues[i] < xValues[i - 1]) throw new ArgumentException("The x values are not in ascending order.", nameof(xValues));
+                if (sortOrder == SortOrder.Descending && xValues[i] > xValues[i - 1]) throw new ArgumentException("The x values are not in descending order.", nameof(xValues));
             }
             this.XValues = xValues;
-            this.YValues = yValues;     
-            deltaStart = Math.Min(1, (int)Math.Pow((double)Count, 0.25));
+            this.YValues = yValues;
+            // Scale the correlated-search window with the table size (Numerical Recipes' N^0.25 hunt
+            // heuristic). Math.Max keeps the window at least 1 and lets it grow with the table; a
+            // window pinned to a constant starves the hunt path. See the remarks on deltaStart.
+            deltaStart = Math.Max(1, (int)Math.Pow((double)Count, 0.25));
             SortOrder = sortOrder;
             
         }
@@ -59,8 +62,17 @@ namespace Numerics.Data
         public int SearchStart { get; set; } = 0;
 
         /// <summary>
-        /// Keeps track of the difference is start locations. 
+        /// The maximum distance between consecutive search results for which those searches are still
+        /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
+        /// <remarks>
+        /// The constructor assigns <c>Math.Max(1, (int)Math.Pow(Count, 0.25))</c>, the Numerical
+        /// Recipes N^0.25 hunt heuristic, so the window grows with the table size. The value affects
+        /// only which search path runs — hunt and bisection return the same bracket for the same
+        /// input — so it is a performance characteristic rather than a correctness one.
+        /// <see cref="SearchStart"/> and <see cref="UseSmartSearch"/> are public and settable, so a
+        /// consumer that wants different search behaviour can steer the search directly.
+        /// </remarks>
         protected int deltaStart = 0;
 
         /// <summary>

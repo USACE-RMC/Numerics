@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.SpecialFunctions;
 
@@ -108,6 +108,53 @@ namespace Mathematics.SpecialFunctions
                 testResults[i] = Debye.Function(testX[i]);
                 Assert.AreEqual(testResults[i], testValid[i], 1E-4);
             }
+        }
+
+        /// <summary>
+        /// Test the order-1 Debye function against a high-precision reference.
+        /// </summary>
+        /// <remarks>
+        /// The reference values were computed with mpmath at 60 decimal digits by two independent routes that
+        /// agree to better than 1E-58: tanh-sinh quadrature of the defining integral D1(x) = (1/x) integral of
+        /// t / (e^t - 1) from 0 to x, and the polylogarithm closed form
+        /// D1(x) = pi^2 / (6x) + ln(1 - e^-x) - Li2(e^-x) / x. They are corroborated at the endpoints by the
+        /// asymptote D1(100) = pi^2 / 600 = 0.016449340668482264 and by the reflection D1(-1) = D1(1) + 0.5.
+        /// The relative tolerance of 1E-14 is well above the measured worst error of 3 ulp.
+        /// </remarks>
+        [TestMethod]
+        public void Test_DebyeOrderOne()
+        {
+            var testX = new double[] { -100d, -30d, -10d, -5d, -1d, -0.5, -0.001, 0.001, 0.01, 0.1, 0.5, 1d, 1.5, 2d, 5d, 10d, 30d, 100d };
+            var testValid = new double[]
+            {
+                50.01644934066848, 15.05483113556151, 5.164443465679946, 2.820876197700146,
+                1.2775046341122482, 1.1319271567906055, 1.0002500277777775, 0.9997500277777776,
+                0.997502777775, 0.9752777500047232, 0.8819271567906055, 0.7775046341122482,
+                0.686145310789402, 0.6069472846098101, 0.32087619770014614, 0.16444346567994603,
+                0.054831135561510855, 0.016449340668482266
+            };
+
+            for (int i = 0; i < testValid.Length; i++)
+            {
+                double result = Debye.FunctionOrderOne(testX[i]);
+                Assert.AreEqual(testValid[i], result, Math.Abs(testValid[i]) * 1E-14, $"The order-1 Debye function is out of tolerance at x = {testX[i]}.");
+            }
+
+            // The integrand tends to 1 as t tends to 0, so the removable limit is returned exactly.
+            Assert.AreEqual(1d, Debye.FunctionOrderOne(0d), 0d);
+
+            // D1(-x) - D1(x) = x / 2 for x > 0. The tolerance is scaled by the size of the values being
+            // subtracted rather than by the size of the difference: for a small x the two values are both near
+            // 1 and the subtraction itself costs about half an ulp of 1, which is far larger than half an ulp
+            // of x / 2. This is cancellation in the assertion, not error in the function.
+            foreach (double x in new[] { 0.001, 0.25, 1d, 1.75, 7.5, 40d })
+            {
+                double reflected = Debye.FunctionOrderOne(-x);
+                Assert.AreEqual(0.5 * x, reflected - Debye.FunctionOrderOne(x), Math.Abs(reflected) * 1E-15, $"The order-1 Debye reflection failed at x = {x}.");
+            }
+
+            // The order-3 function is a different function and must not be confused with this one.
+            Assert.AreNotEqual(Debye.Function(1d), Debye.FunctionOrderOne(1d));
         }
 
         /// <summary>
@@ -306,5 +353,81 @@ namespace Mathematics.SpecialFunctions
             double actual = Evaluate.PolynomialRev_1(coeffs, x);
             Assert.AreEqual(valid, actual);
         }
+
+        /// <summary>
+        /// Test that NextCombination rejects null, empty, duplicated, out-of-range, and
+        /// negative-count tuples.
+        /// </summary>
+        [TestMethod]
+        public void Test_NextCombination_RejectsInvalidTuples()
+        {
+            Assert.Throws<ArgumentNullException>(() => Factorial.NextCombination(null!, 3));
+            Assert.Throws<ArgumentException>(() => Factorial.NextCombination(Array.Empty<int>(), 3));
+            Assert.Throws<ArgumentException>(() => Factorial.NextCombination(new[] { 0, 0 }, 3));
+            Assert.Throws<ArgumentException>(() => Factorial.NextCombination(new[] { 0, 3 }, 3));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Factorial.NextCombination(new[] { 0 }, -1));
+        }
+        /// <summary>
+        /// The error function complement and its inverse hold relative accuracy deep in the tail,
+        /// where the complement of the error function itself rounds to zero.
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.4.1 at 50 significant digits: erfc(x)
+        /// directly, and the inverse by root solving erfc(t) = y. Tolerances are measured relative
+        /// bounds of 1E-12 for the complement and 1E-9 for the inverse, which passes through the
+        /// AS241 quantile routine.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Erfc_FarTail()
+        {
+            Assert.AreEqual(0.15729920705028513, Erf.Erfc(1.0), 0.15729920705028513 * 1E-12);
+            Assert.AreEqual(2.1519736712498913E-17, Erf.Erfc(6.0), 2.1519736712498913E-17 * 1E-12);
+            Assert.AreEqual(2.088487583762545E-45, Erf.Erfc(10.0), 2.088487583762545E-45 * 1E-12);
+            Assert.AreEqual(7.212994172451207E-100, Erf.Erfc(15.0), 7.212994172451207E-100 * 1E-12);
+            Assert.AreEqual(1.9999779095030015, Erf.Erfc(-3.0), 1.9999779095030015 * 1E-12);
+
+            Assert.AreEqual(0.4769362762044699, Erf.InverseErfc(0.5), Math.Abs(0.4769362762044699) * 1E-9);
+            Assert.AreEqual(6.062693998163568, Erf.InverseErfc(1E-17), 6.062693998163568 * 1E-9);
+            Assert.AreEqual(15.065574702592645, Erf.InverseErfc(1E-100), 15.065574702592645 * 1E-9);
+            Assert.AreEqual(-1.163087153676674, Erf.InverseErfc(1.9), Math.Abs(-1.163087153676674) * 1E-9);
+        }
+
+        /// <summary>
+        /// The normal distribution keeps relative accuracy in the far lower tail, where the error
+        /// function complement form loses the probability to rounding.
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.4.1 ncdf at 50 significant digits. The
+        /// assertions demand 5E-12 relative accuracy through z = -37, near the underflow edge of
+        /// the double range.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NormalCDF_FarTail()
+        {
+            var d = new Numerics.Distributions.Normal(0, 1);
+            Assert.AreEqual(2.866515718791939E-07, d.CDF(-5.0), 2.866515718791939E-07 * 5E-12);
+            Assert.AreEqual(2.2323931972880437E-17, d.CDF(-8.4), 2.2323931972880437E-17 * 5E-12);
+            Assert.AreEqual(1.776482112077679E-33, d.CDF(-12.0), 1.776482112077679E-33 * 5E-12);
+            Assert.AreEqual(2.7536241186062337E-89, d.CDF(-20.0), 2.7536241186062337E-89 * 5E-12);
+            Assert.AreEqual(5.725571222524577E-300, d.CDF(-37.0), 5.725571222524577E-300 * 5E-12);
+        }
+
+        /// <summary>
+        /// Pins the standard-normal CDF through its moderate range after routing it through the
+        /// MVNPHI implementation.
+        /// </summary>
+        /// <remarks>
+        /// Reference values were computed with Python mpmath 1.4.1 at 50 significant digits.
+        /// </remarks>
+        [TestMethod]
+        public void Test_NormalCDF_ModerateRange()
+        {
+            Assert.AreEqual(0.0013498980316300945d, Numerics.Distributions.Normal.StandardCDF(-3d), 5E-13d);
+            Assert.AreEqual(0.15865525393145707d, Numerics.Distributions.Normal.StandardCDF(-1d), 5E-13d);
+            Assert.AreEqual(0.5d, Numerics.Distributions.Normal.StandardCDF(0d), 5E-13d);
+            Assert.AreEqual(0.8413447460685429d, Numerics.Distributions.Normal.StandardCDF(1d), 5E-13d);
+            Assert.AreEqual(0.9986501019683699d, Numerics.Distributions.Normal.StandardCDF(3d), 5E-13d);
+        }
+
     }
 }

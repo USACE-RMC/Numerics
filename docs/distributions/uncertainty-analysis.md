@@ -480,11 +480,17 @@ Console.WriteLine($"Mean τ₄: {Enumerable.Range(0, R).Average(i => lMoments[i,
 
 ## Expected Probability (Rare Events)
 
-For very rare events, compute expected probabilities:
+For very rare events, compute expected probabilities. The two-argument overload shown here copies
+and sorts the quantiles, then returns their mean non-exceedance probabilities in ascending-quantile
+order. It does not preserve an unsorted caller input order. By contrast,
+`ExpectedProbabilities(quantiles, probabilities, distributions)` interpolates the mean bootstrap CDF
+and returns a quantile for each requested probability; its historical name does not describe that
+return quantity.
 
 ```cs
 // Quantiles of interest (e.g., design floods)
 var quantiles = new double[] { 15000, 20000, 25000, 30000 };
+Array.Sort(quantiles); // Match the ascending-quantile order used by the returned values.
 
 // Expected probabilities from bootstrap ensemble
 double[] expectedProbs = bootstrap.ExpectedProbabilities(quantiles);

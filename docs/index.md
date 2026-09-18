@@ -15,7 +15,7 @@ The library is designed for engineers, scientists, and researchers who need reli
 ## Key Features
 
 ### Probability Distributions
-- 40+ univariate probability distributions with PDF, CDF, and inverse CDF
+- 43 univariate probability distributions with PDF, CDF, and inverse CDF
 - Multiple parameter estimation methods (Method of Moments, L-Moments, Maximum Likelihood)
 - Uncertainty analysis via bootstrap resampling
 - Bivariate copulas for dependency modeling
@@ -147,11 +147,13 @@ var results = sampler.Output;
 | [Goodness-of-Fit](statistics/goodness-of-fit.md) | Model evaluation metrics |
 | [Hypothesis Tests](statistics/hypothesis-tests.md) | Statistical hypothesis testing |
 | **Distributions** | |
-| [Univariate Distributions](distributions/univariate.md) | 40+ probability distributions with PDF, CDF, and quantile functions |
+| [Univariate Distributions](distributions/univariate.md) | 43 probability distributions with PDF, CDF, and quantile functions |
 | [Parameter Estimation](distributions/parameter-estimation.md) | Fitting distributions to data |
 | [Uncertainty Analysis](distributions/uncertainty-analysis.md) | Bootstrap and confidence intervals |
 | [Copulas](distributions/copulas.md) | Dependency modeling with copulas |
 | [Multivariate Distributions](distributions/multivariate.md) | Multivariate Normal, Student-t, Dirichlet, Multinomial |
+| **Functions** | |
+| [Univariate Functions](functions/index.md) | Uncertain univariate function forms, composition, posterior ensembles, and link functions |
 | **Machine Learning** | |
 | [Machine Learning](machine-learning/machine-learning.md) | Supervised and unsupervised learning algorithms |
 | **Sampling** | |
@@ -165,6 +167,7 @@ var results = sampler.Output;
 | Namespace | Description |
 |-----------|-------------|
 | `Numerics.Distributions` | Probability distributions and copulas |
+| `Numerics.Functions` | Uncertain univariate functions, posterior ensembles, and link functions |
 | `Numerics.Data.Statistics` | Statistical functions and tests |
 | `Numerics.Data` | Interpolation methods, linear regression, time series data structures |
 | `Numerics.Mathematics` | Base namespace for mathematical operations (includes NumericalDerivative) |

@@ -32,4 +32,13 @@
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Distributions\Univariate\Fixtures\kappa-four-probabilities.csv" />
+    <EmbeddedResource Include="Distributions\Univariate\Fixtures\kappa-four-boundaries.csv" />
+    <EmbeddedResource Include="..\docs\distributions\oracles\extreme-positive.csv" Link="Distributions\Univariate\Fixtures\extreme-positive.csv" />
+    <EmbeddedResource Include="..\docs\distributions\oracles\generalized-fisher.csv" Link="Distributions\Univariate\Fixtures\generalized-fisher.csv" />
+    <EmbeddedResource Include="..\docs\distributions\oracles\generalized-adjacent-boundaries.csv" Link="Distributions\Univariate\Fixtures\generalized-adjacent-boundaries.csv" />
+    <EmbeddedResource Include="..\docs\distributions\oracles\normal-pearson.csv" Link="Distributions\Univariate\Fixtures\normal-pearson.csv" />
+  </ItemGroup>
+
 </Project>

@@ -23,6 +23,38 @@ namespace Utilities
     public class Test_Tools
     {
         /// <summary>
+        /// Verifies finite classification includes signed zero and subnormal values but excludes NaN and infinities.
+        /// </summary>
+        [TestMethod]
+        public void Test_IsFinite_EdgeValues()
+        {
+            double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
+            foreach (double value in new[] { 0d, negativeZero, double.Epsilon, -double.Epsilon, double.MinValue, double.MaxValue })
+                Assert.IsTrue(Tools.IsFinite(value));
+
+            Assert.IsFalse(Tools.IsFinite(double.NaN));
+            Assert.IsFalse(Tools.IsFinite(double.NegativeInfinity));
+            Assert.IsFalse(Tools.IsFinite(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies clamping preserves in-range values and signed zero while bounding infinities and propagating NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clamp_EdgeValues()
+        {
+            Assert.AreEqual(0d, Tools.Clamp(-1d, 0d, 1d));
+            Assert.AreEqual(1d, Tools.Clamp(2d, 0d, 1d));
+            Assert.AreEqual(0.25d, Tools.Clamp(0.25d, 0d, 1d));
+            Assert.AreEqual(0d, Tools.Clamp(double.NegativeInfinity, 0d, 1d));
+            Assert.AreEqual(1d, Tools.Clamp(double.PositiveInfinity, 0d, 1d));
+            Assert.IsTrue(double.IsNaN(Tools.Clamp(double.NaN, 0d, 1d)));
+
+            double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
+            Assert.AreEqual(long.MinValue, BitConverter.DoubleToInt64Bits(Tools.Clamp(negativeZero, 0d, 1d)));
+        }
+
+        /// <summary>
         /// Test Sign function with varying inputs.
         /// </summary>
         [TestMethod]
@@ -507,6 +539,28 @@ namespace Utilities
         }
 
         /// <summary>
+        /// Testing min helpers when every candidate is positive infinity.
+        /// </summary>
+        /// <remarks>
+        /// Reference behavior verified against Python numpy 2.4.2: np.min([inf, inf]) returns inf
+        /// and np.argmin([inf, inf]) returns 0.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MinHelpers_AllPositiveInfinity()
+        {
+            List<double> values = new List<double> { double.PositiveInfinity, double.PositiveInfinity };
+            List<int> indicators = new List<int> { 1, 1 };
+
+            Tools.MinMax(values, out double min, out double max);
+
+            Assert.AreEqual(double.PositiveInfinity, min);
+            Assert.AreEqual(double.PositiveInfinity, max);
+            Assert.AreEqual(0, Tools.ArgMin(values));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Min(values));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Min(values, indicators));
+        }
+
+        /// <summary>
         /// Testing max helpers when every candidate is negative infinity.
         /// </summary>
         [TestMethod]
@@ -534,6 +588,20 @@ namespace Utilities
 
             Assert.AreEqual(double.NegativeInfinity, Tools.LogSumExp(double.NegativeInfinity, double.NegativeInfinity));
             Assert.AreEqual(double.NegativeInfinity, Tools.LogSumExp(values));
+        }
+
+        /// <summary>
+        /// Verifies the two-value log-sum preserves finite terms beside negative infinity and existing NaN behavior.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogSumExp_NonfiniteInputs()
+        {
+            Assert.AreEqual(5d, Tools.LogSumExp(5d, double.NegativeInfinity));
+            Assert.AreEqual(5d, Tools.LogSumExp(double.NegativeInfinity, 5d));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(double.NaN, 5d)));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(5d, double.NaN)));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(double.PositiveInfinity, 5d)));
+            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(5d, double.PositiveInfinity)));
         }
 
         /// <summary>
@@ -579,6 +647,72 @@ namespace Utilities
             var result = Tools.Decompress(data);
             Assert.IsGreaterThanOrEqualTo(result.Length, data.Length);
         }
+
+        /// <summary>
+        /// Expm1 computes exp(x) - 1 without cancellation: tiny arguments return themselves
+        /// exactly, small arguments match the series exp(x) - 1 = x + x^2/2 + x^3/6 to full
+        /// precision, deep negatives saturate at exactly -1, arguments large enough that the
+        /// exponential itself overflows return positive infinity while the band just below, where
+        /// only the compensation's intermediate product overflows, stays finite, and the round trip
+        /// with Log1p closes.
+        /// </summary>
+        [TestMethod]
+        public void Test_Expm1()
+        {
+            Assert.AreEqual(0d, Tools.Expm1(0d), 0d);
+            Assert.AreEqual(1E-18, Tools.Expm1(1E-18), 0d);
+            Assert.AreEqual(Math.E - 1d, Tools.Expm1(1d), 3E-16);
+            // Series references: 1e-8 + 0.5e-16 + 1.667e-25 and its negative-argument mirror.
+            Assert.AreEqual(1.0000000050000000167E-8, Tools.Expm1(1E-8), 1E-24);
+            Assert.AreEqual(-9.9999999500000002E-9, Tools.Expm1(-1E-8), 1E-24);
+            // Deep negatives saturate at -1: within 1E-15 at -746, and full underflow returns exactly -1.
+            Assert.AreEqual(-1d, Tools.Expm1(-746d), 1E-15);
+            Assert.AreEqual(-1d, Tools.Expm1(-800d), 0d);
+            Assert.AreEqual(-1d, Tools.Expm1(double.NegativeInfinity), 0d);
+            Assert.AreEqual(double.PositiveInfinity, Tools.Expm1(800d));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Expm1(double.PositiveInfinity));
+            Assert.IsTrue(double.IsNaN(Tools.Expm1(double.NaN)));
+            // Inside the band where exp(x) is finite but the compensation's intermediate
+            // (u - 1) * x overflows, the exact difference is returned: exp(x) - 1 and exp(x) agree
+            // to the last unit there. Unguarded, these answered positive infinity.
+            Assert.AreEqual(Math.Exp(705d), Tools.Expm1(705d), 0d);
+            Assert.AreEqual(Math.Exp(709d), Tools.Expm1(709d), 0d);
+            // The exponential itself first overflows just above 709.78.
+            Assert.AreEqual(double.PositiveInfinity, Tools.Expm1(709.8d));
+
+            foreach (double x in new[] { 1E-12, 0.5d, 3d })
+            {
+                Assert.AreEqual(x, Tools.Expm1(Tools.Log1p(x)), 1E-14 * x);
+            }
+        }
+
+        /// <summary>
+        /// Expm1 saturates exactly at -1 when the exponential is below the binary64
+        /// rounding boundary, without saturating a nearby representable result.
+        /// </summary>
+        [TestMethod]
+        public void Test_Expm1_DeepNegativeRoundingBoundary()
+        {
+            Assert.AreEqual(-1d, Tools.Expm1(-745d), 0d);
+            Assert.AreEqual(-0.9999999999999998d, Tools.Expm1(-36d), 0d);
+        }
+
+        /// <summary>
+        /// Log1p pins for the companion helper: tiny arguments return themselves exactly, small
+        /// arguments match the series log(1 + x) = x - x^2/2 + x^3/3 to full precision, and the
+        /// domain edges produce negative infinity at -1 and NaN below it.
+        /// </summary>
+        [TestMethod]
+        public void Test_Log1p()
+        {
+            Assert.AreEqual(0d, Tools.Log1p(0d), 0d);
+            Assert.AreEqual(1E-18, Tools.Log1p(1E-18), 0d);
+            Assert.AreEqual(Math.Log(2d), Tools.Log1p(1d), 3E-16);
+            Assert.AreEqual(9.9999999500000003E-9, Tools.Log1p(1E-8), 1E-24);
+            Assert.AreEqual(-1.00000000500000003E-8, Tools.Log1p(-1E-8), 1E-24);
+            Assert.AreEqual(double.NegativeInfinity, Tools.Log1p(-1d));
+            Assert.IsTrue(double.IsNaN(Tools.Log1p(-1.5d)));
+        }
     }
-    
+
 }

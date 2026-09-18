@@ -232,6 +232,33 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Returns the size of each group of tied values in the sample.
+        /// </summary>
+        /// <param name="sample">The data sample.</param>
+        /// <returns>One entry per group of two or more equal values, holding the group size.</returns>
+        private static List<double> TieGroupSizes(IList<double> sample)
+        {
+            var sorted = sample.ToArray();
+            Array.Sort(sorted);
+            var groups = new List<double>();
+            int run = 1;
+            for (int i = 1; i < sorted.Length; i++)
+            {
+                if (sorted[i] == sorted[i - 1])
+                {
+                    run++;
+                }
+                else
+                {
+                    if (run > 1) groups.Add(run);
+                    run = 1;
+                }
+            }
+            if (run > 1) groups.Add(run);
+            return groups;
+        }
+
+        /// <summary>
         /// The Mann-Whitney test for homogeneity and stationarity (jump). 
         /// </summary>
         /// <param name="sample1">Data sample 1. Must be less than or equal in length to sample 2.</param>
@@ -247,12 +274,14 @@ namespace Numerics.Data.Statistics
             var sample = new List<double>();
             sample.AddRange(sample1.ToList());
             sample.AddRange(sample2.ToList());
-            var ties = new double[n1]; double R = 0, T = 0;
+            double R = 0, T = 0;
 
-            var ranks = Statistics.RanksInPlace(sample.ToArray(), out ties);
+            var ranks = Statistics.RanksInPlace(sample.ToArray(), out _);
 
             for (int i = 0; i < sample1.Count; i++) R += ranks[i];
-            for (int i = 0; i < ties.Length; i++) T += (Tools.Pow(ties[i], 3) - ties[i]) / (n * (n - 1));
+            // The variance correction sums over tie groups by their full size
+            foreach (double g in TieGroupSizes(sample))
+                T += (Tools.Pow(g, 3) - g) / (n * (n - 1));
 
             double V = R - n1 * (n1 + 1d) / 2d;
             double W = n1 * n2 - V;
@@ -283,9 +312,9 @@ namespace Numerics.Data.Statistics
                 }
             }
 
-            var ties = new double[n];
-            var R = Statistics.RanksInPlace(sample.ToArray(), out ties);
-            for (i = 0; i < ties.Length; i++) T += ties[i] * (ties[i] - 1) * (2 * ties[i] + 5);
+            // The variance correction sums over tie groups by their full size
+            foreach (double g in TieGroupSizes(sample))
+                T += g * (g - 1) * (2 * g + 5);
             varS = (n * (n - 1) * (2 * n + 5) - T) / 18;
             z = Math.Abs((S - Math.Sign(S)) / Math.Sqrt(varS));
 

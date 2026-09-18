@@ -722,7 +722,9 @@ namespace Numerics.Data
             {
                 if (_isValid == true)
                 {
-                    if (OrdinateValid(index) == false)
+                    // Each newly inserted position must be validated against its own neighbors,
+                    // not the constant first insertion index.
+                    if (OrdinateValid(i) == false)
                         _isValid = false;
                 }
             }

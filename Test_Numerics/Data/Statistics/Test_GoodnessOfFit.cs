@@ -130,7 +130,7 @@ namespace Data.Statistics
         {
             var observed = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 };
             double RMSE = GoodnessOfFit.RMSE(observed, data, 2);
-            double trueRMSE = 83.8037180707237;
+            double trueRMSE = 87.6252835187426;
 
             Assert.AreEqual(trueRMSE, RMSE, 1E-6);
         }
@@ -144,7 +144,7 @@ namespace Data.Statistics
         {
             var observed = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 };
             double RMSE = GoodnessOfFit.RMSE(observed, norm);
-            double trueRMSE = 83.8037180707237;
+            double trueRMSE = 87.6252835187426;
 
             Assert.AreEqual(trueRMSE, RMSE, 1E-6);
         }
@@ -160,9 +160,39 @@ namespace Data.Statistics
             var observed = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 };
             var pp = PlottingPositions.Weibull(observed.Length);
             double RMSE = GoodnessOfFit.RMSE(observed, pp, norm);
-            double trueRMSE = 83.8037180707237;
+            double trueRMSE = 87.6252835187426;
 
             Assert.AreEqual(trueRMSE, RMSE, 1E-6);
+        }
+
+        /// <summary>
+        /// Verifies that parameter adjustment changes only the denominator and that paired row order does not affect RMSE.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParameterAdjustedRMSEUsesAllResiduals()
+        {
+            double[] observed = [0d, 0d, 0d, 0d];
+            double[] modeled = [1d, 2d, 3d, 4d];
+            double[] permutedModeled = [4d, 1d, 2d, 3d];
+            double expected = Math.Sqrt((1d + 4d + 9d + 16d) / 3d);
+
+            double actual = GoodnessOfFit.RMSE(observed, modeled, 1);
+            double permutedActual = GoodnessOfFit.RMSE(observed, permutedModeled, 1);
+
+            Assert.AreEqual(expected, actual, 1E-12);
+            Assert.AreEqual(expected, permutedActual, 1E-12);
+        }
+
+        /// <summary>
+        /// Verifies that RMSE rejects parameter counts that do not leave positive residual degrees of freedom.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParameterAdjustedRMSERejectsInvalidParameterCount()
+        {
+            double[] values = [1d, 2d];
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => GoodnessOfFit.RMSE(values, values, -1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => GoodnessOfFit.RMSE(values, values, values.Length));
         }
 
         /// <summary>
@@ -372,8 +402,6 @@ namespace Data.Statistics
             var modeled = new double[] { 3.0, -0.5, 2.0, 1.5, 3.0, 2.9, 2.1, 0.8 };
             double KGE = GoodnessOfFit.KlingGuptaEfficiency(observed, modeled);
 
-            // Corrected expected value based on mathematical calculation
-            // Previous test value of 0.9125211 was incorrect
             double trueKGE = 0.88573;
 
             Assert.AreEqual(trueKGE, KGE, 1E-4);
@@ -405,8 +433,6 @@ namespace Data.Statistics
             var modeled = new double[] { 3.0, -0.5, 2.0, 1.5, 3.0, 2.9, 2.1, 0.8 };
             double KGEmod = GoodnessOfFit.KlingGuptaEfficiencyMod(observed, modeled);
 
-            // Corrected expected value based on mathematical calculation
-            // Previous test value of 0.9117433 was close but slightly off
             double trueKGEmod = 0.91295;
 
             Assert.AreEqual(trueKGEmod, KGEmod, 1E-4);

@@ -28,9 +28,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>2.1.4</Version>
-    <PackageReleaseNotes>Version 2.1.4 adds non-throwing univariate distribution factory creation, preserves valid zero-inflated mixture weights, hardens Box-Cox and Yeo-Johnson fitting and inversion against invalid candidates, and enforces ascending empirical distribution ordinates with expanded regression coverage.</PackageReleaseNotes>
-    <AssemblyVersion>2.1.4.0</AssemblyVersion>
+    <Version>2.2.0</Version>
+    <PackageReleaseNotes>Version 2.2.0 adds weighted statistics and global sensitivity estimators; adaptive two-dimensional Gauss-Kronrod integration; scrambled Sobol/Vegas sampling; conditional copulas and an Independence copula; composable, serializable functions; empirical convolution; sided extrapolation; singular-covariance multivariate normal support; and expanded shortest-path routing. It improves distribution tails, censored and interval likelihoods, uncertainty calculations, mixture and competing-risk evaluation, adaptive NUTS and MCMC diagnostics, BFGS convergence, matrix regularization, and regression coverage. Upgrade considerations: R-hat/ESS definitions, default NUTS mass adaptation, corrected numerical methods and fitting constraints can change reported results. See the v2.2.0 GitHub release notes for details.</PackageReleaseNotes>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>
@@ -46,7 +46,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 		</PackageReference>
     <!--https://github.com/dotnet/sourcelink/tree/main-->
-		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.111">
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		  <PrivateAssets>all</PrivateAssets>
 		</PackageReference>

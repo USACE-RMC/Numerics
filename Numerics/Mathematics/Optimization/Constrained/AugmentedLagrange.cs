@@ -50,7 +50,7 @@ namespace Numerics.Mathematics.Optimization
             _nu = new double[_constraints.Where((x) => x.Type == ConstraintType.GreaterThanOrEqualTo).ToArray().Length];
 
             // Set up objective functions and optimizer
-            if (optimizer.GetType() == typeof(AugmentedLagrange)) throw new ArgumentException(nameof(optimizer), "The inner optimizer cannot also be an Augmented Lagrange optimizer.");
+            if (optimizer.GetType() == typeof(AugmentedLagrange)) throw new ArgumentException("The inner optimizer cannot also be an Augmented Lagrange optimizer.", nameof(optimizer));
             _primaryObjectiveFunction = objectiveFunction;
             this.Optimizer = optimizer;
             this.Optimizer.ObjectiveFunction = augmentedLagrangianFunction;
@@ -94,9 +94,19 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The Augmented Lagrangian objective function.
         /// </summary>
+        /// <param name="x">The parameter values to evaluate.</param>
+        /// <returns>The scaled primary objective plus the constraint penalties.</returns>
+        /// <remarks>
+        /// The primary objective enters on the optimizer's scaled convention, exactly as
+        /// <see cref="Optimizer.Evaluate"/> applies it, so a maximization negates it here while the
+        /// constraint penalties stay direction-neutral and are always added. The inner search then
+        /// always minimizes this function. Dropping the scale here would leave the inner search
+        /// minimizing the raw objective regardless of the requested direction, so a maximization
+        /// would report the constrained minimum.
+        /// </remarks>
         private double augmentedLagrangianFunction(double[] x)
         {
-            double phi = _primaryObjectiveFunction(x);
+            double phi = functionScale * _primaryObjectiveFunction(x);
             double rho2 = 0.5 * rho;
 
             int lambdaIdx = 0, muIdx = 0, nuIdx = 0;

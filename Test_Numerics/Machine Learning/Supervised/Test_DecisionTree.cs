@@ -109,5 +109,39 @@ namespace MachineLearning
 
         }
 
+        /// <summary>
+        /// Verify that a regression node whose responses are all equal becomes a leaf instead of
+        /// splitting further.
+        /// </summary>
+        /// <remarks>
+        /// Regression growth counts DISTINCT responses, not sample rows, when testing node purity,
+        /// applying scikit-learn's rule that a node is never split once it is pure. On this
+        /// twelve-point, two-value fixture the tree therefore stops at the root split with two pure
+        /// leaves — three nodes in total — rather than chaining zero-gain splits of pure nodes down
+        /// to one observation per leaf.
+        /// </remarks>
+        [TestMethod]
+        public void Test_DecisionTree_Regression_PureNodeBecomesLeaf()
+        {
+            var x = new Matrix(new List<double[]> { new double[] { 1, 2, 3, 4, 5, 6, 100, 101, 102, 103, 104, 105 } });
+            var y = new Vector(new double[] { 10, 10, 10, 10, 10, 10, 100, 100, 100, 100, 100, 100 });
+            var dt = new DecisionTree(x, y, 7) { Features = 1 };
+            dt.Train();
+
+            int CountNodes(DecisionNode n)
+            {
+                return n == null ? 0 : 1 + CountNodes(n.Left) + CountNodes(n.Right);
+            }
+
+            Assert.AreEqual(3, CountNodes(dt.Root), "A pure node must not be split further.");
+            Assert.IsFalse(dt.Root.IsLeafNode);
+            Assert.IsTrue(dt.Root.Left.IsLeafNode);
+            Assert.IsTrue(dt.Root.Right.IsLeafNode);
+            double lower = System.Math.Min(dt.Root.Left.Value, dt.Root.Right.Value);
+            double upper = System.Math.Max(dt.Root.Left.Value, dt.Root.Right.Value);
+            Assert.AreEqual(10d, lower, 0d);
+            Assert.AreEqual(100d, upper, 0d);
+        }
+
     }
 }

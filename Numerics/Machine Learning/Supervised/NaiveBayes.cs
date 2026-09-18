@@ -163,6 +163,9 @@ namespace Numerics.MachineLearning
                 // Compute the mean and standard deviation of each feature j given the class i
                 for (int j = 0; j < nFeatures; j++)
                 {
+                    // Sums of powers accumulated about the first class member, so the variance is
+                    // conditioned on the within-class spread rather than on the distance from zero
+                    double shift = double.NaN;
                     double x = 0;     // sum
                     double x2 = 0;    // sum of X^2
                     double u1, u2;
@@ -172,8 +175,10 @@ namespace Numerics.MachineLearning
                     {
                         if (Y[k] == Classes[i])
                         {
-                            x += X[k, j];
-                            x2 += Math.Pow(X[k, j], 2);
+                            if (double.IsNaN(shift)) shift = X[k, j];
+                            double y = X[k, j] - shift;
+                            x += y;
+                            x2 += y * y;
                             n++;
                         }
                     }
@@ -181,7 +186,7 @@ namespace Numerics.MachineLearning
                     u1 = x / n;
                     u2 = x2 / n;
                     // Set means
-                    Means[i, j] = u1;
+                    Means[i, j] = shift + u1;
                     // Set standard deviations
                     if (n <= 1)
                         StandardDeviations[i, j] = 1e-6;
@@ -189,6 +194,21 @@ namespace Numerics.MachineLearning
                         StandardDeviations[i, j] = Math.Sqrt(Math.Max(0, (u2 - Math.Pow(u1, 2d)) * (n / (n - 1))));
                 }
 
+            }
+
+            // Floor the standard deviations at 1E-9 of the largest feature variance, so a feature
+            // that is constant within a class carries a sharp but usable density instead of a
+            // degenerate one
+            double maxVariance = 0;
+            for (int i = 0; i < nClasses; i++)
+                for (int j = 0; j < nFeatures; j++)
+                    maxVariance = Math.Max(maxVariance, StandardDeviations[i, j] * StandardDeviations[i, j]);
+            double floor = Math.Sqrt(1e-9 * maxVariance);
+            if (floor > 0)
+            {
+                for (int i = 0; i < nClasses; i++)
+                    for (int j = 0; j < nFeatures; j++)
+                        StandardDeviations[i, j] = Math.Max(StandardDeviations[i, j], floor);
             }
 
             IsTrained = true;

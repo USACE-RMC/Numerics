@@ -2,7 +2,7 @@
 
 [← Previous: Hypothesis Tests](../statistics/hypothesis-tests.md) | [Back to Index](../index.md) | [Next: Parameter Estimation →](parameter-estimation.md)
 
-The ***Numerics*** library provides over 40 univariate probability distributions for statistical analysis, risk assessment, and uncertainty quantification. All distributions implement a common interface with consistent methods for computing probability density functions (PDF), cumulative distribution functions (CDF), quantiles, and statistical moments.
+The ***Numerics*** library provides 43 univariate probability distributions for statistical analysis, risk assessment, and uncertainty quantification. All distributions implement a common interface with consistent methods for computing probability density functions (PDF), cumulative distribution functions (CDF), quantiles, and statistical moments.
 
 ## Available Distributions
 

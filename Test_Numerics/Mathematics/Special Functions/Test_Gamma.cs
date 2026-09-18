@@ -162,6 +162,38 @@ namespace Mathematics.SpecialFunctions
         }
 
         /// <summary>
+        /// The regularized incomplete gamma integral matches 50-digit reference values on every
+        /// algorithm branch, including the continued fraction taken when the argument reaches the
+        /// shape parameter.
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.4.1 at 50 significant digits,
+        /// gammainc(alpha, 0, X, regularized=True), and cross-checked with scipy 1.17.1
+        /// scipy.special.gammainc, which agrees with mpmath to the last printed digit on every
+        /// case below.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Incomplete_ReferenceValues()
+        {
+            // Continued-fraction branch: X > 1 and X >= alpha
+            Assert.AreEqual(0.9886559833621947, Gamma.Incomplete(1.5, 0.1), 1E-11);
+            Assert.AreEqual(0.9932620530009145, Gamma.Incomplete(5.0, 1.0), 1E-11);
+            Assert.AreEqual(0.9796589705830716, Gamma.Incomplete(12.0, 6.0), 1E-11);
+            Assert.AreEqual(0.9991559189282155, Gamma.Incomplete(45.0, 26.0), 1E-11);
+            Assert.AreEqual(0.5059471461707603, Gamma.Incomplete(500.0, 500.0), 1E-11);
+            Assert.AreEqual(0.9729484747641512, Gamma.Incomplete(700.0, 650.0), 1E-11);
+
+            // Series branch: X <= 1 or X < alpha
+            Assert.AreEqual(0.30146464169666126, Gamma.Incomplete(0.075, 0.5), 1E-11);
+            Assert.AreEqual(0.9083579897300342, Gamma.Incomplete(0.3, 0.1), 1E-11);
+
+            // Hill approximation branch: alpha > 10000. The asymptotic expansion carries its own
+            // error of about 6E-6 at this argument, so the tolerance reflects the branch accuracy
+            // rather than double precision.
+            Assert.AreEqual(0.8366349011570255, Gamma.Incomplete(10500.0, 10400.0), 1E-5);
+        }
+
+        /// <summary>
         /// Test the incomplete gamma integral
         /// </summary>
         /// <remarks>

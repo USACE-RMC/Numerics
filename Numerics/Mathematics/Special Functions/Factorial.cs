@@ -126,7 +126,8 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <param name="buffer"> An array to store the current combination being constructed </param>
         /// <param name="done"> The index of where the next element of the combination should be placed </param>
         /// <param name="begin"> Index of where to start adding elements. Ensures each element is only included once</param>
-        /// <param name="end"> The last index (exclusive) to be inlcuded in the current combination </param>
+        /// <param name="end">The exclusive upper bound for candidate indexes.</param>
+        /// <returns>The combinations generated from the current buffer prefix.</returns>
         private static IEnumerable<int[]> FindCombosRecursive(int[] buffer, int done, int begin, int end)
         {
             for (int i = begin; i < end; i++)
@@ -146,6 +147,7 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// </summary>
         /// <param name="m">The combination size.</param>
         /// <param name="n">The overall count.</param>
+        /// <returns>All strictly increasing index combinations of size <paramref name="m"/> drawn from <paramref name="n"/> items.</returns>
         public static IEnumerable<int[]> FindCombinations(int m, int n)
         {
             return FindCombosRecursive(new int[m], 0, 0, n);
@@ -181,6 +183,79 @@ namespace Numerics.Mathematics.SpecialFunctions
                 }
             }
             return output;
+        }
+
+        /// <summary>
+        /// Advances a valid k-combination over [0, n) to its lexicographic successor in place.
+        /// </summary>
+        /// <param name="combination">The current strictly increasing index tuple.</param>
+        /// <param name="n">The overall item count.</param>
+        /// <returns><see langword="false"/> when the tuple is the last combination of its size.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="combination"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="n"/> is negative.</exception>
+        /// <exception cref="ArgumentException">Thrown when the tuple is empty, too long, out of range, or not strictly increasing.</exception>
+        public static bool NextCombination(int[] combination, int n)
+        {
+            if (combination == null) throw new ArgumentNullException(nameof(combination));
+            if (n < 0) throw new ArgumentOutOfRangeException(nameof(n), "The item count must be non-negative.");
+            if (combination.Length == 0 || combination.Length > n)
+                throw new ArgumentException("The combination length must be between one and the item count.", nameof(combination));
+
+            int previous = -1;
+            for (int i = 0; i < combination.Length; i++)
+            {
+                if (combination[i] <= previous || combination[i] >= n)
+                    throw new ArgumentException("Combination indexes must be strictly increasing and within [0, n).", nameof(combination));
+                previous = combination[i];
+            }
+            return NextCombinationUnchecked(combination, n);
+        }
+
+        /// <summary>
+        /// Advances a combination that has already been validated.
+        /// </summary>
+        /// <param name="combination">The valid strictly increasing index tuple to advance in place.</param>
+        /// <param name="n">The overall item count.</param>
+        /// <returns><see langword="false"/> when the tuple is the final combination of its size; otherwise, <see langword="true"/>.</returns>
+        /// <remarks>This unchecked helper requires the caller to enforce the contract documented by <see cref="NextCombination(int[], int)"/> before iteration.</remarks>
+        internal static bool NextCombinationUnchecked(int[] combination, int n)
+        {
+            int k = combination.Length;
+            int i = k - 1;
+            while (i >= 0 && combination[i] == n - k + i) i--;
+            if (i < 0) return false;
+            combination[i]++;
+            for (int j = i + 1; j < k; j++) combination[j] = combination[j - 1] + 1;
+            return true;
+        }
+        /// <summary>
+        /// Enumerates every non-empty subset of n items as an index tuple, in the order
+        /// <see cref="AllCombinations(int)"/> lays out its rows — subset size ascending, then
+        /// lexicographic — without materializing the n·(2^n − 1) matrix.
+        /// </summary>
+        /// <param name="n">The overall count.</param>
+        /// <returns>The index tuples, in <see cref="AllCombinations(int)"/> row order.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when n is negative.</exception>
+        /// <remarks>
+        /// Yields a reused buffer, as <see cref="FindCombinations(int, int)"/> does; copy it to
+        /// retain it. Unlike <see cref="AllCombinations(int)"/> there is no upper bound on n, since
+        /// nothing is allocated per row — the caller decides how far to enumerate.
+        /// </remarks>
+        public static IEnumerable<int[]> AllCombinationsLazy(int n)
+        {
+            if (n < 0)
+                throw new ArgumentOutOfRangeException(nameof(n), "n must be non-negative.");
+
+            for (int k = 1; k <= n; k++)
+            {
+                var combination = new int[k];
+                for (int j = 0; j < k; j++) combination[j] = j;
+                do
+                {
+                    yield return combination;
+                }
+                while (NextCombinationUnchecked(combination, n));
+            }
         }
 
     }

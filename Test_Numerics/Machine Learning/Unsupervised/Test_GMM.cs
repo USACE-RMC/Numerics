@@ -1,7 +1,9 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.MachineLearning;
 using System.Collections.Generic;
+using System.Reflection;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling;
 
 namespace MachineLearning
 {
@@ -48,6 +50,179 @@ namespace MachineLearning
                 Assert.AreEqual(trueMean2[i], gmm.Means[1, i], 1E-2);
                 Assert.AreEqual(trueMean3[i], gmm.Means[2, i], 1E-2);
             }
+
+            // The log-likelihood carries the full Gaussian normalizing constant. R mclust
+            // (Mclust, G = 3, VVV) reports -180.185 and Python sklearn 1.8.0
+            // (GaussianMixture(3, covariance_type='full'), score(X) * n) reports -180.18547759250404
+            // for this fixture; the window covers EM stopping differences between implementations.
+            Assert.AreEqual(-180.185, gmm.LogLikelihood, 0.5);
         }
+
+        /// <summary>
+        /// A training run that exhausts its iteration budget reports the log-likelihood of its
+        /// final iteration rather than a placeholder.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_LogLikelihood_AtIterationCap()
+        {
+            var x = new double[100];
+            var y = new double[100];
+            var rnd = new MersenneTwister(4242);
+            for (int i = 0; i < 100; i++)
+            {
+                double t = i < 50 ? 0.0 : 8.0;
+                x[i] = t + rnd.NextDouble();
+                y[i] = t + rnd.NextDouble();
+            }
+            var gmm = new GaussianMixtureModel(new Matrix(new List<double[]> { x, y }), 2) { MaxIterations = 2 };
+            gmm.Train(12345);
+
+            Assert.IsLessThan(0, gmm.LogLikelihood, "the iteration-capped run must report its final evaluated log-likelihood");
+            Assert.IsFalse(double.IsNaN(gmm.LogLikelihood) || double.IsInfinity(gmm.LogLikelihood));
+        }
+        /// <summary>
+        /// A mixture initialized from a degenerate clustering keeps finite parameters: a component
+        /// that receives no responsibility retains its previous state instead of spreading NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_DegenerateFixture_StaysFinite()
+        {
+            var x = new double[12];
+            var y = new double[12];
+            for (int i = 6; i < 12; i++) { x[i] = 10; y[i] = 10; }
+            var gmm = new GaussianMixtureModel(new Matrix(new List<double[]> { x, y }), 3);
+            gmm.Train(12345);
+
+            Assert.IsFalse(double.IsNaN(gmm.LogLikelihood));
+            for (int k = 0; k < 3; k++)
+                for (int d = 0; d < 2; d++)
+                    Assert.IsFalse(double.IsNaN(gmm.Means[k, d]), $"mean [{k},{d}] is NaN");
+        }
+
+        /// <summary>
+        /// A singular initial component covariance remains a loud training failure, but the
+        /// public workflow identifies the component and preserves the factorization context.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_SingularInitialComponentReportsContextualFailure()
+        {
+            var data = new double[,]
+            {
+                { 0d, 0d }, { 1d, 1d }, { 2d, 2d },
+                { 10d, 10d }, { 11d, 11d }, { 12d, 12d }
+            };
+            var gmm = new GaussianMixtureModel(data, 2);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => gmm.Train(12345));
+
+            StringAssert.Contains(exception.Message, "component");
+            Assert.IsNotNull(exception.InnerException);
+        }
+
+        /// <summary>
+        /// Verifies that the M-step does not ridge covariance matrices that are already positive definite.
+        /// </summary>
+        /// <remarks>
+        /// The helper returns the symmetrized input unchanged when Cholesky accepts it. This test
+        /// recomputes each M-step covariance externally from the public responsibilities after one EM
+        /// iteration and requires exact agreement after applying only the established diagonal floor.
+        /// </remarks>
+        [TestMethod]
+        public void Test_GMM_MStep_WellConditionedCovarianceIsNotRidged()
+        {
+            var data = new double[,]
+            {
+                { 1.0, 2.1 }, { 1.2, 1.9 }, { 0.8, 2.3 }, { 1.1, 2.0 }, { 0.9, 1.8 }, { 1.3, 2.2 },
+                { 8.0, 9.1 }, { 8.2, 8.9 }, { 7.8, 9.3 }, { 8.1, 9.0 }, { 7.9, 8.8 }, { 8.3, 9.2 }
+            };
+            var gmm = new GaussianMixtureModel(data, 2) { MaxIterations = 1 };
+            gmm.Train(seed: 42);
+
+            int n = data.GetLength(0);
+            int dims = data.GetLength(1);
+
+            // Per-dimension population variance of the whole sample, matching the M-step's floor.
+            var colVar = new double[dims];
+            for (int d = 0; d < dims; d++)
+            {
+                double colMean = 0;
+                for (int i = 0; i < n; i++)
+                    colMean += data[i, d];
+                colMean /= n;
+                double v = 0;
+                for (int i = 0; i < n; i++)
+                    v += (data[i, d] - colMean) * (data[i, d] - colMean);
+                colVar[d] = v / n;
+            }
+
+            for (int k = 0; k < 2; k++)
+            {
+                double wgt = 0d;
+                for (int i = 0; i < n; i++)
+                    wgt += gmm.LikelihoodMatrix[i, k];
+                Assert.IsGreaterThan(0d, wgt, "Fixture precondition: both components carry responsibility.");
+
+                // Recompute the raw M-step covariance from the responsibilities and stored means.
+                var expected = new double[dims, dims];
+                for (int d = 0; d < dims; d++)
+                {
+                    for (int j = 0; j < dims; j++)
+                    {
+                        double sum = 0;
+                        for (int i = 0; i < n; i++)
+                            sum += gmm.LikelihoodMatrix[i, k] * (data[i, d] - gmm.Means[k, d]) * (data[i, j] - gmm.Means[k, j]);
+                        expected[d, j] = sum / wgt;
+                    }
+                }
+                // Apply the established diagonal floor. No ridge is needed for these covariances.
+                for (int d = 0; d < dims; d++)
+                    expected[d, d] = System.Math.Max(expected[d, d], 1E-6 * colVar[d]);
+
+                for (int d = 0; d < dims; d++)
+                    for (int j = 0; j < dims; j++)
+                        Assert.AreEqual(expected[d, j], gmm.Sigmas[k][d, j], 0d,
+                            $"Sigma[{k}][{d},{j}] must preserve the un-ridged covariance.");
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a ridge required by a rank-deficient M-step covariance is stored for the next E-step.
+        /// </summary>
+        /// <remarks>
+        /// The full fixture has a usable initial covariance. The test then assigns responsibility only to
+        /// the first three collinear observations and invokes one M-step, producing the exactly rank-one
+        /// covariance <c>[[2/3, 2/3], [2/3, 2/3]]</c>. The returned trace-scaled ridge must be assigned to
+        /// <see cref="GaussianMixtureModel.Sigmas"/>; discarding the pure helper's return value leaves the
+        /// stored covariance singular.
+        /// </remarks>
+        [TestMethod]
+        public void Test_GMM_MStep_RequiredPositiveDefiniteRepairIsStored()
+        {
+            var data = new double[,]
+            {
+                { 0d, 0d }, { 1d, 1d }, { 2d, 2d },
+                { 0d, 2d }, { 1d, 0d }, { 2d, 0d }
+            };
+            var gmm = new GaussianMixtureModel(data, 1) { MaxIterations = 1 };
+            gmm.Train(seed: 42);
+
+            for (int i = 0; i < data.GetLength(0); i++)
+                gmm.LikelihoodMatrix[i, 0] = i < 3 ? 1d : 0d;
+
+            MethodInfo mStep = typeof(GaussianMixtureModel).GetMethod(
+                "MStep",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(mStep);
+            mStep.Invoke(gmm, null);
+
+            double rawVariance = 2d / 3d;
+            double baseRidge = 1E-10d * rawVariance;
+            Assert.AreEqual(rawVariance + baseRidge, gmm.Sigmas[0][0, 0], 0d);
+            Assert.AreEqual(rawVariance + baseRidge, gmm.Sigmas[0][1, 1], 0d);
+            Assert.AreEqual(rawVariance, gmm.Sigmas[0][0, 1], 0d);
+            Assert.AreEqual(rawVariance, gmm.Sigmas[0][1, 0], 0d);
+            Assert.IsTrue(new CholeskyDecomposition(gmm.Sigmas[0]).IsPositiveDefinite);
+        }
+
     }
 }

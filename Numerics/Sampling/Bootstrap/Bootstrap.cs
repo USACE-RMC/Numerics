@@ -113,6 +113,15 @@ namespace Numerics.Sampling
         private int _numStats;
         private int _numParams;
         private int _failedCount;
+        private int _failedJackknifeReplicates;
+
+        /// <summary>
+        /// The number of accumulation chunks used by the jackknife reduction. Fixed, not derived from
+        /// the processor count, so the summation order — and therefore the acceleration constant —
+        /// does not vary with the machine or the thread count.
+        /// </summary>
+        private const int JackknifeChunks = 64;
+
         private bool[] _validFlags = null!;
         private double[,]? _studentizedValues;
         private double[,]? _transformedStatistics;
@@ -281,6 +290,22 @@ namespace Numerics.Sampling
         /// For pivotal bootstrap, this is the raw covariance-aware fit failure count.
         /// </summary>
         public int FailedReplicates => _failedCount;
+
+        /// <summary>
+        /// Gets the number of leave-one-out jackknife replicates that failed while computing the BCa
+        /// acceleration constants on the most recent <see cref="GetConfidenceIntervals(BootstrapCIMethod, double)"/>
+        /// call that requested <see cref="BootstrapCIMethod.BCa"/>.
+        /// </summary>
+        /// <remarks>
+        /// Failed jackknife replicates are excluded from the acceleration sums, so a non-zero count means
+        /// the acceleration constants rest on fewer leave-one-out samples than the sample size implies.
+        /// This is reported separately from <see cref="FailedReplicates"/>, which counts bootstrap
+        /// resampling failures rather than jackknife failures. The count is zero until BCa intervals have
+        /// been requested, and a request for any other interval method leaves it unchanged rather than
+        /// clearing it, so it always describes the most recent BCa computation rather than the most
+        /// recent call.
+        /// </remarks>
+        public int FailedJackknifeReplicates => _failedJackknifeReplicates;
 
         #endregion
 
@@ -631,7 +656,8 @@ namespace Numerics.Sampling
         /// </summary>
         /// <param name="rawFits">Raw bootstrap fits and covariances to transform.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="rawFits"/> is null.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted or when
+        /// the parent link-space covariance cannot be factorized.</exception>
         public void TransformPivotalBootstrap(IEnumerable<BootstrapFit> rawFits)
         {
             if (rawFits == null)
@@ -648,7 +674,8 @@ namespace Numerics.Sampling
         /// <param name="requestedReplicates">The number of raw replicates requested or supplied.</param>
         /// <param name="failedRawReplicates">The number of raw replicates that failed before transformation.</param>
         /// <param name="resamplingTime">The elapsed raw resampling and fitting time.</param>
-        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when no valid raw fits are accepted or when
+        /// the parent link-space covariance cannot be factorized.</exception>
         private void TransformPivotalBootstrap(BootstrapFit[] rawFits, int requestedReplicates, int failedRawReplicates, TimeSpan resamplingTime)
         {
             BootstrapFit parentFit = CreateOriginalFit();
@@ -668,7 +695,17 @@ namespace Numerics.Sampling
             ValidateTransformedValues(parentEta, "The parent link transformation produced a non-finite value.");
 
             Matrix parentLinkCovariance = LinkCovariance(parentFit, linkController);
-            var parentCholesky = new CholeskyDecomposition(parentLinkCovariance);
+            CholeskyDecomposition parentCholesky;
+            try
+            {
+                parentCholesky = new CholeskyDecomposition(parentLinkCovariance);
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    "The parent link-space covariance could not be factorized for the pivotal transformation.",
+                    exception);
+            }
             var pivotalParameterSets = new List<ParameterSet>(acceptedRawFits.Length);
             var jitterRng = new MersenneTwister(PRNGSeed);
             int invalid = 0;
@@ -876,7 +913,13 @@ namespace Numerics.Sampling
         /// <param name="method">The confidence interval method.</param>
         /// <param name="alpha">The two-sided alpha level. Default = 0.1, resulting in 90% confidence intervals.</param>
         /// <returns>A <see cref="BootstrapResults"/> object containing confidence intervals for parameters and statistics.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when the requested interval method is incompatible with the last run mode.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the requested interval method is incompatible with the last run mode, when
+        /// <see cref="StatisticFunction"/> has not been set, or when <paramref name="method"/> is
+        /// <see cref="BootstrapCIMethod.BCa"/> and the acceleration constants cannot be computed because
+        /// <see cref="SampleSizeFunction"/> reports a non-positive sample size or every leave-one-out
+        /// replicate fails. The first leave-one-out failure is preserved as the inner exception.
+        /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="alpha"/> is not between zero and one.</exception>
         public BootstrapResults GetConfidenceIntervals(BootstrapCIMethod method, double alpha = 0.1)
         {
@@ -1171,6 +1214,17 @@ namespace Numerics.Sampling
         /// </summary>
         /// <param name="populationEstimates">The original statistic estimates.</param>
         /// <returns>The acceleration constant for each statistic.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when <see cref="SampleSizeFunction"/> reports a non-positive sample size, or when every
+        /// leave-one-out replicate fails. Each replicate applies <see cref="JackknifeFunction"/>, then
+        /// <see cref="FitFunction"/>, then <see cref="StatisticFunction"/>, and any of the three can be
+        /// the cause.
+        /// </exception>
+        /// <remarks>
+        /// The jackknife second and third moments are accumulated over a fixed number of chunks and merged
+        /// serially in chunk order, so the acceleration constants are reproducible run to run rather than
+        /// dependent on the thread scheduler.
+        /// </remarks>
         private double[] ComputeAccelerationConstants(double[] populationEstimates)
         {
             var sampleSize = SampleSizeFunction!;
@@ -1179,33 +1233,107 @@ namespace Numerics.Sampling
             var statistic = StatisticFunction!;
 
             int N = sampleSize(_originalData);
-            var I2 = new double[_numStats];
-            var I3 = new double[_numStats];
             var a = new double[_numStats];
+            _failedJackknifeReplicates = 0;
+            if (N <= 0)
+                throw new InvalidOperationException("The BCa acceleration constants require at least one leave-one-out jackknife replicate, but SampleSizeFunction reported a non-positive sample size.");
 
-            Parallel.For(0, N, idx =>
+            int chunks = Math.Min(JackknifeChunks, N);
+            var chunkSecondMoments = new double[chunks][];
+            var chunkThirdMoments = new double[chunks][];
+            var chunkValid = new int[chunks];
+            var chunkFailed = new int[chunks];
+            var chunkFirstFailure = new Exception?[chunks];
+            for (int c = 0; c < chunks; c++)
             {
-                try
-                {
-                    var jackData = jackknife(_originalData, idx);
-                    var jackFit = fitFunc(jackData);
-                    var jackStats = statistic(jackFit);
+                chunkSecondMoments[c] = new double[_numStats];
+                chunkThirdMoments[c] = new double[_numStats];
+            }
 
-                    for (int i = 0; i < _numStats; i++)
+            Parallel.For(0, chunks, c =>
+            {
+                var secondMoments = chunkSecondMoments[c];
+                var thirdMoments = chunkThirdMoments[c];
+                int start = (int)((long)c * N / chunks);
+                int end = (int)((long)(c + 1) * N / chunks);
+                int valid = 0;
+                int failed = 0;
+                Exception? firstFailure = null;
+                for (int idx = start; idx < end; idx++)
+                {
+                    try
                     {
-                        double diff = populationEstimates[i] - jackStats[i];
-                        Tools.ParallelAdd(ref I2[i], diff * diff);
-                        Tools.ParallelAdd(ref I3[i], diff * diff * diff);
+                        var jackData = jackknife(_originalData, idx);
+                        var jackFit = fitFunc(jackData);
+
+                        // Validate the leave-one-out statistic the same way the original estimates are
+                        // validated. Inside this try a bad statistic becomes a counted failed replicate
+                        // with its exception preserved, rather than poisoning the moment accumulators.
+                        var jackStats = ValidateStatistics(statistic(jackFit), _numStats);
+
+                        for (int i = 0; i < _numStats; i++)
+                        {
+                            double diff = populationEstimates[i] - jackStats[i];
+                            secondMoments[i] += diff * diff;
+                            thirdMoments[i] += diff * diff * diff;
+                        }
+                        valid++;
+                    }
+                    catch (Exception exception)
+                    {
+                        // Count the failed jackknife replicate and keep the first exception as the
+                        // eventual inner exception.
+                        failed++;
+                        if (firstFailure == null) firstFailure = exception;
                     }
                 }
-                catch (Exception)
-                {
-                    // Skip failed jackknife samples.
-                }
+                chunkValid[c] = valid;
+                chunkFailed[c] = failed;
+                chunkFirstFailure[c] = firstFailure;
             });
 
+            int validCount = 0;
+            int failedCount = 0;
+            Exception? firstJackknifeFailure = null;
+            for (int c = 0; c < chunks; c++)
+            {
+                validCount += chunkValid[c];
+                failedCount += chunkFailed[c];
+                if (firstJackknifeFailure == null) firstJackknifeFailure = chunkFirstFailure[c];
+            }
+            _failedJackknifeReplicates = failedCount;
+
+            if (validCount == 0)
+            {
+                string cause = firstJackknifeFailure != null
+                    ? " The first failure was: " + firstJackknifeFailure.Message
+                    : string.Empty;
+                throw new InvalidOperationException(
+                    "Every leave-one-out replicate failed, so the BCa acceleration constants are undefined. Each replicate applies JackknifeFunction, then FitFunction, then StatisticFunction, and any of the three can be the cause." + cause,
+                    firstJackknifeFailure);
+            }
+
             for (int i = 0; i < _numStats; i++)
-                a[i] = I3[i] / (Math.Pow(I2[i], 1.5) * 6d);
+            {
+                double secondMoment = 0d;
+                double thirdMoment = 0d;
+                for (int c = 0; c < chunks; c++)
+                {
+                    secondMoment += chunkSecondMoments[c][i];
+                    thirdMoment += chunkThirdMoments[c][i];
+                }
+
+                // Two distinct cases fall to the zero fallback.
+                // 1. A zero second moment means every leave-one-out replicate returned the same statistic
+                //    value, so the statistic has no jackknife variation. Zero is the correct limit of the
+                //    acceleration there, and BCa degenerates to the bias-corrected interval.
+                // 2. A non-finite second moment. Each leave-one-out statistic is validated as finite
+                //    above, so this can only arise from overflow while summing finite squared
+                //    differences. Zero is a defensive fallback, not a modelling statement.
+                a[i] = secondMoment > 0d && Tools.IsFinite(secondMoment)
+                    ? thirdMoment / (Math.Pow(secondMoment, 1.5) * 6d)
+                    : 0d;
+            }
 
             return a;
         }

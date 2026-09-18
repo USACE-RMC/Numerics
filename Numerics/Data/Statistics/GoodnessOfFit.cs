@@ -153,10 +153,12 @@ namespace Numerics.Data.Statistics
         /// <param name="modeledValues">The list of modeled values to compare against the observed values.</param>
         /// <param name="k">Number of model parameters. Default = 0.</param>
         /// <returns>The RMSE of the model.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the lists have different lengths or when <paramref name="k"/> is negative or is not less than the observation count.</exception>
         /// <remarks>
-        /// RMSE is the square root of the average of squared differences between observed and modeled values. 
-        /// It is sensitive to large errors due to the squaring operation and is expressed in the same units 
-        /// as the observed data. Lower values indicate better model performance.
+        /// The numerator contains the squared residual from every observation. When parameters were estimated,
+        /// the denominator is adjusted to the residual degrees of freedom, <c>n - k</c>. The metric is sensitive
+        /// to large errors due to the squaring operation and is expressed in the same units as the observed data.
+        /// Lower values indicate better model performance.
         /// </remarks>
         public static double RMSE(IList<double> observedValues, IList<double> modeledValues, int k = 0)
         {
@@ -164,11 +166,15 @@ namespace Numerics.Data.Statistics
             if (observedValues.Count != modeledValues.Count)
                 throw new ArgumentOutOfRangeException(nameof(observedValues), "The number of observed values must equal the number of modeled values.");
 
-            int n = observedValues.Count - k;
+            int observationCount = observedValues.Count;
+            if (k < 0 || k >= observationCount)
+                throw new ArgumentOutOfRangeException(nameof(k), "The number of model parameters must be nonnegative and less than the number of observations.");
+
+            int degreesOfFreedom = observationCount - k;
             double sse = 0d;
-            for (int i = 0; i < n; i++)
+            for (int i = 0; i < observationCount; i++)
                 sse += Tools.Sqr(modeledValues[i] - observedValues[i]);
-            return Math.Sqrt(sse / n);
+            return Math.Sqrt(sse / degreesOfFreedom);
         }
 
         /// <summary>

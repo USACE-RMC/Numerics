@@ -45,14 +45,31 @@ namespace Numerics.Data
         public bool UseSmartSearch { get; set; } = true;
 
         /// <summary>
-        /// Keeps track of the difference is start locations. 
+        /// The maximum distance between consecutive x-search results for which those searches are still
+        /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
-        private int XdeltaStart = 0;
+        /// <remarks>
+        /// Computed from the collection size on every read as the Numerical Recipes N^0.25 hunt
+        /// heuristic, matching the Interpolater's window: the window scales as Count^0.25 with a
+        /// floor of 1, so consecutive nearby lookups take the hunt path in
+        /// <see cref="SearchX(double)"/>. The value affects only which search path runs — hunt and bisection return the same
+        /// bracket for the same input — so it is a performance characteristic rather than a
+        /// correctness one. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
+        /// settable, so a consumer can steer the search directly.
+        /// </remarks>
+        private int XdeltaStart => Math.Max(1, (int)Math.Pow(Count, 0.25));
 
         /// <summary>
-        /// Keeps track of the difference is start locations. 
+        /// The maximum distance between consecutive y-search results for which those searches are still
+        /// treated as correlated, selecting the hunt search over bisection.
         /// </summary>
-        private int YdeltaStart = 0;
+        /// <remarks>
+        /// Computed from the collection size on every read, exactly like <see cref="XdeltaStart"/>:
+        /// the window scales as Count^0.25 with a floor of 1, so consecutive nearby lookups take
+        /// the hunt path. The effect is confined to which search path runs, never to the bracket
+        /// returned.
+        /// </remarks>
+        private int YdeltaStart => Math.Max(1, (int)Math.Pow(Count, 0.25));
 
         /// <summary>
         /// Determines which search method to use. If values are correlated, use the Hunt method. 
@@ -198,6 +215,7 @@ namespace Numerics.Data
             StrictY = strictOnY;
             OrderX = xOrder;
             OrderY = yOrder;
+            Validate();
         }
 
         /// <summary>
@@ -452,9 +470,11 @@ namespace Numerics.Data
         /// <param name="count">The number of elements to remove.</param>
         public void RemoveRange(int index, int count)
         {
-            if (index < 0 || (index + count) >= _ordinates.Count) { return; }
+            // A range reaching the final element (index + count == Count) is a valid removal, so the
+            // guard must reject only ranges that run past the end, matching List<T>.RemoveRange.
+            if (index < 0 || (index + count) > _ordinates.Count) { return; }
             List<Ordinate> items = new List<Ordinate>();
-            for (int i = index; i < count; i++) { items.Add(_ordinates[i]); }
+            for (int i = index; i < index + count; i++) { items.Add(_ordinates[i]); }
             _ordinates.RemoveRange(index, count);
             Validate();
             if (SuppressCollectionChanged == false)
@@ -468,7 +488,8 @@ namespace Numerics.Data
         public void Add(Ordinate item)
         {
             _ordinates.Add(item);
-            IsValid = OrdinateValid(_ordinates.Count - 1);
+            // only need to set valid state if it is true. if it is already false then appending can't make it true.
+            if (IsValid) IsValid = OrdinateValid(_ordinates.Count - 1);
             if (SuppressCollectionChanged == false)
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, _ordinates.Count - 1));
         }
@@ -845,7 +866,44 @@ namespace Numerics.Data
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
         /// <returns> The interpolated value.</returns>
+        /// <remarks>
+        /// Out-of-range lookups hold the boundary ordinate; the four-argument overload can
+        /// extrapolate instead.
+        /// </remarks>
         public double GetYFromX(double x, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        {
+            return GetYFromX(x, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate y from x, extrapolating on the requested sides of the x-range.
+        /// </summary>
+        /// <param name="x">The x value. </param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
+        /// <param name="extrapolation">
+        /// The sides of the x-range on which an out-of-range lookup extends the boundary segment
+        /// linearly in the configured transform space rather than holding the boundary ordinate.
+        /// None reproduces the historical endpoint hold.
+        /// </param>
+        /// <returns> The interpolated value.</returns>
+        /// <remarks>
+        /// Sides are defined in value space regardless of the sort orientation: Below is beyond the
+        /// minimum x and Above beyond the maximum. Exactly at an endpoint the boundary ordinate is
+        /// returned unchanged, a single-point table always holds, and a plateau (equal boundary
+        /// ordinates in transform space) extends at slope zero. Extrapolation extends the boundary
+        /// segment in the configured transform space, so the lookup value must lie in the x
+        /// transform's domain: a NormalZ x-transform throws for lookups outside the unit interval,
+        /// and a Logarithmic x-transform returns NaN for negative lookups and treats values below
+        /// 1E-16 as 1E-16. Extrapolation on an untransformed axis is unbounded, so a caller holding
+        /// a bounded quantity such as a probability must clamp the result or use the NormalZ
+        /// transform, which is bounded by construction.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when extrapolation is requested through a NormalZ x-transform and the lookup
+        /// value lies outside the unit interval.
+        /// </exception>
+        public double GetYFromX(double x, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
         {
             if (Count == 0) return double.NaN;
             if (OrderX == SortOrder.None)
@@ -853,9 +911,22 @@ namespace Numerics.Data
 
             // First see if value is out of range
             if (Count == 1) return _ordinates[0].Y;
-            if ((OrderX == SortOrder.Ascending && x <= _ordinates[0].X) || (OrderX == SortOrder.Descending && x >= _ordinates[0].X)) return _ordinates[0].Y;
-            if ((OrderX == SortOrder.Ascending && x >= _ordinates[Count - 1].X) || (OrderX == SortOrder.Descending && x <= _ordinates[Count - 1].X)) return _ordinates[Count - 1].Y;
-            
+            if ((OrderX == SortOrder.Ascending && x <= _ordinates[0].X) || (OrderX == SortOrder.Descending && x >= _ordinates[0].X))
+            {
+                // Index 0 is the minimum x when ascending and the maximum when descending.
+                var side = OrderX == SortOrder.Ascending ? ExtrapolationSides.Below : ExtrapolationSides.Above;
+                if ((extrapolation & side) != 0 && x != _ordinates[0].X)
+                    return BaseInterpolate(x, 0, true, xTransform, yTransform);
+                return _ordinates[0].Y;
+            }
+            if ((OrderX == SortOrder.Ascending && x >= _ordinates[Count - 1].X) || (OrderX == SortOrder.Descending && x <= _ordinates[Count - 1].X))
+            {
+                var side = OrderX == SortOrder.Ascending ? ExtrapolationSides.Above : ExtrapolationSides.Below;
+                if ((extrapolation & side) != 0 && x != _ordinates[Count - 1].X)
+                    return BaseInterpolate(x, Count - 2, true, xTransform, yTransform);
+                return _ordinates[Count - 1].Y;
+            }
+
             // Interpolate
             return BaseInterpolate(x, SearchX(x), true, xTransform, yTransform);
         }
@@ -867,7 +938,44 @@ namespace Numerics.Data
         /// <param name="xTransform">Optional. Transform for the x values. Default = None.</param>
         /// <param name="yTransform">Optional. Transform for the y values. Default = None.</param>
         /// <returns> The interpolated value.</returns>
+        /// <remarks>
+        /// Out-of-range lookups hold the boundary ordinate; the four-argument overload can
+        /// extrapolate instead.
+        /// </remarks>
         public double GetXFromY(double y, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
+        {
+            return GetXFromY(y, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate x from y, extrapolating on the requested sides of the y-range.
+        /// </summary>
+        /// <param name="y">The y value. </param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
+        /// <param name="extrapolation">
+        /// The sides of the y-range on which an out-of-range lookup extends the boundary segment
+        /// linearly in the configured transform space rather than holding the boundary ordinate.
+        /// None reproduces the historical endpoint hold.
+        /// </param>
+        /// <returns> The interpolated value.</returns>
+        /// <remarks>
+        /// Sides are defined in value space regardless of the sort orientation: Below is beyond the
+        /// minimum y and Above beyond the maximum. Exactly at an endpoint the boundary ordinate is
+        /// returned unchanged, a single-point table always holds, and a plateau (equal boundary
+        /// ordinates in transform space) extends at slope zero. Extrapolation extends the boundary
+        /// segment in the configured transform space, so the lookup value must lie in the y
+        /// transform's domain: a NormalZ y-transform throws for lookups outside the unit interval,
+        /// and a Logarithmic y-transform returns NaN for negative lookups and treats values below
+        /// 1E-16 as 1E-16. Extrapolation on an untransformed axis is unbounded, so a caller holding
+        /// a bounded quantity such as a probability must clamp the result or use the NormalZ
+        /// transform, which is bounded by construction.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when extrapolation is requested through a NormalZ y-transform and the lookup
+        /// value lies outside the unit interval.
+        /// </exception>
+        public double GetXFromY(double y, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
         {
             if (Count == 0) return double.NaN;
             if (OrderY == SortOrder.None)
@@ -875,8 +983,21 @@ namespace Numerics.Data
 
             // First see if value is out of range
             if (Count == 1) return _ordinates[0].X;
-            if ((OrderY == SortOrder.Ascending && y <= _ordinates[0].Y) || (OrderY == SortOrder.Descending && y >= _ordinates[0].Y)) return _ordinates[0].X;
-            if ((OrderY == SortOrder.Ascending && y >= _ordinates[Count - 1].Y) || (OrderY == SortOrder.Descending && y <= _ordinates[Count - 1].Y)) return _ordinates[Count - 1].X;
+            if ((OrderY == SortOrder.Ascending && y <= _ordinates[0].Y) || (OrderY == SortOrder.Descending && y >= _ordinates[0].Y))
+            {
+                // Index 0 is the minimum y when ascending and the maximum when descending.
+                var side = OrderY == SortOrder.Ascending ? ExtrapolationSides.Below : ExtrapolationSides.Above;
+                if ((extrapolation & side) != 0 && y != _ordinates[0].Y)
+                    return BaseInterpolate(y, 0, false, xTransform, yTransform);
+                return _ordinates[0].X;
+            }
+            if ((OrderY == SortOrder.Ascending && y >= _ordinates[Count - 1].Y) || (OrderY == SortOrder.Descending && y <= _ordinates[Count - 1].Y))
+            {
+                var side = OrderY == SortOrder.Ascending ? ExtrapolationSides.Above : ExtrapolationSides.Below;
+                if ((extrapolation & side) != 0 && y != _ordinates[Count - 1].Y)
+                    return BaseInterpolate(y, Count - 2, false, xTransform, yTransform);
+                return _ordinates[Count - 1].X;
+            }
             // Interpolate
             return BaseInterpolate(y, SearchY(y), false, xTransform, yTransform);
         }
@@ -890,9 +1011,27 @@ namespace Numerics.Data
         /// <returns>An array of interpolated values.</returns>
         public double[] GetYFromX(IList<double> xValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
         {
+            return GetYFromX(xValues, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate y-values from a list of x-values, extrapolating on the requested sides of the x-range.
+        /// </summary>
+        /// <param name="xValues">The list of x-values.</param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
+        /// <param name="extrapolation">The sides of the x-range on which out-of-range lookups extrapolate. None reproduces the historical endpoint hold.</param>
+        /// <returns>An array of interpolated values.</returns>
+        /// <remarks>
+        /// Each element is looked up with the scalar
+        /// <see cref="GetYFromX(double, Transform, Transform, ExtrapolationSides)"/> overload, whose
+        /// extrapolation semantics apply per element.
+        /// </remarks>
+        public double[] GetYFromX(IList<double> xValues, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
+        {
             var result = new double[xValues.Count];
             for (int i = 0; i < xValues.Count; i++)
-                result[i] = GetYFromX(xValues[i], xTransform, yTransform);
+                result[i] = GetYFromX(xValues[i], xTransform, yTransform, extrapolation);
             return result;
         }
 
@@ -905,9 +1044,27 @@ namespace Numerics.Data
         /// <returns>An array of interpolated values.</returns>
         public double[] GetXFromY(IList<double> yValues, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
         {
+            return GetXFromY(yValues, xTransform, yTransform, ExtrapolationSides.None);
+        }
+
+        /// <summary>
+        /// Interpolate x-values from a list of y-values, extrapolating on the requested sides of the y-range.
+        /// </summary>
+        /// <param name="yValues">The list of y-values.</param>
+        /// <param name="xTransform">Transform for the x values.</param>
+        /// <param name="yTransform">Transform for the y values.</param>
+        /// <param name="extrapolation">The sides of the y-range on which out-of-range lookups extrapolate. None reproduces the historical endpoint hold.</param>
+        /// <returns>An array of interpolated values.</returns>
+        /// <remarks>
+        /// Each element is looked up with the scalar
+        /// <see cref="GetXFromY(double, Transform, Transform, ExtrapolationSides)"/> overload, whose
+        /// extrapolation semantics apply per element.
+        /// </remarks>
+        public double[] GetXFromY(IList<double> yValues, Transform xTransform, Transform yTransform, ExtrapolationSides extrapolation)
+        {
             var result = new double[yValues.Count];
             for (int i = 0; i < yValues.Count; i++)
-                result[i] = GetXFromY(yValues[i], xTransform, yTransform);
+                result[i] = GetXFromY(yValues[i], xTransform, yTransform, extrapolation);
             return result;
         }
 
@@ -1111,8 +1268,8 @@ namespace Numerics.Data
             {
                 return Count - 2;
             }
-            else if ((OrderY == SortOrder.Ascending && y < _ordinates[XSearchStart].Y) ||
-                        (OrderY == SortOrder.Descending && y > _ordinates[XSearchStart].Y))
+            else if ((OrderY == SortOrder.Ascending && y < _ordinates[YSearchStart].Y) ||
+                        (OrderY == SortOrder.Descending && y > _ordinates[YSearchStart].Y))
             {
                 jl = 0;
             }
@@ -1382,6 +1539,11 @@ namespace Numerics.Data
 
             double area = Math.Abs((aX * bY + bX * cY + cX * aY - bX * aY - cX * bY - aX * cY) * 0.5);
             double triangleBase = Math.Pow(Math.Pow(aX - bX, 2) + Math.Pow(aY - bY, 2), 0.5);
+            // A segment whose endpoints coincide has no base to divide by (0/0 = NaN); the distance
+            // degenerates to the point-to-endpoint distance, matching the guarded formula in
+            // LineSimplification.PerpendicularDistance.
+            if (triangleBase == 0d)
+                return Math.Pow(Math.Pow(cX - aX, 2) + Math.Pow(cY - aY, 2), 0.5);
             return area * 2 / triangleBase;
         }
 
@@ -1444,8 +1606,11 @@ namespace Numerics.Data
         /// and number of points in the search region.</returns>
         public OrderedPairedData LangSimplify(double tolerance, int lookAhead)
         {
-            if (_ordinates == null || lookAhead <= 1 || tolerance <= 0)
-                return this;
+            if (_ordinates == null) return this;
+            // The guarded return is a distinct object, matching the other simplifiers' contract
+            // that the result never aliases the receiver.
+            if (lookAhead <= 1 || tolerance <= 0)
+                return Clone();
 
             List<Ordinate> ordinates = new List<Ordinate>();
 
@@ -1457,7 +1622,11 @@ namespace Numerics.Data
 
             for (int i = 0; i < count; i++)
             {
-                if (i + lookAhead > count)
+                // The clamp must fire at the exact tail boundary too (i + lookAhead == count):
+                // an unclamped look-ahead there falls through RecursiveTolerance's own range guard
+                // unreduced and overshoots the final ordinate, silently dropping the curve's
+                // last point.
+                if (i + lookAhead >= count)
                     lookAhead = count - i - 1;
 
                 offset = RecursiveTolerance(i, lookAhead, tolerance);

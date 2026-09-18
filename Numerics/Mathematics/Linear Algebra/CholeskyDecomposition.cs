@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Globalization;
+
 
 namespace Numerics.Mathematics.LinearAlgebra
 {
@@ -43,57 +45,216 @@ namespace Numerics.Mathematics.LinearAlgebra
     {
      
         /// <summary>
-        /// Constructs new Cholesky Decomposition.
+        /// Constructs new Cholesky Decomposition using the default scale-relative pivot tolerance.
         /// </summary>
         /// <param name="A">The positive-definite symmetric input matrix A [0..n-1][0..n-1] that is to be Cholesky decomposed.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the matrix A is not square.</exception>
+        /// <exception cref="Exception">Thrown when the matrix A is not positive-definite.</exception>
+        /// <remarks>
+        /// <para>
+        /// The pivot tolerance is <see cref="DefaultRelativeTolerance(int)"/> evaluated at the dimension of A.
+        /// </para>
+        /// <para>
+        /// Success is not a rank certificate; see <see cref="DefaultRelativeTolerance(int)"/> for the
+        /// limits of the pivot test.
+        /// </para>
+        /// </remarks>
         public CholeskyDecomposition(Matrix A)
+            : this(A, DefaultRelativeTolerance(A.NumberOfRows))
+        {
+        }
+
+        /// <summary>
+        /// Constructs new Cholesky Decomposition with an explicit scale-relative pivot tolerance.
+        /// </summary>
+        /// <param name="A">The positive-definite symmetric input matrix A [0..n-1][0..n-1] that is to be Cholesky decomposed.</param>
+        /// <param name="relativeTolerance">
+        /// The pivot tolerance, expressed as a fraction of the corresponding diagonal entry of A. A pivot is
+        /// rejected when it falls at or below <c>relativeTolerance * A[i,i]</c>. Pass zero to reproduce the
+        /// purely absolute <c>pivot &lt;= 0</c> test exactly.
+        /// </param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the matrix A is not square, or when <paramref name="relativeTolerance"/> is not a finite
+        /// value in the interval [0, 1).
+        /// </exception>
+        /// <exception cref="Exception">Thrown when the matrix A is not positive-definite.</exception>
+        /// <remarks>
+        /// <para>
+        /// The pivot at step i is the conditional variance of variable i given variables 0..i-1, so it is
+        /// naturally measured against <c>A[i,i]</c> — the unconditional variance of that same variable — rather
+        /// than against the largest diagonal of A. A test relative to the largest diagonal would falsely reject
+        /// a covariance that legitimately mixes a very small variance with a very large one, because the small
+        /// variable's pivot is small in absolute terms while being a perfectly healthy fraction of its own
+        /// diagonal.
+        /// </para>
+        /// <para>
+        /// The scale-relative test exists because an exactly rank-deficient matrix does not generally produce a
+        /// non-positive pivot in floating point. Rounding leaves a small positive residue instead, the
+        /// factorization completes, and the matrix is silently reported positive-definite with a wildly wrong
+        /// determinant and inverse. For example, the exactly rank-two covariance
+        /// <c>[[2, 0.5, 2], [0.5, 1, 0.5], [2, 0.5, 2]]</c> yields a final pivot of 4.44E-16 rather than zero;
+        /// under the absolute test it factorizes, and its log determinant comes out near -34.8 instead of the
+        /// log pseudo-determinant 1.2528. See <see href="https://github.com/USACE-RMC/Numerics/issues/145"/>.
+        /// </para>
+        /// <para>
+        /// The test is not a rank certificate: it rejects most numerically rank-deficient matrices but
+        /// not all of them, so <see cref="IsPositiveDefinite"/> being true does not prove the matrix has
+        /// full rank. See <see cref="DefaultRelativeTolerance(int)"/> for the margins in both directions.
+        /// When the rank genuinely has to be known, use a singular value decomposition; for a
+        /// multivariate normal that is <c>DecompositionMethod.SingularValue</c>.
+        /// </para>
+        /// <para>
+        /// When <c>A[i,i]</c> is not a positive finite number the threshold falls back to zero, which is the
+        /// absolute test. That case cannot weaken the result: a positive-definite matrix has a strictly positive
+        /// finite diagonal, so a non-positive or non-finite diagonal is rejected on its own merits.
+        /// </para>
+        /// </remarks>
+        public CholeskyDecomposition(Matrix A, double relativeTolerance)
         {
 
             IsPositiveDefinite = false;
-            int i, j, k;
+            ValidateRelativeTolerance(relativeTolerance);
             n = A.NumberOfRows;
             this.A = new Matrix(A.ToArray());
-            L = new Matrix(A.ToArray()); // Lower triangular matrix
-            double sum;
-            if (A.NumberOfColumns != A.NumberOfRows)
+            RelativeTolerance = relativeTolerance;
+            if (!TryFactorize(this.A, relativeTolerance, out Matrix lower, out int failedRow, out double failedPivot))
             {
-                throw new ArgumentOutOfRangeException(nameof(A), "The matrix A must be square.");
+                if (double.IsNaN(failedPivot) || failedPivot <= 0d)
+                    throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite.");
+                throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite. The pivot at row "
+                    + failedRow.ToString(CultureInfo.InvariantCulture) + " is "
+                    + (failedPivot / this.A[failedRow, failedRow]).ToString("E6", CultureInfo.InvariantCulture)
+                    + " times its diagonal entry, at or below the relative tolerance "
+                    + relativeTolerance.ToString("E6", CultureInfo.InvariantCulture)
+                    + ", so the matrix is numerically rank-deficient.");
             }
-            
-            //Decomposing a matrix into Lower triangular
-            for (i = 0; i < n; i++)
-            {
-                for (j = i; j < n; j++)
-                {
-                    sum = L[i, j];
-
-                    for (k = i - 1; k >= 0; k -= 1)
-                        sum -= L[i, k] * L[j, k]; // Cholesky formula 
-                    if (i == j)
-                    {
-                        if (double.IsNaN(sum) || sum <= 0d)
-                            throw new Exception("Cholesky Decomposition failed. The input matrix is not positive-definite.");
-                        L[i, i] = Math.Sqrt(sum);
-                    }
-                    else
-                    {
-                        L[j, i] = sum / L[i, i]; // Upper Triangular matrix
-                    }
-                }
-            }
-            
-            // Making sure 0 entries for upper triangular matrix
-            for (i = 0; i < n; i++)
-            {
-                for (j = 0; j < i; j++)
-                    L[j, i] = 0.0d;
-            }
-            // Failure of the decomposition indicates that the matrix A is not positive-definite. 
-            // Success, means it is. 
+            L = lower;
             IsPositiveDefinite = true;
         }
 
+        /// <summary>
+        /// Factors a symmetric matrix using the same pivot decisions as the public constructor,
+        /// without throwing for an expected rejected pivot.
+        /// </summary>
+        /// <param name="matrix">The symmetric input matrix, which is not modified.</param>
+        /// <param name="relativeTolerance">The finite pivot tolerance in [0, 1).</param>
+        /// <param name="lower">The lower triangular factor on success; an incomplete factor on failure.</param>
+        /// <param name="failedRow">The rejected pivot's row, or -1 on success.</param>
+        /// <param name="failedPivot">The rejected pivot before its square root, or NaN on success.</param>
+        /// <returns>True when every pivot passes the existing positive-definiteness checks.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the matrix is not square or the tolerance is outside its permitted range.
+        /// </exception>
+        /// <remarks>
+        /// Preserves the constructor's upper-triangle input convention, reverse-order inner products,
+        /// and diagonal-relative threshold. Invalid arguments remain distinct from rejected pivots.
+        /// </remarks>
+        internal static bool TryFactorize(Matrix matrix, double relativeTolerance, out Matrix lower,
+            out int failedRow, out double failedPivot)
+        {
+            ValidateRelativeTolerance(relativeTolerance);
+            if (matrix.NumberOfColumns != matrix.NumberOfRows)
+                throw new ArgumentOutOfRangeException("A", "The matrix A must be square.");
+
+            int dimension = matrix.NumberOfRows;
+            lower = new Matrix(matrix.ToArray());
+            failedRow = -1;
+            failedPivot = double.NaN;
+            for (int i = 0; i < dimension; i++)
+            {
+                for (int j = i; j < dimension; j++)
+                {
+                    double sum = lower[i, j];
+                    for (int k = i - 1; k >= 0; k--)
+                        sum -= lower[i, k] * lower[j, k];
+                    if (i == j)
+                    {
+                        double diagonal = matrix[i, i];
+                        double threshold = diagonal > 0d && !double.IsInfinity(diagonal) ? relativeTolerance * diagonal : 0d;
+                        if (double.IsNaN(sum) || sum <= 0d || sum <= threshold)
+                        {
+                            failedRow = i;
+                            failedPivot = sum;
+                            return false;
+                        }
+                        lower[i, i] = Math.Sqrt(sum);
+                    }
+                    else
+                    {
+                        lower[j, i] = sum / lower[i, i];
+                    }
+                }
+            }
+            for (int i = 0; i < dimension; i++)
+            {
+                for (int j = 0; j < i; j++)
+                    lower[j, i] = 0.0d;
+            }
+            return true;
+        }
+
+        /// <summary>Validates the pivot tolerance before accessing the input matrix.</summary>
+        /// <param name="relativeTolerance">The finite relative pivot tolerance in [0, 1).</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the tolerance is invalid.</exception>
+        /// <remarks>Preserves the public constructor's original argument-validation order.</remarks>
+        private static void ValidateRelativeTolerance(double relativeTolerance)
+        {
+            if (double.IsNaN(relativeTolerance) || double.IsInfinity(relativeTolerance) || relativeTolerance < 0d || relativeTolerance >= 1d)
+                throw new ArgumentOutOfRangeException(nameof(relativeTolerance), "The relative tolerance must be a finite value in the interval [0, 1).");
+        }
+
+        /// <summary>
+        /// Returns the default scale-relative pivot tolerance for a matrix of the given dimension.
+        /// </summary>
+        /// <param name="dimension">The number of rows in the matrix to be decomposed.</param>
+        /// <returns>
+        /// The tolerance, approximately <c>dimension * 2^-52</c>, or zero when the dimension is not positive.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// The value is approximately <c>n * 2^-52 ≈ n * 2.22E-16</c>, computed as <c>2 * n *</c>
+        /// <see cref="Tools.DoubleMachineEpsilon"/> because that constant is the unit roundoff <c>2^-53</c>
+        /// rather than the double-precision spacing <c>2^-52</c>. The library constant is <c>2^-53</c>
+        /// rounded to fifteen significant figures, which sits just above the exact value, so the computed
+        /// tolerance exceeds <c>n * 2^-52</c> by about 3.1E-15 relative.
+        /// </para>
+        /// <para>
+        /// This tracks the standard backward-error bound for Cholesky factorization, in which the computed pivot
+        /// differs from the exact one by at most <c>γ_i * A[i,i]</c> — of order <c>n</c> unit roundoffs times
+        /// the corresponding diagonal entry. A pivot at or below that level carries no information beyond
+        /// rounding noise. Because the noise floor scales with <c>A[i,i]</c> and not with the largest diagonal,
+        /// the test is invariant under the rescaling <c>D*A*D</c> for a positive diagonal <c>D</c>, which is the
+        /// correct invariance for a covariance: changing the units of one variable must not change whether the
+        /// matrix is accepted.
+        /// </para>
+        /// <para>
+        /// The margin against falsely rejecting a legitimate matrix is large. For two variables with correlation
+        /// ρ the pivot ratio is <c>1 - ρ²</c>, so a false rejection at <c>n = 2</c> requires
+        /// <c>1 - ρ² &lt;= 4.44E-16</c>, that is ρ within about two ulp of one.
+        /// </para>
+        /// <para>
+        /// The margin in the other direction is far smaller, and no tolerance of this form can close it. A
+        /// rank-deficient matrix whose accumulated rounding leaves a pivot ratio above the tolerance is still
+        /// accepted, and that is not rare: for a covariance estimated from <c>m = n - 1</c> observations of
+        /// <c>n</c> variables, 11% to 18% of trials still factorize. Raising the tolerance would eat into the
+        /// false-rejection margin without fixing this; determining rank requires a singular value decomposition.
+        /// </para>
+        /// </remarks>
+        public static double DefaultRelativeTolerance(int dimension)
+        {
+            return dimension > 0 ? 2d * dimension * Tools.DoubleMachineEpsilon : 0d;
+        }
+
         private readonly int n; // Number of rows in A
+
+        /// <summary>
+        /// The scale-relative pivot tolerance applied during the factorization.
+        /// </summary>
+        /// <remarks>
+        /// A pivot was rejected when it fell at or below this fraction of the corresponding diagonal entry of
+        /// <see cref="A"/>. Zero means the purely absolute test was used.
+        /// </remarks>
+        public double RelativeTolerance { get; private set; }
 
         /// <summary>
         /// Stores the decomposition.

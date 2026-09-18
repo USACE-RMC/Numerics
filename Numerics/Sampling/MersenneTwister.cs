@@ -69,10 +69,19 @@ namespace Numerics.Sampling
         /// <summary>
         /// Construct a Mersenne Twister PRNG using the clock to create a random seed.
         /// </summary>
+        /// <remarks>
+        /// The seed mixes a process-wide instance counter into the tick count, so unseeded
+        /// generators constructed within one clock tick, sequentially or concurrently, still
+        /// produce distinct streams.
+        /// </remarks>
         public MersenneTwister()
         {
-            Initialize((uint)DateTime.UtcNow.Ticks);
+            uint counter = (uint)System.Threading.Interlocked.Increment(ref _instanceCounter);
+            Initialize((uint)DateTime.UtcNow.Ticks + counter * 2654435761U);
         }
+
+        // Distinguishes unseeded generators that share one clock tick
+        private static int _instanceCounter;
 
         /// <summary>
         /// Construct a Mersenne Twister PRNG given a seed. 

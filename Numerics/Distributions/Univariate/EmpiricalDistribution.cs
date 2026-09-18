@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Xml.Linq;
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
@@ -175,6 +177,28 @@ namespace Numerics.Distributions
         /// Determines the interpolation transform for the Probability-values.
         /// </summary>
         public Transform ProbabilityTransform { get; set; } = Transform.NormalZ;
+
+        /// <summary>
+        /// The extrapolation policy applied to out-of-range lookups, defined in X space:
+        /// Below extends beyond the smallest table X value and Above beyond the largest,
+        /// matching the <see cref="Minimum"/>/<see cref="Maximum"/> semantics regardless of the
+        /// stored probability orientation. Default = None, which reproduces the historical
+        /// endpoint hold exactly.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Extension is linear in the configured transform spaces on the table's boundary
+        /// segments. <see cref="CDF(double)"/> output is always clamped to [0, 1] — a probability
+        /// axis under a None transform extends linearly and can leave the unit interval, while
+        /// the normal-Z transform back-transforms into (0, 1) by itself.
+        /// <see cref="InverseCDF(double)"/> stays monotone and total over the extended tails:
+        /// probabilities at or beyond the 1e-16 floors evaluate the extended lookup at the floor
+        /// rather than holding the endpoint, and the endpoint clamp is applied only on sides
+        /// whose extension is disabled. <see cref="PDF(double)"/> deliberately retains its
+        /// table-span support.
+        /// </para>
+        /// </remarks>
+        public ExtrapolationSides Extrapolation { get; set; } = ExtrapolationSides.None;
 
         /// <inheritdoc/>
         public override int NumberOfParameters
@@ -495,14 +519,16 @@ namespace Numerics.Distributions
         {
             if (_parametersValid == false) ValidateData(opd, _pValues, true);
             double p = 0;
+            // The lookup axis is X, so the X-space extrapolation sides forward unchanged in
+            // either probability orientation; the [0,1] clamp below bounds any extended output.
             if (opd.OrderY == SortOrder.Ascending || opd.OrderY == SortOrder.None)
             {
-                p = opd.GetYFromX(X, XTransform, ProbabilityTransform);
+                p = opd.GetYFromX(X, XTransform, ProbabilityTransform, Extrapolation);
             }
             else
             {
                 // If descending then it is a survival function
-                p = 1d - opd.GetYFromX(X, XTransform, ProbabilityTransform);
+                p = 1d - opd.GetYFromX(X, XTransform, ProbabilityTransform, Extrapolation);
             }
             return p < 0d ? 0d : p > 1d ? 1d : p;
         }
@@ -517,27 +543,401 @@ namespace Numerics.Distributions
 
             double min = Minimum;
             double max = Maximum;
-            if (probability <= 1E-16) return min;
-            if (probability >= 1 - 1E-16) return max;
+            // The far-tail floors stay total under extrapolation: an enabled X side evaluates the
+            // extended lookup at the floor (keeping the normal-Z transform finite and the inverse
+            // monotone) instead of holding the endpoint.
+            if (probability <= 1E-16)
+            {
+                if ((Extrapolation & ExtrapolationSides.Below) == 0) return min;
+                probability = 1E-16;
+            }
+            if (probability >= 1 - 1E-16)
+            {
+                if ((Extrapolation & ExtrapolationSides.Above) == 0) return max;
+                probability = 1 - 1E-16;
+            }
             double x = 0;
             if (opd.OrderY == SortOrder.Ascending || opd.OrderY == SortOrder.None)
             {
-                x = opd.GetXFromY(probability, XTransform, ProbabilityTransform);
+                x = opd.GetXFromY(probability, XTransform, ProbabilityTransform, Extrapolation);
             }
             else
             {
-                // If descending then it is a survival function
-                x = opd.GetXFromY(1d - probability, XTransform, ProbabilityTransform);
+                // If descending then it is a survival function. The lookup runs on the stored
+                // (exceedance) value axis, where the small stored values sit at large X — so the
+                // X-space policy maps to the lookup axis with its sides swapped.
+                var mapped = ExtrapolationSides.None;
+                if ((Extrapolation & ExtrapolationSides.Below) != 0) mapped |= ExtrapolationSides.Above;
+                if ((Extrapolation & ExtrapolationSides.Above) != 0) mapped |= ExtrapolationSides.Below;
+                x = opd.GetXFromY(1d - probability, XTransform, ProbabilityTransform, mapped);
             }
-            return x < min ? min : x > max ? max : x;
+            // Clamp only the sides whose extension is disabled, in X space.
+            if (x < min && (Extrapolation & ExtrapolationSides.Below) == 0) return min;
+            if (x > max && (Extrapolation & ExtrapolationSides.Above) == 0) return max;
+            return x;
         }
 
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
-            return new EmpiricalDistribution(XValues, ProbabilityValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform };
+            return new EmpiricalDistribution(XValues, ProbabilityValues) { XTransform = XTransform, ProbabilityTransform = ProbabilityTransform, Extrapolation = Extrapolation };
         }
 
+        /// <summary>
+        /// Convolves two empirical distributions and optionally resamples the result on a
+        /// logarithmically spaced output grid.
+        /// </summary>
+        /// <param name="dist1">The first empirical distribution.</param>
+        /// <param name="dist2">The second empirical distribution.</param>
+        /// <param name="numberOfPoints">The requested output point count.</param>
+        /// <param name="logSpacedOutput">Whether to use logarithmic output spacing.</param>
+        /// <returns>The convolved empirical distribution.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when either distribution is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when logarithmic output requires a non-positive or degenerate support, or produces fewer than two distinct cumulative probabilities.</exception>
+        public static EmpiricalDistribution Convolve(EmpiricalDistribution dist1, EmpiricalDistribution dist2, int numberOfPoints, bool logSpacedOutput)
+        {
+            if (dist1 is null) throw new ArgumentNullException(nameof(dist1));
+            if (dist2 is null) throw new ArgumentNullException(nameof(dist2));
+
+            if (logSpacedOutput)
+            {
+                double supportMinimum = dist1.Minimum + dist2.Minimum;
+                double supportMaximum = dist1.Maximum + dist2.Maximum;
+                if (!Tools.IsFinite(supportMinimum) || !Tools.IsFinite(supportMaximum)
+                    || supportMinimum <= 0d || supportMaximum <= supportMinimum)
+                    throw new ArgumentException("A logarithmic output grid requires a finite, strictly positive, non-degenerate support.", nameof(logSpacedOutput));
+            }
+
+            var linear = Convolve(dist1, dist2, numberOfPoints);
+            if (!logSpacedOutput) return linear;
+
+            double minimum = linear.Minimum;
+            double maximum = linear.Maximum;
+            if (!Tools.IsFinite(minimum) || !Tools.IsFinite(maximum) || minimum <= 0d || maximum <= minimum)
+                throw new ArgumentException("A logarithmic output grid requires a finite, strictly positive, non-degenerate support.", nameof(logSpacedOutput));
+
+            double logMinimum = Math.Log10(minimum);
+            double logMaximum = Math.Log10(maximum);
+            var xValues = new double[numberOfPoints];
+            var pValues = new double[numberOfPoints];
+            double previous = double.NegativeInfinity;
+            int count = 0;
+            for (int i = 0; i < numberOfPoints; i++)
+            {
+                double x = Math.Pow(10d, logMinimum + (logMaximum - logMinimum) * i / (numberOfPoints - 1d));
+                double probability = linear.CDF(x);
+                if (!Tools.IsFinite(x) || !Tools.IsFinite(probability))
+                    throw new InvalidOperationException("Convolution produced a non-finite logarithmic output value.");
+
+                if (probability > previous)
+                {
+                    xValues[count] = x;
+                    pValues[count] = probability;
+                    previous = probability;
+                    count++;
+                }
+            }
+
+            if (count < 2)
+                throw new ArgumentException("The logarithmic output grid produced fewer than two distinct cumulative probabilities.", nameof(logSpacedOutput));
+
+            var trimmedX = new double[count];
+            var trimmedP = new double[count];
+            Array.Copy(xValues, trimmedX, count);
+            Array.Copy(pValues, trimmedP, count);
+            return new EmpiricalDistribution(trimmedX, trimmedP)
+            {
+                XTransform = linear.XTransform,
+                ProbabilityTransform = linear.ProbabilityTransform
+            };
+        }
+        /// <summary>
+        /// Approximates the convolution of two discrete distributions on a shared uniform lattice.
+        /// Input atoms are split between adjacent nodes to preserve their first moments before the
+        /// lattice masses are convolved by FFT.
+        /// </summary>
+        /// <param name="values1">The first distribution's atom values.</param>
+        /// <param name="masses1">The first distribution's atom masses.</param>
+        /// <param name="values2">The second distribution's atom values.</param>
+        /// <param name="masses2">The second distribution's atom masses.</param>
+        /// <param name="latticePoints">The requested per-input lattice resolution.</param>
+        /// <param name="values">The occupied convolved lattice values.</param>
+        /// <param name="masses">The non-negative convolved lattice masses.</param>
+        /// <exception cref="ArgumentNullException">Thrown when any input list is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when a values/masses pair is empty or mismatched, a value is non-finite, a mass is negative or non-finite, or a total mass is not positive.</exception>
+        public static void ConvolveDiscrete(IList<double> values1, IList<double> masses1, IList<double> values2, IList<double> masses2,
+            int latticePoints, out double[] values, out double[] masses)
+        {
+            double total1 = ValidateAtoms(values1, masses1, nameof(values1));
+            double total2 = ValidateAtoms(values2, masses2, nameof(values2));
+            if (latticePoints < 8) latticePoints = 8;
+            int n = Tools.NextPowerOfTwo(latticePoints);
+
+            double min1 = MinimumPositiveMassValue(values1, masses1);
+            double max1 = MaximumPositiveMassValue(values1, masses1);
+            double min2 = MinimumPositiveMassValue(values2, masses2);
+            double max2 = MaximumPositiveMassValue(values2, masses2);
+            double span = (max1 - min1) + (max2 - min2);
+            double expected = total1 * total2;
+            if (span == 0d)
+            {
+                values = [min1 + min2];
+                masses = [expected];
+                return;
+            }
+
+            double step = span / (n - 1);
+            var lattice1 = DepositAtoms(values1, masses1, min1, step, n);
+            var lattice2 = DepositAtoms(values2, masses2, min2, step, n);
+
+            int fftSize = Tools.NextPowerOfTwo(2 * n);
+            var fft1 = new double[2 * fftSize];
+            var fft2 = new double[2 * fftSize];
+            for (int i = 0; i < n; i++)
+            {
+                fft1[2 * i] = lattice1[i];
+                fft2[2 * i] = lattice2[i];
+            }
+            Mathematics.Fourier.FFT(fft1);
+            Mathematics.Fourier.FFT(fft2);
+            var product = new double[2 * fftSize];
+            for (int i = 0; i < fftSize; i++)
+            {
+                double real1 = fft1[2 * i];
+                double imaginary1 = fft1[2 * i + 1];
+                double real2 = fft2[2 * i];
+                double imaginary2 = fft2[2 * i + 1];
+                product[2 * i] = real1 * real2 - imaginary1 * imaginary2;
+                product[2 * i + 1] = real1 * imaginary2 + imaginary1 * real2;
+            }
+            Mathematics.Fourier.FFT(product, inverse: true);
+
+            int resultCount = LastPositiveIndex(lattice1) + LastPositiveIndex(lattice2) + 1;
+            values = new double[resultCount];
+            masses = new double[resultCount];
+            double total = 0d;
+            for (int i = 0; i < resultCount; i++)
+            {
+                values[i] = min1 + min2 + i * step;
+                double mass = product[2 * i] / fftSize;
+                masses[i] = mass > 0d ? mass : 0d;
+                total += masses[i];
+            }
+            if (!Tools.IsFinite(total) || total <= 0d)
+                throw new InvalidOperationException("The discrete convolution produced no finite positive mass.");
+
+            double scale = expected / total;
+            for (int i = 0; i < resultCount; i++) masses[i] *= scale;
+        }
+
+        /// <summary>
+        /// Validates one atom list and returns its total mass.
+        /// </summary>
+        /// <param name="values">The atom values.</param>
+        /// <param name="masses">The atom masses.</param>
+        /// <param name="parameterName">The reported parameter name.</param>
+        /// <returns>The finite positive total mass.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> or <paramref name="masses"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the atom collections are empty, mismatched, non-finite, negative, or have no positive total mass.</exception>
+        private static double ValidateAtoms(IList<double> values, IList<double> masses, string parameterName)
+        {
+            if (values == null || masses == null) throw new ArgumentNullException(parameterName);
+            if (values.Count == 0 || values.Count != masses.Count)
+                throw new ArgumentException("Atom values and masses must be non-empty and equal in length.", parameterName);
+
+            double total = 0d;
+            for (int i = 0; i < masses.Count; i++)
+            {
+                if (!Tools.IsFinite(values[i]) || !Tools.IsFinite(masses[i]) || masses[i] < 0d)
+                    throw new ArgumentException("Atom values must be finite and masses non-negative.", parameterName);
+                total += masses[i];
+            }
+            if (!Tools.IsFinite(total) || total <= 0d)
+                throw new ArgumentException("Atom masses must have a finite positive total.", parameterName);
+            return total;
+        }
+
+        /// <summary>
+        /// Finds the smallest atom value carrying positive mass.
+        /// </summary>
+        /// <param name="values">The validated atom values.</param>
+        /// <param name="masses">The validated atom masses.</param>
+        /// <returns>The smallest value whose corresponding mass is positive.</returns>
+        /// <remarks>The atom collections must first pass <see cref="ValidateAtoms(IList{double}, IList{double}, string)"/>.</remarks>
+        private static double MinimumPositiveMassValue(IList<double> values, IList<double> masses)
+        {
+            double minimum = double.MaxValue;
+            for (int i = 0; i < values.Count; i++)
+                if (masses[i] > 0d && values[i] < minimum) minimum = values[i];
+            return minimum;
+        }
+
+        /// <summary>
+        /// Finds the largest atom value carrying positive mass.
+        /// </summary>
+        /// <param name="values">The validated atom values.</param>
+        /// <param name="masses">The validated atom masses.</param>
+        /// <returns>The largest value whose corresponding mass is positive.</returns>
+        /// <remarks>The atom collections must first pass <see cref="ValidateAtoms(IList{double}, IList{double}, string)"/>.</remarks>
+        private static double MaximumPositiveMassValue(IList<double> values, IList<double> masses)
+        {
+            double maximum = double.MinValue;
+            for (int i = 0; i < values.Count; i++)
+                if (masses[i] > 0d && values[i] > maximum) maximum = values[i];
+            return maximum;
+        }
+
+        /// <summary>
+        /// Finds the final lattice entry carrying positive mass.
+        /// </summary>
+        /// <param name="masses">The lattice masses.</param>
+        /// <returns>The index of the final positive mass.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the lattice has no positive mass.</exception>
+        private static int LastPositiveIndex(IList<double> masses)
+        {
+            for (int i = masses.Count - 1; i >= 0; i--)
+                if (masses[i] > 0d) return i;
+            throw new InvalidOperationException("The lattice contains no positive mass.");
+        }
+        /// <summary>
+        /// Deposits atoms onto a uniform lattice with the moment-preserving two-node split: an
+        /// atom between nodes splits its mass so the lattice mean reproduces the atom mean
+        /// exactly.
+        /// </summary>
+        /// <param name="values">The atom values.</param>
+        /// <param name="masses">The atom masses.</param>
+        /// <param name="origin">The lattice origin.</param>
+        /// <param name="step">The lattice step.</param>
+        /// <param name="n">The lattice node count.</param>
+        /// <returns>The lattice mass vector.</returns>
+        private static double[] DepositAtoms(IList<double> values, IList<double> masses, double origin, double step, int n)
+        {
+            var lattice = new double[n];
+            for (int i = 0; i < values.Count; i++)
+            {
+                double position = (values[i] - origin) / step;
+                int lower = (int)Math.Floor(position);
+                if (lower < 0) lower = 0;
+                if (lower > n - 1) lower = n - 1;
+                int upper = lower + 1;
+                if (upper > n - 1)
+                {
+                    lattice[n - 1] += masses[i];
+                    continue;
+                }
+                double fraction = position - lower;
+                if (fraction < 0d) fraction = 0d;
+                if (fraction > 1d) fraction = 1d;
+                lattice[lower] += masses[i] * (1d - fraction);
+                lattice[upper] += masses[i] * fraction;
+            }
+            return lattice;
+        }
+
+        /// <summary>
+        /// Serializes the X and probability tables, probability ordering, and interpolation
+        /// transforms using invariant round-trip numeric formatting.
+        /// </summary>
+        /// <returns>An XElement representation of the empirical distribution.</returns>
+        public override XElement ToXElement()
+        {
+            var result = new XElement("Distribution");
+            result.SetAttributeValue(nameof(Type), Type.ToString());
+            result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
+            result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+            // Conditional presence: the attribute is written only when non-default so that every
+            // pre-existing serialized form remains byte-identical.
+            if (Extrapolation != ExtrapolationSides.None)
+            {
+                result.SetAttributeValue(nameof(Extrapolation), Extrapolation.ToString());
+            }
+
+            var xValues = new string[XValues.Count];
+            var pValues = new string[ProbabilityValues.Count];
+            for (int i = 0; i < XValues.Count; i++)
+                xValues[i] = XValues[i].ToString("G17", CultureInfo.InvariantCulture);
+            for (int i = 0; i < ProbabilityValues.Count; i++)
+                pValues[i] = ProbabilityValues[i].ToString("G17", CultureInfo.InvariantCulture);
+            result.SetAttributeValue(nameof(XValues), string.Join("|", xValues));
+            result.SetAttributeValue(nameof(ProbabilityValues), string.Join("|", pValues));
+
+            // Preserve the configured order, including None for ladders that intentionally use
+            // linear search rather than a monotonic smart-search contract.
+            result.SetAttributeValue(nameof(ProbabilityOrder), ProbabilityOrder.ToString());
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes an empirical distribution from an XElement produced by
+        /// <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A validated <see cref="EmpiricalDistribution"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when serialized tables, ordering, or transforms are missing or invalid.</exception>
+        public static EmpiricalDistribution FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            string? xText = xElement.Attribute(nameof(XValues))?.Value;
+            string? pText = xElement.Attribute(nameof(ProbabilityValues))?.Value;
+            if (string.IsNullOrWhiteSpace(xText) || string.IsNullOrWhiteSpace(pText))
+                throw new ArgumentException("The serialized empirical distribution is missing its X or probability table.", nameof(xElement));
+
+            string[] xTokens = xText!.Split('|');
+            string[] pTokens = pText!.Split('|');
+            if (xTokens.Length != pTokens.Length || xTokens.Length < 2)
+                throw new ArgumentException("The serialized empirical tables must have equal lengths of at least two.", nameof(xElement));
+
+            var xValues = new double[xTokens.Length];
+            var pValues = new double[pTokens.Length];
+            for (int i = 0; i < xTokens.Length; i++)
+            {
+                if (!double.TryParse(xTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out xValues[i])
+                    || !double.TryParse(pTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out pValues[i])
+                    || !Tools.IsFinite(xValues[i])
+                    || !Tools.IsFinite(pValues[i]))
+                    throw new ArgumentException("The serialized empirical distribution contains an invalid table value.", nameof(xElement));
+            }
+
+            var orderAttribute = xElement.Attribute(nameof(ProbabilityOrder));
+            if (orderAttribute == null
+                || !Enum.TryParse(orderAttribute.Value, out SortOrder order)
+                || !Enum.IsDefined(typeof(SortOrder), order))
+                throw new ArgumentException("The serialized empirical distribution has an invalid probability order.", nameof(xElement));
+
+            var distribution = new EmpiricalDistribution(xValues, pValues, SortOrder.Ascending, order);
+            if (!distribution.ParametersValid)
+                throw new ArgumentException("The serialized empirical tables do not define a valid distribution.", nameof(xElement));
+
+            var xTransformAttribute = xElement.Attribute(nameof(XTransform));
+            if (xTransformAttribute != null)
+            {
+                if (!Enum.TryParse(xTransformAttribute.Value, out Transform xTransform)
+                    || !Enum.IsDefined(typeof(Transform), xTransform))
+                    throw new ArgumentException("The serialized empirical distribution has an invalid X transform.", nameof(xElement));
+                distribution.XTransform = xTransform;
+            }
+
+            var probabilityTransformAttribute = xElement.Attribute(nameof(ProbabilityTransform));
+            if (probabilityTransformAttribute != null)
+            {
+                if (!Enum.TryParse(probabilityTransformAttribute.Value, out Transform probabilityTransform)
+                    || !Enum.IsDefined(typeof(Transform), probabilityTransform))
+                    throw new ArgumentException("The serialized empirical distribution has an invalid probability transform.", nameof(xElement));
+                distribution.ProbabilityTransform = probabilityTransform;
+            }
+
+            // Optional-but-validated (conditional presence): absent reads as None.
+            var extrapolationAttribute = xElement.Attribute(nameof(Extrapolation));
+            if (extrapolationAttribute != null)
+            {
+                if (!Enum.TryParse(extrapolationAttribute.Value, out ExtrapolationSides extrapolation)
+                    || !Enum.IsDefined(typeof(ExtrapolationSides), extrapolation))
+                    throw new ArgumentException("The serialized empirical distribution has an invalid extrapolation policy.", nameof(xElement));
+                distribution.Extrapolation = extrapolation;
+            }
+            return distribution;
+        }
 
         /// <summary>
         /// Convolves two empirical distributions using FFT.

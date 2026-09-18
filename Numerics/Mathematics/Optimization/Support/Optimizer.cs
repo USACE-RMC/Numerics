@@ -63,7 +63,8 @@ namespace Numerics.Mathematics.Optimization
         public bool RecordTraces { get; set; } = true;
 
         /// <summary>
-        /// Determines whether to compute a numerically differentiated Hessian matrix when the optimization was successful. 
+        /// Determines whether to compute a numerically differentiated Hessian matrix when the optimization was successful
+        /// or a line search failed after producing a usable best parameter set.
         /// </summary>
         public bool ComputeHessian { get; set; } = true;
 
@@ -89,6 +90,33 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         protected int functionScale = 1;
 
+        /// <summary>
+        /// The inclusive lower bounds of the parameter space, or null when the search is unbounded.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The base class returns null, which is correct for an unconstrained problem. A derived class that
+        /// constrains its search to a box overrides this to expose those bounds, so that the finite-difference
+        /// Hessian computed at the end of a successful <see cref="Minimize"/> or <see cref="Maximize"/> keeps
+        /// its perturbations inside the feasible region.
+        /// </para>
+        /// <para>
+        /// This is deliberately separate from the public bounds properties declared by the individual solvers.
+        /// Those properties are declared independently on each derived class, so a member of the same name on
+        /// this base class would be hidden by every one of them. The array returned here must have one entry
+        /// per parameter, in the same order as <see cref="ParameterSet.Values"/>.
+        /// </para>
+        /// </remarks>
+        protected virtual double[]? ParameterLowerBounds => null;
+
+        /// <summary>
+        /// The inclusive upper bounds of the parameter space, or null when the search is unbounded.
+        /// </summary>
+        /// <remarks>
+        /// See <see cref="ParameterLowerBounds"/> for the rationale and the ordering contract.
+        /// </remarks>
+        protected virtual double[]? ParameterUpperBounds => null;
+
 
         #endregion
 
@@ -110,8 +138,13 @@ namespace Numerics.Mathematics.Optimization
         public ParameterSet BestParameterSet { get; protected set; } = new ParameterSet();
 
         /// <summary>
-        /// A trace of the parameter set and fitness evaluated until convergence.
+        /// A trace of the best-so-far parameter set and fitness at every function evaluation.
         /// </summary>
+        /// <remarks>
+        /// The trace is read-only: entries recorded between improvements share one values array,
+        /// so the trace stores the search history without one array allocation per function
+        /// evaluation.
+        /// </remarks>
         public List<ParameterSet> ParameterSetTrace { get; protected set; } = new List<ParameterSet>();
 
         /// <summary>
@@ -166,9 +199,9 @@ namespace Numerics.Mathematics.Optimization
             try
             {               
                 Optimize();
-                if (Status == OptimizationStatus.Success && ComputeHessian)
+                if ((Status == OptimizationStatus.Success || Status == OptimizationStatus.LineSearchFailed) && ComputeHessian)
                 {
-                    Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values));
+                    Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values, ParameterLowerBounds!, ParameterUpperBounds!));
                 }
             }
             catch (ArgumentException ex)
@@ -194,9 +227,9 @@ namespace Numerics.Mathematics.Optimization
             try
             {
                 Optimize();
-                if (Status == OptimizationStatus.Success && ComputeHessian)
+                if ((Status == OptimizationStatus.Success || Status == OptimizationStatus.LineSearchFailed) && ComputeHessian)
                 {
-                    Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values));
+                    Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values, ParameterLowerBounds!, ParameterUpperBounds!));
                 }
             }
             catch (ArgumentException ex)
@@ -225,7 +258,7 @@ namespace Numerics.Mathematics.Optimization
             
             // Update trace. This is tracked every evaluation
             if (ParameterSetTrace == null) ParameterSetTrace = new List<ParameterSet>();
-            if (RecordTraces) ParameterSetTrace.Add(BestParameterSet.Clone());
+            if (RecordTraces) ParameterSetTrace.Add(BestParameterSet.Clone(deep: false));
 
             // update evaluation counter
             FunctionEvaluations += 1;

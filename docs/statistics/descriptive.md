@@ -472,11 +472,13 @@ for (int i = 0; i < data.Length; i++)
     Console.WriteLine($"{data[i],5:F1} | {ranks[i],4:F1}");
 }
 
-// Ranks with ties reported
+// Ranks with ties reported. Each entry of "ties" holds a tie run's length minus one at the
+// run's last sorted position (zero elsewhere), so a tied group of any size reports a value
+// greater than zero.
 double[] dataCopy2 = (double[])data.Clone();
 double[] ranks2 = Statistics.RanksInPlace(dataCopy2, out double[] ties);
 
-Console.WriteLine($"\nNumber of tied groups: {ties.Count(t => t > 1)}");
+Console.WriteLine($"\nNumber of tied groups: {ties.Count(t => t > 0)}");
 ```
 
 ## Entropy

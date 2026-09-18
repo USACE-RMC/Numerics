@@ -36,6 +36,11 @@ namespace Numerics.MachineLearning
         /// <param name="data">The input data array to be classified.</param>
         /// <param name="numberOfClusters">The number of desired clusters (or classes).</param>
         /// <param name="isDataSorted">Determines if the data array is sorted. Default = false.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the data array is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the data array is empty, when the cluster count exceeds the data length, or
+        /// when more than one cluster is requested of data with fewer than two distinct values.
+        /// </exception>
         public JenksNaturalBreaks(IList<double> data, int numberOfClusters, bool isDataSorted = false)
         {
             if (data == null) throw new ArgumentNullException(nameof(data), "The data array is null.");
@@ -49,6 +54,11 @@ namespace Numerics.MachineLearning
             {
                 Array.Sort(sortedData);
             }
+            // With every value identical, every candidate split has zero variance and the dynamic
+            // program's walkback produces a negative class limit, so the failure would otherwise
+            // surface as an index exception from inside the fitted algorithm.
+            if (numberOfClusters > 1 && sortedData[0] == sortedData[sortedData.Length - 1])
+                throw new ArgumentException("The data must contain at least two distinct values to form more than one cluster.", nameof(data));
 
             SortedData = sortedData;
             NumberOfClusters = numberOfClusters;
@@ -61,6 +71,11 @@ namespace Numerics.MachineLearning
         /// <param name="data">The input data array to be classified.</param>
         /// <param name="numberOfClusters">The number of desired clusters (or classes).</param>
         /// <param name="isDataSorted">Determines if the data array is sorted. Default = false.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the data array is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the data array is empty, when the cluster count exceeds the data length, or
+        /// when more than one cluster is requested of data with fewer than two distinct values.
+        /// </exception>
         public JenksNaturalBreaks(IList<float> data, int numberOfClusters, bool isDataSorted = false)
         {
             if (data == null) throw new ArgumentNullException(nameof(data), "The data array is null.");
@@ -74,6 +89,11 @@ namespace Numerics.MachineLearning
             {
                 Array.Sort(sortedData);
             }
+            // With every value identical, every candidate split has zero variance and the dynamic
+            // program's walkback produces a negative class limit, so the failure would otherwise
+            // surface as an index exception from inside the fitted algorithm.
+            if (numberOfClusters > 1 && sortedData[0] == sortedData[sortedData.Length - 1])
+                throw new ArgumentException("The data must contain at least two distinct values to form more than one cluster.", nameof(data));
 
             SortedData = new double[sortedData.Length];
             for (int i = 0; i < sortedData.Length; i++)

@@ -91,6 +91,61 @@ List<ParameterSet>[] MarkovChains // Raw MCMC chains
 ParameterSet MAP                  // Maximum a posteriori estimate
 ```
 
+### How much work a run actually does
+
+`Iterations` does not describe the work performed, and at the defaults it under-reports it by a factor
+of about 34. Two multipliers sit in between:
+
+- `Sample()` runs `ceil(OutputLength / NumberOfChains)` recorded iterations *beyond* `Iterations` to
+  collect the posterior output. `OutputLength` defaults to 10,000.
+- Each recorded iteration advances the chain `ThinningInterval` times. Thinning discards intermediate
+  transitions, not recorded draws, so those transitions are all performed.
+
+```text
+transitions per chain = (Iterations + ceil(OutputLength / NumberOfChains)) * ThinningInterval
+                      = (3500 + ceil(10000 / 4)) * 20
+                      = (3500 + 2500) * 20
+                      = 120,000          per chain
+                      = 480,000          across the 4 default chains
+```
+
+Every transition costs at least one log-likelihood evaluation, so 480,000 is a **floor** on the
+evaluation count of a default run, not a budget. A gradient-based sampler such as HMC or NUTS spends
+many likelihood and gradient evaluations per transition, and chain initialization adds more on top,
+so the real count can be far higher. Note that `WarmupIterations` is a *subset* of `Iterations`, not an addition to it —
+`ValidateSettings` rejects a warmup longer than half of `Iterations` — so it is already inside these
+figures and must not be added again.
+
+Two read-only properties report these directly, so a runtime estimate does not have to reproduce the
+arithmetic:
+
+```cs
+long TransitionCount       // transitions per chain      (120,000 at the defaults)
+long TotalTransitionCount  // transitions over all chains (480,000 at the defaults)
+```
+
+They are `long` because there is no upper bound on `Iterations`, and the product overflows `int` for
+settings the sampler otherwise accepts.
+
+### Thread safety of the likelihood
+
+`ParallelizeChains` defaults to `true`, which means `Sample()` advances all chains concurrently and
+every chain calls the **same** `LogLikelihoodFunction` delegate instance. The log-likelihood — and, for
+gradient-based samplers, the gradient — is therefore invoked from multiple threads at once and must be
+thread-safe or stateless.
+
+A likelihood that closes over mutable state (an autodiff tape, a reused buffer or workspace, a native
+solver handle, a cached factorization, a non-thread-safe PRNG) races under the default setting, and the
+corruption is silent: it shows up as an implausible posterior, not as an exception.
+
+```cs
+sampler.ParallelizeChains = false;  // required if the likelihood is not thread-safe
+```
+
+Setting it to `false` is the supported remedy and the only one. The delegates receive just the
+parameter vector and no chain index, so a callback cannot select a per-chain resource from inside
+itself.
+
 ## Defining the Model
 
 ### Step 1: Define Prior Distributions
@@ -265,7 +320,7 @@ where:
 
 - $d$ is the number of parameters (`NumberOfParameters`)
 - $\beta = 0.05$ by default (the `Beta` property)
-- $\hat{\Sigma}_t$ is the empirical covariance matrix computed as a running covariance of accepted samples (and current states after warmup)
+- $\hat{\Sigma}_t$ is the empirical covariance matrix computed as a running covariance of every realized chain state (accepted proposals and repeated retained states alike)
 - $I_d$ is the $d$-dimensional identity matrix
 - The scale factor $s = 2.38^2/d$ is the `Scale` property
 
@@ -421,6 +476,7 @@ In log space, the source code computes this as:
 
 - The step size $\varepsilon$ is **jittered**: each iteration draws $\varepsilon \sim \text{Uniform}(0, \, 2\varepsilon_0)$ where $\varepsilon_0$ is the `StepSize` property. This avoids resonant trajectories.
 - The number of leapfrog steps $L$ is **jittered**: each iteration draws $L \sim \text{UniformDiscrete}(1, \, 2L_0)$ where $L_0$ is the `Steps` property.
+- A trajectory of $L$ steps costs at most $L + 1$ gradient evaluations: the closing half-step of each leapfrog step is fused with the opening half-step of the next, and after a chain's first transition the opening evaluation is served from a per-chain memo of the previous transition's closing evaluation. The gradient delegate receives a private working array, never the chain state itself, so a delegate that writes through its argument cannot corrupt the chain.
 - The mass vector $M$ is diagonal (default: identity). Users can set it via the `mass` constructor parameter.
 - If no gradient function is provided, numerical finite differences are used via `NumericalDerivative.Gradient`, with probes clamped to prior bounds.
 
@@ -496,7 +552,7 @@ This is implemented via log-sum-exp arithmetic for numerical stability.
 
 where:
 
-- $\delta = 0.80$ is the target acceptance rate (`DELTA_TARGET`)
+- $\delta$ is the target acceptance rate (the `TargetAcceptanceRate` property, default 0.80)
 - $\gamma = 0.05$ is the adaptation regularization (`GAMMA`)
 - $t_0 = 10$ prevents early instability (`T0`)
 - $\mu = \log(10 \cdot \varepsilon_0)$ is the bias point, with $\varepsilon_0$ the initial step size
@@ -516,17 +572,21 @@ After warmup, the step size is fixed to $\exp(\log \bar{\varepsilon})$.
 - Divergence threshold: if $H - H_0 > 1000$, the trajectory is considered divergent and tree-building stops
 - NUTS always accepts a candidate from the tree (acceptance is built into the multinomial weighting), so `AcceptCount` increments every iteration
 - Step size adaptation occurs only during the warmup phase, with step sizes clamped to $[10^{-10}, \, 10^{5}]$
+- `AdaptMassMatrix` defaults to `true`. During warmup the diagonal metric is estimated with Welford's online algorithm over Stan-style doubling windows, and each parameter's estimated posterior variance becomes its inverse mass, so the leapfrog step in that direction scales with the parameter's own posterior width. Without it a single step size has to serve every parameter at once, and on a posterior whose parameters differ in scale the sampler saturates `MaxTreeDepth` on nearly every transition. Set it to `false` to sample with the fixed metric supplied through `Mass`. On a well-conditioned fit with only two or three parameters the metric has little to correct and adaptation costs up to about **38% more leapfrog steps per transition** (measured on the Normal, Logistic and Gumbel reference fits over six seeds); on an ill-conditioned posterior it is worth one to two orders of magnitude the other way
 
 ```cs
 var nuts = new NUTS(priors, logLikelihood);
 
 // NUTS-specific settings
 nuts.NumberOfChains = 4;
-nuts.WarmupIterations = 1000;       // Step size adapts during warmup
+nuts.WarmupIterations = 1000;       // Step size and diagonal metric adapt during warmup
 nuts.Iterations = 2000;
 
 // Optional: set step size and max tree depth
 // nuts = new NUTS(priors, logLikelihood, stepSize: 0.5, maxTreeDepth: 10);
+
+// Optional: sample with the fixed identity metric instead of the adapted diagonal one
+// nuts.AdaptMassMatrix = false;
 
 Console.WriteLine("Running No-U-Turn Sampler...");
 nuts.Sample();
@@ -845,7 +905,7 @@ if (results.MarkovChains != null)
 | `StandardDeviation` | `double` | Posterior standard deviation |
 | `LowerCI` | `double` | Lower confidence interval (default 5th percentile) |
 | `UpperCI` | `double` | Upper confidence interval (default 95th percentile) |
-| `Rhat` | `double` | Gelman-Rubin convergence diagnostic |
+| `Rhat` | `double` | Gelman-Rubin convergence diagnostic (rank-normalized split-R̂; target < 1.01) |
 | `ESS` | `double` | Effective sample size |
 | `N` | `int` | Total sample count |
 
@@ -946,7 +1006,7 @@ Do you have gradient information (or a smooth, differentiable log-posterior)?
 
 ```cs
 // Visual inspection of traces
-// Check R-hat < 1.1 for all parameters
+// Check R-hat < 1.01 for all parameters
 // Effective sample size > 100 per parameter
 ```
 

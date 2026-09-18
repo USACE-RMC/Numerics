@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics.Optimization;
@@ -47,6 +49,9 @@ namespace Numerics.Distributions
         /// Constructs a Gaussian Kernel Density distribution from a sample of data using the default bandwidth.
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the sample produces a non-positive or non-finite default bandwidth.</exception>
         public KernelDensity(IList<double> sampleData)
         {
             SetSampleData(sampleData);
@@ -59,6 +64,9 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         /// <param name="kernel">The kernel distribution type.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="kernel"/> is undefined or the sample produces an invalid default bandwidth.</exception>
         public KernelDensity(IList<double> sampleData, KernelType kernel)
         {
             SetSampleData(sampleData);
@@ -72,6 +80,9 @@ namespace Numerics.Distributions
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         /// <param name="kernel">The kernel distribution type.</param>
         /// <param name="bandwidthParameter">The bandwidth parameter.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="kernel"/> is undefined or <paramref name="bandwidthParameter"/> is not finite and strictly positive.</exception>
         public KernelDensity(IList<double> sampleData, KernelType kernel, double bandwidthParameter)
         {
             SetSampleData(sampleData);
@@ -86,10 +97,15 @@ namespace Numerics.Distributions
         /// <param name="weights">Positive weights wᵢ (length must match sampleData).</param>
         /// <param name="kernel">Kernel type (default Gaussian).</param>
         /// <param name="bandwidthParameter">
-        /// Optional bandwidth.  If null we use Silverman’s rule with the weighted σ.
+        /// Optional bandwidth. If null, Silverman’s rule is applied using the weighted standard deviation.
         /// </param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> or <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample and weights are empty, mismatched, non-finite, negative, or have no positive total weight.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="kernel"/> is undefined or the selected bandwidth is not finite and strictly positive.</exception>
         public KernelDensity(IList<double> sampleData, IList<double> weights, KernelType kernel = KernelType.Gaussian, double? bandwidthParameter = null)
         {
+            if (sampleData == null) throw new ArgumentNullException(nameof(sampleData));
+            if (weights == null) throw new ArgumentNullException(nameof(weights));
             if (weights.Count != sampleData.Count)
                 throw new ArgumentException("weights length must match sampleData length");
 
@@ -132,6 +148,13 @@ namespace Numerics.Distributions
         private double[]? _weights;     // one weight per sample (unnormalised)
         private double _sumW = 1.0;  // Σ wᵢ   (defaults to 1 for un‑weighted case)
 
+        /// <summary>
+        /// The number of accumulation chunks used by the density reduction. Fixed, not derived from the
+        /// processor count, so the summation order — and therefore the returned density — does not vary
+        /// with the machine or the thread count.
+        /// </summary>
+        private const int ReductionChunks = 64;
+
 
         /// <summary>
         /// Returns the array of X values. Points On the cumulative curve are specified
@@ -142,11 +165,15 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the kernel distribution type.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the assigned kernel type is undefined.</exception>
         public KernelType KernelDistribution
         {
             get { return _kernelDistribution; }
             set
             {
+                if (!Enum.IsDefined(typeof(KernelType), value))
+                    throw new ArgumentOutOfRangeException(nameof(KernelDistribution), value, "The kernel type is not defined.");
+
                 _kernelDistribution = value;
                 if (_kernelDistribution == KernelType.Epanechnikov)
                 {
@@ -164,19 +191,23 @@ namespace Numerics.Distributions
                 {
                     _kernel = new UniformKernel();
                 }
+                _cdfCreated = false;
             }
         }
 
         /// <summary>
         /// Gets and sets the bandwidth parameter used in the kernel density estimation.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the assigned bandwidth is not finite and strictly positive.</exception>
         public double Bandwidth
         {
             get { return _bandwidth; }
             set
             {
-                _parametersValid = ValidateParameters(value, false) is null;
+                ValidateParameters(value, true);
                 _bandwidth = value;
+                _parametersValid = true;
+                _cdfCreated = false;
             }
         }
 
@@ -511,7 +542,8 @@ namespace Numerics.Distributions
         public double BandwidthRule(IList<double> sampleData)
         {
             double sigma = Statistics.StandardDeviation(sampleData);
-            return sigma * Math.Pow(4.0d / (3.0d * sampleData.Count), 1.0d / 5.0d);
+            double factor = Math.Pow(4.0d / (3.0d * sampleData.Count), 1.0d / 5.0d);
+            return EnsurePositiveBandwidth(sigma, factor, sampleData);
         }
 
         /// <summary>
@@ -524,7 +556,92 @@ namespace Numerics.Distributions
             w ??= Enumerable.Repeat(1.0, sample.Count).ToArray();
             double m = w.Zip(sample, (wi, xi) => wi * xi).Sum() / w.Sum();
             double sd = Math.Sqrt(w.Zip(sample, (wi, xi) => wi * (xi - m) * (xi - m)).Sum() / w.Sum());
-            return sd * Math.Pow(4.0 / (3.0 * sample.Count), 0.2);
+            double factor = Math.Pow(4.0 / (3.0 * sample.Count), 0.2);
+            return EnsurePositiveBandwidth(sd, factor, sample);
+        }
+
+        /// <summary>
+        /// The relative bandwidth assigned to a zero-dispersion (constant) sample, applied to the
+        /// constant's magnitude so the density represents a near-point mass.
+        /// </summary>
+        public const double DegenerateRelativeBandwidth = 1E-9;
+
+        /// <summary>
+        /// The absolute bandwidth assigned when a zero-dispersion sample supplies no usable
+        /// magnitude, or its relative automatic bandwidth would be subnormal.
+        /// </summary>
+        public const double DegenerateAbsoluteBandwidth = 1E-9;
+
+        /// <summary>
+        /// The smallest positive normal IEEE 754 double, used only to floor automatically
+        /// derived bandwidths before reciprocal evaluation can overflow.
+        /// </summary>
+        private const double SmallestNormalBandwidth = 2.2250738585072014E-308;
+
+        /// <summary>
+        /// Produces a finite, strictly positive automatic bandwidth when the sample dispersion is zero or non-finite.
+        /// </summary>
+        /// <param name="dispersion">The sample dispersion used by the bandwidth rule.</param>
+        /// <param name="factor">The sample-size factor used by the bandwidth rule.</param>
+        /// <param name="sample">The finite, nonempty sample used to obtain a fallback scale.</param>
+        /// <returns>A finite, strictly positive bandwidth.</returns>
+        /// <remarks>
+        /// A constant sample — including a single observation, whose sample dispersion is undefined —
+        /// supports no spread estimate, so the density must not invent one from the constant's
+        /// magnitude: the bandwidth is the magnitude times <see cref="DegenerateRelativeBandwidth"/>,
+        /// a near-point mass at the observed value, falling back to
+        /// <see cref="DegenerateAbsoluteBandwidth"/> when the constant is zero or the derived
+        /// relative bandwidth is subnormal or non-finite. A non-finite dispersion on a genuinely
+        /// spread sample arises only from variance overflow; the largest absolute observation then
+        /// supplies the scale for the standard bandwidth rule, with guards against overflow and
+        /// underflow.
+        /// </remarks>
+        private static double EnsurePositiveBandwidth(double dispersion, double factor, IList<double> sample)
+        {
+            if (!Tools.IsFinite(dispersion) || dispersion <= 0d)
+            {
+                bool constant = true;
+                for (int i = 1; i < sample.Count; i++)
+                {
+                    if (sample[i] != sample[0])
+                    {
+                        constant = false;
+                        break;
+                    }
+                }
+
+                if (constant)
+                {
+                    double magnitude = Math.Abs(sample[0]);
+                    double degenerate = magnitude * DegenerateRelativeBandwidth;
+                    return degenerate >= SmallestNormalBandwidth && Tools.IsFinite(degenerate)
+                        ? degenerate
+                        : DegenerateAbsoluteBandwidth;
+                }
+            }
+
+            double scale = dispersion;
+            if (!Tools.IsFinite(scale))
+            {
+                scale = 0d;
+                for (int i = 0; i < sample.Count; i++)
+                {
+                    scale = Math.Max(scale, Math.Abs(sample[i]));
+                }
+
+                if (scale <= 0d)
+                {
+                    scale = 1d;
+                }
+            }
+
+            if (factor > 1d && scale > double.MaxValue / factor)
+            {
+                return double.MaxValue;
+            }
+
+            double bandwidth = scale * factor;
+            return bandwidth > 0d && Tools.IsFinite(bandwidth) ? bandwidth : double.Epsilon;
         }
 
 
@@ -548,8 +665,12 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Validate the bandwidth parameter.
+        /// Validates a bandwidth parameter.
         /// </summary>
+        /// <param name="value">The bandwidth to validate.</param>
+        /// <param name="throwException">Whether to throw the validation error immediately.</param>
+        /// <returns>An error for an invalid bandwidth; otherwise, <see langword="null"/>.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="value"/> is invalid and <paramref name="throwException"/> is <see langword="true"/>.</exception>
         private ArgumentOutOfRangeException? ValidateParameters(double value, bool throwException)
         {
             if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0d)
@@ -565,9 +686,14 @@ namespace Numerics.Distributions
         /// Set the sample data for the distribution.
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
         public void SetSampleData(IList<double> sampleData)
         {
+            ValidateSampleData(sampleData);
             _sampleData = sampleData.ToArray();
+            _weights = null;
+            _sumW = 1d;
             ComputeMoments(_sampleData);
             _cdfCreated = false;
         }
@@ -577,40 +703,94 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="sampleData">Sample of data, no sorting is assumed.</param>
         /// <param name="weights">Weights associated with each data point.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> or <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample and weights are empty, mismatched, non-finite, negative, or have no positive total weight.</exception>
         public void SetSampleData(IList<double> sampleData, IList<double> weights)
         {
+            ValidateSampleData(sampleData);
             _sampleData = sampleData.ToArray();
+            if (weights == null) throw new ArgumentNullException(nameof(weights));
+            if (weights.Count != sampleData.Count)
+                throw new ArgumentException("The weight count must match the sample count.", nameof(weights));
+            for (int i = 0; i < weights.Count; i++)
+            {
+                if (!Tools.IsFinite(weights[i]) || weights[i] < 0d)
+                    throw new ArgumentException("Weights must be finite and non-negative.", nameof(weights));
+            }
+
             _weights = weights.ToArray();
             _sumW = _weights.Sum();
+            if (!Tools.IsFinite(_sumW) || _sumW <= 0d)
+                throw new ArgumentException("The total weight must be finite and positive.", nameof(weights));
 
-            if (_sumW <= 0) throw new ArgumentException("All weights are zero or negative.");
-
-            ComputeMoments(_sampleData, _weights);     // weighted version
+            ComputeMoments(_sampleData, _weights);
             _cdfCreated = false;
         }
 
 
+        /// <summary>
+        /// Validates sample data before it is stored by the distribution.
+        /// </summary>
+        /// <param name="sampleData">The sample values.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sampleData"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the sample is empty or contains a non-finite value.</exception>
+        private static void ValidateSampleData(IList<double> sampleData)
+        {
+            if (sampleData == null) throw new ArgumentNullException(nameof(sampleData));
+            if (sampleData.Count == 0)
+                throw new ArgumentException("The sample must contain at least one value.", nameof(sampleData));
+            for (int i = 0; i < sampleData.Count; i++)
+            {
+                if (!Tools.IsFinite(sampleData[i]))
+                    throw new ArgumentException("Sample values must be finite.", nameof(sampleData));
+            }
+
+        }
+
         /// <inheritdoc/>
+        /// <remarks>
+        /// The kernel contributions are accumulated over a fixed number of chunks and merged serially in
+        /// chunk order, so the density is bit-reproducible run to run. A scheduler-dependent reduction
+        /// would let the last bits of the density — and with them <see cref="Mode"/> and the cached
+        /// interpolated CDF — vary between otherwise identical runs.
+        /// </remarks>
         public override double PDF(double x)
         {
+            int n = SampleSize;
+            int chunks = Math.Min(ReductionChunks, n);
+            var chunkSums = new double[chunks];
+
             if (_weights == null)
             {
-                double total = 0d;
-                Parallel.For(0, SampleSize, () => 0d, (i, loop, subtotal) =>
+                Parallel.For(0, chunks, c =>
                 {
-                    subtotal += _kernel.Function((x - _sampleData[i]) / Bandwidth);
-                    return subtotal;
-                }, z => Tools.ParallelAdd(ref total, z));
+                    double subtotal = 0d;
+                    int start = (int)((long)c * n / chunks);
+                    int end = (int)((long)(c + 1) * n / chunks);
+                    for (int i = start; i < end; i++)
+                        subtotal += _kernel.Function((x - _sampleData[i]) / Bandwidth);
+                    chunkSums[c] = subtotal;
+                });
+
+                double total = 0d;
+                for (int c = 0; c < chunks; c++) total += chunkSums[c];
                 return total / (SampleSize * Bandwidth);
             }
             else
             {
-                double total = 0d;
-                Parallel.For(0, SampleSize, () => 0.0, (i, loop, subtotal) =>
+                var weights = _weights;
+                Parallel.For(0, chunks, c =>
                 {
-                    subtotal += _weights[i] * _kernel.Function((x - _sampleData[i]) / Bandwidth);
-                    return subtotal;
-                },z => Tools.ParallelAdd(ref total, z));
+                    double subtotal = 0d;
+                    int start = (int)((long)c * n / chunks);
+                    int end = (int)((long)(c + 1) * n / chunks);
+                    for (int i = start; i < end; i++)
+                        subtotal += weights[i] * _kernel.Function((x - _sampleData[i]) / Bandwidth);
+                    chunkSums[c] = subtotal;
+                });
+
+                double total = 0d;
+                for (int c = 0; c < chunks; c++) total += chunkSums[c];
                 return total / (_sumW * Bandwidth);
             }
         }
@@ -660,7 +840,119 @@ namespace Numerics.Distributions
                 };
             }
         }
- 
+
+        /// <summary>
+        /// Serializes the sample data, kernel type, bandwidth, optional sample weights,
+        /// interpolation transforms, and bounded-data setting using invariant numeric formatting.
+        /// </summary>
+        /// <returns>An XElement representation of the kernel density.</returns>
+        public override XElement ToXElement()
+        {
+            var result = new XElement("Distribution");
+            result.SetAttributeValue(nameof(Type), Type.ToString());
+            result.SetAttributeValue(nameof(KernelDistribution), KernelDistribution.ToString());
+            result.SetAttributeValue(nameof(Bandwidth), Bandwidth.ToString("G17", CultureInfo.InvariantCulture));
+            result.SetAttributeValue(nameof(XTransform), XTransform.ToString());
+            result.SetAttributeValue(nameof(ProbabilityTransform), ProbabilityTransform.ToString());
+            result.SetAttributeValue(nameof(BoundedByData), BoundedByData.ToString());
+
+            var samples = new string[SampleData.Count];
+            for (int i = 0; i < SampleData.Count; i++)
+                samples[i] = SampleData[i].ToString("G17", CultureInfo.InvariantCulture);
+            result.SetAttributeValue(nameof(SampleData), string.Join("|", samples));
+
+            if (_weights != null)
+            {
+                var weights = new string[_weights.Length];
+                for (int i = 0; i < _weights.Length; i++)
+                    weights[i] = _weights[i].ToString("G17", CultureInfo.InvariantCulture);
+                result.SetAttributeValue("Weights", string.Join("|", weights));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Deserializes a kernel density from an XElement produced by <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>A new <see cref="KernelDensity"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when serialized sample data or configuration is missing or invalid.</exception>
+        public static KernelDensity FromXElement(XElement xElement)
+        {
+            if (xElement == null) throw new ArgumentNullException(nameof(xElement));
+            string? sampleText = xElement.Attribute(nameof(SampleData))?.Value;
+            if (string.IsNullOrWhiteSpace(sampleText))
+                throw new ArgumentException("The serialized kernel density is missing its sample data.", nameof(xElement));
+
+            string[] tokens = sampleText!.Split('|');
+            var samples = new double[tokens.Length];
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                if (!double.TryParse(tokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out samples[i])
+                    || !Tools.IsFinite(samples[i]))
+                    throw new ArgumentException("The serialized kernel density contains an invalid sample value.", nameof(xElement));
+            }
+
+            var kernelAttribute = xElement.Attribute(nameof(KernelDistribution));
+            if (kernelAttribute == null
+                || !Enum.TryParse(kernelAttribute.Value, out KernelType kernel)
+                || !Enum.IsDefined(typeof(KernelType), kernel))
+                throw new ArgumentException("The serialized kernel density has an invalid kernel type.", nameof(xElement));
+
+            if (!double.TryParse(xElement.Attribute(nameof(Bandwidth))?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double bandwidth)
+                || !Tools.IsFinite(bandwidth)
+                || bandwidth <= 0d)
+                throw new ArgumentException("The serialized kernel density has an invalid bandwidth.", nameof(xElement));
+
+            KernelDensity distribution;
+            string? weightsText = xElement.Attribute("Weights")?.Value;
+            if (weightsText != null)
+            {
+                string[] weightTokens = weightsText.Split('|');
+                if (weightTokens.Length != samples.Length)
+                    throw new ArgumentException("The serialized kernel density's weight count does not match its sample count.", nameof(xElement));
+                var weights = new double[weightTokens.Length];
+                for (int i = 0; i < weightTokens.Length; i++)
+                {
+                    if (!double.TryParse(weightTokens[i], NumberStyles.Any, CultureInfo.InvariantCulture, out weights[i])
+                        || !Tools.IsFinite(weights[i]))
+                        throw new ArgumentException("The serialized kernel density contains an invalid weight.", nameof(xElement));
+                }
+                distribution = new KernelDensity(samples, weights, kernel, bandwidth);
+            }
+            else
+            {
+                distribution = new KernelDensity(samples, kernel, bandwidth);
+            }
+
+            var xTransformAttribute = xElement.Attribute(nameof(XTransform));
+            if (xTransformAttribute != null)
+            {
+                if (!Enum.TryParse(xTransformAttribute.Value, out Transform xTransform)
+                    || !Enum.IsDefined(typeof(Transform), xTransform))
+                    throw new ArgumentException("The serialized kernel density has an invalid X transform.", nameof(xElement));
+                distribution.XTransform = xTransform;
+            }
+
+            var probabilityTransformAttribute = xElement.Attribute(nameof(ProbabilityTransform));
+            if (probabilityTransformAttribute != null)
+            {
+                if (!Enum.TryParse(probabilityTransformAttribute.Value, out Transform probabilityTransform)
+                    || !Enum.IsDefined(typeof(Transform), probabilityTransform))
+                    throw new ArgumentException("The serialized kernel density has an invalid probability transform.", nameof(xElement));
+                distribution.ProbabilityTransform = probabilityTransform;
+            }
+
+            var boundedAttribute = xElement.Attribute(nameof(BoundedByData));
+            if (boundedAttribute != null)
+            {
+                if (!bool.TryParse(boundedAttribute.Value, out bool bounded))
+                    throw new ArgumentException("The serialized kernel density has an invalid bounded-data flag.", nameof(xElement));
+                distribution.BoundedByData = bounded;
+            }
+            return distribution;
+        }
         /// <summary>
         /// Create the empirical CDF.
         /// </summary>

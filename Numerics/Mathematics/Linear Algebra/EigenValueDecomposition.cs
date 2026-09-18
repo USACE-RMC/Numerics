@@ -45,9 +45,19 @@
             EigenVectors = Matrix.Identity(n);
             EigenValues = new Vector(n);
 
-            // Work on a local copy of A (array) for speed
-            var a = this.A.Array; // same storage as this.A
-            const double tol = 1e-12;
+            // Rotate a working copy so the public input matrix keeps the values that were decomposed
+            var work = new Matrix(A.ToArray());
+            var a = work.Array; // same storage as work
+
+            // The convergence threshold follows the scale of the matrix, so a decomposition of c*A
+            // stops at the same relative accuracy as a decomposition of A. The largest element
+            // magnitude is the reference: it dominates every off-diagonal, and rotations can always
+            // drive the off-diagonals below 1E-12 of it before reaching roundoff.
+            double elementMax = 0.0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    elementMax = Math.Max(elementMax, Math.Abs(a[i, j]));
+            double tol = 1e-12 * elementMax;
             const int maxIter = 2000;
 
             for (int iter = 0; iter < maxIter; iter++)
@@ -104,9 +114,9 @@
                 }
             }
 
-            // Extract eigenvalues from diagonal of A
-            for (int i = 0; i < n; i++) 
-                EigenValues[i] = this.A[i, i];
+            // Extract eigenvalues from the diagonal of the rotated working copy
+            for (int i = 0; i < n; i++)
+                EigenValues[i] = a[i, i];
         }
 
         private readonly int n; // Size of A
@@ -129,19 +139,31 @@
         /// <summary>
         /// Returns the effective sample size based on Dutilleul's method (1993). 
         /// </summary>
+        /// <returns>The scale-invariant effective sample size, or zero for an all-zero spectrum.</returns>
+        /// <remarks>
+        /// Eigenvalues are normalized by the largest absolute eigenvalue before evaluating
+        /// <c>(Σλ)² / Σλ²</c>. Negative eigenvalues no larger than <c>1E-10</c> of that spectral
+        /// scale are treated as numerical roundoff; materially negative eigenvalues retain the
+        /// established formula behavior.
+        /// </remarks>
         public double EffectiveSampleSize()
         {
+            double spectralScale = 0d;
+            for (int i = 0; i < EigenValues.Length; i++)
+                spectralScale = Math.Max(spectralScale, Math.Abs(EigenValues[i]));
+            if (spectralScale == 0d) return 0d;
+
             double sum = 0;
             double sumsq = 0;
             for (int i = 0; i < EigenValues.Length; i++)
             {
-                // Clip tiny negative eigenvalues that can appear from numerical error
-                double lambda = EigenValues[i];
+                // Normalize first so the roundoff threshold and ESS are independent of matrix scale.
+                double lambda = EigenValues[i] / spectralScale;
                 if (lambda < 0.0 && Math.Abs(lambda) <= 1e-10) lambda = 0.0;
                 sum += lambda;
                 sumsq += lambda * lambda;
             }
-            if (sumsq <= 1E-12) return 0.0; // degenerate case
+            if (sumsq == 0d) return 0d;
             double neff = (sum * sum) / sumsq;
             return neff;
         }

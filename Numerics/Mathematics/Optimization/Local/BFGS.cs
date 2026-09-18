@@ -1,4 +1,4 @@
-﻿using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.LinearAlgebra;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -88,6 +88,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; }
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <summary>
         /// The function for evaluating the gradient of the objective function.
         /// </summary>
@@ -96,330 +102,402 @@ namespace Numerics.Mathematics.Optimization
         /// <inheritdoc/>
         protected override void Optimize()
         {
-            int D = NumberOfParameters;
-            double EPS = Tools.DoubleMachineEpsilon;
-            double TOLX = 4 * EPS, STPMX = 100.0;
-            bool cancel = false, check = false;
+            int n = NumberOfParameters;
+            bool cancel = false;
+            var x = (double[])InitialValues.Clone();
+            double f = EvaluateObjective(x, ref cancel);
+            if (cancel) return;
+            if (!Tools.IsFinite(f))
+                throw new ArgumentException("The initial objective value must be finite.", nameof(ObjectiveFunction));
+            var g = EvaluateGradient(x, ref cancel);
+            if (cancel) return;
 
-            var p = InitialValues.ToArray();
-            var pnew = new double[D];
+            var inverseHessian = Matrix.Identity(n);
+            var projected = new double[n];
+            var direction = new double[n];
+            double stpmax = 100 * Math.Max(Math.Sqrt(Tools.SumProduct(x, x)), n);
 
-
-            // Calculate the starting function value and gradient, and initialize the inverse Hessian to the unit matrix.
-            double fp = Evaluate(p, ref cancel);
-            var g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancel), p);
-            var dg = new double[D];
-            var hdg = new double[D];
-            var xi = new double[D];
-            var hessin = new Matrix(D, D);
-
-            double sum = 0.0;
-            for (int i = 0; i < D; i++)
+            while (true)
             {
-                for (int j = 0; j < D; j++) hessin[i, j] = 0.0;
-                hessin[i, i] = 1.0;
-                xi[i] = -g[i];
-                sum += p[i] * p[i];
-            }
-
-            double fret = 0.0;
-            double stpmax = STPMX * Math.Max(Math.Sqrt(sum), D);
-
-            while (Iterations < MaxIterations)
-            {
-                // Perform line search
-                LineSearch(p, fp, g, xi, pnew, ref fret, stpmax, ref check, ref cancel);
-                if (cancel) return;
-
-                // Check convergence.
-                if (CheckConvergence(fp, fret))
+                if (ProjectedGradient(x, g, projected) <= AbsoluteTolerance)
                 {
+                    // Objective probes (including finite differences) can have a slightly lower rounded
+                    // value. Return the accepted point whose convergence was actually established.
+                    BestParameterSet = new ParameterSet((double[])x.Clone(), f);
                     UpdateStatus(OptimizationStatus.Success);
                     return;
                 }
-
-                // The new function evaluation occurs in line search; save the function value in fp for the next line search.
-                // It is usually safe to ignore the value of check. 
-                fp = fret;
-                for (int i = 0; i < D; i++)
+                if (Iterations >= MaxIterations)
                 {
-                    xi[i] = pnew[i] - p[i];
-                    p[i] = pnew[i];
+                    UpdateStatus(OptimizationStatus.MaximumIterationsReached);
+                    return;
                 }
 
-                // Save the old gradient, and get the new gradient. 
-                for (int i = 0; i < D; i++) 
-                    dg[i] = g[i];
-                g = Gradient != null ? Gradient(p) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p);
+                for (int i = 0; i < n; i++)
+                {
+                    direction[i] = 0;
+                    for (int j = 0; j < n; j++) direction[i] -= inverseHessian[i, j] * projected[j];
+                }
+                MakeFeasible(x, direction);
+                double slope = Tools.SumProduct(g, direction);
+                if (!Tools.IsFinite(slope) || slope >= 0)
+                {
+                    inverseHessian = Matrix.Identity(n);
+                    for (int i = 0; i < n; i++) direction[i] = -projected[i];
+                }
+
+                bool canRestart = false;
+                for (int i = 0; i < n; i++) canRestart |= direction[i] != -projected[i];
+                bool accepted = LineSearch(x, f, g, direction, stpmax, out var nextX, out double nextF, out var nextG, ref cancel);
+                if (!accepted && !cancel && canRestart)
+                {
+                    // A stale metric can exhaust the search even with a negative slope. As in
+                    // classical BFGS implementations (for example R's vmmin), restart the metric
+                    // once at this point. Both searches use the same acceptance conditions.
+                    inverseHessian = Matrix.Identity(n);
+                    for (int i = 0; i < n; i++) direction[i] = -projected[i];
+                    accepted = LineSearch(x, f, g, direction, stpmax, out nextX, out nextF, out nextG, ref cancel);
+                }
                 if (cancel) return;
-
-                // Compute difference of gradients.
-                for (int i = 0; i < D; i++)
-                    dg[i] = g[i] - dg[i];
-
-                // And difference times current matrix.
-                for (int i = 0; i < D; i++)
+                if (!accepted)
                 {
-                    hdg[i] = 0.0;
-                    for (int j = 0; j < D; j++) 
-                        hdg[i] += hessin[i, j] * dg[j];
+                    UpdateStatus(OptimizationStatus.LineSearchFailed);
+                    return;
                 }
+                Iterations++;
 
-                // Calculate dot products for the denominators.
-                double fac = 0.0, fae = 0.0, sumdg = 0.0, sumxi = 0.0;
-                for (int i = 0; i < D; i++)
+                var step = new double[n];
+                var change = new double[n];
+                for (int i = 0; i < n; i++)
                 {
-                    fac += dg[i] * xi[i];
-                    fae += dg[i] * hdg[i];
-                    sumdg += Tools.Sqr(dg[i]);
-                    sumxi += Tools.Sqr(xi[i]);
+                    step[i] = nextX[i] - x[i];
+                    change[i] = nextG[i] - g[i];
                 }
-
-                // Skip update if fac not sufficiently positive. 
-                if (fac > Math.Sqrt(EPS * sumdg * sumxi))
-                {
-                    fac = 1.0 / fac;
-                    double fad = 1.0 / fae;
-                    for (int i = 0; i < D; i++) 
-                        dg[i] = fac * xi[i] - fad * hdg[i];
-                    for (int i = 0; i < D; i++)
-                    {
-                        for (int j = i; j < D; j++)
-                        {
-                            hessin[i, j] += fac * xi[i] * xi[j] - fad * hdg[i] * hdg[j] + fae * dg[i] * dg[j];
-                            hessin[j, i] = hessin[i, j];
-                        }
-                    }
-                }
-
-                for (int i = 0; i < D; i++)
-                {
-                    xi[i] = 0.0;
-                    for (int j = 0; j < D; j++) 
-                        xi[i] -= hessin[i, j] * g[j];
-                }
-
-                Iterations += 1;
+                UpdateInverseHessian(ref inverseHessian, step, change);
+                x = nextX;
+                f = nextF;
+                g = nextG;
             }
-
-            // If we made it to here, the maximum iterations were reached.
-            UpdateStatus(OptimizationStatus.MaximumIterationsReached);
-
         }
 
-        /// <summary>
-        /// Auxiliary function for searching a line. 
-        /// </summary>
-        /// <param name="xold">n-dimensional point [0..n-1].</param>
-        /// <param name="fold">Value of the function at xold.</param>
-        /// <param name="g">Gradient of function at xold.</param>
-        /// <param name="p">A direction to search.</param>
-        /// <param name="x">A new point x[0..n-1]</param>
-        /// <param name="f">The new function value.</param>
-        /// <param name="stpmax">Limits the length of steps.</param>
-        /// <param name="check">Check is false on a normal exit, true when x is too close to xold.</param>
-        /// <param name="cancel">Determines if the solver should be canceled.</param>
-        private void LineSearchArmijo(double[] xold, double fold, double[] g, ref double[] p, ref double[] x, ref double f, double stpmax, ref bool check, ref bool cancel)
+        /// <summary>Evaluates an objective trial while retaining only finite incumbents.</summary>
+        /// <param name="x">The trial point.</param>
+        /// <param name="cancel">The evaluation-budget cancellation flag.</param>
+        /// <returns>The scaled objective value, including a non-finite rejection value.</returns>
+        private double EvaluateObjective(double[] x, ref bool cancel)
         {
-            double ALF = 1.0e-4, TOLX = Tools.DoubleMachineEpsilon;
-            double a, alam, alam2 = 0.0, alamin, b, disc, f2 = 0.0;
-            double rhs1, rhs2, slope = 0.0, sum = 0.0, temp, test, tmplam;
-            int i, n = xold.Length;
-            check = false;
-            for (i = 0; i < n; i++) sum += p[i] * p[i];
-            sum = Math.Sqrt(sum);
-            if (sum > stpmax)
-                for (i = 0; i < n; i++)
-                    p[i] *= stpmax / sum;
-            for (i = 0; i < n; i++)
-                slope += g[i] * p[i];
-            if (slope == 0.0) return; // If the slope is zero, it is on a flat spit. Exit the routine
-            if (slope > 0.0) throw new Exception("Roundoff problem in line search.");
-            test = 0.0;
-            for (i = 0; i < n; i++)
-            {
-                temp = Math.Abs(p[i]) / Math.Max(Math.Abs(xold[i]), 1.0);
-                if (temp > test) test = temp;
-            }
-            alamin = TOLX / test;
-            alam = 1.0;
-            for (; ; )
-            {
-                for (i = 0; i < n; i++)
-                {
-                    x[i] = xold[i] + alam * p[i];
-                    // Make sure the parameters are within the bounds.
-                    x[i] = RepairParameter(x[i], LowerBounds[i], UpperBounds[i]);
-                }
-                f = Evaluate(x, ref cancel);
-                if (cancel) return;
-                if (alam < alamin)
-                {
-                    for (i = 0; i < n; i++) x[i] = xold[i];
-                    check = true;
-                    return;
-                }
-                else if (f <= fold + ALF * alam * slope) return;
-                else
-                {
-                    if (alam == 1.0)
-                        tmplam = -slope / (2.0 * (f - fold - slope));
-                    else
-                    {
-                        rhs1 = f - fold - alam * slope;
-                        rhs2 = f2 - fold - alam2 * slope;
-                        a = (rhs1 / (alam * alam) - rhs2 / (alam2 * alam2)) / (alam - alam2);
-                        b = (-alam2 * rhs1 / (alam * alam) + alam * rhs2 / (alam2 * alam2)) / (alam - alam2);
-                        if (a == 0.0) tmplam = -slope / (2.0 * b);
-                        else
-                        {
-                            disc = b * b - 3.0 * a * slope;
-                            if (disc < 0.0) tmplam = 0.5 * alam;
-                            else if (b <= 0.0) tmplam = (-b + Math.Sqrt(disc)) / (3.0 * a);
-                            else tmplam = -slope / (b + Math.Sqrt(disc));
-                        }
-                        if (tmplam > 0.5 * alam)
-                            tmplam = 0.5 * alam;
-                    }
-                }
-                alam2 = alam;
-                f2 = f;
-                alam = Math.Max(tmplam, 0.1 * alam);
-            }
-
+            var incumbent = BestParameterSet;
+            double f = Evaluate(x, ref cancel);
+            if (!Tools.IsFinite(f)) BestParameterSet = incumbent;
+            return f;
         }
 
-        /// <summary>
-        /// Performs a strong Wolfe line search to find a step size that satisfies both the sufficient decrease (Armijo) and curvature conditions.
-        /// </summary>
-        /// <param name="x0">The current parameter vector.</param>
-        /// <param name="f0">The objective function value at <paramref name="x0"/>.</param>
-        /// <param name="g0">The gradient at <paramref name="x0"/>.</param>
-        /// <param name="p">The search direction.</param>
-        /// <param name="x">The output parameter vector at the accepted step size.</param>
-        /// <param name="f">The objective function value at <paramref name="x"/>.</param>
-        /// <param name="stpmax">The maximum allowable step length.</param>
-        /// <param name="check">Returns true if the search failed to find an acceptable step; otherwise, false.</param>
-        /// <param name="cancel">Set to true if cancellation is requested or a cancel condition occurs during evaluation.</param>
-
-        private void LineSearch(double[] x0, double f0, double[] g0, double[] p, double[] x, ref double f, double stpmax, ref bool check, ref bool cancel)
+        /// <summary>Evaluates and validates a gradient in minimization coordinates.</summary>
+        /// <param name="x">The point at which to differentiate.</param>
+        /// <param name="cancel">The evaluation-budget cancellation flag.</param>
+        /// <returns>A private copy of the scaled gradient.</returns>
+        /// <exception cref="ArgumentException">The gradient has an invalid dimension or non-finite component.</exception>
+        private double[] EvaluateGradient(double[] x, ref bool cancel)
         {
-            const double c1 = 1e-4, c2 = 0.9;
-            double alpha = 1.0, alphaPrev = 0.0;
-            double fPrev = f0;
-            double slope0 = Tools.SumProduct(g0, p);
-            double[] g = new double[p.Length];
-            double[] xTemp = new double[p.Length];
-
-            double normP = Math.Sqrt(p.Sum(pi => pi * pi));
-            if (normP > stpmax)
+            double[] g;
+            if (Gradient != null)
             {
-                double scale = stpmax / normP;
-                for (int i = 0; i < p.Length; i++)
-                    p[i] *= scale;
+                var supplied = Gradient(x);
+                if (supplied == null || supplied.Length != NumberOfParameters)
+                    throw new ArgumentException("The gradient must contain one value per parameter.", nameof(Gradient));
+                g = (double[])supplied.Clone();
+                for (int i = 0; i < g.Length; i++) g[i] *= functionScale;
             }
-
-            for (int iter = 0; iter < 20; iter++)
+            else
             {
-                for (int i = 0; i < x0.Length; i++)
-                {
-                    xTemp[i] = x0[i] + alpha * p[i];
-                    xTemp[i] = RepairParameter(xTemp[i], LowerBounds[i], UpperBounds[i]);
-                }
-
-                f = Evaluate(xTemp, ref cancel);
-                if (cancel) return;
-
-                if (f > f0 + c1 * alpha * slope0 || (iter > 0 && f >= fPrev))
-                {
-                    Zoom(x0, f0, slope0, p, alphaPrev, alpha, ref f, x, ref cancel);
-                    return;
-                }
-
-                bool cancelFlag = cancel;
-                g = Gradient != null ? Gradient(xTemp) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancelFlag), xTemp);
-                cancel = cancelFlag;
-                if (cancel) return;
-
-                double slope = Tools.SumProduct(g, p);
-
-                if (Math.Abs(slope) <= -c2 * slope0)
-                {
-                    Array.Copy(xTemp, x, x.Length);
-                    return;
-                }
-
-                if (slope >= 0)
-                {
-                    Zoom(x0, f0, slope0, p, alpha, alphaPrev, ref f, x, ref cancel);
-                    return;
-                }
-
-                alphaPrev = alpha;
-                fPrev = f;
-                alpha *= 2.0;
+                bool stopped = cancel;
+                // Finite differences may request more probes after cancellation. Do not spend beyond
+                // the budget, and leave its status intact instead of misclassifying the partial gradient.
+                g = NumericalDerivative.Gradient(p => stopped ? double.NaN : EvaluateObjective(p, ref stopped),
+                    x, LowerBounds, UpperBounds);
+                cancel = stopped;
+                if (cancel) return g;
             }
-
-            Array.Copy(x0, x, x.Length);
-            check = true;
+            for (int i = 0; i < g.Length; i++)
+                if (!Tools.IsFinite(g[i]))
+                    throw new ArgumentException("The gradient must contain only finite values.", nameof(Gradient));
+            return g;
         }
 
-        /// <summary>
-        /// Zoom phase of the strong Wolfe line search that performs bisection between two step sizes to find an acceptable step satisfying Wolfe conditions.
-        /// </summary>
-        /// <param name="x0">The initial parameter vector.</param>
-        /// <param name="f0">The objective function value at <paramref name="x0"/>.</param>
-        /// <param name="slope0">The directional derivative (slope) at <paramref name="x0"/> along the search direction.</param>
-        /// <param name="p">The search direction vector.</param>
-        /// <param name="alphaLow">The lower bound of the step size interval.</param>
-        /// <param name="alphaHigh">The upper bound of the step size interval.</param>
-        /// <param name="f">The objective function value at the final accepted point.</param>
-        /// <param name="x">The parameter vector at the final accepted step size.</param>
-        /// <param name="cancel">Set to true if cancellation is requested or a cancel condition occurs during evaluation.</param>
-
-        private void Zoom(double[] x0, double f0, double slope0, double[] p, double alphaLow, double alphaHigh, ref double f, double[] x, ref bool cancel)
+        /// <summary>Projects the gradient onto feasible descent coordinates and returns its infinity norm.</summary>
+        /// <param name="x">The feasible point.</param>
+        /// <param name="g">Its objective gradient.</param>
+        /// <param name="projected">The projected gradient buffer.</param>
+        /// <returns>The largest absolute projected component.</returns>
+        private double ProjectedGradient(double[] x, double[] g, double[] projected)
         {
-            const double c1 = 1e-4, c2 = 0.9;
-            double[] g = new double[p.Length];
-            double[] xTemp = new double[p.Length];
-
-            for (int iter = 0; iter < 20; iter++)
+            double norm = 0;
+            for (int i = 0; i < x.Length; i++)
             {
-                double alpha = 0.5 * (alphaLow + alphaHigh);
-                for (int i = 0; i < x0.Length; i++)
+                projected[i] = (x[i] <= LowerBounds[i] && g[i] > 0) ||
+                               (x[i] >= UpperBounds[i] && g[i] < 0) || LowerBounds[i] == UpperBounds[i] ? 0 : g[i];
+                norm = Math.Max(norm, Math.Abs(projected[i]));
+            }
+            return norm;
+        }
+
+        /// <summary>Removes direction components that would immediately leave the feasible box.</summary>
+        /// <param name="x">The current point.</param>
+        /// <param name="direction">The search direction, modified in place.</param>
+        private void MakeFeasible(double[] x, double[] direction)
+        {
+            for (int i = 0; i < x.Length; i++)
+                if ((x[i] <= LowerBounds[i] && direction[i] < 0) || (x[i] >= UpperBounds[i] && direction[i] > 0))
+                    direction[i] = 0;
+        }
+
+        /// <summary>Applies the inverse BFGS update only when its curvature denominators are reliable.</summary>
+        /// <param name="h">The inverse Hessian, reset if arithmetic becomes non-finite.</param>
+        /// <param name="s">The accepted parameter step.</param>
+        /// <param name="y">The change in gradients.</param>
+        /// <remarks>Uses the existing Numerical Recipes symmetric BFGS formula with positive-curvature guards.</remarks>
+        private static void UpdateInverseHessian(ref Matrix h, double[] s, double[] y)
+        {
+            int n = s.Length;
+            var hy = new double[n];
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++) hy[i] += h[i, j] * y[j];
+            double ys = Tools.SumProduct(y, s), yhy = Tools.SumProduct(y, hy);
+            double floor = Math.Sqrt(Tools.DoubleMachineEpsilon) * Math.Sqrt(Tools.SumProduct(y, y)) * Math.Sqrt(Tools.SumProduct(s, s));
+            if (!Tools.IsFinite(ys) || !Tools.IsFinite(yhy) || yhy <= 0 || ys <= floor) return;
+            var v = new double[n];
+            for (int i = 0; i < n; i++) v[i] = s[i] / ys - hy[i] / yhy;
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
                 {
-                    xTemp[i] = x0[i] + alpha * p[i];
-                    xTemp[i] = RepairParameter(xTemp[i], LowerBounds[i], UpperBounds[i]);
-                }
-
-                f = Evaluate(xTemp, ref cancel);
-                if (cancel) return;
-
-                if (f > f0 + c1 * alpha * slope0)
-                    alphaHigh = alpha;
-                else
-                {
-                    bool cancelFlag = cancel;
-                    g = Gradient != null ? Gradient(xTemp) : NumericalDerivative.Gradient(x => Evaluate(x, ref cancelFlag), xTemp);
-                    cancel = cancelFlag;
-                    if (cancel) return;
-
-                    double slope = Tools.SumProduct(g, p);
-
-                    if (Math.Abs(slope) <= -c2 * slope0)
+                    double value = h[i, j] + s[i] * s[j] / ys - hy[i] * hy[j] / yhy + yhy * v[i] * v[j];
+                    if (!Tools.IsFinite(value))
                     {
-                        Array.Copy(xTemp, x, x.Length);
+                        h = Matrix.Identity(n);
                         return;
                     }
+                    h[i, j] = h[j, i] = value;
+                }
+        }
 
-                    if (slope * (alphaHigh - alphaLow) >= 0)
-                        alphaHigh = alphaLow;
+        /// <summary>Searches a feasible ray using strong Wolfe conditions, or sufficient decrease at its bound.</summary>
+        /// <param name="x0">The current point.</param>
+        /// <param name="f0">Its scaled objective.</param>
+        /// <param name="g0">Its scaled gradient.</param>
+        /// <param name="p">The feasible direction, scaled in place.</param>
+        /// <param name="stpmax">The maximum direction length.</param>
+        /// <param name="x">The accepted point, or the starting point on failure.</param>
+        /// <param name="f">The objective at the returned point.</param>
+        /// <param name="g">The gradient at the returned point.</param>
+        /// <param name="cancel">The evaluation-budget cancellation flag.</param>
+        /// <returns>Whether a step was accepted.</returns>
+        /// <remarks>A bound can truncate a descending ray before Wolfe curvature is attainable; subsequent
+        /// convergence still requires the projected gradient tolerance. Interior searches use c1=1e-4 and c2=0.9.
+        /// A supplied gradient may independently certify termination when objective rounding obscures decrease.</remarks>
+        private bool LineSearch(double[] x0, double f0, double[] g0, double[] p, double stpmax,
+            out double[] x, out double f, out double[] g, ref bool cancel)
+        {
+            x = x0; f = f0; g = g0;
+            double norm = Math.Sqrt(Tools.SumProduct(p, p));
+            if (norm > stpmax)
+                for (int i = 0; i < p.Length; i++) p[i] *= stpmax / norm;
+            double slope0 = Tools.SumProduct(g0, p);
+            if (!Tools.IsFinite(slope0) || slope0 >= 0) return false;
 
-                    alphaLow = alpha;
+            double limit = double.PositiveInfinity;
+            for (int i = 0; i < p.Length; i++)
+            {
+                if (p[i] > 0) limit = Math.Min(limit, (UpperBounds[i] - x0[i]) / p[i]);
+                else if (p[i] < 0) limit = Math.Min(limit, (LowerBounds[i] - x0[i]) / p[i]);
+            }
+            double alpha = Math.Min(1, limit), previous = 0, fPrevious = f0, slopePrevious = slope0;
+            for (int iteration = 0; iteration < 20; iteration++)
+            {
+                var trial = TrialPoint(x0, p, alpha);
+                if (alpha <= 0 || trial.SequenceEqual(x0)) return false;
+                double value = EvaluateObjective(trial, ref cancel);
+                if (cancel) return false;
+                if (!Tools.IsFinite(value) || value > f0 + 1e-4 * alpha * slope0)
+                {
+                    if (TryRoundoffConvergence(trial, value, f0, out var stationaryGradient, ref cancel))
+                    {
+                        x = trial; f = value; g = stationaryGradient;
+                        return true;
+                    }
+                    if (cancel) return false;
+                    return Zoom(x0, f0, g0, p, slope0, previous, fPrevious, slopePrevious,
+                        alpha, value, double.NaN, out x, out f, out g, ref cancel);
+                }
+
+                var gradient = EvaluateGradient(trial, ref cancel);
+                if (cancel) return false;
+                double slope = Tools.SumProduct(gradient, p);
+                if (Math.Abs(slope) <= -0.9 * slope0 || (alpha == limit && slope < 0))
+                {
+                    x = trial; f = value; g = gradient;
+                    return true;
+                }
+                if (!Tools.IsFinite(slope)) return false;
+                // Equal rounded values can still satisfy both Wolfe conditions. Check their
+                // gradients before reducing the bracket, without relaxing either condition.
+                if (iteration > 0 && value >= fPrevious)
+                    return Zoom(x0, f0, g0, p, slope0, previous, fPrevious, slopePrevious,
+                        alpha, value, slope, out x, out f, out g, ref cancel);
+                if (slope >= 0)
+                    return Zoom(x0, f0, g0, p, slope0, alpha, value, slope,
+                        previous, fPrevious, slopePrevious, out x, out f, out g, ref cancel);
+                previous = alpha;
+                fPrevious = value;
+                slopePrevious = slope;
+                alpha = Math.Min(2 * alpha, limit);
+                if (alpha == previous) return false;
+            }
+            return false;
+        }
+
+        /// <summary>Checks stationarity independently when rounding can obscure objective decrease.</summary>
+        /// <param name="trial">The feasible trial point.</param>
+        /// <param name="value">Its scaled objective value.</param>
+        /// <param name="initialValue">The objective at the start of the line search.</param>
+        /// <param name="gradient">The validated trial gradient when stationarity is confirmed.</param>
+        /// <param name="cancel">The evaluation-budget cancellation flag.</param>
+        /// <returns>Whether the existing projected-gradient convergence condition is satisfied.</returns>
+        /// <remarks>
+        /// A small objective difference alone never establishes convergence. Only a supplied gradient
+        /// can independently confirm a rounding-ambiguous trial; finite differences reuse the noisy
+        /// function values. The eight-machine-epsilon relative window applies only to this terminal
+        /// check, has no unit-scale floor, and does not change Wolfe conditions for continuing steps
+        /// or the requested gradient tolerance. Non-finite values and resolvable increases are rejected.
+        /// </remarks>
+        private bool TryRoundoffConvergence(double[] trial, double value, double initialValue,
+            out double[] gradient, ref bool cancel)
+        {
+            gradient = null!;
+            double roundoff = 8d * Tools.DoubleMachineEpsilon * Math.Abs(initialValue);
+            if (Gradient == null || !Tools.IsFinite(value) || Math.Abs(value - initialValue) > roundoff)
+                return false;
+            var candidateGradient = EvaluateGradient(trial, ref cancel);
+            if (cancel || ProjectedGradient(trial, candidateGradient, new double[NumberOfParameters]) > AbsoluteTolerance)
+                return false;
+            gradient = candidateGradient;
+            return true;
+        }
+
+        /// <summary>Constructs a point on a feasible ray, correcting only boundary roundoff.</summary>
+        /// <param name="x0">The ray origin.</param>
+        /// <param name="p">The feasible direction.</param>
+        /// <param name="alpha">A step no greater than the feasible limit.</param>
+        /// <returns>The trial coordinates.</returns>
+        private double[] TrialPoint(double[] x0, double[] p, double alpha)
+        {
+            var x = new double[x0.Length];
+            for (int i = 0; i < x.Length; i++)
+                x[i] = RepairParameter(x0[i] + alpha * p[i], LowerBounds[i], UpperBounds[i]);
+            return x;
+        }
+
+        /// <summary>Refines a Wolfe bracket while retaining both endpoint values and available slopes.</summary>
+        /// <param name="x0">The initial point.</param>
+        /// <param name="f0">Its objective.</param>
+        /// <param name="g0">Its gradient.</param>
+        /// <param name="p">The feasible search direction.</param>
+        /// <param name="slope0">The initial directional derivative.</param>
+        /// <param name="low">The endpoint with sufficient decrease.</param>
+        /// <param name="fLow">Its function value.</param>
+        /// <param name="slopeLow">Its directional derivative.</param>
+        /// <param name="high">The other bracket endpoint, which may precede low.</param>
+        /// <param name="fHigh">Its function value.</param>
+        /// <param name="slopeHigh">Its derivative, or NaN if not evaluated.</param>
+        /// <param name="x">The accepted point, or initial point on failure.</param>
+        /// <param name="f">The returned point's objective.</param>
+        /// <param name="g">The returned point's gradient.</param>
+        /// <param name="cancel">The evaluation-budget cancellation flag.</param>
+        /// <returns>Whether a Wolfe step or an independently stationary roundoff-limited point was found.</returns>
+        /// <remarks>Uses the bracket logic of Nocedal and Wright, Numerical Optimization, algorithm 3.6;
+        /// compare SciPy 1.16.2 optimize/_linesearch.py. Interpolation is safeguarded away from both endpoints.</remarks>
+        private bool Zoom(double[] x0, double f0, double[] g0, double[] p, double slope0,
+            double low, double fLow, double slopeLow, double high, double fHigh, double slopeHigh,
+            out double[] x, out double f, out double[] g, ref bool cancel)
+        {
+            x = x0; f = f0; g = g0;
+            double[]? previousTrial = null;
+            for (int iteration = 0; iteration < 20; iteration++)
+            {
+                double alpha = Interpolate(low, fLow, slopeLow, high, fHigh, slopeHigh);
+                if (alpha == low || alpha == high) return false;
+                var trial = TrialPoint(x0, p, alpha);
+                if (trial.SequenceEqual(x0) || (previousTrial != null && trial.SequenceEqual(previousTrial))) return false;
+                previousTrial = trial;
+                double value = EvaluateObjective(trial, ref cancel);
+                if (cancel) return false;
+                if (!Tools.IsFinite(value) || value > f0 + 1e-4 * alpha * slope0)
+                {
+                    if (TryRoundoffConvergence(trial, value, f0, out var stationaryGradient, ref cancel))
+                    {
+                        x = trial; f = value; g = stationaryGradient;
+                        return true;
+                    }
+                    if (cancel) return false;
+                    high = alpha; fHigh = value; slopeHigh = double.NaN;
+                }
+                else
+                {
+                    var gradient = EvaluateGradient(trial, ref cancel);
+                    if (cancel) return false;
+                    double slope = Tools.SumProduct(gradient, p);
+                    if (Math.Abs(slope) <= -0.9 * slope0)
+                    {
+                        x = trial; f = value; g = gradient;
+                        return true;
+                    }
+                    if (!Tools.IsFinite(slope)) return false;
+                    if (value >= fLow)
+                    {
+                        high = alpha; fHigh = value; slopeHigh = slope;
+                        continue;
+                    }
+                    if (slope * (high - low) >= 0)
+                    {
+                        high = low; fHigh = fLow; slopeHigh = slopeLow;
+                    }
+                    low = alpha; fLow = value; slopeLow = slope;
                 }
             }
+            return false;
+        }
 
-            Array.Copy(x0, x, x.Length);
+        /// <summary>Chooses a safeguarded cubic or quadratic interpolant, falling back to bisection.</summary>
+        /// <param name="a">The first bracket endpoint.</param>
+        /// <param name="fa">Its function value.</param>
+        /// <param name="ga">Its slope.</param>
+        /// <param name="b">The second endpoint.</param>
+        /// <param name="fb">Its function value.</param>
+        /// <param name="gb">Its slope, or NaN when unavailable.</param>
+        /// <returns>An interior trial step.</returns>
+        private static double Interpolate(double a, double fa, double ga, double b, double fb, double gb)
+        {
+            double width = b - a;
+            double left = Math.Min(a, b) + 0.1 * Math.Abs(width);
+            double right = Math.Max(a, b) - 0.1 * Math.Abs(width);
+            double candidate = double.NaN;
+            if (Tools.IsFinite(gb) && Tools.IsFinite(fb))
+            {
+                double d1 = ga + gb - 3 * (fb - fa) / width;
+                double radicand = d1 * d1 - ga * gb;
+                if (radicand >= 0)
+                {
+                    double d2 = Math.Sign(width) * Math.Sqrt(radicand);
+                    candidate = b - width * (gb + d2 - d1) / (gb - ga + 2 * d2);
+                }
+            }
+            if (!Tools.IsFinite(candidate) || candidate <= left || candidate >= right)
+                candidate = a - ga * width * width / (2 * (fb - fa - ga * width));
+            if (!Tools.IsFinite(candidate) || candidate <= Math.Min(a, b) || candidate >= Math.Max(a, b))
+                return a + 0.5 * width;
+            // Preserve useful interpolation on very steep objectives while guaranteeing a
+            // contraction of at least ten percent. Repeated bisection can exhaust the bracket
+            // budget before reaching a perfectly representable, very short Wolfe step.
+            return Math.Max(left, Math.Min(right, candidate));
         }
 
     }

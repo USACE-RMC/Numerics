@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -164,6 +164,69 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// Verifies cloning preserves the configured logarithm base and resulting distribution.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_PreservesBase()
+        {
+            var source = new LogNormal(4.2d, 0.4d) { Base = Math.E };
+
+            var clone = (LogNormal)source.Clone();
+
+            Assert.AreNotSame(source, clone);
+            Assert.AreEqual(source.Mu, clone.Mu, 0d);
+            Assert.AreEqual(source.Sigma, clone.Sigma, 0d);
+            Assert.AreEqual(source.Base, clone.Base, 0d);
+            Assert.AreEqual(source.CDF(75d), clone.CDF(75d), 0d);
+        }
+
+        /// <summary>
+        /// Verifies bootstrap distributions retain the configured logarithm base.
+        /// </summary>
+        [TestMethod]
+        public void Test_Bootstrap_PreservesBase()
+        {
+            var source = new LogNormal(4.2d, 0.4d) { Base = Math.E };
+
+            var bootstrap = (LogNormal)source.Bootstrap(
+                ParameterEstimationMethod.MethodOfMoments, 40, 12345);
+
+            Assert.AreEqual(source.Base, bootstrap.Base, 0d);
+        }
+
+        /// <summary>
+        /// Equivalent base-10 and natural-log parameterizations produce the same seeded Monte
+        /// Carlo confidence intervals.
+        /// </summary>
+        [TestMethod]
+        public void Test_MonteCarloConfidenceIntervals_PreserveBase()
+        {
+            const double mu10 = 2.0;
+            const double sigma10 = 0.3;
+            var base10 = new LogNormal(mu10, sigma10);
+            var natural = new LogNormal(mu10 * Math.Log(10.0), sigma10 * Math.Log(10.0))
+            {
+                Base = Math.E
+            };
+            double[] quantiles = [0.5, 0.9];
+            double[] percentiles = [0.1, 0.5, 0.9];
+
+            double[,] expected = base10.MonteCarloConfidenceIntervals(
+                25, 100, quantiles, percentiles);
+            double[,] actual = natural.MonteCarloConfidenceIntervals(
+                25, 100, quantiles, percentiles);
+
+            for (int i = 0; i < expected.GetLength(0); i++)
+            {
+                for (int j = 0; j < expected.GetLength(1); j++)
+                {
+                    Assert.AreEqual(expected[i, j], actual[i, j],
+                        1E-10 * Math.Max(1.0, Math.Abs(expected[i, j])));
+                }
+            }
+        }
+
+        /// <summary>
         /// Testing Log-Normal with bad parameters.
         /// </summary>
         [TestMethod()]
@@ -235,13 +298,15 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Testing CDF method.
+        /// Testing the CDF, including the finite lower-tail probability at z = -25.
         /// </summary>
+        /// <remarks>The lower-tail reference was computed with mpmath 1.4.1 at 50 significant digits.</remarks>
         [TestMethod()]
         public void Test_CDF()
         {
             var LogN = new LogNormal(1.5, 0.1);
-            Assert.AreEqual(0, LogN.CDF(0.1));
+            const double lowerTail = 3.056696706382561E-138d;
+            Assert.AreEqual(lowerTail, LogN.CDF(0.1), lowerTail * 5E-12d);
 
             var LogN2 = new LogNormal(1.5, 1.5);
             Assert.AreEqual(0.11493, LogN2.CDF(0.5), 1e-05);
@@ -259,5 +324,49 @@ namespace Distributions.Univariate
             var LogN2 = new LogNormal(1.5, 2.5);
             Assert.AreEqual(40183.99248, LogN.InverseCDF(0.8), 1e-05);
         }
+        /// <summary>
+        /// Verify the parameter constraints admit a negative log10-space mean.
+        /// </summary>
+        /// <remarks>
+        /// The location parameter is the mean of the log10-transformed data, which is legitimately
+        /// negative whenever the data are mostly below 1. Flooring the lower bound at machine
+        /// epsilon with an upper bound near ceil(mu + 1) would put a sub-unity sample's initial
+        /// value below its own lower bound (and invert the pair for mu at or below -1), so every
+        /// downstream consumer would report the inputs invalid. The bounds are symmetric about zero
+        /// from the magnitude of the initial value, matching the Normal distribution's location
+        /// bounds.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LogNormal_ParameterConstraints_AllowNegativeLogMean()
+        {
+            var shallow = new double[] { 0.12, 0.31, 0.45, 0.08, 0.90, 1.4, 0.25, 0.6, 0.5, 0.75 };
+            var deep = new double[] { 0.004, 0.012, 0.008, 0.02, 0.006, 0.015, 0.003, 0.01, 0.007, 0.011 };
+
+            foreach (var sample in new[] { shallow, deep })
+            {
+                var constraints = new LogNormal().GetParameterConstraints(sample);
+                var initials = constraints.Item1;
+                var lowers = constraints.Item2;
+                var uppers = constraints.Item3;
+                Assert.IsLessThan(0d, initials[0], "Fixture precondition: the log10 mean is negative.");
+                Assert.IsLessThan(uppers[0], lowers[0], "The mean bounds must not be inverted.");
+                Assert.IsTrue(initials[0] >= lowers[0] && initials[0] <= uppers[0],
+                    "The initial mean must sit inside its own bounds.");
+                Assert.IsTrue(lowers[1] < uppers[1] && initials[1] >= lowers[1] && initials[1] <= uppers[1],
+                    "The standard deviation bounds must contain the initial value.");
+            }
+        }
+
+        /// <summary>
+        /// Verify the parameter minimum metadata and validation admit a negative log10-space mean.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogNormal_NegativeLogMean_IsValid()
+        {
+            Assert.AreEqual(double.NegativeInfinity, new LogNormal().MinimumOfParameters[0]);
+            var dist = new LogNormal();
+            Assert.IsNull(dist.ValidateParameters(new[] { -1.5, 0.3 }, false));
+        }
+
     }
 }

@@ -112,5 +112,27 @@ namespace Sampling.MCMC
             Assert.IsNotEmpty(sampler.MarkovChains, "Expected at least one Markov chain");
         }
 
+        /// <summary>
+        /// A zero leapfrog step cannot move a chain and is rejected before sampling begins.
+        /// </summary>
+        [TestMethod]
+        public void Test_HMC_ZeroStepSize_IsRejectedBeforeSampling()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(-1d, 1d) };
+            var sampler = new HMC(priors, x => -0.5d * x[0] * x[0], stepSize: 0d, steps: 1)
+            {
+                NumberOfChains = 1,
+                ParallelizeChains = false,
+                InitialIterations = 1,
+                WarmupIterations = 1,
+                Iterations = 100,
+                OutputLength = 100
+            };
+
+            var exception = Assert.Throws<System.ArgumentException>(() => sampler.Sample());
+
+            Assert.AreEqual(nameof(HMC.StepSize), exception.ParamName);
+        }
+
     }
 }

@@ -6,7 +6,7 @@ using Numerics.Distributions.Copulas;
 namespace Distributions.BivariateCopulas
 {
     /// <summary>
-    /// Unit tests for the Gumbel Copula. All tests are compared against the R 'copula' package. 
+    /// Unit tests for the Gumbel Copula. Reference values come from the R 'copula' package for the original methods and from pyvinecopulib 0.7.6 and mpmath 1.4.1 for the conditional-distribution methods.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -186,8 +186,8 @@ namespace Distributions.BivariateCopulas
 
         /// <summary>
         /// Test that ParametersValid tracks the dependency parameter's valid range.
-        /// Regression: the Archimedean base ValidateParameter returned a non-null
-        /// sentinel for valid parameters, leaving ParametersValid permanently false.
+        /// ValidateParameter returns null for a valid dependence parameter and a non-null
+        /// exception otherwise, so ParametersValid follows the parameter.
         /// </summary>
         [TestMethod]
         public void Test_ParametersValid()
@@ -223,6 +223,119 @@ namespace Distributions.BivariateCopulas
             // Mutating the clone should not affect the original
             clone.Theta = 3.0;
             Assert.AreEqual(2.0, copula.Theta);
+        }
+
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = ∂C(u,v)/∂u.
+        /// Reference values were computed with the Python package pyvinecopulib 0.7.6
+        /// (Bicop.hfunc1, family gumbel), cross-checked at generation against a 50-digit
+        /// numerical ∂C/∂u of the Gumbel CDF computed with mpmath 1.4.1 (agreement ≤ 1E-15).
+        /// The analytic conditional is also cross-checked against a central finite difference
+        /// of the closed-form CDF (ε = 1E-6; noise floor ~1E-9, so 1E-7 is asserted) and
+        /// pinned at the exact upper edge h(1|u) = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new GumbelCopula(2d);
+            Assert.AreEqual(0.9104803864754554, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.11559784394154599, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9975327563905108, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.001949079483034616, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            copula = new GumbelCopula(3.5);
+            Assert.AreEqual(0.9852294418984343, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.0201697450039637, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9999871895213038, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(1.2887217392734802E-05, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            foreach (double theta in new[] { 2d, 3.5 })
+            {
+                var c = new GumbelCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF. Reference values were computed with the
+        /// Python package pyvinecopulib 0.7.6 (Bicop.hinv1, family gumbel). The Gumbel inverse
+        /// is a Brent solve with tolerance 1E-8, so 1E-6 absolute deltas are asserted for the
+        /// reference pins and for the round trip h(InverseConditionalCDF(u, t) | u) = t.
+        /// InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new GumbelCopula(2d);
+            Assert.AreEqual(0.48403043854946104, copula.InverseConditionalCDF(0.3, 0.7), 1E-6);
+            Assert.AreEqual(0.39821464719708766, copula.InverseConditionalCDF(0.9, 0.05), 1E-6);
+
+            copula = new GumbelCopula(3.5);
+            Assert.AreEqual(0.39761414717848886, copula.InverseConditionalCDF(0.3, 0.7), 1E-6);
+            Assert.AreEqual(0.7272049794715586, copula.InverseConditionalCDF(0.9, 0.05), 1E-6);
+
+            foreach (double theta in new[] { 2d, 3.5 })
+            {
+                var c = new GumbelCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-6);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the inverse conditional at conditional probabilities within rounding distance
+        /// of the boundaries. In exact arithmetic h(1|u) = 1, but the floating-point objective
+        /// rounds below 1 by roughly |ln u| ulps, so a requested level of t = 1 − 1E-16 can exceed the
+        /// attainable maximum of the objective for u values with |ln u| ≳ 1; the solver must still
+        /// complete. The asserted contract is the inverse relationship, not a
+        /// particular value: every call returns a probability in [0, 1] whose value is monotone
+        /// in the conditional level. That phrasing is deliberate — in the far tail under
+        /// strong dependence the conditional CDF is numerically saturated across a band of v,
+        /// so several values satisfy h(v|u) = 1 − 1E-16 to full double precision and the
+        /// solver may legitimately return any of them. The asserted contract is therefore
+        /// completion, range, and monotonicity in the conditional level — deliberately not a
+        /// round trip through <see cref="BivariateCopula.ConditionalCDF"/>, which the
+        /// Archimedean families evaluate through the generator ratio φ′(u)/φ′(C(u,v)) rather
+        /// than the closed form this inverse solves, and whose precision degrades at v = 1 for
+        /// large θ. Interior levels are pinned against reference values above, which is where
+        /// the round trip belongs.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF_BoundaryConditionals()
+        {
+            foreach (double theta in new[] { 1.2, 2d, 3.5, 10d, 20d })
+            {
+                var copula = new GumbelCopula(theta);
+                for (int i = 1; i < 2000; i++)
+                {
+                    double u = i / 2000d;
+                    double top = copula.InverseConditionalCDF(u, 1d - 1E-16);
+                    Assert.IsTrue(top >= 0d && top <= 1d,
+                        $"Top-edge inverse left [0, 1] at θ = {theta}, u = {u}: {top}.");
+                    Assert.IsGreaterThanOrEqualTo(copula.InverseConditionalCDF(u, 0.999), top,
+                        $"The top-edge inverse must not fall below an interior level at θ = {theta}, u = {u}.");
+                    double bottom = copula.InverseConditionalCDF(u, 1E-16);
+                    Assert.IsTrue(bottom >= 0d && bottom <= 1d,
+                        $"Bottom-edge inverse left [0, 1] at θ = {theta}, u = {u}: {bottom}.");
+                    Assert.IsLessThanOrEqualTo(copula.InverseConditionalCDF(u, 0.001), bottom,
+                        $"The bottom-edge inverse must not exceed an interior level at θ = {theta}, u = {u}.");
+                }
+            }
         }
 
     }

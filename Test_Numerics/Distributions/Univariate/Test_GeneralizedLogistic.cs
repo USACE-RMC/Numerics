@@ -261,7 +261,8 @@ namespace Distributions.Univariate
             Assert.AreEqual(100, l.Mode);
 
             var l2 = new GeneralizedLogistic(100, 10, 1);
-            Assert.AreEqual(95, l2.Mode);
+            // At kappa=1 the density increases to its one-sided maximum at xi+alpha.
+            Assert.AreEqual(110, l2.Mode);
         }
 
         /// <summary>
@@ -345,11 +346,11 @@ namespace Distributions.Univariate
         public void Test_PDF()
         {
             var l = new GeneralizedLogistic();
-            Assert.AreEqual(0.025,l.PDF(100));
+            Assert.AreEqual(0.025,l.PDF(100), 1E-16);
             Assert.AreEqual(4.5395e-06, l.PDF(0), 1e-10);
 
             var l2 = new GeneralizedLogistic(100, 10, 1);
-            Assert.AreEqual(0.025, l2.PDF(100));
+            Assert.AreEqual(0.025, l2.PDF(100), 1E-16);
             Assert.AreEqual(6.9444e-04, l2.PDF(0),1e-08);
         }
 

@@ -223,5 +223,87 @@ namespace Functions
             Assert.AreEqual(75, X4, 1E-6);
         }
 
+        /// <summary>
+        /// The extrapolation default (None) must reproduce the historical endpoint hold exactly,
+        /// in every transform space, for both lookup directions. This is the bit-identity gate for
+        /// the tabular function's extrapolation property.
+        /// </summary>
+        [TestMethod]
+        public void Test_Tabular_Extrapolation_DefaultNone_MatchesEndpointHold()
+        {
+            var XArray = new double[] { 50, 100, 150, 200, 250 };
+            var YArray = new UnivariateDistributionBase[] { new Deterministic(100), new Deterministic(200), new Deterministic(300), new Deterministic(400), new Deterministic(500) };
+            var opd = new UncertainOrderedPairedData(XArray, YArray, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Deterministic);
+
+            var func = new TabularFunction(opd);
+            Assert.AreEqual(ExtrapolationSides.None, func.Extrapolation);
+
+            // Out-of-range lookups hold the endpoint ordinates, both directions.
+            Assert.AreEqual(100.0, func.Function(10.0));
+            Assert.AreEqual(500.0, func.Function(1000.0));
+            Assert.AreEqual(50.0, func.InverseFunction(10.0));
+            Assert.AreEqual(250.0, func.InverseFunction(1000.0));
+
+            // Same hold under a logarithmic lookup axis.
+            var logFunc = new TabularFunction(opd) { XTransform = Transform.Logarithmic };
+            Assert.AreEqual(100.0, logFunc.Function(10.0));
+            Assert.AreEqual(500.0, logFunc.Function(1000.0));
+
+            // Exact endpoints are returned unchanged even when extrapolation is enabled.
+            var bothFunc = new TabularFunction(opd) { Extrapolation = ExtrapolationSides.Both };
+            Assert.AreEqual(100.0, bothFunc.Function(50.0));
+            Assert.AreEqual(500.0, bothFunc.Function(250.0));
+        }
+
+        /// <summary>
+        /// Sided extension of the boundary segments, hand-computed in each transform space, for
+        /// both lookup directions, including the one-sided holds and the negative-Y floor.
+        /// </summary>
+        [TestMethod]
+        public void Test_Tabular_Extrapolation_SidedExtension()
+        {
+            var XArray = new double[] { 50, 100, 150, 200, 250 };
+            var YArray = new UnivariateDistributionBase[] { new Deterministic(100), new Deterministic(200), new Deterministic(300), new Deterministic(400), new Deterministic(500) };
+            var opd = new UncertainOrderedPairedData(XArray, YArray, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Deterministic);
+
+            // Linear space: both boundary segments have slope 2.
+            var both = new TabularFunction(opd) { Extrapolation = ExtrapolationSides.Both };
+            Assert.AreEqual(50.0, both.Function(25.0), 1E-10);
+            Assert.AreEqual(600.0, both.Function(300.0), 1E-10);
+            Assert.AreEqual(25.0, both.InverseFunction(50.0), 1E-10);
+            Assert.AreEqual(300.0, both.InverseFunction(600.0), 1E-10);
+
+            // One-sided policies hold the other side.
+            var below = new TabularFunction(opd) { Extrapolation = ExtrapolationSides.Below };
+            Assert.AreEqual(50.0, below.Function(25.0), 1E-10);
+            Assert.AreEqual(500.0, below.Function(300.0));
+            var above = new TabularFunction(opd) { Extrapolation = ExtrapolationSides.Above };
+            Assert.AreEqual(100.0, above.Function(25.0));
+            Assert.AreEqual(600.0, above.Function(300.0), 1E-10);
+
+            // Logarithmic lookup axis: extension is linear in (ln x, y).
+            var logBoth = new TabularFunction(opd) { XTransform = Transform.Logarithmic, Extrapolation = ExtrapolationSides.Both };
+            double validBelow = 100 + (200 - 100) / (Math.Log(100) - Math.Log(50)) * (Math.Log(25) - Math.Log(50));
+            double validAbove = 400 + (500 - 400) / (Math.Log(250) - Math.Log(200)) * (Math.Log(500) - Math.Log(200));
+            Assert.AreEqual(validBelow, logBoth.Function(25.0), 1E-10);
+            Assert.AreEqual(validAbove, logBoth.Function(500.0), 1E-10);
+
+            // Normal-Z ordinate axis: extension is linear in z and back-transforms into (0, 1).
+            var pArray = new double[] { 1, 2, 3 };
+            var pYArray = new UnivariateDistributionBase[] { new Deterministic(0.2), new Deterministic(0.5), new Deterministic(0.8) };
+            var pOpd = new UncertainOrderedPairedData(pArray, pYArray, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Deterministic);
+            var zFunc = new TabularFunction(pOpd) { YTransform = Transform.NormalZ, Extrapolation = ExtrapolationSides.Both };
+            double z02 = Normal.StandardZ(0.2);
+            double z05 = Normal.StandardZ(0.5);
+            double validZ = Normal.StandardCDF(z02 + (z05 - z02) / (2.0 - 1.0) * (0.0 - 1.0));
+            double yZ = zFunc.Function(0.0);
+            Assert.AreEqual(validZ, yZ, 1E-12);
+            Assert.IsTrue(yZ > 0.0 && yZ < 1.0);
+
+            // The negative-Y floor still binds under extension.
+            var floored = new TabularFunction(opd) { Extrapolation = ExtrapolationSides.Both, AllowNegativeYValues = false };
+            Assert.AreEqual(0.0, floored.Function(-25.0));
+        }
+
     }
 }

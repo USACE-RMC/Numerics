@@ -1,0 +1,25 @@
+R version 4.4.3 (2025-02-28 ucrt)
+Normal logCDF(-40): -804.6084420137538
+Normal logPDF(0), sigma=1e308: -710.11514717537079
+Logistic logPDF(-1000): -1000
+LogNormal moment sigma, mean10 sd2 base10: 0.086008634833056805
+PIII(0,1,-2), quantile 1e-20: -45.051701859880914
+LnNormal indirect-MoM median variance(1,1), n100: 0.0034657359027997266
+LnNormal(10,2) exact physical mean derivative at median = 135/(26*sqrt(26)): 1.018295317063648
+LnNormal direct physical-moment estimator is a different estimator; its median variance would be 0.00875.
+LP3(0,.8,1), base e, finite mean and SD:              mean                 sd              third             fourth
+1.5578435030451807 4.8009895965830660                Inf                Inf
+Legacy LP3 default and (1,1,1) corrected modes:
+             default               custom
+265.6768581650194392   0.4980296964878923
+Asymptotic MLE covariance uses independent inversion of location/scale/shape Fisher information, transformed to public coordinates.
+Quantile gradients use five-point finite differences of R stats qgamma/qlnorm, with public parameter perturbations.
+Independent review overflow regressions (defining lognormal identities):
+LP3 zero-skew Sigma16 skew: 5.8759900382892355e+166
+LP3 zero-skew Sigma12 kurtosis: 1.4243659274306933e+250
+LogNormal Mu370 Sigma1e-10 base e median variance n100: 2.3873528283845398e+299
+Nonzero LP3 large-moment checks from its gamma moment generating function, log normalized before exponentiation:
+Sigma 12 Gamma -0.001 Skewness 9.1837430055580643e+91 Kurtosis 1.8770290525950149e+244
+Sigma 16 Gamma -0.001 Skewness 2.6371094491313571e+162 Kurtosis Inf
+Sigma 12 Gamma 0.001 Skewness 5.204487503190545e+95 Kurtosis 1.9321207191996086e+256
+Sigma 16 Gamma 0.001 Skewness 2.0889174692524114e+171 Kurtosis Inf

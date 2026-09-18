@@ -6,7 +6,7 @@ using Numerics.Distributions.Copulas;
 namespace Distributions.BivariateCopulas
 {
     /// <summary>
-    /// Unit tests for the Joe Copula. All tests are compared against the R 'copula' package. 
+    /// Unit tests for the Joe Copula. Reference values come from the R 'copula' package for the original methods and from pyvinecopulib 0.7.6 and mpmath 1.4.1 for the conditional-distribution methods.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -175,8 +175,8 @@ namespace Distributions.BivariateCopulas
 
         /// <summary>
         /// Test that ParametersValid tracks the dependency parameter's valid range.
-        /// Regression: the Archimedean base ValidateParameter returned a non-null
-        /// sentinel for valid parameters, leaving ParametersValid permanently false.
+        /// ValidateParameter returns null for a valid dependence parameter and a non-null
+        /// exception otherwise, so ParametersValid follows the parameter.
         /// </summary>
         [TestMethod]
         public void Test_ParametersValid()
@@ -212,6 +212,252 @@ namespace Distributions.BivariateCopulas
             // Mutating the clone should not affect the original
             clone.Theta = 3.0;
             Assert.AreEqual(2.0, copula.Theta);
+        }
+
+        /// <summary>
+        /// Test the forward conditional CDF (h-function), h(v|u) = ∂C(u,v)/∂u.
+        /// Reference values were computed with the Python package pyvinecopulib 0.7.6
+        /// (Bicop.hfunc1, family joe), cross-checked at generation against a 50-digit
+        /// numerical ∂C/∂u of the Joe CDF computed with mpmath 1.4.1 (agreement ≤ 1E-15).
+        /// The analytic conditional is also cross-checked against a central finite difference
+        /// of the closed-form CDF (ε = 1E-6; noise floor ~1E-9, so 1E-7 is asserted) and
+        /// pinned at the exact upper edge h(1|u) = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDF()
+        {
+            var copula = new JoeCopula(2.5);
+            Assert.AreEqual(0.9123991248836704, copula.ConditionalCDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.1588740110264739, copula.ConditionalCDF(0.7, 0.3), 1E-10);
+            Assert.AreEqual(0.9965790386549064, copula.ConditionalCDF(0.05, 0.9), 1E-10);
+            Assert.AreEqual(0.004109173736105264, copula.ConditionalCDF(0.9, 0.05), 1E-10);
+
+            foreach (double theta in new[] { 1.5, 2.5 })
+            {
+                var c = new JoeCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double v in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double fd = (c.CDF(u + 1E-6, v) - c.CDF(u - 1E-6, v)) / 2E-6;
+                        Assert.AreEqual(fd, c.ConditionalCDF(u, v), 1E-7);
+                    }
+                    Assert.AreEqual(1d, c.ConditionalCDF(u, 1d), 1E-12);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the scalar inverse conditional CDF. Reference values were computed with the
+        /// Python package pyvinecopulib 0.7.6 (Bicop.hinv1, family joe). The Joe inverse is a
+        /// Brent solve with tolerance 1E-8, so 1E-6 absolute deltas are asserted for the
+        /// reference pins and for the round trip h(InverseConditionalCDF(u, t) | u) = t.
+        /// InverseCDF(u, t)[1] must recompose the scalar bit-for-bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF()
+        {
+            var copula = new JoeCopula(2.5);
+            Assert.AreEqual(0.48484561599221265, copula.InverseConditionalCDF(0.3, 0.7), 1E-6);
+            Assert.AreEqual(0.40581706363375525, copula.InverseConditionalCDF(0.9, 0.05), 1E-6);
+
+            foreach (double theta in new[] { 1.5, 2.5 })
+            {
+                var c = new JoeCopula(theta);
+                foreach (double u in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    foreach (double t in new[] { 0.1, 0.5, 0.9 })
+                    {
+                        double v = c.InverseConditionalCDF(u, t);
+                        Assert.AreEqual(t, c.ConditionalCDF(u, v), 1E-6);
+                        Assert.AreEqual(v, c.InverseCDF(u, t)[1], 0d);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test the inverse conditional at conditional probabilities within rounding distance
+        /// of the boundaries. In exact arithmetic h(1|u) = 1, but the floating-point objective
+        /// can round below 1, so a requested level of t = 1 − 1E-16 can exceed the attainable maximum of
+        /// the objective — rarely at moderate θ but for most of the unit interval at θ = 20; the solver
+        /// must still complete. The asserted contract is the
+        /// inverse relationship, not a particular value: every call returns a probability in
+        /// [0, 1] whose value is monotone in the conditional level. The contract is
+        /// deliberately not a round trip through <see cref="BivariateCopula.ConditionalCDF"/>:
+        /// the Archimedean families evaluate that through the generator ratio
+        /// φ′(u)/φ′(C(u,v)) rather than the closed form this inverse solves, and its precision
+        /// degrades at v = 1 for large θ (the generator-ratio form returns about 0.52 at θ = 20, u = 0.846,
+        /// where the exact value is 1 — a property of that formula, not of this inverse).
+        /// Interior levels are pinned against reference values above.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDF_BoundaryConditionals()
+        {
+            foreach (double theta in new[] { 1.2, 1.5, 2.5, 10d, 20d })
+            {
+                var copula = new JoeCopula(theta);
+                for (int i = 1; i < 2000; i++)
+                {
+                    double u = i / 2000d;
+                    double top = copula.InverseConditionalCDF(u, 1d - 1E-16);
+                    Assert.IsTrue(top >= 0d && top <= 1d,
+                        $"Top-edge inverse left [0, 1] at θ = {theta}, u = {u}: {top}.");
+                    Assert.IsGreaterThanOrEqualTo(copula.InverseConditionalCDF(u, 0.999), top,
+                        $"The top-edge inverse must not fall below an interior level at θ = {theta}, u = {u}.");
+                    double bottom = copula.InverseConditionalCDF(u, 1E-16);
+                    Assert.IsTrue(bottom >= 0d && bottom <= 1d,
+                        $"Bottom-edge inverse left [0, 1] at θ = {theta}, u = {u}: {bottom}.");
+                    Assert.IsLessThanOrEqualTo(copula.InverseConditionalCDF(u, 0.001), bottom,
+                        $"The bottom-edge inverse must not exceed an interior level at θ = {theta}, u = {u}.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The length of the rank fixtures used by the method of moments tests.
+        /// </summary>
+        private const int RankFixtureLength = 101;
+
+        /// <summary>
+        /// The number of pairs in a rank fixture, which is the denominator of Kendall's tau without ties.
+        /// </summary>
+        private const double RankFixturePairs = RankFixtureLength * (RankFixtureLength - 1) / 2d;
+
+        /// <summary>
+        /// Returns a permutation of 0 to n - 1 carrying exactly the requested number of inversions.
+        /// </summary>
+        /// <param name="n">The length of the permutation.</param>
+        /// <param name="inversions">The number of inverted pairs, between 0 and n * (n - 1) / 2.</param>
+        /// <returns>The permutation, as a double array.</returns>
+        /// <remarks>
+        /// Paired against the ascending sequence 0 to n - 1, a permutation carrying d inversions has exactly d
+        /// discordant pairs and no ties, so Kendall's tau of the pair is exactly 1 - 2 d / (n (n - 1) / 2). This
+        /// gives a fixture whose tau is a chosen rational value, which is what lets the method of moments fit be
+        /// exercised at a prescribed dependence. The permutation is built from its Lehmer code, taking as many
+        /// inversions as the remaining positions allow at each step.
+        /// </remarks>
+        private static double[] PermutationWithInversions(int n, int inversions)
+        {
+            var available = new List<int>();
+            for (int i = 0; i < n; i++) available.Add(i);
+
+            var result = new double[n];
+            int remaining = inversions;
+            for (int i = 0; i < n; i++)
+            {
+                int take = Math.Min(remaining, n - 1 - i);
+                result[i] = available[take];
+                available.RemoveAt(take);
+                remaining -= take;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the ascending sequence 0 to n - 1.
+        /// </summary>
+        /// <param name="n">The length of the sequence.</param>
+        /// <returns>The ascending sequence, as a double array.</returns>
+        private static double[] AscendingRanks(int n)
+        {
+            var result = new double[n];
+            for (int i = 0; i < n; i++) result[i] = i;
+            return result;
+        }
+
+        /// <summary>
+        /// Test Kendall's tau as a function of theta against an external oracle.
+        /// </summary>
+        /// <remarks>
+        /// The reference values are from pyvinecopulib 0.7.6, the Python bindings of vinecopulib, which is the
+        /// C++ engine behind the R package rvinecopulib. They are an independent implementation of the Joe tau
+        /// relation and are not derived from the series evaluated here. vinecopulib rejects a Joe theta above 30
+        /// and returns nan at exactly theta = 2, so the table stops at 30 and skips 2.
+        /// </remarks>
+        [TestMethod]
+        public void Test_KendallsTauFromTheta()
+        {
+            Assert.AreEqual(0.0, JoeCopula.KendallsTauFromTheta(1.0), 1E-12);
+            Assert.AreEqual(0.21927246047709437, JoeCopula.KendallsTauFromTheta(1.5), 1E-12);
+            Assert.AreEqual(0.5179624982298885, JoeCopula.KendallsTauFromTheta(3.0), 1E-12);
+            Assert.AreEqual(0.677220746877611, JoeCopula.KendallsTauFromTheta(5.0), 1E-12);
+            Assert.AreEqual(0.8220439420773361, JoeCopula.KendallsTauFromTheta(10.0), 1E-12);
+            Assert.AreEqual(0.9059400804989396, JoeCopula.KendallsTauFromTheta(20.0), 1E-12);
+            Assert.AreEqual(0.9360443756097613, JoeCopula.KendallsTauFromTheta(30.0), 1E-12);
+        }
+
+        /// <summary>
+        /// Estimate using the method of moments.
+        /// </summary>
+        [TestMethod]
+        public void Test_MOM_Fit()
+        {
+            var copula = new JoeCopula();
+            copula.SetThetaFromTau(data1, data2);
+            Assert.AreEqual(2.6052516, copula.Theta, 1E-4);
+        }
+
+        /// <summary>
+        /// Test that the method of moments fit recovers the theta implied by the sample tau.
+        /// </summary>
+        /// <remarks>
+        /// Each fixture has a Kendall's tau that is an exact rational, so the fitted theta must reproduce that
+        /// tau when it is pushed back through the tau relation. The tolerance reflects the root-finding
+        /// tolerance of Brent's method, not the accuracy of the tau relation.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SetThetaFromTau_RoundTrip()
+        {
+            var ranks = AscendingRanks(RankFixtureLength);
+            foreach (int inversions in new[] { 100, 400, 900, 1600, 2400 })
+            {
+                var permuted = PermutationWithInversions(RankFixtureLength, inversions);
+                double expected = 1d - 2d * inversions / RankFixturePairs;
+                Assert.AreEqual(expected, Correlation.KendallsTau(ranks, permuted), 1E-12, $"The fixture with {inversions} inversions must carry the expected tau.");
+
+                var copula = new JoeCopula();
+                copula.SetThetaFromTau(ranks, permuted);
+                Assert.IsGreaterThanOrEqualTo(1d, copula.Theta);
+                Assert.IsLessThanOrEqualTo(100d, copula.Theta);
+                Assert.AreEqual(expected, JoeCopula.KendallsTauFromTheta(copula.Theta), 1E-7, $"The fit with {inversions} inversions did not recover the sample tau.");
+            }
+        }
+
+        /// <summary>
+        /// Test that a tau the fitting bracket cannot reach is rejected.
+        /// </summary>
+        [TestMethod]
+        public void Test_SetThetaFromTau_UnattainableTau()
+        {
+            var ranks = AscendingRanks(RankFixtureLength);
+            var copula = new JoeCopula();
+
+            // Perfect concordance gives tau = 1, above the largest tau the bracket theta in [1, 100] reaches.
+            var concordant = PermutationWithInversions(RankFixtureLength, 0);
+            var tooStrong = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, concordant));
+            StringAssert.Contains(tooStrong.Message, "~= [0, 0.98025]");
+
+            // Perfect discordance gives tau = -1, and the Joe copula models positive dependence only.
+            var discordant = PermutationWithInversions(RankFixtureLength, (int)RankFixturePairs);
+            var negative = Assert.ThrowsExactly<ArgumentException>(() => copula.SetThetaFromTau(ranks, discordant));
+            StringAssert.Contains(negative.Message, "~= [0, 0.98025]");
+        }
+
+        /// <summary>
+        /// Test that an independent sample is fitted at the independence limit theta = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_SetThetaFromTau_Independence()
+        {
+            var ranks = AscendingRanks(RankFixtureLength);
+            var permuted = PermutationWithInversions(RankFixtureLength, (int)RankFixturePairs / 2);
+            Assert.AreEqual(0d, Correlation.KendallsTau(ranks, permuted), 0d, "Half of the pairs discordant gives a tau of exactly zero.");
+
+            var copula = new JoeCopula();
+            copula.SetThetaFromTau(ranks, permuted);
+            Assert.AreEqual(1d, copula.Theta, 0d);
+            Assert.AreEqual(0d, JoeCopula.KendallsTauFromTheta(copula.Theta), 1E-12);
         }
 
     }

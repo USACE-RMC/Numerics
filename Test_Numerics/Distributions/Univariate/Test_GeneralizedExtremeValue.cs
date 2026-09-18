@@ -264,7 +264,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(100.42482, GEV2.Mean, 1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 10);
-            Assert.AreEqual(double.NaN, GEV3.Mean);
+            Assert.AreEqual(-3628699d, GEV3.Mean, 1E-7); // 100 + (1 - Gamma(11)); this bounded shape has a mean.
         }
 
         /// <summary>
@@ -277,7 +277,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(103.66512, GEV.Median,  1e-04);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.9);
-            Assert.AreEqual(104.3419519, GEV2.Median,  1e-04);
+            Assert.AreEqual(103.12196423496414, GEV2.Median, 1E-11); // R: 100 - 10*expm1(.9*log(log(2)))/.9.
         }
 
         /// <summary>
@@ -290,7 +290,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(100, GEV.Mode);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(95, GEV2.Mode);
+            Assert.AreEqual(110, GEV2.Mode); // Reverse-exponential endpoint mode.
         }
 
         /// <summary>
@@ -306,7 +306,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(9.280898, GEV2.StandardDeviation, 1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(double.NaN, GEV3.StandardDeviation);
+            Assert.AreEqual(10, GEV3.StandardDeviation);
         }
 
         /// <summary>
@@ -316,13 +316,13 @@ namespace Distributions.Univariate
         public void Test_Skewness()
         {
             var GEV = new GeneralizedExtremeValue();
-            Assert.AreEqual(1.1396, GEV.Skewness);
+            Assert.AreEqual(1.1395470994046487, GEV.Skewness);
 
             var GEV2 = new GeneralizedExtremeValue(100, 10, 0.3);
             Assert.AreEqual(-0.0690175, GEV2.Skewness,  1e-03);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(double.NaN, GEV3.Skewness);
+            Assert.AreEqual(-2, GEV3.Skewness);
         }
 
         /// <summary>
@@ -338,7 +338,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(2.7659607, GEV2.Kurtosis,  1e-04);
 
             var GEV3 = new GeneralizedExtremeValue(100, 10, 1);
-            Assert.AreEqual(double.NaN, GEV3.Kurtosis);
+            Assert.AreEqual(9, GEV3.Kurtosis);
         }
 
         /// <summary>

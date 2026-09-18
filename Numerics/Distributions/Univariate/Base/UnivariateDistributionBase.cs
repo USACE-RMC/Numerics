@@ -171,8 +171,12 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="threshold">The threshold.</param>
         /// <param name="numberBelow">The number of data points below the threshold.</param>
+        /// <returns>The censored log likelihood; zero when the category is empty.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The count is negative.</exception>
         public double LogLikelihood_LeftCensored(double threshold, long numberBelow)
         {
+            if (numberBelow < 0) throw new ArgumentOutOfRangeException(nameof(numberBelow));
+            if (numberBelow == 0) return 0;
             return numberBelow * LogCDF(threshold);
         }
 
@@ -181,8 +185,12 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="threshold">The threshold.</param>
         /// <param name="numberAbove">The number of data points above the threshold.</param>
+        /// <returns>The censored log likelihood; zero when the category is empty.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The count is negative.</exception>
         public double LogLikelihood_RightCensored(double threshold, long numberAbove)
         {
+            if (numberAbove < 0) throw new ArgumentOutOfRangeException(nameof(numberAbove));
+            if (numberAbove == 0) return 0;
             return numberAbove * LogCCDF(threshold);
         }
 
@@ -191,10 +199,22 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="lowerLimit">The lower limit of the interval.</param>
         /// <param name="upperLimit">The upper limit of the interval.</param>
+        /// <returns>The logarithm of the probability of (lowerLimit, upperLimit].</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The limits are reversed or NaN.</exception>
+        /// <remarks>Uses lower or upper logarithmic tails to avoid subtracting rounded probabilities.
+        /// The open lower and closed upper endpoint convention also applies to atoms.</remarks>
         public double LogLikelihood_Intervals(double lowerLimit, double upperLimit)
         {
-            double interval = CDF(upperLimit) - CDF(lowerLimit);
-            return Math.Log(interval);
+            if (double.IsNaN(lowerLimit) || double.IsNaN(upperLimit) || lowerLimit > upperLimit)
+                throw new ArgumentOutOfRangeException(nameof(upperLimit), "Interval limits must be ordered and not NaN.");
+            if (lowerLimit == upperLimit) return double.NegativeInfinity;
+            if (this is Mixture mixture) return mixture.LogIntervalProbability(lowerLimit, upperLimit);
+            double lower = LogCDF(lowerLimit), upper = LogCDF(upperLimit);
+            double result = lower < -0.6931471805599453
+                ? DistributionNumerics.LogDifference(upper, lower)
+                : DistributionNumerics.LogDifference(LogCCDF(lowerLimit), LogCCDF(upperLimit));
+            return double.IsNegativeInfinity(result)
+                ? DistributionNumerics.CollapsedContinuousLogInterval(this, lowerLimit, upperLimit) : result;
         }
 
         /// <inheritdoc/>
@@ -282,10 +302,29 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Adaptive Simpson's rule. 
+        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using adaptive numerical integration with the Gauss-Kronrod rule.
         /// </summary>
-        /// <param name="tolerance">The desired tolerance for the solution. Default = ~Sqrt(Machine Epsilon), or 1E-8.</param>
+        /// <param name="tolerance">The desired relative tolerance for the solution. Default = ~Sqrt(Machine Epsilon), or 1E-8.</param>
         /// <returns>Mean, Standard Deviation, Skew, and Kurtosis.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>This overload takes a tolerance, not a step count.</b> There is a sibling overload,
+        /// <see cref="CentralMoments(int)"/>, whose argument is a number of integration steps. The two are
+        /// distinguished only by the type of the single argument, so the choice is invisible at the call
+        /// site: <c>CentralMoments(1E-8)</c> requests a relative tolerance of 1E-8 from this adaptive
+        /// routine, while <c>CentralMoments(1000)</c> selects the fixed-step bin-expectation overload with 1,000
+        /// steps. Writing <c>CentralMoments(1)</c> when a tolerance of 1.0 was meant silently runs the other
+        /// method with a single step.
+        /// </para>
+        /// <para>
+        /// This overload integrates with <see cref="AdaptiveGaussKronrod"/> over the range
+        /// [InverseCDF(1E-16), InverseCDF(1 − 1E-16)], subdividing until the requested relative tolerance is
+        /// met. A moment whose integration fails is returned as <see cref="double.NaN"/> rather than
+        /// throwing.
+        /// </para>
+        /// <para>This inherited approximation is independent of analytical moment properties overridden
+        /// by individual distributions; use those properties when an analytical result is available.</para>
+        /// </remarks>
         public virtual double[] CentralMoments(double tolerance = 1E-8)
         {
             double u1 = 0, u2 = 0, u3 = 0, u4 = 0;
@@ -315,9 +354,40 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using numerical integration with Trapezoidal rule. 
+        /// Returns the central moments {Mean, Standard Deviation, Skew, and Kurtosis} of the distribution using a fixed-step discrete expectation over stratified bins.
         /// </summary>
         ///<param name="steps">Number of integration steps. Default = 300.</param>
+        /// <returns>Mean, Standard Deviation, Skew, and Kurtosis.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>This overload takes a step count, not a tolerance.</b> There is a sibling overload,
+        /// <see cref="CentralMoments(double)"/>, whose argument is an integration tolerance. The two are
+        /// distinguished only by the type of the single argument, so the choice is invisible at the call
+        /// site: <c>CentralMoments(1000)</c> selects this fixed-step routine with 1,000 steps, while
+        /// <c>CentralMoments(1E-8)</c> selects the adaptive overload with a relative tolerance of 1E-8.
+        /// Writing <c>CentralMoments(1)</c> when a tolerance was meant silently runs this method with a
+        /// single step.
+        /// </para>
+        /// <para>
+        /// <b>What this overload computes:</b> it stratifies
+        /// [InverseCDF(1E-8), InverseCDF(1 − 1E-8)] into <paramref name="steps"/> equal bins, takes each
+        /// bin's probability mass ΔFᵢ as a difference of <see cref="CDF(double)"/> values, and accumulates
+        /// the discrete expectation Σᵢ xᵢᵏ · ΔFᵢ. It is therefore a bin-probability (midpoint) expectation
+        /// against the distribution, <b>not</b> a trapezoidal rule applied to the integrand x·f(x). The
+        /// representative point xᵢ is the bin midpoint for interior bins, the upper bound for the first bin
+        /// and the lower bound for the last. Moments are accumulated in local coordinates about the
+        /// resulting mean to avoid cancellation between large raw first and second moments.
+        /// </para>
+        /// <para>
+        /// The first and last bins carry the whole of their tails — ΔF₀ is CDF(upper bound of bin 0), taken
+        /// from −∞, and the final ΔF is 1 − CDF(lower bound of the last bin) — so despite the 1E-8 stratification
+        /// endpoints the total probability sums to one and the effective range is <b>not</b> truncated. Cost
+        /// and accuracy are both fixed by <paramref name="steps"/> and there is no convergence check.
+        /// </para>
+        /// <para>This legacy approximation does not dispatch to analytical moment properties. Its
+        /// fixed tail representatives can be inaccurate for heavy tails. Prefer the distribution's
+        /// moment properties when analytical values are available.</para>
+        /// </remarks>
         public virtual double[] CentralMoments(int steps = 300)
         {
             double a = InverseCDF(1E-8);
@@ -326,41 +396,30 @@ namespace Numerics.Distributions
 
             var bins = Stratify.XValues(new StratificationOptions(a, b, steps));
             var dFx = new double[steps];
-            double u1, u2, u3, u4;
-            double sumU1 = 0;
-            double sumU2 = 0;
-            double sumU3 = 0;
-            double sumU4 = 0;
-
-            // First compute the mean and standard deviation
+            var coordinates = new double[steps];
+            double reference = a / 2 + b / 2;
+            double scale = Math.Max(Math.Abs(a - reference), Math.Abs(b - reference));
+            // Preserve the existing bins and probability masses, including endpoint tail representatives.
             dFx[0] = CDF(bins[0].UpperBound);
-            sumU1 += bins[0].UpperBound * dFx[0];
-            sumU2 += Math.Pow(bins[0].UpperBound, 2d) * dFx[0];
+            coordinates[0] = DistributionNumerics.Standardize(bins[0].UpperBound, reference, scale);
             for (int i = 1; i < steps - 1; i++)
             {
                 dFx[i] = CDF(bins[i].UpperBound) - CDF(bins[i].LowerBound);
-                sumU1 += bins[i].Midpoint * dFx[i];
-                sumU2 += Math.Pow(bins[i].Midpoint, 2d) * dFx[i];
+                coordinates[i] = DistributionNumerics.Standardize(bins[i].Midpoint, reference, scale);
             }
             dFx[steps - 1] = 1 - CDF(bins.Last().LowerBound);
-            sumU1 += bins.Last().LowerBound * dFx[steps - 1];
-            sumU2 += Math.Pow(bins.Last().LowerBound, 2d) * dFx[steps - 1];
-            u1 = sumU1;
-            u2 = Math.Sqrt(sumU2 - Math.Pow(u1, 2d));
-
-            // Then compute skewness and kurtosis
-            sumU3 += Math.Pow((bins[0].UpperBound - u1) / u2, 3d) * dFx[0];
-            sumU4 += Math.Pow((bins[0].UpperBound - u1) / u2, 4d) * dFx[0];
-            for (int i = 1; i < steps - 1; i++)
+            coordinates[steps - 1] = DistributionNumerics.Standardize(bins.Last().LowerBound, reference, scale);
+            double offset = 0;
+            for (int i = 0; i < steps; i++) offset += coordinates[i] * dFx[i];
+            double second = 0, third = 0, fourth = 0;
+            for (int i = 0; i < steps; i++)
             {
-                sumU3 += Math.Pow((bins[i].Midpoint - u1) / u2, 3d) * dFx[i];
-                sumU4 += Math.Pow((bins[i].Midpoint - u1) / u2, 4d) * dFx[i];
+                double centered = coordinates[i] - offset, square = centered * centered;
+                second += square * dFx[i];
+                third += square * centered * dFx[i];
+                fourth += square * square * dFx[i];
             }
-            sumU3 += Math.Pow((bins.Last().LowerBound - u1) / u2, 3d) * dFx[steps - 1];
-            sumU4 += Math.Pow((bins.Last().LowerBound - u1) / u2, 4d) * dFx[steps - 1];
-            u3 = sumU3;
-            u4 = sumU4;
-            return [u1, u2, u3, u4];
+            return [reference + scale * offset, scale * Math.Sqrt(second), third / second / Math.Sqrt(second), fourth / second / second];
         }
 
         /// <summary>

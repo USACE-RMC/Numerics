@@ -154,8 +154,8 @@ namespace Mathematics.Optimization
             Assert.AreEqual(0d, solver.Mu[0]);
         }
         /// <summary>
-        /// Tests AugmentedLagrange with mixed constraint types (equality + lesser-than + greater-than).
-        /// This previously caused IndexOutOfRangeException due to incorrect multiplier array indexing.
+        /// Tests AugmentedLagrange with mixed constraint types (equality + lesser-than + greater-than),
+        /// which exercises the per-type multiplier array indexing.
         /// </summary>
         /// <remarks>
         /// Minimize x² + y² subject to:
@@ -244,6 +244,68 @@ namespace Mathematics.Optimization
             // Solution should be (1, 3)
             Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 0.1);
             Assert.AreEqual(3.0, solver.BestParameterSet.Values[1], 0.1);
+        }
+
+        /// <summary>
+        /// Maximization drives the inner search in the requested direction: this construct's
+        /// constrained maximum is x = 1 with objective -4, and an unscaled inner minimization
+        /// would report the constrained minimum at the lower bound x = -10 instead.
+        /// </summary>
+        [TestMethod]
+        public void Test_Maximize_InequalityConstraint()
+        {
+            var constraint = new Constraint((x) => x[0], 1, 1.0, ConstraintType.LesserThanOrEqualTo);
+            Func<double[], double> func = (double[] x) => -Math.Pow(x[0] - 3, 2);
+            var innerSolver = new BFGS(func, 1, new double[] { -5 }, new double[] { -10 }, new double[] { 10 });
+            var solver = new AugmentedLagrange(func, innerSolver, new IConstraint[] { constraint });
+            solver.Maximize();
+
+            Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 1E-3);
+            Assert.AreEqual(-4.0, func(solver.BestParameterSet.Values), 1E-3);
+            Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-3,
+                "While maximizing, the stored fitness is the negated objective at the stored point.");
+        }
+
+        /// <summary>
+        /// A maximization whose constraint is inactive at the optimum reaches the unconstrained
+        /// maximum at (1, 3) rather than a box corner.
+        /// </summary>
+        [TestMethod]
+        public void Test_Maximize_InactiveConstraint()
+        {
+            var constraint = new Constraint((x) => x[0] + x[1], 2, 20.0, ConstraintType.LesserThanOrEqualTo);
+            Func<double[], double> func = (double[] x) => -(Math.Pow(x[0] - 1, 2) + Math.Pow(x[1] - 3, 2));
+            var innerSolver = new BFGS(func, 2, new double[] { 5, 5 }, new double[] { 0, 0 }, new double[] { 10, 10 });
+            var solver = new AugmentedLagrange(func, innerSolver, new IConstraint[] { constraint });
+            solver.Maximize();
+
+            Assert.AreEqual(1.0, solver.BestParameterSet.Values[0], 1E-3);
+            Assert.AreEqual(3.0, solver.BestParameterSet.Values[1], 1E-3);
+            Assert.AreEqual(0.0, func(solver.BestParameterSet.Values), 1E-4);
+            Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-4,
+                "While maximizing, the stored fitness is the negated objective at the stored point.");
+        }
+
+        /// <summary>
+        /// Maximization subject to an equality constraint lands on the constrained stationary
+        /// point.
+        /// </summary>
+        [TestMethod]
+        public void Test_Maximize_EqualityConstraint()
+        {
+            // The unconstrained maximum sits at (4, 4); its projection onto x + y = 4 is (2, 2),
+            // where the objective is -8.
+            var constraint = new Constraint((x) => x[0] + x[1], 2, 4.0, ConstraintType.EqualTo);
+            Func<double[], double> func = (double[] x) => -(Math.Pow(x[0] - 4, 2) + Math.Pow(x[1] - 4, 2));
+            var innerSolver = new BFGS(func, 2, new double[] { 0, 0 }, new double[] { -10, -10 }, new double[] { 10, 10 });
+            var solver = new AugmentedLagrange(func, innerSolver, new IConstraint[] { constraint });
+            solver.Maximize();
+
+            Assert.AreEqual(2.0, solver.BestParameterSet.Values[0], 1E-3);
+            Assert.AreEqual(2.0, solver.BestParameterSet.Values[1], 1E-3);
+            Assert.AreEqual(-8.0, func(solver.BestParameterSet.Values), 1E-3);
+            Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-3,
+                "While maximizing, the stored fitness is the negated objective at the stored point.");
         }
     }
 }

@@ -157,7 +157,94 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
-        /// The number of simulations that have been run with this instance of the sampler. 
+        /// The number of chain transitions a single Markov chain performs during a call to <see cref="Sample"/>.
+        /// </summary>
+        /// <returns>
+        /// (<see cref="Iterations"/> + ceil(<see cref="OutputLength"/> / <see cref="NumberOfChains"/>))
+        /// × <see cref="ThinningInterval"/>.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// The configured <see cref="Iterations"/> under-reports the work a run performs. Two multipliers
+        /// sit between the two numbers: <see cref="Sample"/> runs
+        /// ceil(<see cref="OutputLength"/> / <see cref="NumberOfChains"/>) recorded iterations beyond
+        /// <see cref="Iterations"/> to collect the posterior output, and every recorded iteration advances
+        /// the chain <see cref="ThinningInterval"/> times, because thinning discards intermediate
+        /// transitions rather than recorded draws. Each transition costs at least one evaluation of
+        /// <see cref="LogLikelihoodFunction"/>, so this property, not <see cref="Iterations"/>, is what a
+        /// runtime estimate should be built on.
+        /// </para>
+        /// <para>
+        /// <see cref="WarmupIterations"/> is a subset of <see cref="Iterations"/>, not an addition to it,
+        /// so it must not be added again when reasoning about total cost.
+        /// </para>
+        /// <para>
+        /// At the defaults (<see cref="Iterations"/> = 3,500, <see cref="OutputLength"/> = 10,000,
+        /// <see cref="NumberOfChains"/> = 4, <see cref="ThinningInterval"/> = 20) this is
+        /// (3,500 + 2,500) × 20 = 120,000 transitions per chain, roughly 34 times the configured
+        /// <see cref="Iterations"/>.
+        /// </para>
+        /// <para>
+        /// The type is <see cref="long"/> because the product overflows <see cref="int"/> well inside the
+        /// range of settings the sampler accepts.
+        /// </para>
+        /// <para>
+        /// This reports the settings as currently configured and does not validate them; the settings are
+        /// checked by <c>ValidateSettings</c> when <see cref="Sample"/> is called. The one exception is
+        /// <see cref="NumberOfChains"/>: a value below one is not a samplable configuration and would
+        /// otherwise divide by zero here, so it reports 0.
+        /// </para>
+        /// <para>
+        /// The count describes the base <see cref="Sample"/> loop and the base <c>SampleChain</c>, neither
+        /// of which any chain sampler in this library overrides. It does not describe <see cref="SNIS"/>,
+        /// which replaces <see cref="Sample"/> with a single non-Markovian importance sampling pass and
+        /// never advances a chain.
+        /// </para>
+        /// </remarks>
+        public long TransitionCount
+        {
+            get
+            {
+                // NumberOfChains is only validated when Sample() runs, but this property is readable at
+                // any time. At zero chains the division below would be Infinity, and casting Infinity to
+                // int saturates on .NET Core while being unspecified on .NET Framework, so report 0 for a
+                // configuration that cannot be sampled.
+                if (NumberOfChains < 1) return 0L;
+
+                // OutputIterations is the member Sample() uses, so the two cannot drift apart. The sum is
+                // widened to long before the multiplication so that large settings do not overflow.
+                return ((long)Iterations + OutputIterations) * ThinningInterval;
+            }
+        }
+
+        /// <summary>
+        /// The number of recorded iterations that <see cref="Sample"/> runs beyond <see cref="Iterations"/>
+        /// in order to collect the posterior output, ceil(<see cref="OutputLength"/> / <see cref="NumberOfChains"/>).
+        /// </summary>
+        /// <remarks>
+        /// Shared by <see cref="Sample"/> and <see cref="TransitionCount"/> so the reported and performed
+        /// work come from a single expression. Callers must ensure <see cref="NumberOfChains"/> is at
+        /// least one; <see cref="Sample"/> does so via <c>ValidateSettings</c> and
+        /// <see cref="TransitionCount"/> guards it directly.
+        /// </remarks>
+        private int OutputIterations => (int)Math.Ceiling(OutputLength / (double)NumberOfChains);
+
+        /// <summary>
+        /// The number of chain transitions performed across all chains during a call to <see cref="Sample"/>.
+        /// </summary>
+        /// <returns><see cref="TransitionCount"/> × <see cref="NumberOfChains"/>.</returns>
+        /// <remarks>
+        /// At the defaults this is 120,000 × 4 = 480,000 transitions. Treat it as a lower bound on the
+        /// evaluation count rather than a budget: every transition costs at least one evaluation of
+        /// <see cref="LogLikelihoodFunction"/>, a gradient-based sampler such as HMC or NUTS spends many
+        /// likelihood and gradient evaluations per transition, and chain initialization adds further
+        /// evaluations on top of these. When <see cref="ParallelizeChains"/> is true the transitions are
+        /// distributed across worker threads, so this is the total work rather than the critical path.
+        /// </remarks>
+        public long TotalTransitionCount => TransitionCount * NumberOfChains;
+
+        /// <summary>
+        /// The number of simulations that have been run with this instance of the sampler.
         /// </summary>
         protected int _simulations = 0;
 
@@ -199,6 +286,25 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Determines if the chains should be sampled in parallel. Default = true.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// When this is true — the default — <see cref="Sample"/> advances all
+        /// <see cref="NumberOfChains"/> chains inside a
+        /// <see cref="System.Threading.Tasks.Parallel.For(int, int, Action{int})"/>, and every chain calls
+        /// the <i>same</i> <see cref="LogLikelihoodFunction"/> delegate instance. The log-likelihood is
+        /// therefore invoked concurrently from multiple threads, as is the gradient delegate for
+        /// gradient-based samplers, so the delegate must be thread-safe or stateless. A likelihood that
+        /// closes over mutable state — an automatic-differentiation tape, a reused workspace or buffer, a
+        /// native solver handle, a cached factorization, a non-thread-safe PRNG — races by default, and
+        /// the resulting corruption is silent: it surfaces as an implausible posterior rather than as an
+        /// exception.
+        /// </para>
+        /// <para>
+        /// Set this to false when the likelihood is not thread-safe. Per-chain resources cannot be
+        /// selected from inside the callback, because neither <see cref="LogLikelihood"/> nor the
+        /// gradient delegate receives a chain index — they take only the parameter vector.
+        /// </para>
+        /// </remarks>
         public bool ParallelizeChains { get; set; } = true;
 
         /// <summary>
@@ -295,14 +401,24 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The acceptance rate per chain.
         /// </summary>
+        /// <remarks>
+        /// NUTS accepts every transition, so this property is identically 1 for
+        /// <see cref="NUTS"/>; use <see cref="NUTS.HamiltonianAcceptanceRates"/> (or
+        /// <see cref="MCMCResults.AcceptanceRates"/>, which substitutes it) for the statistic
+        /// that dual averaging targets.
+        /// </remarks>
         public double[] AcceptanceRates
         {
             get
             {
-                var ar = new double[NumberOfChains];
+                var acceptanceRates = new double[NumberOfChains];
                 for (int i = 0; i < NumberOfChains; i++)
-                    ar[i] = SampleCount[i] > 0 ? (double)AcceptCount[i] / (double)SampleCount[i] : 0d;
-                return ar;
+                {
+                    acceptanceRates[i] = SampleCount[i] > 0
+                        ? (double)AcceptCount[i] / SampleCount[i]
+                        : 0d;
+                }
+                return acceptanceRates;
             }
         }
 
@@ -336,13 +452,13 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         protected virtual void ValidateSettings()
         {
-            if (NumberOfChains < 1) throw new ArgumentException(nameof(NumberOfChains), "There must be at least 1 chain.");
-            if (Iterations < 100) throw new ArgumentException(nameof(Iterations), "The number of iterations cannot be less than 100.");
-            if (WarmupIterations < 1) throw new ArgumentException(nameof(WarmupIterations), "The number of warm up iterations cannot be less than 1.");
-            if (WarmupIterations > (int)(0.5 * Iterations)) throw new ArgumentException(nameof(WarmupIterations), "The number of warm up iterations cannot be greater than half the number of iterations.");
-            if (ThinningInterval < 1) throw new ArgumentException(nameof(ThinningInterval), "The thinning interval cannot be less than 1.");
-            if (InitialIterations < NumberOfChains) throw new ArgumentException(nameof(InitialIterations), "The initial population cannot be less than the number of chains.");
-            if (OutputLength < 100) throw new ArgumentException(nameof(OutputLength), "The output length must be at least 100.");
+            if (NumberOfChains < 1) throw new ArgumentException("There must be at least 1 chain.", nameof(NumberOfChains));
+            if (Iterations < 100) throw new ArgumentException("The number of iterations cannot be less than 100.", nameof(Iterations));
+            if (WarmupIterations < 1) throw new ArgumentException("The number of warm up iterations cannot be less than 1.", nameof(WarmupIterations));
+            if (WarmupIterations > (int)(0.5 * Iterations)) throw new ArgumentException("The number of warm up iterations cannot be greater than half the number of iterations.", nameof(WarmupIterations));
+            if (ThinningInterval < 1) throw new ArgumentException("The thinning interval cannot be less than 1.", nameof(ThinningInterval));
+            if (InitialIterations < NumberOfChains) throw new ArgumentException("The initial population cannot be less than the number of chains.", nameof(InitialIterations));
+            if (OutputLength < 100) throw new ArgumentException("The output length must be at least 100.", nameof(OutputLength));
             ValidateCustomSettings();
         }
 
@@ -456,8 +572,13 @@ namespace Numerics.Sampling.MCMC
                 tempPopulation.Add(new ParameterSet((double[])parameters.Clone(), logLH));
             }
             
-            // Sort temp population by log-likelihood in descending order
-            tempPopulation.Sort((x, y) => -1 * x.Fitness.CompareTo(y.Fitness));
+            // Sort temp population by log-likelihood in descending order.
+            // The chain starting states are taken from the front of this list, and a wide prior can
+            // leave many draws tied at exactly negative infinity, so the sort must be stable for ties to
+            // keep their draw order; an unstable sort would make the starting states, and with them every
+            // chain trajectory, implementation-defined. OrderByDescending is stable with the same default
+            // double comparison.
+            tempPopulation = tempPopulation.OrderByDescending(x => x.Fitness).ToList();
 
             // Set the initial vectors to the best performing parameter sets
             for (int i = 0; i < NumberOfChains; i++)
@@ -508,8 +629,9 @@ namespace Numerics.Sampling.MCMC
                 InitializeCustomSettings();
             }
 
-            // Output settings
-            int outputIterations = (int)Math.Ceiling(OutputLength / (double)NumberOfChains);
+            // Output settings. OutputIterations is shared with TransitionCount so that the advertised work
+            // and the work performed here cannot drift apart.
+            int outputIterations = OutputIterations;
             int totalIterations = Iterations + outputIterations;
             int outputCount = 0;
             Output = new List<ParameterSet>[NumberOfChains];

@@ -242,7 +242,10 @@ namespace Numerics.MachineLearning
         /// <param name="xTest">The test matrix of predictors</param>
         private int[]? kNN(Matrix xTrain, Vector yTrain, Matrix xTest)
         {
-            if (NumberOfFeatures != xTrain.NumberOfColumns) return null!;
+            // The guard must compare the query to the training matrix, matching kNNPredict; a query
+            // with the wrong column count would otherwise compute partial-dimension distances or
+            // index past the end of the training rows.
+            if (xTest.NumberOfColumns != xTrain.NumberOfColumns) return null!;
             int R = xTest.NumberOfRows;
             var result = new int[R * K];
             for (int i = 0; i < R; i++)
@@ -257,8 +260,12 @@ namespace Numerics.MachineLearning
                     items[idx].Distance = Tools.Distance(point, xTrain.Row(idx));
                 });
 
-                // Sort items and find the k-nearest neighbors
-                Array.Sort(items, (a, b) => a.Distance.CompareTo(b.Distance));
+                // Sort items and find the k-nearest neighbors.
+                // Array.Sort is an unstable introspective sort, so the training index is used as an
+                // explicit secondary key. Duplicated rows and coded features produce exact distance
+                // ties, and without the secondary key the selected neighbors would be
+                // implementation-defined and could differ between target frameworks.
+                Array.Sort(items, (a, b) => { int c = a.Distance.CompareTo(b.Distance); return c != 0 ? c : a.Index.CompareTo(b.Index); });
                 for (int j = 0; j < K; j++)
                 {
                     result[i * K + j] = items[j].Index;
@@ -291,8 +298,12 @@ namespace Numerics.MachineLearning
                     items[idx].Distance = Tools.Distance(point, xTrain.Row(idx));
                 });
 
-                // Sort items and find the k-nearest neighbors
-                Array.Sort(items, (a, b) => a.Distance.CompareTo(b.Distance));
+                // Sort items and find the k-nearest neighbors.
+                // Array.Sort is an unstable introspective sort, so the training index is used as an
+                // explicit secondary key. Duplicated rows and coded features produce exact distance
+                // ties, and without the secondary key the neighbors feeding the regression average or
+                // the classification vote would be implementation-defined.
+                Array.Sort(items, (a, b) => { int c = a.Distance.CompareTo(b.Distance); return c != 0 ? c : a.Index.CompareTo(b.Index); });
                 var knn = new double[K];
 
                 // Record results
@@ -380,7 +391,9 @@ namespace Numerics.MachineLearning
                 for (int j = 0; j < percentiles.Length; j++)
                     output[idx, j] = Statistics.Percentile(values, percentiles[j], true);
 
-                output[idx, 3] = Statistics.ParallelMean(values);
+                // The mean is accumulated sequentially so the reduction is deterministic on every
+                // host regardless of processor count.
+                output[idx, 3] = Statistics.Mean(values);
             });
 
             return output;

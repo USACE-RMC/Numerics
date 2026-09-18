@@ -318,5 +318,51 @@ namespace Mathematics.Optimization
             bool match2 = Math.Abs(x - validY) < 1E-4 && Math.Abs(y - validX) < 1E-4;
             Assert.IsTrue(match1 || match2);
         }
+
+        /// <summary>
+        /// Verifies infeasible trial coordinates are repaired halfway toward the target instead of clamped to a boundary.
+        /// </summary>
+        /// <param name="seed">The deterministic pseudo-random seed used for the differential-evolution run.</param>
+        /// <param name="expectedFirstTrial">The independently derived midpoint repair for the first trial vector.</param>
+        [TestMethod]
+        [DataRow(1, 0.8196490542613901d)]
+        [DataRow(2, 0.7595016034028959d)]
+        [DataRow(3, 0.7520687940414064d)]
+        [DataRow(4, 0.48277057497762144d)]
+        [DataRow(5, 0.8296836465888191d)]
+        [DataRow(12345, 0.1893519861914683d)]
+        public void Test_InfeasibleTrialCoordinates_AreRepairedHalfwayToTarget(int seed, double expectedFirstTrial)
+        {
+            var evaluatedCoordinates = new List<double>();
+            double Objective(double[] values)
+            {
+                evaluatedCoordinates.Add(values[0]);
+                double difference = values[0] - 0.5d;
+                return difference * difference;
+            }
+
+            var solver = new DifferentialEvolution(Objective, 1, new double[] { 0d }, new double[] { 1d })
+            {
+                PopulationSize = 4,
+                PRNGSeed = seed,
+                Mutation = 2d,
+                DitherRate = 0d,
+                CrossoverProbability = 1d,
+                MaxIterations = 11,
+                ComputeHessian = false,
+                ReportFailure = false
+            };
+
+            solver.Minimize();
+
+            Assert.IsGreaterThan(solver.PopulationSize, evaluatedCoordinates.Count);
+            Assert.AreEqual(expectedFirstTrial, evaluatedCoordinates[solver.PopulationSize], 1E-15);
+            foreach (double coordinate in evaluatedCoordinates.Skip(solver.PopulationSize))
+            {
+                Assert.IsTrue(
+                    coordinate > 0d && coordinate < 1d,
+                    $"Expected an interior repaired coordinate, but evaluated {coordinate:R}.");
+            }
+        }
     }
 }

@@ -94,7 +94,7 @@ namespace Numerics.Data.Statistics
                 if (other is null) return 1;
                 if (UpperBound > other.LowerBound && LowerBound < other.LowerBound)
                 {
-                    throw new ArgumentException(nameof(other), "The bins cannot be overlapping.");
+                    throw new ArgumentException("The bins cannot be overlapping.", nameof(other));
                 }
                 if (UpperBound.Equals(other.UpperBound) && LowerBound.Equals(other.LowerBound))
                 {

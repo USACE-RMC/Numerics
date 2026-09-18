@@ -98,6 +98,51 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
+        /// Verifies that randomized initialization resolves log-likelihood ties by draw order.
+        /// </summary>
+        /// <remarks>
+        /// A wide prior can leave most of the initial population at exactly negative infinity. The chain
+        /// starting states are taken from the front of the sorted population, so under an unstable sort
+        /// the tied draws that seed the chains would be implementation-defined, and with them the entire
+        /// trajectory of every chain.
+        /// </remarks>
+        [TestMethod]
+        public void RandomizedInitializationBreaksLogLikelihoodTiesByDrawOrder()
+        {
+            var evaluationOrder = new List<double[]>();
+            var sampler = new InitializableRwmh(
+                new List<IUnivariateDistribution> { new Uniform(-5d, 5d) },
+                parameters =>
+                {
+                    evaluationOrder.Add((double[])parameters.Clone());
+
+                    // Only the twenty-first draw has finite support. The remaining thirty-nine draws tie
+                    // at exactly negative infinity, which is more than the insertion-sort threshold of
+                    // the framework sort, so an unstable sort is free to permute them.
+                    return evaluationOrder.Count == 21 ? -1d : double.NegativeInfinity;
+                })
+            {
+                NumberOfChains = 4,
+                InitialIterations = 40,
+                PRNGSeed = 12345,
+                Initialize = MCMCSampler.InitializationType.Randomize
+            };
+
+            var initials = sampler.InitializeOnly();
+
+            Assert.HasCount(40, evaluationOrder);
+            Assert.HasCount(4, initials);
+
+            // The single finite draw sorts to the front.
+            CollectionAssert.AreEqual(evaluationOrder[20], initials[0].Values);
+
+            // The tied draws follow in the order they were generated.
+            CollectionAssert.AreEqual(evaluationOrder[0], initials[1].Values);
+            CollectionAssert.AreEqual(evaluationOrder[1], initials[2].Values);
+            CollectionAssert.AreEqual(evaluationOrder[2], initials[3].Values);
+        }
+
+        /// <summary>
         /// Evaluates the quadratic log-likelihood used to verify MAP fitness and evaluation counts.
         /// </summary>
         /// <param name="parameters">The parameter vector to evaluate.</param>

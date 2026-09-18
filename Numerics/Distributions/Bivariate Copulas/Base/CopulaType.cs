@@ -39,6 +39,10 @@
         /// <summary>
         /// Student's t
         /// </summary>
-        StudentT
+        StudentT,
+        /// <summary>
+        /// Independence (product copula)
+        /// </summary>
+        Independence
     }
 }

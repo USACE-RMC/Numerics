@@ -2,11 +2,13 @@
 using Numerics;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Mathematics.Optimization;
 using Numerics.Sampling;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using static System.Reflection.Metadata.BlobBuilder;
+using System.Threading;
 
 namespace Distributions.Univariate
 {
@@ -180,6 +182,335 @@ namespace Distributions.Univariate
             {
                 Assert.AreEqual(reference.MeanCurve[i], result.MeanCurve[i], 1E-8,
                     $"MeanCurve mismatch at index {i}");
+            }
+        }
+
+        /// <summary>
+        /// Confidence intervals exclude NaN and both infinities before computing percentiles.
+        /// </summary>
+        [TestMethod]
+        public void Test_UncertaintyAnalysisResults_ConfidenceIntervalsUseFiniteValuesOnly()
+        {
+            var results = new UncertaintyAnalysisResults();
+            UnivariateDistributionBase[] sampledDistributions =
+            [
+                new Normal(0.0, 1.0),
+                new Deterministic(7.0),
+                null!
+            ];
+
+            results.ProcessConfidenceIntervals(sampledDistributions, [0.0, 1.0]);
+
+            double[,] confidenceIntervals = results.ConfidenceIntervals!;
+            Assert.AreEqual(7.0, confidenceIntervals[0, 0], 0.0);
+            Assert.AreEqual(7.0, confidenceIntervals[0, 1], 0.0);
+            Assert.AreEqual(7.0, confidenceIntervals[1, 0], 0.0);
+            Assert.AreEqual(7.0, confidenceIntervals[1, 1], 0.0);
+        }
+
+        /// <summary>
+        /// An ensemble containing no successful distribution fails explicitly in both the
+        /// aggregate constructor and the public mean-curve processor.
+        /// </summary>
+        [TestMethod]
+        public void Test_UncertaintyAnalysisResults_AllNullEnsembleThrowsClearly()
+        {
+            UnivariateDistributionBase[] allNull = [null!, null!];
+
+            InvalidOperationException constructorException = Assert.Throws<InvalidOperationException>(() =>
+                new UncertaintyAnalysisResults(new Normal(), allNull, [0.5]));
+            StringAssert.Contains(constructorException.Message, "At least one sampled distribution");
+
+            var results = new UncertaintyAnalysisResults();
+            InvalidOperationException meanException = Assert.Throws<InvalidOperationException>(() =>
+                results.ProcessMeanCurve(allNull, [0.5]));
+            StringAssert.Contains(meanException.Message, "At least one sampled distribution");
+        }
+
+        /// <summary>
+        /// Verifies Estimate() is bit-reproducible across calls at the same seed. Compares raw
+        /// bits: a tolerance assert cannot detect a reduction-order difference.
+        /// </summary>
+        [TestMethod]
+        public void Test_Estimate_IsBitReproducible()
+        {
+            var probabilities = new double[] { 0.999, 0.99, 0.9, 0.5, 0.1, 0.01, 0.001 };
+            var dist = new Normal(3.122599, 0.5573654);
+
+            var first = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 1000).Estimate(probabilities);
+            var second = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 1000).Estimate(probabilities);
+
+            Assert.HasCount(first.MeanCurve.Length, second.MeanCurve);
+            for (int i = 0; i < first.MeanCurve.Length; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(first.MeanCurve[i]),
+                    BitConverter.DoubleToInt64Bits(second.MeanCurve[i]), $"MeanCurve differs at index {i}.");
+            }
+            for (int i = 0; i < first.ConfidenceIntervals.GetLength(0); i++)
+            {
+                for (int j = 0; j < 2; j++)
+                {
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(first.ConfidenceIntervals[i, j]),
+                        BitConverter.DoubleToInt64Bits(second.ConfidenceIntervals[i, j]), $"ConfidenceIntervals differ at [{i},{j}].");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Verifies the mean curve does not depend on how many threads compute it. Constraining
+        /// one arm to a single worker stands in for running on a machine with a different core
+        /// count.
+        /// </summary>
+        [TestMethod]
+        public void Test_ExpectedProbabilities_IsThreadCountIndependent()
+        {
+            var probabilities = new double[] { 0.99, 0.9, 0.5, 0.1, 0.01 };
+            var quantiles = new double[] { 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0 };
+            var dist = new Normal(3.122599, 0.5573654);
+            var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 1000);
+            var distributions = boot.Distributions();
+            Assert.AreEqual(0, boot.FailedReplications);
+
+            var parallelResult = boot.ExpectedProbabilities(quantiles, probabilities, distributions);
+
+            double[] serialResult;
+            ThreadPool.GetMinThreads(out int minWorker, out int minIO);
+            try
+            {
+                ThreadPool.SetMinThreads(1, minIO);
+                serialResult = boot.ExpectedProbabilities(quantiles, probabilities, distributions);
+            }
+            finally
+            {
+                ThreadPool.SetMinThreads(minWorker, minIO);
+            }
+
+            for (int i = 0; i < parallelResult.Length; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(parallelResult[i]),
+                    BitConverter.DoubleToInt64Bits(serialResult[i]), $"Expected probabilities differ at index {i}.");
+            }
+        }
+
+        /// <summary>
+        /// Pins the bias-correction proportion count(θ* ≤ θ̂) / (B + 1). With the estimate at the
+        /// bootstrap median of nine replicates the proportion is 5/10, the bias correction is zero,
+        /// and the bias-corrected limits equal the unadjusted percentile limits — any shift of the
+        /// count numerator breaks this identity.
+        /// </summary>
+        [TestMethod]
+        public void Test_BiasCorrected_ZeroBias_MatchesPercentileLimits()
+        {
+            var parent = new Normal(5d, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 100);
+            var values = new double[] { 1d, 2d, 3d, 4d, 4.5, 6d, 7d, 8d, 9d };
+            var replicates = new IUnivariateDistribution[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                replicates[i] = new Deterministic(values[i]);
+
+            double alpha = 0.1;
+            var ci = boot.BiasCorrectedQuantileCI(new double[] { 0.5 }, alpha, replicates);
+
+            Assert.AreEqual(Statistics.Percentile(values, alpha / 2d, true), ci[0, 0], 1E-12);
+            Assert.AreEqual(Statistics.Percentile(values, 1d - alpha / 2d, true), ci[0, 1], 1E-12);
+        }
+
+        /// <summary>
+        /// Pins the full bias-corrected limit formula at an asymmetric proportion: two of nine
+        /// replicates at or below the estimate give proportion 2/10, and the limits follow
+        /// Φ(2·Φ⁻¹(0.2) + z) exactly. A shifted numerator (3/10) or a B denominator (2/9) breaks it.
+        /// </summary>
+        [TestMethod]
+        public void Test_BiasCorrected_AsymmetricProportion_MatchesFormula()
+        {
+            var parent = new Normal(2.5, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 100);
+            var values = new double[] { 1d, 2d, 3d, 4d, 4.5, 6d, 7d, 8d, 9d };
+            var replicates = new IUnivariateDistribution[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                replicates[i] = new Deterministic(values[i]);
+
+            double alpha = 0.1;
+            var ci = boot.BiasCorrectedQuantileCI(new double[] { 0.5 }, alpha, replicates);
+
+            double bias = Normal.StandardZ(2d / 10d);
+            double lower = Statistics.Percentile(values, Normal.StandardCDF(2d * bias + Normal.StandardZ(alpha / 2d)), true);
+            double upper = Statistics.Percentile(values, Normal.StandardCDF(2d * bias + Normal.StandardZ(1d - alpha / 2d)), true);
+            Assert.AreEqual(lower, ci[0, 0], 1E-12);
+            Assert.AreEqual(upper, ci[0, 1], 1E-12);
+        }
+
+        /// <summary>
+        /// A sampled distribution that failed to fit contributes a NaN parameter set rather than a
+        /// null entry, matching BootstrapAnalysis.ParameterSets. Consumers index the array directly.
+        /// </summary>
+        [TestMethod]
+        public void Test_ProcessParameterSets_FillsFailuresWithNaN()
+        {
+            var probabilities = new double[] { 0.99, 0.9, 0.5, 0.1, 0.01 };
+            var dist = new Normal(3.122599, 0.5573654);
+            var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 200);
+            var sampled = boot.Distributions().Cast<UnivariateDistributionBase>().ToArray();
+            sampled[7] = null;
+
+            var results = new UncertaintyAnalysisResults(dist, sampled, probabilities, recordParameterSets: true);
+            var reference = boot.ParameterSets(sampled.Cast<IUnivariateDistribution>().ToArray());
+
+            Assert.HasCount(sampled.Length, results.ParameterSets);
+            for (int i = 0; i < sampled.Length; i++)
+            {
+                Assert.IsNotNull(results.ParameterSets[i], $"Parameter set {i} is null.");
+                Assert.HasCount(dist.NumberOfParameters, results.ParameterSets[i].Values);
+                for (int j = 0; j < dist.NumberOfParameters; j++)
+                {
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(reference[i].Values[j]),
+                        BitConverter.DoubleToInt64Bits(results.ParameterSets[i].Values[j]),
+                        $"Parameter set {i} value {j} differs from the BootstrapAnalysis form.");
+                }
+            }
+            Assert.IsTrue(double.IsNaN(results.ParameterSets[7].Values[0]));
+        }
+
+        /// <summary>
+        /// Test that summary probabilities average only the successful fits, and that a
+        /// replication set with no successful fit is rejected loudly — as a single error for
+        /// the all-null expected-probability path and as an aggregate of the per-set failures
+        /// for the distribution builder.
+        /// </summary>
+        [TestMethod]
+        public void Test_UsesOnlySuccessfulFits_AndRejectsAllFailures()
+        {
+            var parent = new Normal(0d, 1d);
+            var analysis = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 1234);
+            IUnivariateDistribution[] mixed = { new Normal(0d, 1d), null!, new Normal(1d, 1d) };
+
+            double[] mean = analysis.ExpectedProbabilities(new[] { 0d }, mixed);
+            double expected = 0.5d * (new Normal(0d, 1d).CDF(0d) + new Normal(1d, 1d).CDF(0d));
+            Assert.AreEqual(expected, mean[0], 1E-14);
+            Assert.Throws<InvalidOperationException>(() =>
+                analysis.ExpectedProbabilities(new[] { 0d }, new IUnivariateDistribution[] { null!, null! }));
+
+            var aggregate = Assert.Throws<AggregateException>(() => analysis.Distributions(new[]
+            {
+                new ParameterSet(new[] { 0d, -1d }, 0d),
+                new ParameterSet(new[] { double.NaN, 1d }, 0d),
+            }));
+            Assert.HasCount(2, aggregate.InnerExceptions);
+        }
+
+        /// <summary>
+        /// Verifies that the released one-argument bootstrap summary method tokens remain
+        /// available to already-compiled consumers.
+        /// </summary>
+        [TestMethod]
+        public void Test_OneArgumentSummaryMethods_RetainBinarySignatures()
+        {
+            Type listType = typeof(IList<double>);
+
+            Assert.IsNotNull(typeof(BootstrapAnalysis).GetMethod(
+                nameof(BootstrapAnalysis.Quantiles), new[] { listType }));
+            Assert.IsNotNull(typeof(BootstrapAnalysis).GetMethod(
+                nameof(BootstrapAnalysis.Probabilities), new[] { listType }));
+        }
+
+        /// <summary>
+        /// Test that the normal-approximation quantile interval preserves the sign of negative
+        /// quantiles: the transform applied around the point estimate must remain finite and
+        /// keep both interval endpoints on the data's side of zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_NormalQuantileCI_PreservesNegativeQuantiles()
+        {
+            var parent = new Normal(-10d, 1d);
+            var analysis = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 1234);
+            IUnivariateDistribution[] fits =
+            {
+                new Normal(-9.5d, 1d),
+                new Normal(-10d, 1.1d),
+                null!,
+                new Normal(-10.5d, 0.9d),
+            };
+
+            double[,] interval = analysis.NormalQuantileCI(new[] { 0.5d }, 0.1d, fits);
+            Assert.IsTrue(Tools.IsFinite(interval[0, 0]));
+            Assert.IsTrue(Tools.IsFinite(interval[0, 1]));
+            Assert.IsLessThan(0d, interval[0, 0]);
+            Assert.IsLessThan(0d, interval[0, 1]);
+        }
+
+        /// <summary>
+        /// Test that expected probabilities pair each quantile with its own probability after
+        /// the internal sort: unsorted input ordinates produce exactly the same value array as
+        /// the pre-sorted equivalent.
+        /// </summary>
+        [TestMethod]
+        public void Test_ExpectedProbabilities_InterpolationKeepsPairsSorted()
+        {
+            var parent = new Normal(0d, 1d);
+            var analysis = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 1234);
+            IUnivariateDistribution[] fits = { new Normal(0d, 1d), new Normal(1d, 2d) };
+            double[] sorted = { -3d, -1d, 0d, 2d, 5d };
+            double[] unsorted = { 2d, -3d, 5d, 0d, -1d };
+            double[] probabilities = { 0.1d, 0.5d, 0.9d };
+
+            double[] expected = analysis.ExpectedProbabilities(sorted, probabilities, fits);
+            double[] actual = analysis.ExpectedProbabilities(unsorted, probabilities, fits);
+            CollectionAssert.AreEqual(expected, actual);
+        }
+
+        /// <summary>
+        /// Test that Quantiles dimensions its output by the supplied distributions array — not by
+        /// the replication count — with orientation [replication, ordinate], writes a NaN row for
+        /// each null entry, and fills every non-null entry's row with that distribution's own
+        /// InverseCDF at the requested probabilities.
+        /// </summary>
+        [TestMethod]
+        public void Test_Quantiles_SuppliedDistributions_DimensionsNaNRowsAndValues()
+        {
+            var probabilities = new double[] { 0.1d, 0.5d, 0.9d };
+            var parent = new Normal(0d, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 200);
+            IUnivariateDistribution[] fits = { new Normal(0d, 1d), null!, new Normal(1d, 2d) };
+
+            double[,] result = boot.Quantiles(probabilities, fits);
+
+            Assert.AreEqual(3, result.GetLength(0));
+            Assert.AreEqual(probabilities.Length, result.GetLength(1));
+            for (int j = 0; j < probabilities.Length; j++)
+            {
+                Assert.IsTrue(double.IsNaN(result[1, j]), $"The null entry's row must be NaN at column {j}.");
+                Assert.IsTrue(Tools.IsFinite(result[0, j]));
+                Assert.IsTrue(Tools.IsFinite(result[2, j]));
+                Assert.AreEqual(fits[0].InverseCDF(probabilities[j]), result[0, j], 0d);
+                Assert.AreEqual(fits[2].InverseCDF(probabilities[j]), result[2, j], 0d);
+            }
+        }
+
+        /// <summary>
+        /// Test that Probabilities dimensions its output by the supplied distributions array — not
+        /// by the replication count — with orientation [replication, ordinate], writes a NaN row
+        /// for each null entry, and fills every non-null entry's row with that distribution's own
+        /// CDF at the requested quantiles.
+        /// </summary>
+        [TestMethod]
+        public void Test_Probabilities_SuppliedDistributions_DimensionsNaNRowsAndValues()
+        {
+            var quantiles = new double[] { -1d, 0.5d, 2d };
+            var parent = new Normal(0d, 1d);
+            var boot = new BootstrapAnalysis(parent, ParameterEstimationMethod.MethodOfMoments, 10, 200);
+            IUnivariateDistribution[] fits = { new Normal(0d, 1d), null!, new Normal(1d, 2d) };
+
+            double[,] result = boot.Probabilities(quantiles, fits);
+
+            Assert.AreEqual(3, result.GetLength(0));
+            Assert.AreEqual(quantiles.Length, result.GetLength(1));
+            for (int j = 0; j < quantiles.Length; j++)
+            {
+                Assert.IsTrue(double.IsNaN(result[1, j]), $"The null entry's row must be NaN at column {j}.");
+                Assert.IsTrue(Tools.IsFinite(result[0, j]));
+                Assert.IsTrue(Tools.IsFinite(result[2, j]));
+                Assert.AreEqual(fits[0].CDF(quantiles[j]), result[0, j], 0d);
+                Assert.AreEqual(fits[2].CDF(quantiles[j]), result[2, j], 0d);
             }
         }
 

@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -66,19 +68,97 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Test the ParallelMean method with the direct equation. Should also be the same as the arithmetic mean in this case.
+        /// Test the ParallelMean method against the sequential arithmetic mean, accumulated explicitly in index order.
         /// </summary>
         [TestMethod]
         public void Test_ParallelMean()
         {
-            // basic equation for parallel mean
-            var parallel = _sample1.AsParallel();
-            var valid = parallel.Sum() / parallel.Count();
+            // Sequential arithmetic mean: sum in index order, then divide by the count.
+            double sum = 0d;
+            for (int i = 0; i < _sample1.Length; i++)
+                sum += _sample1[i];
+            var valid = sum / _sample1.Length;
 
             double test = Numerics.Data.Statistics.Statistics.ParallelMean(_sample1);
             double regMean = Numerics.Data.Statistics.Statistics.Mean(_sample1);
             Assert.AreEqual(valid, test, 1E-6);
             Assert.AreEqual(regMean, test, 1E-6);
+        }
+
+        /// <summary>
+        /// Verify that ParallelMean is bitwise identical to the sequential Mean below the parallel
+        /// threshold.
+        /// </summary>
+        /// <remarks>
+        /// The summation tree depends only on the sample length, never on the processor count.
+        /// Samples below the fixed sequential threshold fall through to the sequential mean, so
+        /// the two must agree exactly on a magnitude-spanning sample, not merely to a tolerance —
+        /// a partition-ordered parallel reduction would differ in the last bits.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ParallelMean_MatchesSequentialMeanExactly()
+        {
+            var data = new double[1000];
+            for (int i = 0; i < data.Length; i++)
+            {
+                // Deterministic values spanning several orders of magnitude so any
+                // reassociation of the summation order would change the last bits.
+                data[i] = Math.Pow(10d, (i % 7) - 3) * (1d + i / 997d);
+            }
+
+            double parallel = Numerics.Data.Statistics.Statistics.ParallelMean(data);
+            double sequential = Numerics.Data.Statistics.Statistics.Mean(data);
+            Assert.AreEqual(sequential, parallel, 0d);
+        }
+
+        /// <summary>
+        /// Verify that the large-sample parallel reduction is bit-reproducible and matches the
+        /// fixed-chunk summation order exactly.
+        /// </summary>
+        /// <remarks>
+        /// Above the sequential threshold the mean is computed over a fixed number of chunks —
+        /// never derived from the processor count — each summed sequentially and merged serially
+        /// in chunk order, the same deterministic reduction the bootstrap's jackknife accumulation
+        /// uses. This test recomputes that exact summation tree sequentially and requires bitwise
+        /// agreement, which proves the parallel result is independent of the scheduler: a
+        /// scheduler-ordered accumulator (PLINQ or a shared Tools.ParallelAdd) cannot reproduce a
+        /// fixed tree on a magnitude-spanning sample. Repeated calls must also agree exactly.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ParallelMean_LargeSample_MatchesFixedChunkOrderExactly()
+        {
+            var data = new double[100000];
+            for (int i = 0; i < data.Length; i++)
+            {
+                // Deterministic values spanning several orders of magnitude so any
+                // reassociation of the summation order would change the last bits.
+                data[i] = Math.Pow(10d, (i % 9) - 4) * (1d + i / 99991d);
+            }
+
+            // The fixed-chunk reference: 64 chunks with balanced ranges, summed sequentially and
+            // merged in chunk order — the summation tree ParallelMean must reproduce.
+            const int chunks = 64;
+            var chunkSums = new double[chunks];
+            for (int c = 0; c < chunks; c++)
+            {
+                int start = (int)((long)c * data.Length / chunks);
+                int end = (int)((long)(c + 1) * data.Length / chunks);
+                double sum = 0d;
+                for (int i = start; i < end; i++)
+                    sum += data[i];
+                chunkSums[c] = sum;
+            }
+            double total = 0d;
+            for (int c = 0; c < chunks; c++)
+                total += chunkSums[c];
+            double expected = total / data.Length;
+
+            double first = Numerics.Data.Statistics.Statistics.ParallelMean(data);
+            double second = Numerics.Data.Statistics.Statistics.ParallelMean(data);
+            Assert.AreEqual(expected, first, 0d, "The parallel reduction must follow the fixed chunk order.");
+            Assert.AreEqual(first, second, 0d, "Repeated calls must be bit-identical.");
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(data), first,
+                Math.Abs(first) * 1E-12, "The chunked mean must agree with the sequential mean to rounding.");
         }
 
         /// <summary>
@@ -312,6 +392,47 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// The standard deviation, skew, and kurtosis of a sample recorded against a large datum
+        /// must match those of the datum-removed sample: all three are location invariant, while
+        /// the mean carries the datum.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Reference values computed with exact rational arithmetic (Python 3, fractions.Fraction)
+        /// on the IEEE doubles of the fixture, and cross-checked against Python scipy 1.17.1:
+        /// scipy.stats.skew(x, bias=False) = -1.0937835136996568 and
+        /// scipy.stats.kurtosis(x, bias=False) = 2.247619447041167, each agreeing with the exact
+        /// values below to within its own double-precision rounding.
+        /// </para>
+        /// <para>
+        /// Measured accuracy: on this fixture the accumulation reproduces the exact skew to 4E-16
+        /// and the exact excess kurtosis to 3E-15 relative error. The assertion deltas of 1E-12
+        /// and 1E-11 bound the rounding of the 13 to 15 significant-digit expected literals with
+        /// two to three orders of margin.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_ProductMoments_LocationInvariance()
+        {
+            var data = new double[] { 4999.873847, 5000.184353, 5001.217652, 5000.3752, 4999.791099, 5001.044619, 5000.663964, 4999.879402, 5001.277702, 5000.04844, 5001.799453, 4999.831996, 5000.908146, 5000.413566, 5001.525885, 5001.944514, 4997.601044, 4999.544628, 5001.555952, 5001.450008 };
+            var moments = Numerics.Data.Statistics.Statistics.ProductMoments(data);
+
+            Assert.AreEqual(5000.5465735, moments[0], 1E-6);
+            Assert.AreEqual(1.0203450178184, moments[1], 1E-12);
+            Assert.AreEqual(-1.0937835137001, moments[2], 1E-11);
+            Assert.AreEqual(2.24761944704189, moments[3], 1E-11);
+
+            // Location invariance against the same sample with the datum removed
+            var centered = new double[data.Length];
+            for (int i = 0; i < data.Length; i++)
+                centered[i] = data[i] - 5000d;
+            var centeredMoments = Numerics.Data.Statistics.Statistics.ProductMoments(centered);
+            Assert.AreEqual(centeredMoments[1], moments[1], 1E-11);
+            Assert.AreEqual(centeredMoments[2], moments[2], 1E-10);
+            Assert.AreEqual(centeredMoments[3], moments[3], 1E-10);
+        }
+
+        /// <summary>
         /// Test the LinearMoments method against the "samlmu()" method of the "lmom" package.
         /// </summary>
         /// <remarks>
@@ -332,6 +453,141 @@ namespace Data.Statistics
             Assert.AreEqual(trueVal2, lmoms[1], 1E-7);
             Assert.AreEqual(trueVal3, lmoms[2], 1E-7);
             Assert.AreEqual(trueVal4, lmoms[3], 1E-7);
+        }
+
+        /// <summary>
+        /// Test that the LinearMoments probability weighted moment numerators do not overflow for large samples.
+        /// </summary>
+        /// <remarks>
+        /// An evenly spaced sample xᵢ = 1 + 0.5 i is a linear function of the ranks, so its L-skewness
+        /// and L-kurtosis are analytically exactly zero at every sample length. The b₂ and b₃ numerators
+        /// exceed <see cref="int.MaxValue"/> at n = 46,343 and n = 1,293 respectively, so evaluating them
+        /// in integer arithmetic wraps silently and corrupts τ₃ and τ₄. See USACE-RMC/Numerics#146.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ComputeLinearMoments_LargeSample()
+        {
+            // n = 1292 is the last length whose b₃ numerator fits in an int; 1293 is the first that does not.
+            foreach (int n in new[] { 1292, 1293, 1300 })
+            {
+                var data = new double[n];
+                for (int i = 0; i < n; i++) data[i] = 1d + 0.5d * i;
+
+                var lmoms = Numerics.Data.Statistics.Statistics.LinearMoments(data);
+                Assert.AreEqual(0d, lmoms[2], 1E-12, $"L-skewness (τ₃) is not zero at n = {n}.");
+                Assert.AreEqual(0d, lmoms[3], 1E-12, $"L-kurtosis (τ₄) is not zero at n = {n}.");
+            }
+
+            // Below the overflow the numerators are exact integers, so the published reference case is unchanged.
+            var reference = new double[] { 1953d, 1939d, 1677d, 1692d, 2051d, 2371d, 2022d, 1521d, 1448d, 1825d, 1363d, 1760d, 1672d, 1603d, 1244d, 1521d, 1783d, 1560d, 1357d, 1673d, 1625d, 1425d, 1688d, 1577d, 1736d, 1640d, 1584d, 1293d, 1277d, 1742d, 1491d };
+            var referenceMoments = Numerics.Data.Statistics.Statistics.LinearMoments(reference);
+            Assert.AreEqual(1648.8064516d, referenceMoments[0], 1E-7);
+            Assert.AreEqual(138.2365591d, referenceMoments[1], 1E-7);
+            Assert.AreEqual(0.1033903d, referenceMoments[2], 1E-7);
+            Assert.AreEqual(0.1940943d, referenceMoments[3], 1E-7);
+        }
+
+        /// <summary>
+        /// Test LinearMoments on a large, genuinely skewed sample against an exact rational-arithmetic oracle.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the non-degenerate companion to <see cref="Test_ComputeLinearMoments_LargeSample"/>. That
+        /// test uses an evenly spaced sample whose τ₃ and τ₄ are analytically exactly zero at every length, so
+        /// it cannot distinguish a sign error, a b₂-only correction or a partial fix from a complete one. This
+        /// test pins all four moments to non-zero values at three sample lengths.
+        /// </para>
+        /// <para>
+        /// <b>The sample.</b> xᵢ = kᵢ² / 64 with kᵢ = (i · 7919) mod 10007 for i = 1..n. Every value is an exact
+        /// integer divided by 64, a power of two, so the sample is exactly representable in IEEE-754 and the
+        /// test reproduces the oracle's input bit for bit. The generator itself cannot overflow: i · 7919 peaks
+        /// at 11,561,740 and k² at 100,120,036, both far inside <see cref="int.MaxValue"/>. Squaring a
+        /// near-uniform k makes the sample right-skewed, which is what gives it a non-zero τ₃.
+        /// </para>
+        /// <para>
+        /// <b>The oracle.</b> Computed in exact rational arithmetic, where overflow is impossible by
+        /// construction, via the textbook binomial probability-weighted-moment form
+        /// b_r = (1/n) · Σᵢ C(i−1, r) / C(n−1, r) · x₍ᵢ₎ — a different arithmetic route than the
+        /// falling-factorial form the library uses. The values also agree with closed-form theory: this sample
+        /// is a systematic enumeration of a squared uniform, and for the quantile function Q(p) = p² theory
+        /// gives λ₁/λ₂ = 2, τ₃ = 0.2 and τ₄ = 0 exactly. The oracle returns 2.0013, 0.19955 and −2.2E−05,
+        /// converging on those with the expected finite-sample discreteness, so it is not merely
+        /// self-consistent.
+        /// </para>
+        /// <para>
+        /// <b>The tolerance, and why τ₄ needs an absolute floor.</b> The oracle values are exact, so the only
+        /// error present is the library's own double accumulation — but that error is absolute, not relative,
+        /// and τ₄ is the one moment small enough for the difference to matter. τ₄ is recovered as
+        /// 5·(2·(2·b₃ − 3·b₂) + b₀)/λ₂ + 6, an O(1) quantity plus 6, so a τ₄ near zero is the residue of
+        /// cancelling two numbers of order six. Its accuracy is therefore floored near the roundoff of six
+        /// accumulated across n terms, independent of how small τ₄ itself is. Measured against the exact
+        /// oracle, the library agrees to 0 ulp on λ₁, 1.1E-15 relative on λ₂ and 2.5E-14 relative on τ₃, but
+        /// only to 1.9E-14 and 2.7E-14 <i>absolute</i> on τ₄ — which at τ₄ ≈ 2.2E-05 is 8.5E-10 in relative
+        /// terms. The deviation is accumulation arithmetic, not a defect: an independent double-precision
+        /// evaluation of the same formula reproduces the returned value digit for digit. The tolerance
+        /// below is therefore relative 1E-12 with an absolute floor of 1E-13, roughly four times the worst
+        /// measured deviation. The floor costs the test nothing: the overflow it guards moves τ₄ by
+        /// 1.9E-01 and 1.7E+01, twelve to fifteen orders of magnitude above it.
+        /// </para>
+        /// <para>
+        /// <b>What is being guarded.</b> With the probability-weighted-moment numerators formed in 32-bit
+        /// integer arithmetic, the products wrap silently on large samples (USACE-RMC/Numerics#146): on
+        /// this same sample τ₄ comes back as −0.185 at n = 1293 against an exact −3.80E−06, and as −17.01
+        /// at n = 1460 against an exact +1.40E−04. τ₄ is bounded roughly in [−0.25, 1] for any real
+        /// distribution, so −17.01 is not an imprecise answer but a meaningless one.
+        /// </para>
+        /// <para>
+        /// <b>The three lengths are chosen to straddle the overflow threshold.</b> n = 1292 is the last
+        /// length whose b₃ numerator fits in an <see cref="int"/>, so integer arithmetic is exact there;
+        /// that case pins the correct answer but does not by itself guard the bug. n = 1293 is the first
+        /// length that overflows, so it pins the threshold itself: exact τ₄ is −3.797E−06 where the
+        /// wrapped products give −0.185. n = 1460 is four years of daily data, the scenario the issue
+        /// reports as triggering it in practice. n = 1293 is also the clearest evidence that the tolerance
+        /// floor below is the right shape: τ₄ there is six times smaller than at n = 1292, yet the
+        /// absolute error is unchanged in order (1.56E-14 against 1.88E-14), which is what a
+        /// magnitude-independent cancellation floor looks like and is not what a relative error bound
+        /// would predict.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_ComputeLinearMoments_ExactOracle()
+        {
+            // Exact L-moments {λ₁, λ₂, τ₃, τ₄} keyed by sample length.
+            var oracle = new Dictionary<int, double[]>
+            {
+                { 1292, new[] { 522512.5024550116d, 261084.88504577902d, 0.19954627498563463d, -2.204844394426912E-05d } },
+                { 1293, new[] { 522161.99051382445d, 261046.5194639539d, 0.19994530607607433d, -3.796995958157631E-06d } },
+                { 1460, new[] { 522816.5913848459d, 261222.97693894972d, 0.19969563852408587d, 1.4021596010174597E-04d } }
+            };
+            var names = new[] { "L-mean (λ₁)", "L-scale (λ₂)", "L-skewness (τ₃)", "L-kurtosis (τ₄)" };
+
+            foreach (var testCase in oracle)
+            {
+                int n = testCase.Key;
+                var data = new double[n];
+                for (int i = 1; i <= n; i++)
+                {
+                    int k = (i * 7919) % 10007;
+                    data[i - 1] = k * (double)k / 64d;
+                }
+
+                var lmoms = Numerics.Data.Statistics.Statistics.LinearMoments(data);
+                for (int m = 0; m < 4; m++)
+                {
+                    double expected = testCase.Value[m];
+                    // Relative 1E-12, with an absolute floor of 1E-13 that binds only on τ₄. τ₄ is the
+                    // residue of cancelling two O(6) quantities, so its error is absolute (measured at most
+                    // 2.7E-14) and does not shrink with τ₄ itself. See the remarks above.
+                    double tolerance = Math.Max(Math.Abs(expected) * 1E-12, 1E-13);
+                    Assert.AreEqual(expected, lmoms[m], tolerance,
+                        $"{names[m]} disagrees with the exact oracle at n = {n}.");
+                }
+
+                // τ₄ is bounded roughly in [-0.25, 1] for any real distribution, while the wrapped
+                // integer products give -17.01 at n = 1460, so this alone separates a corrupted result
+                // from a merely imprecise one.
+                Assert.IsTrue(lmoms[3] > -0.25d && lmoms[3] < 1d, $"L-kurtosis (τ₄) is out of range at n = {n}.");
+            }
         }
 
         /// <summary>
@@ -375,6 +631,35 @@ namespace Data.Statistics
             double val8 = Numerics.Data.Statistics.Statistics.Percentile(_sample1, 1);
             double trueVal8 = 337d;
             Assert.AreEqual(trueVal8, val8, 1E-2);
+        }
+
+        /// <summary>
+        /// Test that the Percentile methods reject a null sample and a non-finite percentile.
+        /// </summary>
+        /// <remarks>
+        /// Every comparison against NaN is false, so a NaN percentile must be rejected explicitly: without
+        /// the explicit test it passes the range check and reaches the interpolation index, where the
+        /// float-to-int conversion produces an out-of-range index whose failure surfaces as an indexer
+        /// exception — also an <see cref="ArgumentOutOfRangeException"/>, but with <c>ParamName</c>
+        /// "index". The assertions therefore check <c>ParamName</c> as well as the exception type, which
+        /// is what distinguishes the contract rejection from the accidental one. Both infinities are
+        /// rejected by the range check alone.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Percentile_InvalidArguments()
+        {
+            var nanScalar = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NaN));
+            Assert.AreEqual("k", nanScalar.ParamName);
+            var positiveInfinity = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.PositiveInfinity));
+            Assert.AreEqual("k", positiveInfinity.ParamName);
+            var negativeInfinity = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, double.NegativeInfinity));
+            Assert.AreEqual("k", negativeInfinity.ParamName);
+            var nanEntry = Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, new double[] { 0.5d, double.NaN }));
+            Assert.AreEqual("k", nanEntry.ParamName);
+
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(null, 0.5d));
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(null, new double[] { 0.5d }));
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Percentile(_sample1, (IList<double>)null));
         }
 
         /// <summary>
@@ -455,6 +740,35 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Verify that a tie run reaching the final sorted element records its length in the ties array.
+        /// </summary>
+        /// <remarks>
+        /// A trailing tie run closes at the end of the sorted array rather than at a later, distinct
+        /// value, and its length is recorded like any interior run's: for this fixture ties[6] == 2.
+        /// Hand-computed oracle: sorted data are {1, 2, 3, 3, 5, 5, 5}; the {3, 3} run closes at
+        /// sorted position 3 with length - 1 = 1, and the trailing {5, 5, 5} run ends at sorted
+        /// position 6 with length - 1 = 2.
+        /// </remarks>
+        [TestMethod]
+        public void Test_RanksInPlace_Ties_TrailingRunIsRecorded()
+        {
+            var data = new double[] { 1.0, 3.0, 3.0, 2.0, 5.0, 5.0, 5.0 };
+            var ranks = Numerics.Data.Statistics.Statistics.RanksInPlace(data, out var ties);
+
+            var validRanks = new double[] { 1.0, 3.5, 3.5, 2.0, 6.0, 6.0, 6.0 };
+            for (int i = 0; i < validRanks.Length; i++)
+            {
+                Assert.AreEqual(validRanks[i], ranks[i]);
+            }
+
+            var validTies = new double[] { 0, 0, 0, 1, 0, 0, 2 };
+            for (int i = 0; i < validTies.Length; i++)
+            {
+                Assert.AreEqual(validTies[i], ties[i]);
+            }
+        }
+
+        /// <summary>
         /// Test the Entropy function against the value derived from the direct function: sum of p*ln(p)
         /// </summary>
         [TestMethod]
@@ -491,6 +805,280 @@ namespace Data.Statistics
             // Data with zero should return NaN (not 0 or Infinity)
             var data2 = new double[] { 1, 2, 0, 4 };
             Assert.AreEqual(double.NaN, Numerics.Data.Statistics.Statistics.HarmonicMean(data2));
+        }
+
+        /// <summary>
+        /// Test the jackknife edge contracts: a single-element sample returns a zero standard
+        /// error without evaluating an empty sample, and each resampling callback receives its
+        /// own isolated sample copy so the source data is never mutated.
+        /// </summary>
+        [TestMethod]
+        public void Test_JackKnife_SingleElementAndCallbackIsolation()
+        {
+            int calls = 0;
+            double standardError = Numerics.Data.Statistics.Statistics.JackKnifeStandardError(new[] { 5d }, sample =>
+            {
+                Interlocked.Increment(ref calls);
+                return sample.Count;
+            });
+            Assert.AreEqual(0d, standardError, 0d);
+            Assert.AreEqual(0, calls, "The single-element standard error does not evaluate an empty sample.");
+
+            double[] single = Numerics.Data.Statistics.Statistics.JackKnifeSample(new[] { 5d }, sample =>
+            {
+                Interlocked.Increment(ref calls);
+                return sample.Count;
+            });
+            Assert.IsNotNull(single);
+            Assert.AreEqual(0d, single[0], 0d);
+            Assert.AreEqual(1, calls);
+
+            double[] original = { 1d, 2d, 3d, 4d };
+            var callbackSamples = new List<IList<double>>();
+            object sync = new object();
+            Numerics.Data.Statistics.Statistics.JackKnifeSample(original, sample =>
+            {
+                lock (sync) callbackSamples.Add(sample);
+                if (sample.Count > 0) sample[0] = -100d;
+                return sample.Count;
+            });
+            CollectionAssert.AreEqual(new[] { 1d, 2d, 3d, 4d }, original);
+            Assert.HasCount(original.Length, callbackSamples);
+            Assert.AreEqual(original.Length, callbackSamples.Distinct().Count());
+        }
+
+        /// <summary>
+        /// Unit weights take arithmetically identical paths to the unweighted statistics, so the
+        /// weighted mean, skewness, kurtosis, and percentile must match bit-for-bit; the unweighted
+        /// variance uses an incremental update formula, so unit weights agree to rounding there.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_UnitWeights_MatchUnweightedExactly()
+        {
+            var data = new double[] { 3d, 1d, 4d, 1.5d, 9d, 2.5d, 6d };
+            var weights = new double[] { 1d, 1d, 1d, 1d, 1d, 1d, 1d };
+
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(data), Numerics.Data.Statistics.Statistics.Mean(data, weights), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Skewness(data), Numerics.Data.Statistics.Statistics.Skewness(data, weights), 0d);
+            // The weighted kurtosis routes through normalized central moments for reliability-weight
+            // scale invariance, so it agrees to rounding rather than bit-for-bit.
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Kurtosis(data), Numerics.Data.Statistics.Statistics.Kurtosis(data, weights), 1E-13 * Math.Abs(Numerics.Data.Statistics.Statistics.Kurtosis(data)));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(data), Numerics.Data.Statistics.Statistics.Variance(data, weights), 1E-13 * Numerics.Data.Statistics.Statistics.Variance(data));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.StandardDeviation(data), Numerics.Data.Statistics.Statistics.StandardDeviation(data, weights), 1E-13);
+
+            // Dyadic percentile levels on a 5-point sample interpolate through identical arithmetic.
+            var five = new double[] { 30d, 10d, 50d, 20d, 40d };
+            var unit = new double[] { 1d, 1d, 1d, 1d, 1d };
+            foreach (double k in new[] { 0d, 0.25d, 0.375d, 0.5d, 0.75d, 1d })
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(five, k), Numerics.Data.Statistics.Statistics.Percentile(five, k, unit), 0d);
+            }
+        }
+
+        /// <summary>
+        /// Under the frequency convention, integer weights must reproduce the unweighted statistics
+        /// of the replicated sample: mean, variance, standard deviation, skewness, and kurtosis.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_IntegerFrequencyWeights_MatchReplicatedSample()
+        {
+            var data = new double[] { 2d, 5d, 7d, 11d };
+            var weights = new double[] { 1d, 3d, 2d, 4d };
+            var replicated = new double[] { 2d, 5d, 5d, 5d, 7d, 7d, 11d, 11d, 11d, 11d };
+
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(replicated), Numerics.Data.Statistics.Statistics.Mean(data, weights), 1E-13 * Math.Abs(Numerics.Data.Statistics.Statistics.Mean(replicated)));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(replicated), Numerics.Data.Statistics.Statistics.Variance(data, weights), 1E-12 * Numerics.Data.Statistics.Statistics.Variance(replicated));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.StandardDeviation(replicated), Numerics.Data.Statistics.Statistics.StandardDeviation(data, weights), 1E-12 * Numerics.Data.Statistics.Statistics.StandardDeviation(replicated));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Skewness(replicated), Numerics.Data.Statistics.Statistics.Skewness(data, weights), 1E-12 * Math.Abs(Numerics.Data.Statistics.Statistics.Skewness(replicated)));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Kurtosis(replicated), Numerics.Data.Statistics.Statistics.Kurtosis(data, weights), 1E-12 * Math.Abs(Numerics.Data.Statistics.Statistics.Kurtosis(replicated)));
+        }
+
+        /// <summary>
+        /// The reliability convention is scale-invariant: any equal weight vector reproduces the
+        /// unweighted variance, skewness, and kurtosis (dyadic weights make the reduction exact),
+        /// while the frequency convention deliberately reads scaled weights as replication.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_ReliabilityEqualWeights_MatchUnweighted()
+        {
+            var data = new double[] { 3d, 1d, 4d, 1.5d, 9d, 2.5d, 6d, 8d };
+            var weights = new double[] { 0.5d, 0.5d, 0.5d, 0.5d, 0.5d, 0.5d, 0.5d, 0.5d };
+
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(data), Numerics.Data.Statistics.Statistics.Variance(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 1E-13 * Numerics.Data.Statistics.Statistics.Variance(data));
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Skewness(data), Numerics.Data.Statistics.Statistics.Skewness(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Kurtosis(data), Numerics.Data.Statistics.Statistics.Kurtosis(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 1E-13 * Math.Abs(Numerics.Data.Statistics.Statistics.Kurtosis(data)));
+
+            // Frequency semantics with weight 2 everywhere equal the doubled (replicated) sample.
+            var doubled = new double[] { 2d, 2d, 2d, 2d, 2d, 2d, 2d, 2d };
+            var replicated = new double[16];
+            for (int i = 0; i < data.Length; i++) { replicated[2 * i] = data[i]; replicated[2 * i + 1] = data[i]; }
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(replicated), Numerics.Data.Statistics.Statistics.Variance(data, doubled, Numerics.Data.Statistics.WeightType.Frequency), 1E-12 * Numerics.Data.Statistics.Statistics.Variance(replicated));
+        }
+
+        /// <summary>
+        /// The reliability variance matches the closed form s2 / (W - sum(w^2)/W) on a hand-computed
+        /// three-point fixture: s2 = 1.56, W = 1, sum(w^2) = 0.38, variance = 1.56 / 0.62; the
+        /// weighted mean of the fixture is 2.8.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedVariance_Reliability_ClosedForm()
+        {
+            var data = new double[] { 1d, 2d, 4d };
+            var weights = new double[] { 0.2d, 0.3d, 0.5d };
+            double expected = 1.56d / 0.62d;
+            Assert.AreEqual(expected, Numerics.Data.Statistics.Statistics.Variance(data, weights, Numerics.Data.Statistics.WeightType.Reliability), 1E-14 * expected);
+            Assert.AreEqual(2.8d, Numerics.Data.Statistics.Statistics.Mean(data, weights), 1E-15);
+        }
+
+        /// <summary>
+        /// The weighted percentile pins its plotting-position convention p(i) = A(i)/(A(i)+B(i)):
+        /// at every position knot the integer-weight percentile equals the replicated-sample
+        /// percentile exactly, and the interpolated value between knots follows the convention.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedPercentile_IntegerWeights_KnotExact()
+        {
+            var data = new double[] { 2d, 5d, 7d };
+            var weights = new double[] { 1d, 3d, 2d };
+            var replicated = new double[] { 2d, 5d, 5d, 5d, 7d, 7d };
+
+            // Positions: p0 = 0, p1 = 1/3, p2 = 1.
+            double p1 = 1d / 3d;
+            Assert.AreEqual(2d, Numerics.Data.Statistics.Statistics.Percentile(data, 0d, weights), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(replicated, p1), Numerics.Data.Statistics.Statistics.Percentile(data, p1, weights), 0d);
+            Assert.AreEqual(5d, Numerics.Data.Statistics.Statistics.Percentile(data, p1, weights), 0d);
+            Assert.AreEqual(7d, Numerics.Data.Statistics.Statistics.Percentile(data, 1d, weights), 0d);
+
+            // Between knots the convention interpolates between adjacent positions:
+            // at k = 0.5, theta = (0.5 - 1/3)/(1 - 1/3) = 0.25, giving 5 + 0.25*(7 - 5) = 5.5.
+            Assert.AreEqual(5.5d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.5d, weights), 1E-14);
+        }
+
+        /// <summary>
+        /// Zero-weight entries carry no mass: dropping them and weighting them zero produce
+        /// identical percentiles and moments.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_ZeroWeightEntries_Dropped()
+        {
+            var data = new double[] { 1d, 99d, 2d, 3d };
+            var weights = new double[] { 1d, 0d, 1d, 1d };
+            var kept = new double[] { 1d, 2d, 3d };
+            var keptWeights = new double[] { 1d, 1d, 1d };
+            foreach (double k in new[] { 0d, 0.25d, 0.5d, 0.75d, 1d })
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(kept, k, keptWeights), Numerics.Data.Statistics.Statistics.Percentile(data, k, weights), 0d);
+            }
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Mean(kept, keptWeights), Numerics.Data.Statistics.Statistics.Mean(data, weights), 0d);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.Variance(kept, keptWeights), Numerics.Data.Statistics.Statistics.Variance(data, weights), 0d);
+        }
+
+        /// <summary>
+        /// Degenerate samples: a single point returns itself at every percentile; a single point
+        /// leaves the variance undefined (NaN), matching the unweighted convention; all mass on one
+        /// point behaves as a single-point sample; and a frequency-weight total at or below one
+        /// leaves the Bessel denominator non-positive, so the variance is NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_DegenerateSamples()
+        {
+            Assert.AreEqual(42d, Numerics.Data.Statistics.Statistics.Percentile(new double[] { 42d }, 0.5d, new double[] { 7d }), 0d);
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Variance(new double[] { 42d }, new double[] { 7d })));
+            Assert.AreEqual(9d, Numerics.Data.Statistics.Statistics.Percentile(new double[] { 9d, 5d }, 0.5d, new double[] { 3d, 0d }), 0d);
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Variance(new double[] { 1d, 2d }, new double[] { 0.3d, 0.3d }, Numerics.Data.Statistics.WeightType.Frequency)));
+        }
+
+        /// <summary>
+        /// The bias corrections of the weighted higher moments have poles in the effective sample
+        /// size: n = 2 for skewness and n = 3 for kurtosis. The effective sample size is continuous,
+        /// so ordinary weights - normalized frequency weights, or reliability weights concentrated on
+        /// two entries - can land at or past a pole, where the correction is undefined or changes
+        /// sign; the estimators must answer NaN there, matching the weighted variance's convention at
+        /// its own denominator, and stay finite just above the pole.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_HigherMoments_EffectiveSampleSizePoles()
+        {
+            // Frequency weights summing to 1.5: n = 1.5 sits past the skewness pole at n = 2, where
+            // the correction's sign is inverted. Unguarded, this returned -1.03 for a right-skewed
+            // sample.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Skewness(new double[] { 1d, 2d, 6d }, new double[] { 0.5d, 0.5d, 0.5d })));
+            // Frequency weights summing to exactly 2 sit on the pole itself.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Skewness(new double[] { 1d, 6d }, new double[] { 1d, 1d })));
+            // Reliability weights concentrated on two entries: n = 2.06 sits past the kurtosis pole
+            // at n = 3. Unguarded, this returned a large finite value of the wrong sign.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Kurtosis(new double[] { 1d, 2d, 3d, 4d, 5d }, new double[] { 1d, 1d, 0.01d, 0.01d, 0.01d }, Numerics.Data.Statistics.WeightType.Reliability)));
+            // Frequency weights summing to exactly 3 sit on the kurtosis pole itself.
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Kurtosis(new double[] { 1d, 2d, 6d }, new double[] { 1d, 1d, 1d })));
+            // Just above the poles both estimators are defined and finite.
+            Assert.IsGreaterThan(0d, Numerics.Data.Statistics.Statistics.Skewness(new double[] { 1d, 2d, 6d }, new double[] { 1d, 1d, 0.5d }));
+            Assert.IsFalse(double.IsNaN(Numerics.Data.Statistics.Statistics.Kurtosis(new double[] { 1d, 2d, 3d, 6d }, new double[] { 1d, 1d, 1d, 0.5d })));
+        }
+
+        /// <summary>
+        /// A weight that dominates the total cancels the plotting-position denominator
+        /// total - w(i) to zero in floating point, which unguarded turns every interior percentile
+        /// into 0/0 = NaN. For two points the exact positions are 0 and 1 regardless of the weights,
+        /// so the percentile must interpolate between the two values, in either dominance order.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedPercentile_ExtremeDominantWeight()
+        {
+            var data = new double[] { 10d, 20d };
+            Assert.AreEqual(15d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.5d, new double[] { 1E300d, 1E-300d }), 0d);
+            Assert.AreEqual(12.5d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.25d, new double[] { 1E300d, 1E-300d }), 0d);
+            Assert.AreEqual(15d, Numerics.Data.Statistics.Statistics.Percentile(data, 0.5d, new double[] { 1E-300d, 1E300d }), 0d);
+        }
+
+        /// <summary>
+        /// The multi-percentile overload matches the scalar overload, the sorted-data flag matches
+        /// the unsorted call, and an empty percentile list returns an empty array.
+        /// </summary>
+        [TestMethod]
+        public void Test_WeightedPercentile_Overloads_Consistent()
+        {
+            var data = new double[] { 9d, 1d, 5d, 3d, 7d };
+            var weights = new double[] { 0.5d, 1d, 2d, 1.5d, 1d };
+            var ks = new double[] { 0d, 0.2d, 0.4d, 0.6d, 0.8d, 1d };
+            var batch = Numerics.Data.Statistics.Statistics.Percentile(data, ks, weights);
+            for (int i = 0; i < ks.Length; i++)
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(data, ks[i], weights), batch[i], 0d);
+            }
+
+            var sortedData = new double[] { 1d, 3d, 5d, 7d, 9d };
+            var sortedWeights = new double[] { 1d, 1.5d, 2d, 1d, 0.5d };
+            foreach (double k in ks)
+            {
+                Assert.AreEqual(Numerics.Data.Statistics.Statistics.Percentile(data, k, weights), Numerics.Data.Statistics.Statistics.Percentile(sortedData, k, sortedWeights, dataIsSorted: true), 0d);
+            }
+
+            Assert.IsEmpty(Numerics.Data.Statistics.Statistics.Percentile(data, new double[0], weights));
+        }
+
+        /// <summary>
+        /// Guard matrix for the weighted statistics: nulls, length mismatches, invalid weights,
+        /// all-zero weights, empty data, and out-of-range percentile levels all throw the
+        /// documented exceptions, and NaN data propagates NaN through the moments.
+        /// </summary>
+        [TestMethod]
+        public void Test_Weighted_GuardMatrix()
+        {
+            var data = new double[] { 1d, 2d };
+            var weights = new double[] { 1d, 1d };
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Mean(null!, weights));
+            Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Mean(data, null!));
+            Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d, -0.5d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d, double.NaN }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 1d, double.PositiveInfinity }));
+            Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Mean(data, new double[] { 0d, 0d }));
+            Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Percentile(new double[0], 0.5d, new double[0]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, double.NaN, weights));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, -0.1d, weights));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, 1.1d, weights));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, new double[] { 0.5d, 2d }, weights));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Mean(new double[] { 1d, double.NaN }, weights)));
         }
     }
 }

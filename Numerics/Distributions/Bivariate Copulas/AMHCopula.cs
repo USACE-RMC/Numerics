@@ -143,19 +143,28 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
-        public override double[] InverseCDF(double u, double v)
+        /// <remarks>
+        /// Uses the Ali-Mikhail-Haq closed-form conditional inversion, which solves the
+        /// quadratic of Johnson (1987, p.362) in 1 − v.
+        /// </remarks>
+        public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
             //Johnson (1987, p.362).
-            double w = v;
+            double w = t;
             double b = 1d - u;
             double A = w * Math.Pow(Theta * b, 2) - Theta;
             double B = Theta + 1d - 2d * Theta * b * w;
             double C = w - 1d;
-            v = (-B + Math.Sqrt(B * B - 4d * A * C)) / 2d / A;
-            v = 1d - v;
-            return [u, v];
+            double v = (-B + Math.Sqrt(B * B - 4d * A * C)) / 2d / A;
+            return 1d - v;
+        }
+
+        /// <inheritdoc/>
+        public override double[] InverseCDF(double u, double v)
+        {
+            return [u, InverseConditionalCDF(u, v)];
         }
 
         /// <summary>

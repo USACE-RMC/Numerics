@@ -461,5 +461,204 @@ namespace Distributions.Univariate
 
             Assert.Throws<ArgumentOutOfRangeException>(() => distribution.CDF(125d));
         }
+
+        /// <summary>
+        /// The extrapolation default (None) must reproduce the historical endpoint hold exactly —
+        /// including the far-tail inverse guards — so every existing model is bit-identical. This
+        /// is the bit-identity gate for the distribution's extrapolation property.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Extrapolation_DefaultNone_MatchesEndpointHold()
+        {
+            var dist = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d });
+            Assert.AreEqual(ExtrapolationSides.None, dist.Extrapolation);
+
+            Assert.AreEqual(0.1d, dist.CDF(50d));
+            Assert.AreEqual(0.9d, dist.CDF(400d));
+            Assert.AreEqual(100d, dist.InverseCDF(0.01d));
+            Assert.AreEqual(300d, dist.InverseCDF(0.99d));
+            Assert.AreEqual(100d, dist.InverseCDF(0d));
+            Assert.AreEqual(300d, dist.InverseCDF(1d));
+            Assert.AreEqual(100d, dist.InverseCDF(1E-17));
+            Assert.AreEqual(300d, dist.InverseCDF(1d - 1E-17));
+            Assert.AreEqual(0d, dist.PDF(50d));
+            Assert.AreEqual(0d, dist.PDF(400d));
+        }
+
+        /// <summary>
+        /// Sided extension on the default normal-Z probability axis, hand-computed from the
+        /// boundary segments in z-space, both directions, including the one-sided holds. The
+        /// extrapolation sides are defined in X space.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Extrapolation_SidedExtension_NormalZ()
+        {
+            var dist = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d })
+            {
+                Extrapolation = ExtrapolationSides.Both
+            };
+            double z01 = Normal.StandardZ(0.1);
+            double z05 = Normal.StandardZ(0.5);
+            double z09 = Normal.StandardZ(0.9);
+
+            // CDF extends the boundary segments linearly in z and back-transforms into (0, 1).
+            double validLow = Normal.StandardCDF(z01 + (z05 - z01) / 100d * (50d - 100d));
+            double validHigh = Normal.StandardCDF(z09 + (z09 - z05) / 100d * (400d - 300d));
+            Assert.AreEqual(validLow, dist.CDF(50d), 1E-12);
+            Assert.AreEqual(validHigh, dist.CDF(400d), 1E-12);
+            Assert.IsTrue(dist.CDF(50d) > 0d && dist.CDF(400d) < 1d);
+
+            // InverseCDF extends the same segments beyond the table span.
+            double validXLow = 100d + (200d - 100d) / (z05 - z01) * (Normal.StandardZ(0.01) - z01);
+            double validXHigh = 200d + (300d - 200d) / (z09 - z05) * (Normal.StandardZ(0.99) - z05);
+            Assert.AreEqual(validXLow, dist.InverseCDF(0.01d), 1E-9);
+            Assert.AreEqual(validXHigh, dist.InverseCDF(0.99d), 1E-9);
+
+            // The extended pair stays consistent.
+            Assert.AreEqual(0.01d, dist.CDF(dist.InverseCDF(0.01d)), 1E-10);
+            Assert.AreEqual(0.99d, dist.CDF(dist.InverseCDF(0.99d)), 1E-10);
+
+            // One-sided policies hold the other side, in X space.
+            var below = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d })
+            {
+                Extrapolation = ExtrapolationSides.Below
+            };
+            Assert.AreEqual(validLow, below.CDF(50d), 1E-12);
+            Assert.AreEqual(0.9d, below.CDF(400d));
+            Assert.AreEqual(validXLow, below.InverseCDF(0.01d), 1E-9);
+            Assert.AreEqual(300d, below.InverseCDF(0.99d));
+
+            var above = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d })
+            {
+                Extrapolation = ExtrapolationSides.Above
+            };
+            Assert.AreEqual(0.1d, above.CDF(50d));
+            Assert.AreEqual(validHigh, above.CDF(400d), 1E-12);
+            Assert.AreEqual(100d, above.InverseCDF(0.01d));
+            Assert.AreEqual(validXHigh, above.InverseCDF(0.99d), 1E-9);
+        }
+
+        /// <summary>
+        /// A probability axis under a None transform extends linearly and can leave the unit
+        /// interval; the CDF must clamp its output to [0, 1] under extrapolation.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Extrapolation_CdfClamp_LinearProbabilityAxis()
+        {
+            var dist = new EmpiricalDistribution(new[] { 0d, 1d }, new[] { 0.2d, 0.8d })
+            {
+                ProbabilityTransform = Transform.None,
+                Extrapolation = ExtrapolationSides.Both
+            };
+            Assert.AreEqual(1d, dist.CDF(2d));
+            Assert.AreEqual(0d, dist.CDF(-1d));
+            Assert.AreEqual(0.5d, dist.CDF(0.5d), 1E-12);
+        }
+
+        /// <summary>
+        /// A survival-form table (descending stored probabilities) must extend the same X sides
+        /// as its ascending twin: the complemented CDF branch and the X-side to lookup-side
+        /// mapping in the inverse are both exercised.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Extrapolation_DescendingOrientation_MatchesAscending()
+        {
+            var ascending = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d })
+            {
+                Extrapolation = ExtrapolationSides.Both
+            };
+            var survival = new EmpiricalDistribution(
+                new[] { 100d, 200d, 300d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                SortOrder.Ascending,
+                SortOrder.Descending)
+            {
+                Extrapolation = ExtrapolationSides.Both
+            };
+
+            // Same distribution, either storage orientation: extended values agree.
+            Assert.AreEqual(ascending.CDF(50d), survival.CDF(50d), 1E-12);
+            Assert.AreEqual(ascending.CDF(400d), survival.CDF(400d), 1E-12);
+            Assert.AreEqual(ascending.InverseCDF(0.01d), survival.InverseCDF(0.01d), 1E-8);
+            Assert.AreEqual(ascending.InverseCDF(0.99d), survival.InverseCDF(0.99d), 1E-8);
+
+            // One-sided X-space semantics on the survival form: Below extends only the low-X end.
+            var survivalBelow = new EmpiricalDistribution(
+                new[] { 100d, 200d, 300d },
+                new[] { 0.9d, 0.5d, 0.1d },
+                SortOrder.Ascending,
+                SortOrder.Descending)
+            {
+                Extrapolation = ExtrapolationSides.Below
+            };
+            Assert.IsLessThan(100d, survivalBelow.InverseCDF(0.01d));
+            Assert.AreEqual(300d, survivalBelow.InverseCDF(0.99d));
+            Assert.IsLessThan(0.1d, survivalBelow.CDF(50d));
+            Assert.AreEqual(0.9d, survivalBelow.CDF(400d));
+        }
+
+        /// <summary>
+        /// The far-tail inverse guards stay total under extrapolation — probabilities at or
+        /// beyond the 1e-16 floors evaluate the extended lookup at the floor instead of holding
+        /// the endpoint — and the inverse stays monotone across both boundaries.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Extrapolation_InverseMonotoneAndGuards()
+        {
+            var dist = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d })
+            {
+                Extrapolation = ExtrapolationSides.Both
+            };
+
+            double x0 = dist.InverseCDF(0d);
+            double x1 = dist.InverseCDF(1d);
+            Assert.IsTrue(Tools.IsFinite(x0) && x0 < 100d);
+            Assert.IsTrue(Tools.IsFinite(x1) && x1 > 300d);
+            Assert.AreEqual(dist.InverseCDF(1E-17), x0, 0d);
+            Assert.AreEqual(dist.InverseCDF(1d - 1E-17), x1, 0d);
+
+            var grid = new[] { 0d, 1E-16, 1E-10, 1E-4, 0.01d, 0.1d, 0.3d, 0.5d, 0.7d, 0.9d, 0.99d, 1d - 1E-4, 1d - 1E-10, 1d - 1E-16, 1d };
+            for (int i = 1; i < grid.Length; i++)
+            {
+                Assert.IsGreaterThanOrEqualTo(dist.InverseCDF(grid[i - 1]), dist.InverseCDF(grid[i]),
+                    $"InverseCDF must be monotone across the extended tail at u = {grid[i]}.");
+            }
+        }
+
+        /// <summary>
+        /// The policy survives Clone, serializes only when non-default (conditional presence),
+        /// restores by name, defaults when absent, and rejects an unparseable value.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Extrapolation_CloneAndSerialization()
+        {
+            var dist = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d });
+
+            // Default: no attribute, and set-then-clear restores the exact serialized form.
+            var defaultXml = dist.ToXElement();
+            Assert.IsNull(defaultXml.Attribute(nameof(EmpiricalDistribution.Extrapolation)));
+            string baseline = defaultXml.ToString();
+            dist.Extrapolation = ExtrapolationSides.Both;
+            dist.Extrapolation = ExtrapolationSides.None;
+            Assert.AreEqual(baseline, dist.ToXElement().ToString());
+
+            // Clone carries the policy.
+            dist.Extrapolation = ExtrapolationSides.Both;
+            var clone = (EmpiricalDistribution)dist.Clone();
+            Assert.AreEqual(ExtrapolationSides.Both, clone.Extrapolation);
+
+            // Non-default round-trips by enum name.
+            var xml = dist.ToXElement();
+            Assert.AreEqual(nameof(ExtrapolationSides.Both), xml.Attribute(nameof(EmpiricalDistribution.Extrapolation))?.Value);
+            var restored = EmpiricalDistribution.FromXElement(xml);
+            Assert.AreEqual(ExtrapolationSides.Both, restored.Extrapolation);
+            Assert.AreEqual(dist.InverseCDF(0.01d), restored.InverseCDF(0.01d), 1E-12);
+
+            // Absent attribute reads as the default; an invalid value throws (the strict pattern).
+            Assert.AreEqual(ExtrapolationSides.None, EmpiricalDistribution.FromXElement(defaultXml).Extrapolation);
+            var invalid = dist.ToXElement();
+            invalid.SetAttributeValue(nameof(EmpiricalDistribution.Extrapolation), "Sideways");
+            Assert.Throws<ArgumentException>(() => EmpiricalDistribution.FromXElement(invalid));
+        }
     }
 }

@@ -61,6 +61,13 @@ namespace MachineLearning
             Assert.AreEqual(se, true_se, 1E-3);
             Assert.AreEqual(df, true_df);
 
+            // The information criteria are asserted so the reference block below cannot go stale:
+            // an earlier revision of that block carried an AIC of 71.18 from a since-changed
+            // likelihood convention, which nothing checked.
+            Assert.AreEqual(343.2561, GLM.AIC, 1E-3);
+            Assert.AreEqual(343.3213, GLM.AICc, 1E-3);
+            Assert.AreEqual(349.7183, GLM.BIC, 1E-3);
+
             // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
@@ -79,7 +86,7 @@ namespace MachineLearning
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
                 Residual standard error: 0.6026 on 185 degrees of freedom
-                AIC: 71.1801  AICc: 71.2453  BIC: 77.6423
+                AIC: 343.2561  AICc: 343.3213  BIC: 349.7183
 
                 Residuals:
                        Min        1Q    Median        3Q       Max

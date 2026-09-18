@@ -16,9 +16,16 @@ namespace Data.TimeSeriesAnalysis
     /// <summary>
     /// Provides integration and validation tests for the <see cref="TimeSeriesDownload"/> class,
     /// including downloads from the Canadian Hydrometric Monitoring Network (CHMN),
-    /// the United States Geological Survey (USGS), and the Global Historical Climatology Network (GHCN).
+    /// the United States Geological Survey (USGS), the Global Historical Climatology Network (GHCN),
+    /// and the Australian Bureau of Meteorology (BOM).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Live provider checks carry the <c>LiveServiceIntegration</c> category and are excluded from
+    /// PR integration. Run them explicitly with
+    /// <c>dotnet test -c Release --filter "TestCategory=LiveServiceIntegration"</c>.
+    /// Offline request, parsing, and input-validation tests remain in the PR gate.
+    /// </para>
     /// <para>
     ///     <b> Authors: </b>
     ///     <list type="bullet">
@@ -887,7 +894,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the CHMN Cold River station (flow).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_FullPor_ColdRiver_Flow()
         {
             if (!await ChmnAvailable()) return;
@@ -898,7 +905,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the CHMN Lillooet River station (flow).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_FullPor_Lillooet_Flow()
         {
             if (!await ChmnAvailable()) return;
@@ -909,7 +916,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the CHMN Capilano River station (flow).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_FullPor_Capilano_Flow()
         {
             if (!await ChmnAvailable()) return;
@@ -920,7 +927,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests flow unit conversions (cms ↔ cfs) for CHMN data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_UnitConversion_Flow_CmsCfs()
         {
             if (!await ChmnAvailable()) return;
@@ -946,7 +953,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests stage unit conversions (m ↔ ft) for CHMN data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_UnitConversion_Stage_MFt()
         {
             if (!await ChmnAvailable()) return;
@@ -993,7 +1000,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests CHMN instantaneous discharge download (real-time 5-minute data).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_InstantaneousDischarge_Works()
         {
             if (!await ChmnAvailable()) return;
@@ -1008,7 +1015,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests CHMN instantaneous stage download (real-time 5-minute data).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_InstantaneousStage_Works()
         {
             if (!await ChmnAvailable()) return;
@@ -1023,7 +1030,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests CHMN peak discharge download (annual instantaneous maximums).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_PeakDischarge_Works()
         {
             if (!await ChmnAvailable()) return;
@@ -1038,7 +1045,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests CHMN peak stage download (annual instantaneous maximums).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task CHMN_PeakStage_Works()
         {
             if (!await ChmnAvailable()) return;
@@ -1371,7 +1378,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests full-period-of-record USGS daily discharge download.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_FullPor_DailyDischarge()
         {
             if (!await UsgsAvailable()) return;
@@ -1383,7 +1390,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS daily stage download for correctness and continuity.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_FullPor_DailyStage()
         {
             if (!await UsgsAvailable()) return;
@@ -1395,7 +1402,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS peak discharge data retrieval for non-daily data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_PeakDischarge_Works()
         {
             if (!await UsgsAvailable()) return;
@@ -1431,7 +1438,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS field measurement discharge data retrieval from the OGC API.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_MeasuredDischarge_Works()
         {
             if (!await UsgsAvailable()) return;
@@ -1454,7 +1461,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS field measurement stage (gage height) data retrieval from the OGC API.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_MeasuredStage_Works()
         {
             if (!await UsgsAvailable()) return;
@@ -1477,7 +1484,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS peak stage data retrieval.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_PeakStage_Works()
         {
             if (!await UsgsAvailable()) return;
@@ -1493,7 +1500,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS instantaneous discharge download.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_InstantaneousDischarge_Works()
         {
             if (!await UsgsAvailable()) return;
@@ -1508,7 +1515,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests USGS instantaneous stage download.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task USGS_InstantaneousStage_Works()
         {
             if (!await UsgsAvailable()) return;
@@ -1652,7 +1659,7 @@ namespace Data.TimeSeriesAnalysis
         /// The ceiling guards against connection-establishment regressions: walking dead IPv6
         /// addresses before IPv4 once made this download take minutes instead of seconds.
         /// </remarks>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         [Timeout(60000, CooperativeCancellation = true)]
         public async Task GHCN_FullPor_Precipitation()
         {
@@ -1668,7 +1675,7 @@ namespace Data.TimeSeriesAnalysis
         /// The ceiling guards against connection-establishment regressions: walking dead IPv6
         /// addresses before IPv4 once made this download take minutes instead of seconds.
         /// </remarks>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         [Timeout(60000, CooperativeCancellation = true)]
         public async Task GHCN_FullPor_Snow()
         {
@@ -1681,7 +1688,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests precipitation unit conversion between millimeters and inches.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task GHCN_UnitConversion_Mm_In()
         {
             if (!await GhcnAvailable()) return;
@@ -1705,7 +1712,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests precipitation unit conversion between millimeters and centimeters.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration")]
         public async Task GHCN_UnitConversion_Mm_Cm()
         {
             if (!await GhcnAvailable()) return;
@@ -1750,10 +1757,13 @@ namespace Data.TimeSeriesAnalysis
 
         #region BOM (Australia) Tests
 
+        // Live BOM checks remain available locally but are excluded from PR integration.
+        // Run them with: dotnet test -c Release --filter "TestCategory=BOMIntegration"
+
         /// <summary>
         /// Validates a full-period-of-record download for the BOM Cotter River station (discharge).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_FullPor_CotterRiver_Discharge()
         {
             if (!await BomAvailable()) return;
@@ -1764,7 +1774,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the BOM Goodradigbee River station (discharge).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_FullPor_Goodradigbee_Discharge()
         {
             if (!await BomAvailable()) return;
@@ -1775,7 +1785,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates a full-period-of-record download for the BOM Murray River station (stage).
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_FullPor_MurrayRiver_Stage()
         {
             if (!await BomAvailable()) return;
@@ -1786,7 +1796,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests discharge unit conversions (cms ↔ cfs) for BOM data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_UnitConversion_Discharge_CmsCfs()
         {
             if (!await BomAvailable()) return;
@@ -1812,7 +1822,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests stage unit conversions (m ↔ ft) for BOM data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_UnitConversion_Stage_MFt()
         {
             if (!await BomAvailable()) return;
@@ -1859,7 +1869,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests BOM with a windowed date range to verify date filtering works correctly.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_WindowedDownload_Works()
         {
             if (!await BomAvailable()) return;
@@ -1884,7 +1894,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates instantaneous discharge download from BOM.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_InstantaneousDischarge_Works()
         {
             if (!await BomAvailable()) return;
@@ -1898,7 +1908,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates instantaneous stage download from BOM.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_InstantaneousStage_Works()
         {
             if (!await BomAvailable()) return;
@@ -1912,7 +1922,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Validates daily precipitation download from BOM.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_DailyPrecipitation_Works()
         {
             if (!await BomAvailable()) return;
@@ -1926,7 +1936,7 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Tests precipitation unit conversions (mm ↔ inches) for BOM data.
         /// </summary>
-        [TestMethod, TestCategory("Integration")]
+        [TestMethod, TestCategory("Integration"), TestCategory("LiveServiceIntegration"), TestCategory("BOMIntegration")]
         public async Task BOM_UnitConversion_Precip_MmIn()
         {
             if (!await BomAvailable()) return;

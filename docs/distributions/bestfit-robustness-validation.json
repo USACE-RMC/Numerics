@@ -1,0 +1,101 @@
+{
+  "date": "2026-09-08",
+  "phase": "combined source after integrating the current destination branches",
+  "numericsBaseline": "c0d67b9c52d62dc49bdbfb744ec47b9a205cc86b",
+  "bestFitBaseline": "b7327036ecd25770201597dc163945353370347e",
+  "numericsRepairCommit": "b8bf912c11f3dc0a770bd9e54d0ae40d2bccb319",
+  "bestFitRepairCommit": "9a8d969e7b2da616c022a3230e7004b8f41ff5c2",
+  "numericsIntegratedTarget": "d80bfa8621c48a78cf4ebad7f01326841fac37aa",
+  "bestFitIntegratedTarget": "fbe0989a87a0bd38a297f8a42e8d979585d0f4ad",
+  "numericsTargetBranch": "bug-fixes-and-enhancements",
+  "bestFitTargetBranch": "documentation-verification-updates",
+  "buildCommand": "dotnet build -c Release -p:EnforceXmlDocumentation=true",
+  "buildWarnings": 0,
+  "buildErrors": 0,
+  "testCommand": "dotnet test -c Release --no-build",
+  "numericsScheduling": "destination branch defaults: serial tests and target frameworks",
+  "numerics": [
+    {
+      "framework": "net10.0",
+      "total": 2690,
+      "passed": 2690,
+      "failed": 0,
+      "report": "numerics-merge-final_net10.0_20260908151817.trx",
+      "reportSha256": "84381fbe4ecd8d0d9a18810c15f670d2c3c537ec0ec3929252cce188fe55c627"
+    },
+    {
+      "framework": "net481",
+      "total": 2690,
+      "passed": 2690,
+      "failed": 0,
+      "report": "numerics-merge-final_net481_20260908150921.trx",
+      "reportSha256": "28b72aa95f131869384c59a68cda51cea0f171758676e5c8b55ace0b6d6bd019"
+    },
+    {
+      "framework": "net8.0",
+      "total": 2690,
+      "passed": 2690,
+      "failed": 0,
+      "report": "numerics-merge-final_net8.0_20260908151220.trx",
+      "reportSha256": "a53b2d1633888584ee60e7700beae11cfd5ed060f91501593cd08f75e18ce601"
+    },
+    {
+      "framework": "net9.0",
+      "total": 2690,
+      "passed": 2690,
+      "failed": 0,
+      "report": "numerics-merge-final_net9.0_20260908151516.trx",
+      "reportSha256": "d3ac7ce59db78b9131c6ef6f4d7708969df0dce53853902e95b77dc89e3e3c4b"
+    }
+  ],
+  "bestFitVerificationExecuted": false,
+  "bestFitFastGates": [
+    {
+      "project": "RMC.BestFit.Tests",
+      "framework": "net10.0",
+      "total": 3410,
+      "executed": 3410,
+      "passed": 3410,
+      "failed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "scheduling": "one test worker; internal test concurrency unchanged",
+      "report": "bestfit-core-merge-final.trx",
+      "reportSha256": "53f623fdb127a04d01e988dd4e0100b040d6be92abb3f41761118ac24d69de77",
+      "numericsAssemblySha256": "a60448f1d8d7ba422289f7fb07e994630e5d8f0efa7cd81c7b41e663c97c0d3d"
+    },
+    {
+      "project": "RMC.BestFit.UI.Tests",
+      "framework": "net10.0-windows",
+      "total": 599,
+      "executed": 599,
+      "passed": 599,
+      "failed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "scheduling": "project default",
+      "report": "bestfit-ui-merge-final.trx",
+      "reportSha256": "72e369b8b0593061eb512b00da61df6273804043b61c53f16a5108e5c30af6cc",
+      "numericsAssemblySha256": "a60448f1d8d7ba422289f7fb07e994630e5d8f0efa7cd81c7b41e663c97c0d3d"
+    },
+    {
+      "project": "RMC.BestFit.App.Tests",
+      "framework": "net10.0-windows",
+      "total": 443,
+      "executed": 443,
+      "passed": 443,
+      "failed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "scheduling": "project default",
+      "report": "bestfit-app-merge-final.trx",
+      "reportSha256": "35dfebbbcf0ff4f106305dcf2bf29993afce2612f894304b770ca2bbb9896dc3",
+      "numericsAssemblySha256": "a60448f1d8d7ba422289f7fb07e994630e5d8f0efa7cd81c7b41e663c97c0d3d"
+    }
+  ],
+  "numericsProjectReference": "C:/GIT/numerics/artifacts/worktrees/distribution-robustness/Numerics/Numerics.csproj",
+  "numericsProjectAfterWorktreeCleanup": "C:/GIT/numerics/Numerics/Numerics.csproj",
+  "xmlNamespaceScan": "Passed, 941 C# files; strict builds completed separately",
+  "localEvidenceArchive": "C:/GIT/numerics/artifacts/distribution-robustness-evidence/",
+  "compatibilityResolution": "Preserved destination shared Tools helpers, Normal NaN quantile propagation, test scheduling, and both BestFit progress entries."
+}

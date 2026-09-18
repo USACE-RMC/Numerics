@@ -85,6 +85,52 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// A seeded MVN batch must consume randomized-lattice draws in indicator-row order and
+        /// reproduce bit for bit from a fresh distribution with the same seed.
+        /// </summary>
+        [TestMethod]
+        public void Test_JointProbabilitiesMVN_SeededBatchUsesIndexOrder()
+        {
+            var probabilities = new[] { 0.2, 0.35, 0.5, 0.65 };
+            var correlation = new double[,]
+            {
+                { 1.0, 0.2, 0.1, 0.05 },
+                { 0.2, 1.0, 0.15, 0.1 },
+                { 0.1, 0.15, 1.0, 0.25 },
+                { 0.05, 0.1, 0.25, 1.0 }
+            };
+            var indicators = new int[128, 4];
+            for (int i = 0; i < indicators.GetLength(0); i++)
+                for (int j = 0; j < indicators.GetLength(1); j++)
+                    indicators[i, j] = 1;
+
+            var expectedMvn = new MultivariateNormal(new double[4], correlation) { MVNUNI = new MersenneTwister(12345) };
+            var expected = new double[indicators.GetLength(0)];
+            for (int i = 0; i < expected.Length; i++)
+            {
+                expected[i] = i < probabilities.Length
+                    ? probabilities[i]
+                    : Probability.JointProbabilityMVN(probabilities, indicators.GetRow(i), expectedMvn);
+            }
+
+            var firstMvn = new MultivariateNormal(new double[4], correlation) { MVNUNI = new MersenneTwister(12345) };
+            var clone = (MultivariateNormal)firstMvn.Clone();
+            Assert.AreSame(firstMvn.MVNUNI, clone.MVNUNI, "Clone must preserve the caller-supplied generator by reference.");
+            var first = Probability.JointProbabilitiesMVN(probabilities, indicators, firstMvn);
+            var secondMvn = new MultivariateNormal(new double[4], correlation) { MVNUNI = new MersenneTwister(12345) };
+            var second = Probability.JointProbabilitiesMVN(probabilities, indicators, secondMvn);
+
+            bool repeats = true;
+            bool usesIndexOrder = true;
+            for (int i = 0; i < expected.Length; i++)
+            {
+                repeats &= BitConverter.DoubleToInt64Bits(first[i]) == BitConverter.DoubleToInt64Bits(second[i]);
+                usesIndexOrder &= BitConverter.DoubleToInt64Bits(first[i]) == BitConverter.DoubleToInt64Bits(expected[i]);
+            }
+            Assert.IsTrue(repeats && usesIndexOrder, $"repeatable={repeats}, indexOrdered={usesIndexOrder}");
+        }
+
+        /// <summary>
         /// Test joint probability of ABCD using assuming independence using the Product of Conditional Marginals (PCM). 
         /// </summary>
         [TestMethod]
@@ -205,7 +251,7 @@ namespace Data.Statistics
         }
 
         /// <summary>
-        /// Test joint probability of ABCD assuming perfect negative dependence. 
+        /// Test joint probability of ABCD assuming perfect negative dependence.
         /// </summary>
         [TestMethod]
         public void Test_JointABCD_NegativelyDependent()
@@ -216,6 +262,62 @@ namespace Data.Statistics
             double D = 0.5;
             var joint = Probability.NegativeJointProbability(new double[] { A, B, C, D });
             Assert.AreEqual(0.0, joint, 1E-6);
+        }
+
+        /// <summary>
+        /// Test the Fréchet–Hoeffding lower bound when the probabilities sum past one: two events at
+        /// 0.8 and 0.9 must overlap by at least 0.7 under perfect negative dependence.
+        /// </summary>
+        [TestMethod]
+        public void Test_TwoEvents_NegativelyDependent_FrechetLowerBound()
+        {
+            var joint = Probability.NegativeJointProbability(new double[] { 0.8, 0.9 });
+            Assert.AreEqual(0.7, joint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test the Fréchet–Hoeffding lower bound for more than two events: max(0, Σp − (n − 1)).
+        /// </summary>
+        [TestMethod]
+        public void Test_FourEvents_NegativelyDependent_FrechetLowerBound()
+        {
+            var joint = Probability.NegativeJointProbability(new double[] { 0.9, 0.9, 0.9, 0.8 });
+            Assert.AreEqual(0.5, joint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test that a single event's negatively dependent joint probability is the event probability itself.
+        /// </summary>
+        [TestMethod]
+        public void Test_SingleEvent_NegativelyDependent_IsIdentity()
+        {
+            var joint = Probability.NegativeJointProbability(new double[] { 0.6 });
+            Assert.AreEqual(0.6, joint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test the indicator overload: only the indicated events participate, with the bound
+        /// max(0, Σp − (k − 1)) over the k indicated events.
+        /// </summary>
+        [TestMethod]
+        public void Test_NegativelyDependent_IndicatorSubset()
+        {
+            var probabilities = new double[] { 0.8, 0.9, 0.5 };
+            var joint = Probability.NegativeJointProbability(probabilities, new int[] { 1, 1, 0 });
+            Assert.AreEqual(0.7, joint, 1E-12);
+
+            var disjoint = Probability.NegativeJointProbability(probabilities, new int[] { 1, 0, 1 });
+            Assert.AreEqual(0.3, disjoint, 1E-12);
+        }
+
+        /// <summary>
+        /// Test that the perfectly negative dependency type routes through the Fréchet–Hoeffding lower bound.
+        /// </summary>
+        [TestMethod]
+        public void Test_JointProbability_PerfectlyNegative_RoutesToFrechetBound()
+        {
+            var joint = Probability.JointProbability(new double[] { 0.8, 0.9 }, Probability.DependencyType.PerfectlyNegative);
+            Assert.AreEqual(0.7, joint, 1E-12);
         }
 
         /// <summary>
@@ -743,6 +845,215 @@ namespace Data.Statistics
 
         #endregion
 
+        #region Single-Factor Union
+
+        /// <summary>
+        /// At zero correlation the single-factor union equals the independent union: the
+        /// conditional probabilities collapse to the marginals, so the quadrature integrates a
+        /// constant.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_IndependenceMatchesIndependentUnion()
+        {
+            var ps = new double[] { 0.01d, 0.05d, 0.2d, 0.001d };
+            double expected = Probability.IndependentUnion(ps);
+            Assert.AreEqual(expected, Probability.UnionSingleFactor(ps, 0d), 1E-12 * expected);
+        }
+
+        /// <summary>
+        /// Exact bivariate oracle: for two events, P(union) = p1 + p2 - Phi2(b1, b2; rho) through
+        /// the closed-form bivariate normal CDF, across correlations and down to rare-event
+        /// marginals. The 1E-6 relative tolerance is dominated by the quadrature's 1E-8 relative
+        /// target with two orders of margin.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_BivariateExactOracle()
+        {
+            var pairs = new (double p1, double p2)[] { (0.1d, 0.05d), (1E-4, 5E-4), (1E-6, 1E-5) };
+            foreach (double rho in new[] { 0.1d, 0.5d, 0.9d })
+            {
+                foreach (var (p1, p2) in pairs)
+                {
+                    var mvn = new MultivariateNormal(new double[] { 0d, 0d }, new double[,] { { 1d, rho }, { rho, 1d } });
+                    double joint = mvn.CDF(new double[] { Normal.StandardZ(p1), Normal.StandardZ(p2) });
+                    double exact = p1 + p2 - joint;
+                    double union = Probability.UnionSingleFactor(new[] { p1, p2 }, rho);
+                    Assert.AreEqual(exact, union, 1E-6 * exact, $"rho {rho}, p1 {p1}, p2 {p2}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Small-n agreement with the inclusion-exclusion methods on the equicorrelated matrix.
+        /// The 2% relative tolerance reflects the comparison methods' own accuracy - UnionPCM is an
+        /// approximation and UnionMVN carries the randomized-lattice error of the MVN CDF above two
+        /// dimensions - not the precision of the single-factor quadrature.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_SmallN_MatchesPCMAndMVN()
+        {
+            var ps = new double[] { 0.02d, 0.05d, 0.1d, 0.15d };
+            double rho = 0.3d;
+            int n = ps.Length;
+            var correlation = new double[n, n];
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    correlation[i, j] = i == j ? 1d : rho;
+
+            double union = Probability.UnionSingleFactor(ps, rho);
+            double pcm = Probability.UnionPCM(ps, correlation);
+            var mvn = new MultivariateNormal(new double[n], correlation);
+            double viaMvn = Probability.UnionMVN(ps, mvn);
+            Assert.AreEqual(pcm, union, 0.02d * pcm);
+            Assert.AreEqual(viaMvn, union, 0.02d * viaMvn);
+        }
+
+        /// <summary>
+        /// Wide-set Monte Carlo oracle: fifty heterogeneous rare marginals under the explicit
+        /// factor construction z(i) = sqrt(rho)*z0 + sqrt(1-rho)*e(i), simulated brute-force with a
+        /// fixed seed at 200,000 realizations and compared at four standard errors.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_LargeN_MonteCarloOracle()
+        {
+            int n = 50;
+            var ps = new double[n];
+            var betas = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                ps[i] = 1E-4 * (i + 1);
+                betas[i] = Normal.StandardZ(ps[i]);
+            }
+            double rho = 0.3d;
+            double sqrtRho = Math.Sqrt(rho);
+            double sqrtComplement = Math.Sqrt(1d - rho);
+
+            int realizations = 200000;
+            var prng = new MersenneTwister(12345);
+            int failures = 0;
+            for (int r = 0; r < realizations; r++)
+            {
+                double z0 = Normal.StandardZ(prng.NextDouble());
+                bool any = false;
+                for (int i = 0; i < n; i++)
+                {
+                    double e = Normal.StandardZ(prng.NextDouble());
+                    if (sqrtRho * z0 + sqrtComplement * e < betas[i]) any = true;
+                }
+                if (any) failures++;
+            }
+            double mc = (double)failures / realizations;
+            double se = Math.Sqrt(mc * (1d - mc) / realizations);
+
+            double union = Probability.UnionSingleFactor(ps, rho);
+            Assert.AreEqual(mc, union, 4d * se);
+        }
+
+        /// <summary>
+        /// Structural behavior across the correlation domain: the comonotone limit returns the
+        /// maximum marginal exactly, near-comonotone approaches it, the union decreases
+        /// monotonically in the correlation for identical marginals, the Frechet bounds hold at
+        /// every level, and a single event returns its own probability.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_ComonotoneAndMonotone()
+        {
+            var ps = new double[] { 0.05d, 0.05d, 0.05d, 0.05d, 0.05d, 0.05d };
+            Assert.AreEqual(0.05d, Probability.UnionSingleFactor(ps, 1d), 0d);
+            Assert.AreEqual(0.05d, Probability.UnionSingleFactor(ps, 0.999999d), 5E-3 * 0.05d);
+
+            double sum = 0.3d;
+            double previous = double.PositiveInfinity;
+            foreach (double rho in new[] { 0d, 0.25d, 0.5d, 0.75d, 0.99d })
+            {
+                double union = Probability.UnionSingleFactor(ps, rho);
+                Assert.IsLessThan(previous, union);
+                Assert.IsGreaterThanOrEqualTo(0.05d - 1E-12, union);
+                Assert.IsLessThanOrEqualTo(sum + 1E-12, union);
+                previous = union;
+            }
+
+            // A single event integrates the Gaussian identity E[Phi((b - sqrt(rho) z)/sqrt(1-rho))] = p,
+            // recovered to the 1E-8 relative quadrature target with an order of headroom.
+            Assert.AreEqual(0.037d, Probability.UnionSingleFactor(new[] { 0.037d }, 0.5d), 1E-7 * 0.037d);
+        }
+
+        /// <summary>
+        /// Rare-event depth: ten events at 1e-8 with moderate correlation stay inside the Frechet
+        /// bracket and are self-consistent across quadrature tolerances - the log-space survival
+        /// arithmetic keeps relative accuracy where naive products would lose it.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_RareEvents()
+        {
+            var ps = new double[10];
+            for (int i = 0; i < 10; i++) ps[i] = 1E-8;
+            double union = Probability.UnionSingleFactor(ps, 0.25d);
+            Assert.IsGreaterThan(1E-8, union);
+            Assert.IsLessThan(1E-7, union);
+            double refined = Probability.UnionSingleFactor(ps, 0.25d, 1E-10);
+            Assert.AreEqual(refined, union, 1E-6 * refined);
+        }
+
+        /// <summary>
+        /// The conditional-probability buffer helper: zero correlation returns the marginals
+        /// through the z round trip, the fill matches the defining formula, entries beyond the
+        /// thresholds are untouched, and the guards throw on the comonotone and invalid inputs.
+        /// </summary>
+        [TestMethod]
+        public void Test_SingleFactorConditionalProbabilities()
+        {
+            var ps = new double[] { 0.01d, 0.2d, 0.7d };
+            var betas = new double[3];
+            for (int i = 0; i < 3; i++) betas[i] = Normal.StandardZ(ps[i]);
+
+            var buffer = new double[5];
+            buffer[3] = -99d;
+            buffer[4] = -99d;
+            Probability.SingleFactorConditionalProbabilities(betas, 0d, 1.7d, buffer);
+            for (int i = 0; i < 3; i++)
+                Assert.AreEqual(ps[i], buffer[i], 1E-14);
+            Assert.AreEqual(-99d, buffer[3], 0d);
+            Assert.AreEqual(-99d, buffer[4], 0d);
+
+            double rho = 0.25d, z = -2d;
+            Probability.SingleFactorConditionalProbabilities(betas, rho, z, buffer);
+            for (int i = 0; i < 3; i++)
+            {
+                double expected = Normal.StandardCDF((betas[i] - Math.Sqrt(rho) * z) / Math.Sqrt(1d - rho));
+                Assert.AreEqual(expected, buffer[i], 0d);
+            }
+
+            Assert.Throws<ArgumentNullException>(() => Probability.SingleFactorConditionalProbabilities(null!, 0.5d, 0d, buffer));
+            Assert.Throws<ArgumentNullException>(() => Probability.SingleFactorConditionalProbabilities(betas, 0.5d, 0d, null!));
+            Assert.Throws<ArgumentException>(() => Probability.SingleFactorConditionalProbabilities(betas, 0.5d, 0d, new double[2]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.SingleFactorConditionalProbabilities(betas, 1d, 0d, buffer));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.SingleFactorConditionalProbabilities(betas, -0.1d, 0d, buffer));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.SingleFactorConditionalProbabilities(betas, 0.5d, double.NaN, buffer));
+        }
+
+        /// <summary>
+        /// Guard matrix for the single-factor union: invalid lists, probabilities, correlations,
+        /// and tolerances throw; certain events return one and all-zero lists return zero exactly.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnionSingleFactor_GuardMatrix()
+        {
+            var ps = new double[] { 0.1d, 0.2d };
+            Assert.Throws<ArgumentException>(() => Probability.UnionSingleFactor(null!, 0.5d));
+            Assert.Throws<ArgumentException>(() => Probability.UnionSingleFactor(new double[0], 0.5d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(new double[] { 0.1d, double.NaN }, 0.5d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(new double[] { 0.1d, -0.1d }, 0.5d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(new double[] { 0.1d, 1.1d }, 0.5d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(ps, -0.1d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(ps, 1.0000001d));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(ps, double.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Probability.UnionSingleFactor(ps, 0.5d, 0d));
+            Assert.AreEqual(1d, Probability.UnionSingleFactor(new double[] { 0.1d, 1d }, 0.5d), 0d);
+            Assert.AreEqual(0d, Probability.UnionSingleFactor(new double[] { 0d, 0d }, 0.5d), 0d);
+        }
+
+        #endregion
 
     }
 }

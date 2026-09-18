@@ -83,9 +83,8 @@ namespace Numerics.Data
         /// Provider root endpoints used for the public Internet connectivity check.
         /// </summary>
         /// <remarks>
-        /// The downloader no longer uses these URLs as a precondition for data requests. They are
-        /// retained only for callers that explicitly ask whether at least one supported provider
-        /// endpoint is reachable.
+        /// These URLs are not a precondition for data requests; they are used only by callers that
+        /// explicitly ask whether at least one supported provider endpoint is reachable.
         /// </remarks>
         private static readonly string[] InternetProbeUrls =
         {
@@ -430,7 +429,7 @@ namespace Numerics.Data
         /// <returns>An exception with a user-facing timeout message.</returns>
         /// <remarks>
         /// The message names the endpoint so application callers can distinguish a blocked provider
-        /// request from the old generic Internet connectivity failure.
+        /// request from a general Internet connectivity failure.
         /// </remarks>
         private static TimeoutException CreateDownloadTimeoutException(string url, TimeSpan requestTimeout, Exception innerException)
         {

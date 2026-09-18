@@ -239,10 +239,11 @@ namespace Numerics.Distributions
         /// The Probability Density Function (PDF) of the distribution evaluated at a point X.
         /// </summary>
         /// <param name="x">A point in the distribution space.</param>
+        /// <returns>
+        /// NaN. A joint density is not implemented for the interpolated empirical CDF surface.
+        /// </returns>
         public override double PDF(double[] x)
         {
-            // Validate parameters
-            //if (_parametersValid == false) ValidateParameters(X1Values, X2Values, ProbabilityValues, true);
             return PDF(x[0], x[1]);
         }
 
@@ -251,13 +252,13 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="x1">The x1-value.</param>
         /// <param name="x2">The x2-value.</param>
+        /// <returns>
+        /// NaN. A joint density is not implemented for the interpolated empirical CDF surface.
+        /// </returns>
         public double PDF(double x1, double x2)
         {
-            // The PDF is estimated using numerical differentiation of the CDF.
-            // This approach is not ideal, and is a temporary place holder, 
-            // until I learn how to do this better. 
-            // double h = 0.0001d;
-            // return (CDF(x1 + h, x2 + h) - CDF(x1 - h, x2 - h)) / (2d * h);
+            // A joint density is not implemented for the interpolated empirical CDF surface.
+            // Returning NaN keeps the non-result explicit instead of fabricating a value.
             return double.NaN;
         }
 

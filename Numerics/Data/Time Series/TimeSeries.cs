@@ -298,6 +298,7 @@ namespace Numerics.Data
         /// Divide each value in the time-series by a constant. Missing values are kept as missing.
         /// </summary>
         /// <param name="constant">Factor to divide each value by in the series.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="constant"/> is zero.</exception>
         public void Divide(double constant)
         {
             if (constant == 0) throw new ArgumentException("Cannot divide by zero.", nameof(constant));
@@ -315,8 +316,10 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="constant">Factor to divide each value by in the series.</param>
         /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the calculation to.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="constant"/> is zero.</exception>
         public void Divide(double constant, IList<int> indexes)
         {
+            if (constant == 0) throw new ArgumentException("Cannot divide by zero.", nameof(constant));
             SuppressCollectionChanged = true;
             for (int i = 0; i < indexes.Count; i++)
             {
@@ -407,12 +410,14 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the calculation to.</param>
         /// <param name="baseValue">The log base value.</param>
+        /// <remarks>Out-of-range indexes are skipped.</remarks>
         public void LogTransform(IList<int> indexes, double baseValue = 10)
         {
             SuppressCollectionChanged = true;
             for (int i = 0; i < indexes.Count; i++)
             {
-                if (indexes[i] >= 0 && indexes[i] < Count && this[indexes[i]].Value > 0 && (!double.IsNaN(this[indexes[i]].Value))) { this[indexes[i]].Value = Math.Log(this[indexes[i]].Value, baseValue); }
+                if (indexes[i] < 0 || indexes[i] >= Count) { continue; }
+                if (this[indexes[i]].Value > 0 && (!double.IsNaN(this[indexes[i]].Value))) { this[indexes[i]].Value = Math.Log(this[indexes[i]].Value, baseValue); }
                 else { this[indexes[i]].Value = double.NaN; }
             }
             SuppressCollectionChanged = false;
@@ -456,15 +461,17 @@ namespace Numerics.Data
 
         /// <summary>
         /// Specified values in the time-series are replaced by their inverse (1/x). Missing values are kept as missing. If the value is 0.0, the value is set to Double.NaN.
-        /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the inverse calculation to.</param>
         /// </summary>
+        /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the inverse calculation to.</param>
+        /// <remarks>Out-of-range indexes are skipped.</remarks>
         public void Inverse(IList<int> indexes)
         {
             SuppressCollectionChanged = true;
             for (int i = 0; i < indexes.Count; i++)
             {
-                if (indexes[i] >= 0 && indexes[i] < Count && this[indexes[i]].Value != 0 && !double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = 1d / this[indexes[i]].Value; }
-                else if (this[indexes[i]].Value == 0 || double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = double.NaN; }
+                if (indexes[i] < 0 || indexes[i] >= Count) { continue; }
+                if (this[indexes[i]].Value != 0 && !double.IsNaN(this[indexes[i]].Value)) { this[indexes[i]].Value = 1d / this[indexes[i]].Value; }
+                else { this[indexes[i]].Value = double.NaN; }
             }
             SuppressCollectionChanged = false;
             RaiseCollectionChangedReset();
@@ -475,7 +482,7 @@ namespace Numerics.Data
         /// </summary>
         public TimeSeries CumulativeSum()
         {
-            var timeSeries = new TimeSeries();
+            var timeSeries = new TimeSeries(TimeInterval);
             double sum = 0d;
             for (int i = 0; i < Count; i++)
             {
@@ -650,7 +657,7 @@ namespace Numerics.Data
                             break;
                         }
                         // the extrapolation case
-                        if (j == Count - 1)
+                        if (j == Count - 1 && idx >= 2)
                         {
                             x1 = this[idx - 2].Index.ToOADate();
                             x2 = this[idx - 1].Index.ToOADate();
@@ -953,7 +960,7 @@ namespace Numerics.Data
         public TimeSeries MovingAverage(int period, int? minValidCount = null)
         {
             if (period >= Count)
-                throw new ArgumentException(nameof(period), "The period must be less than the length of the time-series.");
+                throw new ArgumentException("The period must be less than the length of the time-series.", nameof(period));
             int minCount = minValidCount ?? period;
             if (minCount < 1 || minCount > period)
                 throw new ArgumentOutOfRangeException(nameof(minValidCount), "minValidCount must be between 1 and period.");
@@ -996,7 +1003,7 @@ namespace Numerics.Data
         public TimeSeries MovingSum(int period, int? minValidCount = null)
         {
             if (period >= Count)
-                throw new ArgumentException(nameof(period), "The period must be less than the length of the time-series.");
+                throw new ArgumentException("The period must be less than the length of the time-series.", nameof(period));
             int minCount = minValidCount ?? period;
             if (minCount < 1 || minCount > period)
                 throw new ArgumentOutOfRangeException(nameof(minValidCount), "minValidCount must be between 1 and period.");
@@ -1402,15 +1409,17 @@ namespace Numerics.Data
                     break;
                 }
             }
+            // The updating formula indexes by the running count of observed values, so missing
+            // values leave the accumulation untouched.
             double n = 1;
             for (int i = startIdx; i < Count; i++)
             {
                 if (!double.IsNaN(this[i].Value))
                 {
-                    t += this[i].Value;
-                    double diff = (i + 1) * this[i].Value - t;
-                    variance += diff * diff / ((i + 1.0d) * i);
                     n += 1;
+                    t += this[i].Value;
+                    double diff = n * this[i].Value - t;
+                    variance += diff * diff / (n * (n - 1d));
                 }
             }
             return Math.Sqrt(variance / (n - 1));
@@ -1510,7 +1519,9 @@ namespace Numerics.Data
                 monthlySummary[index - 1, 4] = Statistics.Statistics.Percentile(monthlyData, 0.75, true);
                 monthlySummary[index - 1, 5] = Statistics.Statistics.Percentile(monthlyData, 0.95, true);
                 monthlySummary[index - 1, 6] = monthlyData[monthlyData.Count - 1];
-                monthlySummary[index - 1, 7] = Statistics.Statistics.ParallelMean(monthlyData);
+                // The mean is accumulated sequentially so the reduction is deterministic on every
+                // host regardless of processor count.
+                monthlySummary[index - 1, 7] = Statistics.Statistics.Mean(monthlyData);
             });
             return monthlySummary;
         }
@@ -2099,6 +2110,37 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Returns the smoothed series a peaks-over-threshold analysis operates on.
+        /// </summary>
+        /// <param name="smoothingFunction">The smoothing function type.</param>
+        /// <param name="period">The time period to perform smoothing over. If time interval is 1-hour, and period is 12. The smoothing will be computed over a moving 12 hour block.</param>
+        /// <returns>The smoothed series, or a clone of this series when no smoothing applies.</returns>
+        /// <remarks>
+        /// This is the exact preprocessing <see cref="PeaksOverThresholdSeries"/> applies before
+        /// comparing values to the threshold, exposed so threshold-selection diagnostics can operate
+        /// on the same series the extraction thresholds — plotting diagnostics computed from the raw
+        /// series would sit on a different value scale than the threshold whenever smoothing is
+        /// configured. Moving average and moving sum with a period of 1 are identity clones;
+        /// differencing applies at every period.
+        /// </remarks>
+        public TimeSeries SmoothedSeries(SmoothingFunctionType smoothingFunction, int period = 1)
+        {
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            {
+                return period == 1 ? Clone() : MovingAverage(period);
+            }
+            if (smoothingFunction == SmoothingFunctionType.MovingSum)
+            {
+                return period == 1 ? Clone() : MovingSum(period);
+            }
+            if (smoothingFunction == SmoothingFunctionType.Difference)
+            {
+                return Difference(period);
+            }
+            return Clone();
+        }
+
+        /// <summary>
         /// Returns a peaks-over-threshold (POT) series.
         /// </summary>
         /// <param name="threshold">The threshold value.</param>
@@ -2123,21 +2165,9 @@ namespace Numerics.Data
         public TimeSeries PeaksOverThresholdSeries(double threshold, int minStepsBetweenEvents = 1, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             // Create smoothed time series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.Difference)
-            {
-                smoothedSeries = Difference(period);
-            }
+            TimeSeries smoothedSeries = SmoothedSeries(smoothingFunction, period);
 
-            // First, create the cluster indexes. 
+            // First, create the cluster indexes.
             int i = 0, idx, idxMax;
             var clusters = new List<int[]>();
 

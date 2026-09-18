@@ -26,6 +26,11 @@
         /// <param name="maxX">The maximum x-value under which the integral must be computed.</param>
         /// <param name="minY">The minimum y-value under which the integral must be computed.</param>
         /// <param name="maxY">The maximum y-value under which the integral must be computed.</param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="function"/> is null, <paramref name="maxX"/> is less than or
+        /// equal to <paramref name="minX"/>, or <paramref name="maxY"/> is less than or equal to
+        /// <paramref name="minY"/>.
+        /// </exception>
         public AdaptiveSimpsonsRule2D(Func<double, double, double> function, double minX, double maxX, double minY, double maxY)
         {
             if (maxX <= minX) throw new ArgumentNullException(nameof(maxX), "The maximum x-value cannot be less than or equal to the minimum x-value.");

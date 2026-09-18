@@ -6,8 +6,8 @@ using System.Linq;
 namespace Numerics.Mathematics.Integration
 {
     /// <summary>
-    /// A class for adaptive Monte Carlo integration for multidimensional integration.
-    /// Enhanced with Power Transform for rare event simulation.
+    /// Adaptive multidimensional Monte Carlo integration using the VEGAS algorithm, with an
+    /// optional probability-space power transform for tail-focused sampling.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -20,10 +20,8 @@ namespace Numerics.Mathematics.Integration
     /// in those areas of the integrand that make the greatest contribution. 
     /// </para>
     /// <para>
-    /// <b> Power Transform Enhancement: </b>
-    /// The Power Transform (γ parameter) enables efficient sampling of rare tail events without changing the integrand.
-    /// For rare events (p &lt; 1e-4), set TailFocusParameter &gt; 1 to concentrate samples in tail regions.
-    /// This maintains numerical stability in high dimensions (unlike z-space methods).
+    /// The power transform p' = 1 - (1-p)^γ concentrates samples near the upper probability
+    /// boundary when γ is greater than one. The integration weights include its Jacobian.
     /// </para>
     /// <b> References: </b>
     /// <list type="bullet">
@@ -59,7 +57,7 @@ namespace Numerics.Mathematics.Integration
             }
 
             if (dimensions > MaxDimensions)
-                throw new ArgumentOutOfRangeException(nameof(dimensions), "The maximum number of dimensions is 20.");
+                throw new ArgumentOutOfRangeException(nameof(dimensions), $"The maximum number of dimensions is {MaxDimensions}.");
 
             // Check if the minimum values are less than the maximum values
             for (int i = 0; i < min.Count; i++)
@@ -86,10 +84,22 @@ namespace Numerics.Mathematics.Integration
         private int _numberOfBins = 50;
         private double _standardError;
         private double _chiSquared;
+        private double _tailFocusParameter = 1d;
         private SobolSequence _sobol = null!;
+        private int? _sobolSeed;
 
         // Constants
-        private const int MaxDimensions = 20;
+
+        /// <summary>
+        /// The largest supported spatial dimension. A guard against runaway inputs rather than an
+        /// algorithmic bound: the importance-sampling grid is separable, so it holds
+        /// <see cref="NumberOfBins"/> × D bins rather than bins^D, and the stratification
+        /// self-limits — strata per axis are (calls/2)^(1/D), which reaches one around fifteen
+        /// dimensions, at which point the algorithm runs as pure adaptive importance sampling.
+        /// That is the same graceful degradation GSL and Lepage's reference implementation rely
+        /// on; neither imposes a dimension cap.
+        /// </summary>
+        private const int MaxDimensions = 50;
         private const double TinyValue = 1.0e-30;
 
         // Algorithm Variables
@@ -137,9 +147,28 @@ namespace Numerics.Mathematics.Integration
         public Random Random { get; set; }
 
         /// <summary>
-        /// Determines whether to use a Sobol sequence or a pseudo-Random number generator. 
+        /// Determines whether to use a Sobol sequence or a pseudo-Random number generator.
         /// </summary>
         public bool UseSobolSequence { get; set; } = true;
+
+        /// <summary>
+        /// The seed for Matousek-scrambled Sobol driving points, or null (the default) for the
+        /// unrandomized sequence — the seeded scrambling restores a caller's reproducibility
+        /// contract that the unrandomized sequence, being seed-independent, cannot honor.
+        /// Assigning rebuilds the driving sequence from its start, so set it before
+        /// integrating; the sequence then continues across warm-up and recording calls exactly
+        /// as the unrandomized one does. Applies only while <see cref="UseSobolSequence"/> is
+        /// true.
+        /// </summary>
+        public int? SobolSeed
+        {
+            get { return _sobolSeed; }
+            set
+            {
+                _sobolSeed = value;
+                _sobol = value.HasValue ? new SobolSequence(Dimensions, value.Value) : new SobolSequence(Dimensions);
+            }
+        }
 
         /// <summary>
         /// Determines whether to check convergence and exit when integrating.
@@ -183,17 +212,25 @@ namespace Numerics.Mathematics.Integration
         }
 
         /// <summary>
-        /// Power transform parameter for tail-focused rare event sampling.
-        /// Default = 1.0 (standard uniform sampling, backward compatible).
-        /// Set γ > 1 to focus sampling on upper tail (p → 1) for rare events.
-        /// Recommended values: γ=2 (moderate focus), γ=4 (strong focus), γ=10 (very strong focus for p &lt; 1e-6).
+        /// Gets or sets the positive finite power-transform exponent. A value of one applies no
+        /// transform; values greater than one concentrate samples near the upper probability boundary.
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is not finite and positive.</exception>
         /// <remarks>
         /// The power transform uses p' = 1 - (1-p)^γ to concentrate samples in the upper tail.
         /// Unlike z-space transforms, this maintains numerical stability in high dimensions.
         /// Weights are corrected by Jacobian: dp'/dp = γ(1-p)^(γ-1), which stays O(1).
         /// </remarks>
-        public double TailFocusParameter { get; set; } = 1.0;
+        public double TailFocusParameter
+        {
+            get { return _tailFocusParameter; }
+            set
+            {
+                if (!Tools.IsFinite(value) || value <= 0d)
+                    throw new ArgumentOutOfRangeException(nameof(TailFocusParameter), "The tail-focus parameter must be finite and positive.");
+                _tailFocusParameter = value;
+            }
+        }
 
         /// <summary>
         /// Gets the stratification grid boundaries. 
@@ -240,20 +277,21 @@ namespace Numerics.Mathematics.Integration
         /// <summary>
         /// Apply power transform to probability for tail-focused sampling.
         /// p' = 1 - (1-p)^γ concentrates samples in upper tail when γ > 1.
-        /// When γ = 1, this is identity transform (backward compatible).
+        /// When γ = 1, the transform is the identity.
         /// </summary>
+        /// <param name="p">The unit-interval probability to transform.</param>
+        /// <returns>The tail-focused probability.</returns>
         private double ApplyPowerTransform(double p)
         {
             double gamma = TailFocusParameter;
 
-            // Identity transform when γ = 1 (standard Vegas behavior)
+            // A unit exponent leaves the probability unchanged.
             if (Math.Abs(gamma - 1.0) < 1e-10)
             {
                 return p;
             }
 
-            // Power transform for upper tail focus
-            // Maps [0,1] → [0,1] but concentrates samples near 1
+            // Map [0, 1] to itself while concentrating samples near one.
             return 1.0 - Math.Pow(1.0 - p, gamma);
         }
 
@@ -262,18 +300,19 @@ namespace Numerics.Mathematics.Integration
         /// This weight correction ensures unbiased integration.
         /// When γ = 1, returns 1.0 (identity Jacobian).
         /// </summary>
+        /// <param name="p">The untransformed unit-interval probability.</param>
+        /// <returns>The derivative of the power transform at <paramref name="p"/>.</returns>
         private double PowerTransformJacobian(double p)
         {
             double gamma = TailFocusParameter;
 
-            // Identity Jacobian when γ = 1
+            // The identity transform has a unit Jacobian.
             if (Math.Abs(gamma - 1.0) < 1e-10)
             {
                 return 1.0;
             }
 
-            // Jacobian: dp'/dp = γ(1-p)^(γ-1)
-            // Clamp (1-p) to avoid numerical issues
+            // Clamp 1-p away from zero before evaluating the Jacobian.
             double oneMinusP = Math.Max(1.0 - p, 1e-15);
             return gamma * Math.Pow(oneMinusP, gamma - 1.0);
         }
@@ -283,18 +322,23 @@ namespace Numerics.Mathematics.Integration
         /// Automatically sets TailFocusParameter based on target probability.
         /// </summary>
         /// <param name="targetProbability">Target rare event probability (e.g., 1e-6)</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="targetProbability"/> is not finite or is outside the open interval (0, 1).
+        /// </exception>
         public void ConfigureForRareEvents(double targetProbability)
         {
-            // Choose γ so that target probability appears in ~5% of transformed samples
-            // Solving: (1 - 0.95)^γ ≈ targetProbability
-            // γ ≈ ln(targetProbability) / ln(0.05)
+            if (!Tools.IsFinite(targetProbability) || targetProbability <= 0d || targetProbability >= 1d)
+                throw new ArgumentOutOfRangeException(nameof(targetProbability), "The target probability must be finite and between zero and one.");
+
+            // Choose γ so the target tail occupies approximately five percent of transformed draws:
+            // γ = ln(targetProbability) / ln(0.05).
 
             double gamma = Math.Log(targetProbability) / Math.Log(0.05);
-            gamma = Math.Max(1.0, Math.Min(gamma, 20.0));  // Clamp to [1, 20]
+            gamma = Math.Max(1.0, Math.Min(gamma, 20.0));
 
             this.TailFocusParameter = gamma;
             this.NumberOfBins = Math.Max(100, this.NumberOfBins);
-            this.Alpha = 1.8;  // More aggressive grid adaptation
+            this.Alpha = 1.8;
         }
 
         /// <inheritdoc/>

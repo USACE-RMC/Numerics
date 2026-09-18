@@ -154,6 +154,7 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
         /// <param name="kMeansPlusPlus">Determines whether to use random initialization or to use the k-Means++ method. Default is to use k-Means++.</param>
+        /// <exception cref="InvalidOperationException">Thrown when a component covariance cannot be factorized.</exception>
         public void Train(int seed = -1, bool kMeansPlusPlus = true)
         {
             // 1. Initialize clusters from k-Means
@@ -220,13 +221,14 @@ namespace Numerics.MachineLearning
             double oldLogLH = double.MinValue, newLogLH = double.MinValue;
             for (Iterations = 1; Iterations <= MaxIterations; Iterations++)
             {
-                // Perform the expectation step
+                // Perform the expectation step. The log-likelihood records every iteration, so a
+                // run that exhausts its iteration budget reports its final evaluated value.
                 newLogLH = EStep();
+                LogLikelihood = newLogLH;
 
                 // Check convergence
                 if (Math.Abs((oldLogLH - newLogLH) / oldLogLH) < Tolerance)
                 {
-                    LogLikelihood = newLogLH;
                     break;
                 }
 
@@ -253,7 +255,17 @@ namespace Numerics.MachineLearning
             for (int k = 0; k < K; k++)
             {
                 // Decompose the covariance in the outer loop
-                var cholesky = new CholeskyDecomposition(Sigmas[k]);
+                CholeskyDecomposition cholesky;
+                try
+                {
+                    cholesky = new CholeskyDecomposition(Sigmas[k]);
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException(
+                        $"Gaussian mixture component {k + 1} covariance could not be factorized.",
+                        exception);
+                }
                 logDet[k] = cholesky.LogDeterminant();
                 for (int i = 0; i < X.NumberOfRows; i++)
                 {
@@ -297,7 +309,9 @@ namespace Numerics.MachineLearning
                     LikelihoodMatrix[i, k] = Math.Exp(LikelihoodMatrix[i, k] - tmp);
                 logLH += tmp;
             }
-            return logLH;
+            // The likelihood matrix omits the constant -D/2 * ln(2*pi) per point because it cancels
+            // in the responsibilities; the reported log-likelihood restores it.
+            return logLH - 0.5 * Dimension * X.NumberOfRows * Math.Log(2.0 * Math.PI);
         }
     
         /// <summary>
@@ -311,6 +325,10 @@ namespace Numerics.MachineLearning
                 for (int i = 0; i < X.NumberOfRows; i++)
                     wgt += LikelihoodMatrix[i, k];
                 Weights[k] = wgt / X.NumberOfRows;
+                // A component with no responsibility keeps its previous parameters; updating it
+                // would divide by zero and spread NaN through the model
+                if (wgt <= 0)
+                    continue;
                 for (int d = 0; d < Dimension; d++)
                 {
                     // Compute centroids
@@ -348,8 +366,11 @@ namespace Numerics.MachineLearning
                     Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar);
                 }
 
-                // Ensure the full covariance matrix remains symmetric positive-definite
-                MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
+                // Ensure the full covariance matrix remains symmetric positive-definite. The helper is
+                // pure: it returns the symmetrized covariance unchanged when usable and adds a
+                // trace-scaled ridge only when needed. Its result must be assigned so an actual repair
+                // reaches the covariance consumed by the next E-step's Cholesky factorization.
+                Sigmas[k] = MatrixRegularization.MakeSymmetricPositiveDefinite(Sigmas[k]);
             }
         }
 

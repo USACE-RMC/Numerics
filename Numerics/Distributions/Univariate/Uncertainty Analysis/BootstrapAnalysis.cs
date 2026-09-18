@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Numerics.Data;
 using Numerics.Data.Statistics;
@@ -55,9 +56,24 @@ namespace Numerics.Distributions
         private int _retries = 20;
 
         /// <summary>
+        /// The number of accumulation chunks used by the reductions over replications. Fixed, not
+        /// derived from the processor count, so the summation order — and therefore the result —
+        /// does not vary with the machine or the thread count.
+        /// </summary>
+        private const int ReductionChunks = 64;
+
+        /// <summary>
         /// The distribution parameter estimation method.
         /// </summary>
         public ParameterEstimationMethod EstimationMethod { get; private set; }
+
+        /// <summary>
+        /// The number of replications whose parameter fit failed on the most recent call to
+        /// <see cref="Distributions()"/> or <see cref="Distributions(ParameterSet[])"/>. Failed
+        /// replications are recorded as null and excluded from every summary, so a non-zero count
+        /// means the results rest on fewer samples than requested.
+        /// </summary>
+        public int FailedReplications { get; private set; }
 
         /// <summary>
         /// The univariate distribution to bootstrap.
@@ -84,70 +100,89 @@ namespace Numerics.Distributions
         #region Methods
 
         /// <summary>
-        /// Bootstrap a list of fitted distributions.
+        /// Generates fitted bootstrap distributions.
         /// </summary>
+        /// <returns>The fitted distributions; isolated failed replications are represented by null entries.</returns>
+        /// <exception cref="AggregateException">Thrown when every replication fails after all retries.</exception>
         public IUnivariateDistribution[] Distributions()
         {
             var bootDistributions = new IUnivariateDistribution[Replications];
-            var r = new MersenneTwister(PRNGSeed);
-            var seeds = r.NextIntegers(Replications);
-            Parallel.For(0, Replications, idx =>
+            var failuresByReplication = new Exception?[Replications];
+            var random = new MersenneTwister(PRNGSeed);
+            var seeds = random.NextIntegers(Replications);
+            int failures = 0;
+
+            Parallel.For(0, Replications, index =>
             {
-                bool failed = false;
-                for (int m = 0; m < _retries; m++)
+                Exception? lastFailure = null;
+                for (int attempt = 0; attempt < _retries; attempt++)
                 {
                     try
                     {
-                        bootDistributions[idx] = Distribution.Bootstrap(EstimationMethod, SampleSize, seeds[idx] + 10 * m);
-                        failed = false;
+                        bootDistributions[index] = Distribution.Bootstrap(EstimationMethod, SampleSize, seeds[index] + 10 * attempt);
+                        lastFailure = null;
+                        break;
                     }
-                    catch (Exception)
+                    catch (Exception exception)
                     {
-                        failed = true;
-                    };
-
-                    if (failed == false) break;
+                        lastFailure = exception;
+                    }
                 }
 
-                // MLE and certain L-moments methods can fail to find a solution
-                // On fail, set to null
-                if (failed == true) bootDistributions[idx] = null!;
-
+                if (lastFailure != null || bootDistributions[index] == null)
+                {
+                    failuresByReplication[index] = lastFailure
+                        ?? new InvalidOperationException("The bootstrap fit returned no distribution.");
+                    bootDistributions[index] = null!;
+                    Interlocked.Increment(ref failures);
+                }
             });
+
+            FailedReplications = failures;
+            if (failures == Replications)
+                throw new AggregateException("Every bootstrap distribution fit failed.", failuresByReplication.Where(exception => exception != null).Cast<Exception>());
             return bootDistributions;
         }
 
         /// <summary>
-        /// Return a list of distributions given an array of parameter sets.
+        /// Creates fitted distributions from parameter sets.
         /// </summary>
-        /// <param name="parameterSets">An array of parameter sets.</param>
+        /// <param name="parameterSets">The parameter sets.</param>
+        /// <returns>The distributions; isolated invalid sets are represented by null entries.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="parameterSets"/> is null.</exception>
+        /// <exception cref="AggregateException">Thrown when every parameter set is invalid.</exception>
         public IUnivariateDistribution[] Distributions(ParameterSet[] parameterSets)
         {
+            if (parameterSets == null) throw new ArgumentNullException(nameof(parameterSets));
             var bootDistributions = new IUnivariateDistribution[parameterSets.Length];
-            Parallel.For(0, parameterSets.Length, idx =>
-            {
-                bool failed = false;
+            if (parameterSets.Length == 0) return bootDistributions;
 
+            var failuresByReplication = new Exception?[parameterSets.Length];
+            int failures = 0;
+            Parallel.For(0, parameterSets.Length, index =>
+            {
                 try
                 {
-                    var dist = ((UnivariateDistributionBase)Distribution).Clone();
-                    dist.SetParameters(parameterSets[idx].Values);
-                    bootDistributions[idx] = dist;
-                    failed = false;
+                    var distribution = ((UnivariateDistributionBase)Distribution).Clone();
+                    distribution.ValidateParameters(parameterSets[index].Values, true);
+                    distribution.SetParameters(parameterSets[index].Values);
+                    if (!distribution.ParametersValid)
+                        throw new ArgumentException("The parameter set does not define a valid distribution.", nameof(parameterSets));
+                    bootDistributions[index] = distribution;
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
-                    failed = true;
-                };
-
-                // On fail, set to null
-                if (failed == true) bootDistributions[idx] = null!;
-
-
+                    failuresByReplication[index] = exception;
+                    bootDistributions[index] = null!;
+                    Interlocked.Increment(ref failures);
+                }
             });
+
+            FailedReplications = failures;
+            if (failures == parameterSets.Length)
+                throw new AggregateException("Every bootstrap parameter set was invalid.", failuresByReplication.Where(exception => exception != null).Cast<Exception>());
             return bootDistributions;
         }
-
 
         /// <summary>
         /// Bootstrap an array of distribution parameters.
@@ -155,8 +190,8 @@ namespace Numerics.Distributions
         public double[,] Parameters(IUnivariateDistribution[]? distributions = null)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
-            var bootParameters = new double[bootDistributions.Count(), Distribution.NumberOfParameters];
-            Parallel.For(0, bootDistributions.Count(), idx =>
+            var bootParameters = new double[bootDistributions.Length, Distribution.NumberOfParameters];
+            Parallel.For(0, bootDistributions.Length, idx =>
             {
                 if (bootDistributions[idx] != null)
                 {
@@ -180,8 +215,8 @@ namespace Numerics.Distributions
         public ParameterSet[] ParameterSets(IUnivariateDistribution[]? distributions = null)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
-            var bootParameters = new ParameterSet[bootDistributions.Count()];
-            Parallel.For(0, bootDistributions.Count(), idx =>
+            var bootParameters = new ParameterSet[bootDistributions.Length];
+            Parallel.For(0, bootDistributions.Length, idx =>
             {
                 if (bootDistributions[idx] != null)
                 {
@@ -237,10 +272,24 @@ namespace Numerics.Distributions
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
         public double[,] Quantiles(IList<double> probabilities)
         {
-            var Output = new double[Replications, probabilities.Count];
-            var bootDistributions = Distributions();
-            for (int i = 0; i < probabilities.Count; i++)
-                Parallel.For(0, Replications, idx => { Output[idx, i] = bootDistributions[idx] != null ? bootDistributions[idx].InverseCDF(probabilities[i]) : double.NaN; });
+            return Quantiles(probabilities, null);
+        }
+
+        /// <summary>
+        /// Computes quantiles from a supplied array of bootstrapped distributions.
+        /// </summary>
+        /// <param name="probabilities">List of non-exceedance probabilities.</param>
+        /// <param name="distributions">The bootstrapped distributions, or null to generate them.</param>
+        public double[,] Quantiles(IList<double> probabilities, IUnivariateDistribution[]? distributions)
+        {
+            var bootDistributions = distributions != null ? distributions : Distributions();
+            var Output = new double[bootDistributions.Length, probabilities.Count];
+            Parallel.For(0, bootDistributions.Length, idx =>
+            {
+                var distribution = bootDistributions[idx];
+                for (int i = 0; i < probabilities.Count; i++)
+                    Output[idx, i] = distribution != null ? distribution.InverseCDF(probabilities[i]) : double.NaN;
+            });
             return Output;
         }
 
@@ -250,10 +299,24 @@ namespace Numerics.Distributions
         /// <param name="quantiles">List quantile values.</param>
         public double[,] Probabilities(IList<double> quantiles)
         {
-            var Output = new double[Replications, quantiles.Count];
-            var bootDistributions = Distributions();
-            for (int i = 0; i < quantiles.Count; i++)
-                Parallel.For(0, Replications, idx => { Output[idx, i] = bootDistributions[idx] != null ? bootDistributions[idx].CDF(quantiles[i]) : double.NaN; });
+            return Probabilities(quantiles, null);
+        }
+
+        /// <summary>
+        /// Computes non-exceedance probabilities from a supplied array of bootstrapped distributions.
+        /// </summary>
+        /// <param name="quantiles">List of quantile values.</param>
+        /// <param name="distributions">The bootstrapped distributions, or null to generate them.</param>
+        public double[,] Probabilities(IList<double> quantiles, IUnivariateDistribution[]? distributions)
+        {
+            var bootDistributions = distributions != null ? distributions : Distributions();
+            var Output = new double[bootDistributions.Length, quantiles.Count];
+            Parallel.For(0, bootDistributions.Length, idx =>
+            {
+                var distribution = bootDistributions[idx];
+                for (int i = 0; i < quantiles.Count; i++)
+                    Output[idx, i] = distribution != null ? distribution.CDF(quantiles[i]) : double.NaN;
+            });
             return Output;
         }
 
@@ -286,21 +349,21 @@ namespace Numerics.Distributions
      
             // create list of quantiles
             var minMax = ComputeMinMaxQuantiles(0.001, 1 - 1E-9, bootDistributions);
-            int bins = 200;
-            List<double> quantiles = new List<double>();
             double shift = 0;
             if (minMax[0] <= 0) shift = Math.Abs(minMax[0]) + 1d;
             double min = minMax[0] + shift;
             double max = minMax[1] + shift;
-            int order = (int)Math.Floor(Math.Log10(max) - Math.Log10(min));
-            bins = Math.Max(200, Math.Min(1000, 100 * order));
-            double delta = (Math.Log10(max) - Math.Log10(min)) / (bins - 1);
-            double x = Math.Log10(min);
-            quantiles.Add(Math.Pow(10, x) - shift);
-            for (int i = 1; i <= bins - 1; i++)
+            double logMin = Math.Log10(min);
+            int order = (int)Math.Floor(Math.Log10(max) - logMin);
+            int bins = Math.Max(200, Math.Min(1000, 100 * order));
+            double delta = (Math.Log10(max) - logMin) / (bins - 1);
+
+            // Each ordinate is computed from the origin, not accumulated from its predecessor, so
+            // rounding does not compound across the ladder.
+            var quantiles = new List<double>(bins);
+            for (int i = 0; i < bins; i++)
             {
-                x = Math.Log10(quantiles[i - 1] + shift) + delta;
-                quantiles.Add(Math.Pow(10, x) - shift);
+                quantiles.Add(Math.Pow(10, logMin + i * delta) - shift);
             }
 
             // get mean curve
@@ -310,83 +373,129 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Bootstrap the expected non-exceedance probabilities given the input quantile values. Returns the x-values interpolated from the list of desired non-exceedance probabilities.
+        /// Interpolates quantiles at requested probabilities from the mean bootstrap CDF.
         /// </summary>
-        /// <param name="quantiles">List quantile values.</param>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <param name="quantiles">Quantile ordinates; ordering is not required.</param>
+        /// <param name="probabilities">The probabilities to interpolate.</param>
+        /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
+        /// <returns>The interpolated quantiles.</returns>
+        /// <remarks>
+        /// Despite the historical method name, this overload returns one quantile for each entry in
+        /// <paramref name="probabilities"/>. The two-argument overload instead returns mean CDF
+        /// probabilities evaluated at sorted quantiles.
+        /// </remarks>
         public double[] ExpectedProbabilities(IList<double> quantiles, IList<double> probabilities, IUnivariateDistribution[]? distributions = null)
         {
-            var quants = quantiles.ToArray();
-            var probs = probabilities.ToArray();
-            Array.Sort(quants);
-            var expected = new double[quantiles.Count];
-            var output = new double[probabilities.Count];
-            var bootDistributions = distributions != null ? distributions : Distributions();
-            for (int i = 0; i < quantiles.Count; i++)
-            {
-                double total = 0d;
-                Parallel.For(0, bootDistributions.Count(), () => 0d, (j, loop, sum) =>
-                {
-                    if (bootDistributions[j] != null)
-                    {
-                        sum += bootDistributions[j].CDF(quants[i]);
-                    }
-                    return sum;
-                }, z => Tools.ParallelAdd(ref total, z));
-                expected[i] = total / bootDistributions.Count();
-            }
+            if (quantiles == null) throw new ArgumentNullException(nameof(quantiles));
+            if (probabilities == null) throw new ArgumentNullException(nameof(probabilities));
+            if (quantiles.Count < 2) throw new ArgumentException("At least two quantiles are required.", nameof(quantiles));
 
-            double minY = double.MaxValue;
-            double maxY = double.MinValue;
-            var yVals = new List<double>();
-            var xVals = new List<double>();
-            yVals.Add(quantiles[0]);
-            xVals.Add(expected[0]);
-            for (int i = 1; i < quantiles.Count; i++)
+            var sortedQuantiles = quantiles.ToArray();
+            Array.Sort(sortedQuantiles);
+            var targetProbabilities = probabilities.ToArray();
+            var bootDistributions = distributions ?? Distributions();
+            var expected = MeanCDFs(sortedQuantiles, bootDistributions);
+
+            var cdfValues = new List<double> { expected[0] };
+            var ordinateValues = new List<double> { sortedQuantiles[0] };
+            double minimumOrdinate = sortedQuantiles[0];
+            double maximumOrdinate = sortedQuantiles[0];
+            for (int i = 1; i < sortedQuantiles.Length; i++)
             {
-                if (expected[i] > xVals.Last())
+                if (expected[i] > cdfValues[cdfValues.Count - 1])
                 {
-                    minY = Math.Min(minY, quantiles[i]);
-                    maxY = Math.Max(maxY, quantiles[i]);
-                    yVals.Add(quantiles[i]);
-                    xVals.Add(expected[i]);
+                    minimumOrdinate = Math.Min(minimumOrdinate, sortedQuantiles[i]);
+                    maximumOrdinate = Math.Max(maximumOrdinate, sortedQuantiles[i]);
+                    ordinateValues.Add(sortedQuantiles[i]);
+                    cdfValues.Add(expected[i]);
                 }
             }
-            bool useLogTransform = false;
-            if (minY > 0 && (Math.Log10(maxY) - Math.Log10(minY)) > 1)
-                useLogTransform = true;
+            if (cdfValues.Count < 2)
+                throw new InvalidOperationException("The mean bootstrap CDF does not contain two distinct probabilities.");
 
-            Linear linint = new Linear(xVals, yVals) { XTransform = Transform.NormalZ, YTransform = useLogTransform ?  Transform.Logarithmic : Transform.None };
-            output = linint.Interpolate(probs);
-            return output;
+            bool useLogTransform = minimumOrdinate > 0d
+                && Math.Log10(maximumOrdinate) - Math.Log10(minimumOrdinate) > 1d;
+            var interpolation = new Linear(cdfValues, ordinateValues)
+            {
+                XTransform = Transform.NormalZ,
+                YTransform = useLogTransform ? Transform.Logarithmic : Transform.None
+            };
+            return interpolation.Interpolate(targetProbabilities);
         }
 
         /// <summary>
-        /// Bootstrap the expected non-exceedance probabilities given the input quantile values.
+        /// Computes the mean CDF across successful bootstrap fits at each quantile.
         /// </summary>
-        /// <param name="quantiles">List quantile values.</param>
+        /// <param name="quantiles">The quantiles to evaluate.</param>
+        /// <param name="distributions">The bootstrap distributions; null entries represent failed fits.</param>
+        /// <returns>The mean CDF values.</returns>
+        /// <remarks>
+        /// The replications are split into <see cref="ReductionChunks"/> chunks (capped at the
+        /// replication count), each summed sequentially and merged in chunk order, so the result
+        /// does not depend on the thread count. Failed fits are excluded from both the sum and
+        /// the divisor.
+        /// </remarks>
+        private static double[] MeanCDFs(double[] quantiles, IUnivariateDistribution[] distributions)
+        {
+            int replications = distributions.Length;
+            int quantileCount = quantiles.Length;
+            var expected = new double[quantileCount];
+            if (quantileCount == 0) return expected;
+            if (replications == 0)
+                throw new InvalidOperationException("No bootstrap distributions were supplied.");
+
+            int chunks = Math.Min(ReductionChunks, replications);
+            var chunkSums = new double[chunks][];
+            var chunkValid = new int[chunks];
+            for (int c = 0; c < chunks; c++) chunkSums[c] = new double[quantileCount];
+
+            Parallel.For(0, chunks, c =>
+            {
+                var accumulator = chunkSums[c];
+                int start = (int)((long)c * replications / chunks);
+                int end = (int)((long)(c + 1) * replications / chunks);
+                int valid = 0;
+                for (int j = start; j < end; j++)
+                {
+                    var distribution = distributions[j];
+                    if (distribution == null) continue;
+                    valid++;
+                    for (int i = 0; i < quantileCount; i++)
+                        accumulator[i] += distribution.CDF(quantiles[i]);
+                }
+                chunkValid[c] = valid;
+            });
+
+            int validCount = 0;
+            for (int c = 0; c < chunks; c++) validCount += chunkValid[c];
+            if (validCount == 0)
+                throw new InvalidOperationException("Every bootstrap distribution fit failed.");
+
+            for (int i = 0; i < quantileCount; i++)
+            {
+                double total = 0d;
+                for (int c = 0; c < chunks; c++) total += chunkSums[c][i];
+                expected[i] = total / validCount;
+            }
+            return expected;
+        }
+        /// <summary>
+        /// Computes mean non-exceedance probabilities at the input quantiles.
+        /// </summary>
+        /// <param name="quantiles">Quantile values, which are copied and sorted in ascending order.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <returns>Mean CDF probabilities corresponding to the quantiles in ascending order.</returns>
+        /// <remarks>
+        /// The returned positions follow ascending quantile order, not the caller's input order.
+        /// The three-argument overload instead interpolates and returns quantiles at requested
+        /// probabilities.
+        /// </remarks>
         public double[] ExpectedProbabilities(IList<double> quantiles, IUnivariateDistribution[]? distributions = null)
         {
             var quants = quantiles.ToArray();
             Array.Sort(quants);
-            var expected = new double[quantiles.Count];
             var bootDistributions = distributions != null ? distributions : Distributions();
-            for (int i = 0; i < quantiles.Count; i++)
-            {
-                double total = 0d;
-                Parallel.For(0, bootDistributions.Count(), () => 0d, (j, loop, sum) =>
-                {
-                    if (bootDistributions[j] != null)
-                    {
-                        sum += bootDistributions[j].CDF(quants[i]);
-                    }
-                    return sum;
-                }, z => Tools.ParallelAdd(ref total, z));
-                expected[i] = total / bootDistributions.Count();
-            }
-            return expected;
+            return MeanCDFs(quants, bootDistributions);
         }
 
         /// <summary>
@@ -397,477 +506,457 @@ namespace Numerics.Distributions
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
         public double[] ComputeMinMaxQuantiles(double minProbability, double maxProbability, IUnivariateDistribution[] distributions)
         {
+            // The extremes merge once per partition; min and max are order-independent, so the
+            // result does not depend on the partitioning.
             var output = new double[] { double.MaxValue, double.MinValue };
             object lockObject = new object();
-            Parallel.For(0, distributions.Count(), j =>
+            int count = distributions.Length;
+            Parallel.For(0, count, () => (Min: double.MaxValue, Max: double.MinValue), (j, loop, local) =>
             {
-                if (distributions[j] != null)
+                var distribution = distributions[j];
+                if (distribution == null) return local;
+                double minX = distribution.InverseCDF(minProbability);
+                double maxX = distribution.InverseCDF(maxProbability);
+                return (minX < local.Min ? minX : local.Min, maxX > local.Max ? maxX : local.Max);
+            },
+            local =>
+            {
+                lock (lockObject)
                 {
-                    var minX = distributions[j].InverseCDF(minProbability);
-                    var maxX = distributions[j].InverseCDF(maxProbability);
-                    lock (lockObject)
-                    {
-                        if (minX < output[0]) output[0] = minX;
-                        if (maxX > output[1]) output[1] = maxX;
-                    }
+                    if (local.Min < output[0]) output[0] = local.Min;
+                    if (local.Max > output[1]) output[1] = local.Max;
                 }
             });
+            if (output[0] == double.MaxValue || output[1] == double.MinValue)
+                throw new InvalidOperationException("Every bootstrap distribution fit failed.");
             return output;
         }
 
         /// <summary>
-        /// Bootstrap confidence intervals for a list of quantiles using the percentile method.
+        /// Computes percentile bootstrap confidence intervals for quantiles.
         /// </summary>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="alpha">The excluded two-sided probability.</param>
+        /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
+        /// <returns>The lower and upper confidence limits for each probability.</returns>
         public double[,] PercentileQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
         {
-            var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var Output = new double[probabilities.Count, 2];
-            var bootDistributions = distributions != null ? distributions : Distributions();
+            var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
+            var output = new double[probabilities.Count, 2];
+            var bootDistributions = distributions ?? Distributions();
             for (int i = 0; i < probabilities.Count; i++)
             {
-                var XValues = new double[bootDistributions.Count()];
-                Parallel.For(0, bootDistributions.Count(), idx => { XValues[idx] = bootDistributions[idx] != null ? bootDistributions[idx].InverseCDF(probabilities[i]) : double.NaN; });
-
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
+                var values = new double[bootDistributions.Length];
+                Parallel.For(0, bootDistributions.Length, index =>
                 {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
-                Array.Sort(validValues);
+                    values[index] = bootDistributions[index] != null
+                        ? bootDistributions[index].InverseCDF(probabilities[i])
+                        : double.NaN;
+                });
 
-                // Record percentiles for CIs
-                for (int j = 0; j < 2; j++)
-                    Output[i, j] = Statistics.Percentile(validValues, CIs[j], true);
+                var successfulValues = FiniteValuesOrThrow(values, "percentile confidence intervals");
+                Array.Sort(successfulValues);
+                for (int j = 0; j < confidenceProbabilities.Length; j++)
+                    output[i, j] = Statistics.Percentile(successfulValues, confidenceProbabilities[j], true);
             }
-            return Output;
+            return output;
         }
-
         /// <summary>
-        /// Bootstrap confidence intervals for a list of quantiles using the bias-corrected percentile method.
+        /// Computes bias-corrected percentile confidence intervals for quantiles.
         /// </summary>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="alpha">The excluded two-sided probability.</param>
+        /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
+        /// <returns>The lower and upper confidence limits for each probability.</returns>
+        /// <remarks>
+        /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
+        /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
+        /// below one when every replicate falls at or below the estimate. When every replicate exceeds
+        /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
+        /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
+        /// −38.5; the adjusted probability underflows to zero, so the limits collapse to the smallest
+        /// replicate.
+        /// </remarks>
         public double[,] BiasCorrectedQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
         {
-            // Create list of original X values given probability values
-            var populationXValues = new double[probabilities.Count];
+            var populationValues = new double[probabilities.Count];
             for (int i = 0; i < probabilities.Count; i++)
-                populationXValues[i] = Distribution.InverseCDF(probabilities[i]);
+                populationValues[i] = Distribution.InverseCDF(probabilities[i]);
 
-            var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var Output = new double[probabilities.Count, 2];
-            var bootDistributions = distributions != null ? distributions : Distributions();
+            var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
+            var output = new double[probabilities.Count, 2];
+            var bootDistributions = distributions ?? Distributions();
             for (int i = 0; i < probabilities.Count; i++)
             {
-                double P0 = 0d; // proportions of values less than population
-                var XValues = new double[bootDistributions.Count()];
-                Parallel.For(0, bootDistributions.Count(), () => 0d, (idx, loop, subP0) =>
+                var values = new double[bootDistributions.Length];
+                Parallel.For(0, bootDistributions.Length, index =>
                 {
-                    XValues[idx] = bootDistributions[idx] != null ? bootDistributions[idx].InverseCDF(probabilities[i]) : double.NaN;
-                    if (XValues[idx] != double.NaN && XValues[idx] <= populationXValues[i]) subP0 += 1d;
-                    return subP0;
-                }, z => Tools.ParallelAdd(ref P0, z));
+                    values[index] = bootDistributions[index] != null
+                        ? bootDistributions[index].InverseCDF(probabilities[i])
+                        : double.NaN;
+                });
 
-                // get proportion
-                P0 = P0 / (bootDistributions.Count() + 1);
+                var successfulValues = FiniteValuesOrThrow(values, "bias-corrected confidence intervals");
+                int lessOrEqual = 0;
+                for (int index = 0; index < successfulValues.Length; index++)
+                    if (successfulValues[index] <= populationValues[i]) lessOrEqual++;
 
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
+                double proportion = lessOrEqual / (successfulValues.Length + 1d);
+                Array.Sort(successfulValues);
+                double bias = Normal.StandardZ(proportion);
+                for (int j = 0; j < confidenceProbabilities.Length; j++)
                 {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
-                Array.Sort(validValues);
-
-                // Record percentiles for CIs
-                for (int j = 0; j < 2; j++)
-                {
-                    double Z0 = Normal.StandardZ(P0);
-                    double Z = Normal.StandardZ(CIs[j]);
-                    double BC = Normal.StandardCDF(2d * Z0 + Z);
-                    Output[i, j] = Statistics.Percentile(validValues, BC, true);
+                    double adjusted = Normal.StandardCDF(2d * bias + Normal.StandardZ(confidenceProbabilities[j]));
+                    output[i, j] = Statistics.Percentile(successfulValues, adjusted, true);
                 }
             }
-            return Output;
+            return output;
         }
-
         /// <summary>
-        /// Bootstrap confidence intervals for a list of quantiles using the Normal, or standard method.
+        /// Computes normal-approximation bootstrap confidence intervals for quantiles.
         /// </summary>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="alpha">The excluded two-sided probability.</param>
+        /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
+        /// <returns>The lower and upper confidence limits for each probability.</returns>
         public double[,] NormalQuantileCI(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null)
         {
-
-            // Create list of original X values given probability values
-            // Use a cube-root transform to make results transformation invariant
-            var populationXValues = new double[probabilities.Count];
+            var transformedPopulationValues = new double[probabilities.Count];
             for (int i = 0; i < probabilities.Count; i++)
-                populationXValues[i] = Math.Pow(Distribution.InverseCDF(probabilities[i]), 1d / 3d);
+                transformedPopulationValues[i] = CubeRoot(Distribution.InverseCDF(probabilities[i]));
 
-            var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var Output = new double[probabilities.Count, 2];
-            var bootDistributions = distributions != null ? distributions : Distributions();
+            var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
+            var output = new double[probabilities.Count, 2];
+            var bootDistributions = distributions ?? Distributions();
             for (int i = 0; i < probabilities.Count; i++)
             {
-                var XValues = new double[bootDistributions.Count()];
-                Parallel.For(0, bootDistributions.Count(), idx => { XValues[idx] = bootDistributions[idx] != null ? Math.Pow(bootDistributions[idx].InverseCDF(probabilities[i]), 1d / 3d) : double.NaN; });
-
-                // Filter valid values
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
+                var transformedValues = new double[bootDistributions.Length];
+                Parallel.For(0, bootDistributions.Length, index =>
                 {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
+                    transformedValues[index] = bootDistributions[index] != null
+                        ? CubeRoot(bootDistributions[index].InverseCDF(probabilities[i]))
+                        : double.NaN;
+                });
 
-                // Get Standard error
-                double SE = Statistics.StandardDeviation(validValues);
-
-                // Record percentiles for CIs
-                for (int j = 0; j < 2; j++)
+                var successfulValues = FiniteValuesOrThrow(transformedValues, "normal confidence intervals", 2);
+                double standardError = Statistics.StandardDeviation(successfulValues);
+                for (int j = 0; j < confidenceProbabilities.Length; j++)
                 {
-                    double Z = Normal.StandardZ(CIs[j]);
-                    Output[i, j] = Math.Pow(populationXValues[i] + SE * Z, 3d);
+                    double transformedLimit = transformedPopulationValues[i]
+                        + standardError * Normal.StandardZ(confidenceProbabilities[j]);
+                    output[i, j] = transformedLimit * transformedLimit * transformedLimit;
                 }
             }
-            return Output;
+            return output;
         }
-
         #region Bias-Corrected and Accelerated
 
         /// <summary>
-        /// Bootstrap confidence intervals for a list of quantiles using the bias-corrected and accelerated (BCa) percentile method.
+        /// Computes bias-corrected and accelerated percentile confidence intervals.
         /// </summary>
-        /// <param name="sampleData">Sample of data.</param>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <param name="sampleData">The sample used to estimate the parent distribution.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="alpha">The excluded two-sided probability.</param>
+        /// <returns>The lower and upper confidence limits for each probability.</returns>
+        /// <remarks>
+        /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
+        /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
+        /// below one when every replicate falls at or below the estimate. When every replicate exceeds
+        /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
+        /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
+        /// −38.5. The BCa expression stays defined; for small accelerations the adjusted probability
+        /// underflows to zero and the limits collapse to the smallest replicate, while an acceleration
+        /// negative enough to flip the denominator's sign (below about −0.026 at that floor) drives the
+        /// adjusted probability toward one instead.
+        /// </remarks>
         public double[,] BCaQuantileCI(IList<double> sampleData, IList<double> probabilities, double alpha = 0.1)
         {
-            var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var Output = new double[probabilities.Count, 2];
+            var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
+            var output = new double[probabilities.Count, 2];
 
-            // Estimate distribution
             SampleSize = sampleData.Count;
             ((IEstimation)Distribution).Estimate(sampleData, EstimationMethod);
-
-            // Create list of original X values given probability values
-            var populationXValues = new double[probabilities.Count];
+            var populationValues = new double[probabilities.Count];
             for (int i = 0; i < probabilities.Count; i++)
-                populationXValues[i] = Distribution.InverseCDF(probabilities[i]);
+                populationValues[i] = Distribution.InverseCDF(probabilities[i]);
 
-            // Get acceleration constants
-            var a = AccelerationConstants(sampleData, probabilities, populationXValues);
-
-            // Get bootstrapped distributions
+            var acceleration = AccelerationConstants(sampleData, probabilities, populationValues);
             var bootDistributions = Distributions();
             for (int i = 0; i < probabilities.Count; i++)
             {
-                double P0 = 0d; // proportions of values less than population
-                var XValues = new double[Replications];
-                Parallel.For(0, Replications, () => 0d, (idx, loop, subP0) =>
+                var values = new double[bootDistributions.Length];
+                Parallel.For(0, bootDistributions.Length, index =>
                 {
-                    XValues[idx] = bootDistributions[idx] != null ? bootDistributions[idx].InverseCDF(probabilities[i]) : double.NaN;
-                    if (XValues[idx] != double.NaN && XValues[idx] <= populationXValues[i]) subP0 += 1d;
-                    return subP0;
-                }, z => Tools.ParallelAdd(ref P0, z));
+                    values[index] = bootDistributions[index] != null
+                        ? bootDistributions[index].InverseCDF(probabilities[i])
+                        : double.NaN;
+                });
 
-                // get proportion
-                P0 = (P0 + 1) / (Replications + 1);
+                var successfulValues = FiniteValuesOrThrow(values, "BCa confidence intervals");
+                int lessOrEqual = 0;
+                for (int index = 0; index < successfulValues.Length; index++)
+                    if (successfulValues[index] <= populationValues[i]) lessOrEqual++;
 
-                // Filter valid values and sort
-                int validCount = 0;
-                for (int k = 0; k < XValues.Length; k++)
+                double proportion = lessOrEqual / (successfulValues.Length + 1d);
+                double bias = Normal.StandardZ(proportion);
+                Array.Sort(successfulValues);
+                for (int j = 0; j < confidenceProbabilities.Length; j++)
                 {
-                    if (!double.IsNaN(XValues[k])) validCount++;
-                }
-                var validValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < XValues.Length; k++)
-                {
-                    if (!double.IsNaN(XValues[k]))
-                        validValues[writeIdx++] = XValues[k];
-                }
-                Array.Sort(validValues);
-
-                // Record percentiles for CIs
-                for (int j = 0; j < 2; j++)
-                {
-                    double Z0 = Normal.StandardZ(P0);
-                    double Z = Normal.StandardZ(CIs[j]);
-                    double num = Z0 + Z;
-                    double den = 1 - a[i] * (Z0 + Z);
-                    double BC = Normal.StandardCDF(Z0 + num / den);
-                    Output[i, j] = Statistics.Percentile(validValues, BC, true);
+                    double normalQuantile = Normal.StandardZ(confidenceProbabilities[j]);
+                    double denominator = 1d - acceleration[i] * (bias + normalQuantile);
+                    double adjusted = Normal.StandardCDF(bias + (bias + normalQuantile) / denominator);
+                    output[i, j] = Statistics.Percentile(successfulValues, adjusted, true);
                 }
             }
-            return Output;
+            return output;
         }
-
         /// <summary>
-        /// Estimates the acceleration constants for each probability.
+        /// Estimates acceleration constants from successful leave-one-out fits.
         /// </summary>
-        /// <param name="sampleData">Sample of data.</param>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="thetaHats">The list of best-estimate quantiles.</param>
+        /// <param name="sampleData">The observed sample.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="thetaHats">The fitted population quantiles.</param>
+        /// <returns>One acceleration constant per probability.</returns>
+        /// <exception cref="AggregateException">Thrown when every leave-one-out fit fails.</exception>
+        /// <remarks>
+        /// The jackknife is chunked (<see cref="ReductionChunks"/>) so the moment sums merge in a
+        /// fixed order independent of the thread count.
+        /// </remarks>
         private double[] AccelerationConstants(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
         {
-            var N = sampleData.Count;
-            var I2 = new double[probabilities.Count];
-            var I3 = new double[probabilities.Count];
-            var a = new double[probabilities.Count];
+            int sampleCount = sampleData.Count;
+            int probabilityCount = probabilities.Count;
+            var acceleration = new double[probabilityCount];
+            if (sampleCount == 0) return acceleration;
 
-            // Perform Jackknife
-            Parallel.For(0, N, idx =>
+            int chunks = Math.Min(ReductionChunks, sampleCount);
+            var chunkSecondMoments = new double[chunks][];
+            var chunkThirdMoments = new double[chunks][];
+            var chunkSuccesses = new int[chunks];
+            var failures = new Exception?[sampleCount];
+            for (int chunk = 0; chunk < chunks; chunk++)
             {
-                // Remove data point
-                var jackSample = new List<double>(sampleData);
-                jackSample.RemoveAt(idx);
+                chunkSecondMoments[chunk] = new double[probabilityCount];
+                chunkThirdMoments[chunk] = new double[probabilityCount];
+            }
 
-                // Estimate distribution
-                var newDistribution = ((UnivariateDistributionBase)Distribution).Clone();
-
-                try
+            Parallel.For(0, chunks, chunk =>
+            {
+                var secondMoments = chunkSecondMoments[chunk];
+                var thirdMoments = chunkThirdMoments[chunk];
+                int start = (int)((long)chunk * sampleCount / chunks);
+                int end = (int)((long)(chunk + 1) * sampleCount / chunks);
+                int successes = 0;
+                for (int index = start; index < end; index++)
                 {
-                    ((IEstimation)newDistribution).Estimate(jackSample, EstimationMethod);
-                    // Get quantiles from new distribution
-                    var thetaJack = new double[probabilities.Count];
-                    for (int i = 0; i < probabilities.Count; i++)
+                    var jackknifeSample = new double[sampleCount - 1];
+                    for (int k = 0; k < index; k++) jackknifeSample[k] = sampleData[k];
+                    for (int k = index + 1; k < sampleCount; k++) jackknifeSample[k - 1] = sampleData[k];
+
+                    // Cloned per point: a failed Estimate can leave the instance partially set.
+                    var distribution = ((UnivariateDistributionBase)Distribution).Clone();
+                    try
                     {
-                        thetaJack[i] = newDistribution.InverseCDF(probabilities[i]);
-                        Tools.ParallelAdd(ref I2[i], Math.Pow(thetaHats[i] - thetaJack[i], 2));
-                        Tools.ParallelAdd(ref I3[i], Math.Pow(thetaHats[i] - thetaJack[i], 3));
+                        ((IEstimation)distribution).Estimate(jackknifeSample, EstimationMethod);
+                        for (int i = 0; i < probabilityCount; i++)
+                        {
+                            double difference = thetaHats[i] - distribution.InverseCDF(probabilities[i]);
+                            secondMoments[i] += difference * difference;
+                            thirdMoments[i] += difference * difference * difference;
+                        }
+                        successes++;
+                    }
+                    catch (Exception exception)
+                    {
+                        failures[index] = exception;
                     }
                 }
-                catch (Exception)
-                {
-                    // MLE and certain L-moments methods can fail to find a solution
-                };
-
+                chunkSuccesses[chunk] = successes;
             });
-            // Get acceleration constant
-            for (int i = 0; i < probabilities.Count; i++)
-                a[i] = I3[i] / (Math.Pow(I2[i], 1.5) * 6);
 
-            return a;
+            int successfulFits = 0;
+            for (int chunk = 0; chunk < chunks; chunk++) successfulFits += chunkSuccesses[chunk];
+            if (successfulFits == 0)
+                throw new AggregateException("Every jackknife acceleration fit failed.", failures.Where(exception => exception != null).Cast<Exception>());
+
+            for (int i = 0; i < probabilityCount; i++)
+            {
+                double secondMoment = 0d;
+                double thirdMoment = 0d;
+                for (int chunk = 0; chunk < chunks; chunk++)
+                {
+                    secondMoment += chunkSecondMoments[chunk][i];
+                    thirdMoment += chunkThirdMoments[chunk][i];
+                }
+                acceleration[i] = secondMoment > 0d && Tools.IsFinite(secondMoment)
+                    ? thirdMoment / (6d * Math.Pow(secondMoment, 1.5d))
+                    : 0d;
+            }
+            return acceleration;
         }
-
         #endregion
 
         #region Bootstrap-t (aka Student-t Bootstrap)
 
         /// <summary>
-        /// Bootstrap confidence intervals for a list of quantiles using the Bootstrap-t method.
+        /// Computes studentized bootstrap confidence intervals for quantiles.
         /// </summary>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="alpha">The excluded two-sided probability.</param>
+        /// <returns>The lower and upper confidence limits for each probability.</returns>
         public double[,] BootstrapTQuantileCI(IList<double> probabilities, double alpha = 0.1)
         {
-            // Create list of original X values given probability values
-            // Use a cube-root transform to make results transformation invariant
-            var populationXValues = new double[probabilities.Count];
+            var populationValues = new double[probabilities.Count];
             for (int i = 0; i < probabilities.Count; i++)
-                populationXValues[i] = Math.Pow(Distribution.InverseCDF(probabilities[i]), 1d / 3d);
+                populationValues[i] = CubeRoot(Distribution.InverseCDF(probabilities[i]));
 
-            var xValues = new double[Replications, probabilities.Count];
-            var studentT = new double[Replications, probabilities.Count];
-            var CIs = new double[] { alpha / 2d, 1d - alpha / 2d };
-            var Output = new double[probabilities.Count, 2];
+            var transformedValues = new double[Replications, probabilities.Count];
+            var studentizedValues = new double[Replications, probabilities.Count];
+            var failures = new Exception?[Replications];
+            var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
+            var output = new double[probabilities.Count, 2];
+            var random = new MersenneTwister(PRNGSeed);
+            var seeds = random.NextIntegers(Replications);
+            int failedFits = 0;
 
-            // First create list of bootstrap distributions, 
-            // and estimate standard error for each quantiles          
-            var bootDistributions = new IUnivariateDistribution[Replications];
-            var r = new MersenneTwister(PRNGSeed);
-            var seeds = r.NextIntegers(Replications);
-            Parallel.For(0, Replications, i =>
+            Parallel.For(0, Replications, index =>
             {
                 try
                 {
-                    var newDistribution = ((UnivariateDistributionBase)Distribution).Clone();
-                    var sample = newDistribution.GenerateRandomValues(SampleSize, seeds[i]);
-                    ((IEstimation)newDistribution).Estimate(sample, EstimationMethod);
-                    bootDistributions[i] = newDistribution;
+                    var distribution = ((UnivariateDistributionBase)Distribution).Clone();
+                    var sample = distribution.GenerateRandomValues(SampleSize, seeds[index]);
+                    ((IEstimation)distribution).Estimate(sample, EstimationMethod);
 
-                    // Record inner boot thetas
-                    var bootXValues = new double[probabilities.Count];
+                    var bootstrapValues = new double[probabilities.Count];
                     for (int j = 0; j < probabilities.Count; j++)
-                        bootXValues[j] = Math.Pow(bootDistributions[i].InverseCDF(probabilities[j]), 1d / 3d);
+                        bootstrapValues[j] = CubeRoot(distribution.InverseCDF(probabilities[j]));
 
-                    // Now estimate the standard error at each quantile using the jackknife method
-                    //var bootSE = StandardError(sample, probabilities, bootXValues);
-                    var bootSE = BootstrapStandardError(newDistribution, probabilities, 300, seeds[i]);
+                    var standardErrors = BootstrapStandardError(distribution, probabilities, 300, seeds[index]);
                     for (int j = 0; j < probabilities.Count; j++)
                     {
-                        xValues[i, j] = bootXValues[j];
-                        studentT[i, j] = (populationXValues[j] - bootXValues[j]) / bootSE[j];
+                        transformedValues[index, j] = bootstrapValues[j];
+                        studentizedValues[index, j] = (populationValues[j] - bootstrapValues[j]) / standardErrors[j];
                     }
-
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
-                    // MLE and certain L-moments methods can fail to find a solution
-                    // On fail, set to null
-                    bootDistributions[i] = null!;
+                    failures[index] = exception;
+                    Interlocked.Increment(ref failedFits);
                     for (int j = 0; j < probabilities.Count; j++)
                     {
-                        xValues[i, j] = double.NaN;
-                        studentT[i, j] = double.NaN;
+                        transformedValues[index, j] = double.NaN;
+                        studentizedValues[index, j] = double.NaN;
                     }
-                };
-
+                }
             });
 
+            if (failedFits == Replications)
+                throw new AggregateException("Every studentized bootstrap fit failed.", failures.Where(exception => exception != null).Cast<Exception>());
 
             for (int i = 0; i < probabilities.Count; i++)
             {
-                var rawX = xValues.GetColumn(i);
-                var rawT = studentT.GetColumn(i);
-                int validCount = 0;
-                for (int k = 0; k < rawX.Length; k++)
+                var rawValues = transformedValues.GetColumn(i);
+                var rawStudentized = studentizedValues.GetColumn(i);
+                var values = new List<double>();
+                var studentized = new List<double>();
+                for (int index = 0; index < rawValues.Length; index++)
                 {
-                    if (!double.IsNaN(rawX[k])) validCount++;
-                }
-                var XValues = new double[validCount];
-                var TValues = new double[validCount];
-                int writeIdx = 0;
-                for (int k = 0; k < rawX.Length; k++)
-                {
-                    if (!double.IsNaN(rawX[k]))
+                    if (Tools.IsFinite(rawValues[index]) && Tools.IsFinite(rawStudentized[index]))
                     {
-                        XValues[writeIdx] = rawX[k];
-                        TValues[writeIdx] = rawT[k];
-                        writeIdx++;
+                        values.Add(rawValues[index]);
+                        studentized.Add(rawStudentized[index]);
                     }
                 }
+                if (values.Count < 2)
+                    throw new InvalidOperationException("Insufficient successful fits are available for studentized confidence intervals.");
 
-                // Get Standard error
-                double SE = Statistics.StandardDeviation(XValues);
-                Array.Sort(TValues);
-
-                // Record percentiles for CIs
-                for (int j = 0; j < 2; j++)
+                double standardError = Statistics.StandardDeviation(values);
+                var sortedStudentized = studentized.ToArray();
+                Array.Sort(sortedStudentized);
+                for (int j = 0; j < confidenceProbabilities.Length; j++)
                 {
-                    double T = Statistics.Percentile(TValues, CIs[j], true);
-                    Output[i, j] = Math.Pow(populationXValues[i] + SE * T, 3d);
+                    double studentizedQuantile = Statistics.Percentile(sortedStudentized, confidenceProbabilities[j], true);
+                    double transformedLimit = populationValues[i] + standardError * studentizedQuantile;
+                    output[i, j] = transformedLimit * transformedLimit * transformedLimit;
                 }
             }
-
-            return Output;
+            return output;
         }
-
         /// <summary>
-        /// Estimates the standard error for each probability using the parametric bootstrap.
+        /// Estimates quantile standard errors using successful inner bootstrap fits.
         /// </summary>
-        ///<param name="parentDist">The parent distribution.</param>
-        ///<param name="probabilities">The list of probabilities where the standard error is calculated.</param>
-        ///<param name="replications">The number of bootstrap replications. Default = 300.</param>
-        ///<param name="seed">The PRNG seed. Default = 12345.</param>
+        /// <param name="parentDist">The fitted parent distribution used to generate inner samples.</param>
+        /// <param name="probabilities">The non-exceedance probabilities.</param>
+        /// <param name="replications">The number of inner bootstrap fits.</param>
+        /// <param name="seed">The deterministic random-number seed.</param>
+        /// <returns>One standard error per probability.</returns>
+        /// <exception cref="AggregateException">Thrown when every inner bootstrap fit fails.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when fewer than two finite fits are available for a requested probability.</exception>
         private double[] BootstrapStandardError(UnivariateDistributionBase parentDist, IList<double> probabilities, int replications = 300, int seed = 12345)
         {
-            int B = replications;
-            var r = new MersenneTwister(seed);
-            var seeds = r.NextIntegers(replications);
-            var xValues = new double[B, probabilities.Count];
-            var se = new double[probabilities.Count];
-            Parallel.For(0, replications, i =>
+            var random = new MersenneTwister(seed);
+            var seeds = random.NextIntegers(replications);
+            var values = new double[replications, probabilities.Count];
+            var failures = new Exception?[replications];
+            int failedFits = 0;
+
+            Parallel.For(0, replications, index =>
             {
                 try
                 {
-                    var bootDist = parentDist.Clone();
-                    var sample = bootDist.GenerateRandomValues(SampleSize, seeds[i]);
-                    ((IEstimation)bootDist).Estimate(sample, EstimationMethod);
-
-                    // Record inner boot thetas
+                    var distribution = parentDist.Clone();
+                    var sample = distribution.GenerateRandomValues(SampleSize, seeds[index]);
+                    ((IEstimation)distribution).Estimate(sample, EstimationMethod);
                     for (int j = 0; j < probabilities.Count; j++)
-                        xValues[i, j] = Math.Pow(bootDist.InverseCDF(probabilities[j]), 1d / 3d);
-
+                        values[index, j] = CubeRoot(distribution.InverseCDF(probabilities[j]));
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
-                    // MLE and certain L-moments methods can fail to find a solution
-                    // On fail, set to null
-
-                };
-
+                    failures[index] = exception;
+                    Interlocked.Increment(ref failedFits);
+                    for (int j = 0; j < probabilities.Count; j++) values[index, j] = double.NaN;
+                }
             });
 
-            // Get standard error
+            if (failedFits == replications)
+                throw new AggregateException("Every inner bootstrap fit failed.", failures.Where(exception => exception != null).Cast<Exception>());
+
+            var standardErrors = new double[probabilities.Count];
             for (int i = 0; i < probabilities.Count; i++)
-                se[i] = Statistics.StandardDeviation(xValues.GetColumn(i));
-            return se;
+            {
+                var successfulValues = FiniteValuesOrThrow(values.GetColumn(i), "inner bootstrap standard errors", 2);
+                standardErrors[i] = Statistics.StandardDeviation(successfulValues);
+            }
+            return standardErrors;
         }
 
         /// <summary>
-        /// Estimates the standard error for each probability.
+        /// Returns finite results from successful fits and enforces a minimum sample count.
         /// </summary>
-        /// <param name="sampleData">Sample of data.</param>
-        /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="thetaHats">The list of best-estimate quantiles.</param>
-        private double[] StandardError(IList<double> sampleData, IList<double> probabilities, IList<double> thetaHats)
+        /// <param name="values">The fit results, with non-finite entries representing failed fits.</param>
+        /// <param name="operation">The operation name included in failure messages.</param>
+        /// <param name="minimumCount">The minimum number of finite results required.</param>
+        /// <returns>A new array containing only finite fit results.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when fewer than <paramref name="minimumCount"/> fits succeeded.</exception>
+        private static double[] FiniteValuesOrThrow(double[] values, string operation, int minimumCount = 1)
         {
-            var N = sampleData.Count;
-            var I2 = new double[probabilities.Count];
-            var se = new double[probabilities.Count];
-
-            // Perform Jackknife
-            Parallel.For(0, N, idx =>
-            {
-                // Remove data point
-                var jackSample = new List<double>(sampleData);
-                jackSample.RemoveAt(idx);
-                // Estimate distribution
-                var newDistribution = ((UnivariateDistributionBase)Distribution).Clone();
-
-                try
-                {
-                    ((IEstimation)newDistribution).Estimate(jackSample, EstimationMethod);
-                    // Get quantiles from new distribution
-                    var thetaJack = new double[probabilities.Count];
-                    for (int i = 0; i < probabilities.Count; i++)
-                    {
-                        thetaJack[i] = Math.Pow(newDistribution.InverseCDF(probabilities[i]), 1d / 3d);
-                        Tools.ParallelAdd(ref I2[i], Math.Pow(thetaHats[i] - thetaJack[i], 2));
-                    }
-                }
-                catch (Exception)
-                {
-                    // MLE and certain L-moments methods can fail to find a solution
-                };
-
-            });
-            // Get standard error
-            for (int i = 0; i < probabilities.Count; i++)
-                se[i] = Math.Sqrt((N - 1) / (double)N * I2[i]);
-
-            return se;
+            var successfulValues = values.Where(Tools.IsFinite).ToArray();
+            if (successfulValues.Length < minimumCount)
+                throw new InvalidOperationException("Insufficient successful fits are available for " + operation + ".");
+            return successfulValues;
         }
 
+        /// <summary>
+        /// Computes the real cube root while preserving the sign of negative values.
+        /// </summary>
+        /// <param name="value">The value whose real cube root is required.</param>
+        /// <returns>The sign-preserving real cube root.</returns>
+        private static double CubeRoot(double value)
+        {
+            if (value == 0d) return value;
+            return value < 0d ? -Math.Pow(-value, 1d / 3d) : Math.Pow(value, 1d / 3d);
+        }
         #endregion
 
         #endregion

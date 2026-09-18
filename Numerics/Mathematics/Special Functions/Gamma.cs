@@ -631,14 +631,9 @@ namespace Numerics.Mathematics.SpecialFunctions
                     PN2 = PN4;
                     PN3 = PN5;
                     PN4 = PN6;
-                    if (Math.Abs(PN5) < OFL)
+                    if (Math.Abs(PN5) >= OFL)
                     {
-                        // ITERATION HAS NOT CONVERGED. RESULT MAY BE UNRELIABLE.'
-                        // Consider adding a message box or something
-                        break;
-                    }
-                    else
-                    {
+                        // Rescale the recurrence so the convergents stay inside the overflow bound
                         PN1 = PN1 / OFL;
                         PN2 = PN2 / OFL;
                         PN3 = PN3 / OFL;

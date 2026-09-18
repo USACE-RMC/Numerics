@@ -227,6 +227,37 @@ namespace Numerics
         }
 
         /// <summary>
+        /// Computes <c>exp(x) - 1</c> with improved numerical accuracy for small <paramref name="x"/>.
+        /// </summary>
+        /// <param name="x">The input value.</param>
+        /// <returns>
+        /// <c>exp(x) - 1</c>. For values of <paramref name="x"/> near zero, this method avoids the
+        /// catastrophic cancellation that occurs in <c>Math.Exp(x) - 1</c>; deeply negative inputs
+        /// return exactly -1 and large inputs overflow to positive infinity.
+        /// </returns>
+        /// <remarks>
+        /// Uses the compensated evaluation <c>(u - 1) * x / log(u)</c> with <c>u = exp(x)</c>, which
+        /// corrects the rounding of the exponential; when <c>u</c> rounds to one the input itself is
+        /// returned. For large positive inputs the compensation's intermediate product overflows
+        /// while <c>exp(x) - 1</c> is still finite; there the subtraction is exact to the last unit
+        /// anyway, so the direct difference is returned. This is the companion of
+        /// <see cref="Log1p"/> for log-space probability arithmetic such as survival products of
+        /// many small probabilities.
+        /// </remarks>
+        public static double Expm1(double x)
+        {
+            double u = Math.Exp(x);
+            if (u == 1.0) return x;
+            if (double.IsPositiveInfinity(u)) return u;
+            if (u <= DoubleMachineEpsilon / 2.0) return -1.0;
+            double numerator = (u - 1.0) * x;
+            // The product overflows only for x large enough that 1 is far below one unit in the last
+            // place of u, where exp(x) - 1 carries no cancellation to compensate for.
+            if (double.IsInfinity(numerator)) return u - 1.0;
+            return numerator / Math.Log(u);
+        }
+
+        /// <summary>
         /// Returns the Euclidean distance between two points ||x - y||.
         /// </summary>
         /// <param name="x1">X of point 1.</param>
@@ -343,6 +374,7 @@ namespace Numerics
                 result[i] = values[i] * (max - min) + min;
             return result;
         }
+
 
         /// <summary>
         /// Returns the standardized values. 
@@ -521,7 +553,7 @@ namespace Numerics
         /// <param name="max">Output. Maximum value.</param>
         public static void MinMax(IList<double> values, out double min, out double max)
         {
-            min = double.MaxValue;
+            min = double.PositiveInfinity;
             max = double.NegativeInfinity;
             if (values.Count == 0) { min = double.NaN; max = double.NaN; return; };
             for (int i = 0; i < values.Count; i++)
@@ -535,16 +567,17 @@ namespace Numerics
         }
 
         /// <summary>
-        /// Returns the index of the minimum value.
+        /// Returns the index of the minimum value. NaN entries are ignored.
         /// </summary>
         /// <param name="values">The list of values.</param>
+        /// <returns>The zero-based index of the smallest value, or -1 if the list is empty or contains only NaN.</returns>
         public static int ArgMin(IList<double> values)
         {
-            double min = double.MaxValue;
+            double min = double.PositiveInfinity;
             int index = -1;
             for (int i = 0; i < values.Count; i++)
             {
-                if (values[i] < min)
+                if (!double.IsNaN(values[i]) && (index == -1 || values[i] < min))
                 {
                     min = values[i];
                     index = i;
@@ -554,9 +587,10 @@ namespace Numerics
         }
 
         /// <summary>
-        /// Returns the index of the maximum value.
+        /// Returns the index of the maximum value. NaN entries are ignored.
         /// </summary>
         /// <param name="values">The list of values.</param>
+        /// <returns>The zero-based index of the largest value, or -1 if the list is empty or contains only NaN.</returns>
         public static int ArgMax(IList<double> values)
         {
             double max = double.NegativeInfinity;
@@ -580,7 +614,7 @@ namespace Numerics
         public static double Min(IList<double> values)
         {
             if (values.Count == 0) return double.NaN;
-            double min = double.MaxValue;
+            double min = double.PositiveInfinity;
             for (int i = 0; i < values.Count; i++)
             {
                 double v = values[i];
@@ -591,8 +625,9 @@ namespace Numerics
         }
 
         /// <summary>
-        /// Returns the smallest value from a list of values.
-        /// Returns NaN if the list is empty or any entry is NaN.
+        /// Returns the smallest indicated value from a list of values.
+        /// Returns NaN if the list is empty, the indicator list length differs, no entry is
+        /// indicated, or any indicated entry is NaN.
         /// </summary>
         /// <param name="values">The list of values.</param>
         /// <param name="indicators">The list of indicators (0's or 1's).</param>
@@ -601,7 +636,7 @@ namespace Numerics
         {
             if (values.Count == 0) return double.NaN;
             if (indicators.Count != values.Count) return double.NaN;
-            double min = double.MaxValue;
+            double min = double.PositiveInfinity;
             bool any = false;
             int flag = useComplement ? 0 : 1;
             for (int i = 0; i < values.Count; i++)

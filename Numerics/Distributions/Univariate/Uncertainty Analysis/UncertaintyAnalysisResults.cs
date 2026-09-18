@@ -27,6 +27,12 @@ namespace Numerics.Distributions
     /// </remarks>
     public class UncertaintyAnalysisResults
     {
+        /// <summary>
+        /// The number of accumulation chunks used by the reduction over sampled distributions.
+        /// Fixed, not derived from the processor count, so the summation order — and therefore the
+        /// mean curve — does not vary with the machine or the thread count.
+        /// </summary>
+        private const int ReductionChunks = 64;
 
         /// <summary>
         /// Construct an instance of the UncertaintyAnalysisResults class.
@@ -43,6 +49,9 @@ namespace Numerics.Distributions
         /// <param name="minProbability">Minimum probability for mean curve computation (default = 0.001).</param>
         /// <param name="maxProbability">Maximum probability for mean curve computation (default = 1 - 1e-9).</param>
         /// <param name="recordParameterSets">If true, stores all parameter sets from sampled distributions.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="parentDistribution"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null or no finite sampled quantile is available.</exception>
         public UncertaintyAnalysisResults(UnivariateDistributionBase parentDistribution,
                                           UnivariateDistributionBase[] sampledDistributions,
                                           double[] probabilities,
@@ -53,8 +62,7 @@ namespace Numerics.Distributions
         {
             if (parentDistribution is null)
                 throw new ArgumentNullException(nameof(parentDistribution));
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+            ValidateSampledDistributions(sampledDistributions);
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
 
@@ -351,10 +359,12 @@ namespace Numerics.Distributions
         /// <param name="sampledDistributions">The list of sampled distributions to process.</param>
         /// <param name="probabilities">Array of non-exceedance probabilities.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="alpha"/> is not strictly between zero and one.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null or no finite sampled quantile is available.</exception>
         public void ProcessConfidenceIntervals(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double alpha = 0.1)
         {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+            ValidateSampledDistributions(sampledDistributions);
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
             if (alpha <= 0 || alpha >= 1)
@@ -380,14 +390,17 @@ namespace Numerics.Distributions
                 int validCount = 0;
                 for (int j = 0; j < B; j++)
                 {
-                    if (!double.IsNaN(XValues[j])) validCount++;
+                    if (Tools.IsFinite(XValues[j])) validCount++;
                 }
+
+                if (validCount == 0)
+                    throw new InvalidOperationException($"No finite sampled quantiles are available for probability {probabilities[i]}.");
 
                 var validValues = new double[validCount];
                 int writeIdx = 0;
                 for (int j = 0; j < B; j++)
                 {
-                    if (!double.IsNaN(XValues[j]))
+                    if (Tools.IsFinite(XValues[j]))
                         validValues[writeIdx++] = XValues[j];
                 }
 
@@ -407,34 +420,41 @@ namespace Numerics.Distributions
         /// <param name="probabilities">Array of non-exceedance probabilities for interpolation.</param>
         /// <param name="minProbability">Minimum probability for range determination (default = 0.001).</param>
         /// <param name="maxProbability">Maximum probability for range determination (default = 1 - 1e-9).</param>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null.</exception>
         public void ProcessMeanCurve(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double minProbability = 0.001, double maxProbability = 1 - 1e-9)
         {
-            if (sampledDistributions == null || sampledDistributions.Length == 0)
-                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+            ValidateSampledDistributions(sampledDistributions);
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
 
             int B = sampledDistributions.Length;
 
-            // Compute min and max X values across all distributions
+            // Compute min and max X values across all distributions. The extremes merge per
+            // partition; min and max are order-independent, so the result is the same however
+            // the loop partitions.
             double minX = double.MaxValue;
             double maxX = double.MinValue;
             object lockObject = new object();
 
-            Parallel.For(0, B, j =>
-            {
-                if (sampledDistributions[j] is not null)
+            Parallel.For(0, B,
+                () => (Min: double.MaxValue, Max: double.MinValue),
+                (j, state, local) =>
                 {
+                    if (sampledDistributions[j] is null) return local;
                     var innerMin = sampledDistributions[j].InverseCDF(minProbability);
                     var innerMax = sampledDistributions[j].InverseCDF(maxProbability);
-
+                    return (innerMin < local.Min ? innerMin : local.Min,
+                            innerMax > local.Max ? innerMax : local.Max);
+                },
+                local =>
+                {
                     lock (lockObject)
                     {
-                        if (innerMin < minX) minX = innerMin;
-                        if (innerMax > maxX) maxX = innerMax;
+                        if (local.Min < minX) minX = local.Min;
+                        if (local.Max > maxX) maxX = local.Max;
                     }
-                }
-            });
+                });
 
             // Create log-spaced quantiles for efficient coverage
             double shift = minX <= 0 ? Math.Abs(minX) + 1d : 0;
@@ -452,20 +472,44 @@ namespace Numerics.Distributions
                 quantiles[i] = Math.Pow(10, logX) - shift;
             }
 
-            // Compute expected probability for each quantile
+            // Compute the expected probability at each quantile, summing over fixed chunks so the
+            // result is independent of the thread count. The monotonic filter below can turn a
+            // last-bit difference into a different number of interpolation knots.
+            int chunkCount = Math.Min(ReductionChunks, B);
+            var chunkSums = new double[chunkCount][];
+            var chunkValid = new int[chunkCount];
+            for (int c = 0; c < chunkCount; c++) chunkSums[c] = new double[bins];
+
+            Parallel.For(0, chunkCount, c =>
+            {
+                var accumulator = chunkSums[c];
+                int start = (int)((long)c * B / chunkCount);
+                int end = (int)((long)(c + 1) * B / chunkCount);
+                int valid = 0;
+                for (int j = start; j < end; j++)
+                {
+                    var distribution = sampledDistributions[j];
+                    if (distribution is null) continue;
+                    valid++;
+                    for (int i = 0; i < bins; i++)
+                    {
+                        accumulator[i] += distribution.CDF(quantiles[i]);
+                    }
+                }
+                chunkValid[c] = valid;
+            });
+
+            int validDistributions = 0;
+            for (int c = 0; c < chunkCount; c++) validDistributions += chunkValid[c];
+            if (validDistributions == 0)
+                throw new InvalidOperationException("At least one sampled distribution must be non-null.");
+
             var expected = new double[bins];
             for (int i = 0; i < bins; i++)
             {
                 double total = 0d;
-                Parallel.For(0, B, () => 0d, (j, loop, sum) =>
-                {
-                    if (sampledDistributions[j] is not null)
-                    {
-                        sum += sampledDistributions[j].CDF(quantiles[i]);
-                    }
-                    return sum;
-                }, z => Tools.ParallelAdd(ref total, z));
-                expected[i] = total / B;
+                for (int c = 0; c < chunkCount; c++) total += chunkSums[c][i];
+                expected[i] = total / validDistributions;
             }
 
             // Build monotonic interpolation points
@@ -498,15 +542,55 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Processes and stores the parameter sets from all sampled distributions.
+        /// Validates that an ensemble is present and contains at least one successful
+        /// distribution.
+        /// </summary>
+        /// <param name="sampledDistributions">The ensemble to validate.</param>
+        /// <exception cref="ArgumentException">Thrown when the ensemble is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every ensemble member is null.</exception>
+        private static void ValidateSampledDistributions(UnivariateDistributionBase[] sampledDistributions)
+        {
+            if (sampledDistributions == null || sampledDistributions.Length == 0)
+                throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
+
+            for (int i = 0; i < sampledDistributions.Length; i++)
+            {
+                if (sampledDistributions[i] is not null) return;
+            }
+
+            throw new InvalidOperationException("At least one sampled distribution must be non-null.");
+        }
+
+        /// <summary>
+        /// Processes and stores the parameter sets from all sampled distributions. A sampled
+        /// distribution that failed to fit contributes a parameter set of NaN values rather than a
+        /// null entry, so a consumer indexing <see cref="ParameterSets"/> gets a value that
+        /// propagates as NaN instead of throwing. <c>BootstrapAnalysis.ParameterSets</c> fills
+        /// failures the same way.
         /// </summary>
         /// <param name="sampledDistributions">Array of sampled distributions to extract parameters from.</param>
+        /// <exception cref="ArgumentException">Thrown when the sampled distributions are null, empty, or all failed.</exception>
         public void ProcessParameterSets(UnivariateDistributionBase[] sampledDistributions)
         {
             if (sampledDistributions == null || sampledDistributions.Length == 0)
                 throw new ArgumentException("Sampled distributions cannot be null or empty.", nameof(sampledDistributions));
 
             int B = sampledDistributions.Length;
+            int numberOfParameters = ParentDistribution?.NumberOfParameters ?? 0;
+            if (numberOfParameters == 0)
+            {
+                for (int i = 0; i < B; i++)
+                {
+                    if (sampledDistributions[i] is not null)
+                    {
+                        numberOfParameters = sampledDistributions[i].NumberOfParameters;
+                        break;
+                    }
+                }
+            }
+            if (numberOfParameters == 0)
+                throw new ArgumentException("Every sampled distribution is null; the parameter count is unknown.", nameof(sampledDistributions));
+
             ParameterSets = new ParameterSet[B];
 
             Parallel.For(0, B, idx =>
@@ -514,6 +598,12 @@ namespace Numerics.Distributions
                 if (sampledDistributions[idx] is not null)
                 {
                     ParameterSets[idx] = new ParameterSet(sampledDistributions[idx].GetParameters, double.NaN);
+                }
+                else
+                {
+                    var parameters = new double[numberOfParameters];
+                    for (int i = 0; i < numberOfParameters; i++) parameters[i] = double.NaN;
+                    ParameterSets[idx] = new ParameterSet(parameters, double.NaN);
                 }
             });
         }

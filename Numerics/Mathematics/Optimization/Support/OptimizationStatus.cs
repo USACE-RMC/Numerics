@@ -38,5 +38,10 @@ namespace Numerics.Mathematics.Optimization
         /// The optimization method was stopped due to internal failure. 
         /// </summary>
         Failure,
+
+        /// <summary>
+        /// The optimization method stopped because its line search could not find an acceptable step.
+        /// </summary>
+        LineSearchFailed,
     }
 }

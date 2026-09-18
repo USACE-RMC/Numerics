@@ -59,7 +59,9 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// </returns>
         public static double Erfc(double X)
         {
-            return 1d - Function(X);
+            // The identity erfc(x) = 2*Phi(-x*sqrt(2)) keeps relative accuracy in the far tail,
+            // where the complement 1 - erf(x) rounds to zero
+            return 2.0d * Normal.StandardCDF(-X * Tools.Sqrt2);
         }
 
         /// <summary>
@@ -85,9 +87,9 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// </returns>
         public static double InverseErfc(double y)
         {
-            double s = Normal.StandardZ(-0.5d * y + 1d);
-            double r = s * Tools.Sqrt2 / 2.0d;
-            return r;
+            // The identity erfc(x) = 2*Phi(-x*sqrt(2)) inverts through the lower tail, so a small
+            // argument maps to StandardZ of y/2 rather than to a probability that rounds to one
+            return -Normal.StandardZ(0.5d * y) / Tools.Sqrt2;
         }
     }
 }

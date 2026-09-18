@@ -102,6 +102,12 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public double[] UpperBounds { get; private set; } = null!;
 
+        /// <inheritdoc />
+        protected override double[]? ParameterLowerBounds => LowerBounds;
+
+        /// <inheritdoc />
+        protected override double[]? ParameterUpperBounds => UpperBounds;
+
         /// <summary>
         /// The pseudo random number generator (PRNG) seed.
         /// </summary>
@@ -205,10 +211,15 @@ namespace Numerics.Mathematics.Optimization
                 {
                     // On the first iteration, add the user-defined initial starting points
                     // This can often be very close to the true minimum
-                    SampledPoints.Add(new SamplePoint { ParameterSet = new ParameterSet(InitialValues, Evaluate(InitialValues, ref cancel)), Minimized = true });
+                    //
+                    // Evaluate from a copy of InitialValues rather than the array itself: ParameterSet
+                    // stores its array by reference, so the sampled point recorded here would otherwise
+                    // alias the public InitialValues array.
+                    var initial = InitialValues.ToArray();
+                    SampledPoints.Add(new SamplePoint { ParameterSet = new ParameterSet(initial, Evaluate(initial, ref cancel)), Minimized = true });
 
                     // Perform local minimizations from initial values
-                    solver = GetLocalOptimizer(InitialValues, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
+                    solver = GetLocalOptimizer(initial, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
                     solver.Minimize();
                     if (cancel) return;
 
@@ -233,7 +244,17 @@ namespace Numerics.Mathematics.Optimization
                 // Select the γkN points with the lowest objective function values. 
                 // This resultant set, Rk, is called the reduced sample.
 
-                SampledPoints.Sort((x, y) => x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness));
+                // The reduced sample is truncated exactly at the sort boundary, so ties decide which
+                // points start local searches; OrderBy is a stable sort, so equally fit points keep the
+                // order in which they were sampled, where an unstable sort would make the selection
+                // implementation-defined. The ordered result is copied back into the existing list
+                // because SampledPoints is public and a caller holding the reference would otherwise be
+                // left with a detached list that stops growing. The shared list is transiently empty
+                // during the copy-back; the sort runs on the optimization thread between the sequential
+                // sample loop and the local searches.
+                var sorted = SampledPoints.OrderBy(x => x.ParameterSet.Fitness).ToList();
+                SampledPoints.Clear();
+                SampledPoints.AddRange(sorted);
                 int gkN = (int)Math.Ceiling(Gamma * (Iterations + 1) * N);
                 var Rk = SampledPoints.Take(gkN).ToList();
 
@@ -339,9 +360,10 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
-        /// Returns an optimizer for the local search. 
+        /// Returns an optimizer for the local search.
         /// </summary>
-        /// <param name="initialValues"> An array of initial values to evaluate. </param>
+        /// <param name="initialValues"> An array of initial values to evaluate. Not modified; the bounds
+        /// repair is applied to a private copy. </param>
         /// <param name="relativeTolerance">The desired relative tolerance for the solution.</param>
         /// <param name="absoluteTolerance">The desired absolute tolerance for the solution.</param>
         /// <param name="cancel">By ref. Determines if the solver should be canceled.</param>
@@ -350,21 +372,25 @@ namespace Numerics.Mathematics.Optimization
             bool localCancel = false;
             Optimizer? solver = null;
 
-            // Make sure the parameters are within the bounds.
-            for (int i = 0; i < NumberOfParameters; i++)  
-                initialValues[i] = RepairParameter(initialValues[i], LowerBounds[i], UpperBounds[i]);
-            
+            // Make sure the parameters are within the bounds, repairing into a local copy rather than
+            // through the argument: the caller may pass the live array inside a recorded ParameterSet —
+            // the best parameter set on the polish path, or a published sample point — whose Fitness
+            // would not follow an in-place repair of its Values.
+            var repaired = new double[NumberOfParameters];
+            for (int i = 0; i < NumberOfParameters; i++)
+                repaired[i] = RepairParameter(initialValues[i], LowerBounds[i], UpperBounds[i]);
+
             if (Method == LocalMethod.BFGS)
             {
-                solver = new BFGS((x) => Evaluate(x, ref localCancel), NumberOfParameters, initialValues, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new BFGS((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
             }
             else if (Method == LocalMethod.NelderMead)
             {
-                solver = new NelderMead((x) => Evaluate(x, ref localCancel), NumberOfParameters, initialValues, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new NelderMead((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
             }
             else if (Method == LocalMethod.Powell)
             {
-                solver = new Powell((x) => Evaluate(x, ref localCancel), NumberOfParameters, initialValues, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new Powell((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
             }
             else
             {
