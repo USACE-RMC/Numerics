@@ -181,6 +181,64 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Regression pin: the PAWN statistics and median of every Ishigami input at 2^12 samples equal, bit
+        /// for bit, the recorded values. Each per-bin statistic is the correctly rounded rational D/(nb n)
+        /// for its bin size nb.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pawn_BitwiseRegression()
+        {
+            IshigamiSample(4096, out var x1, out var x2, out var x3, out var y);
+            var bits = new System.Text.StringBuilder();
+            foreach (var x in new[] { x1, x2, x3 })
+            {
+                foreach (double value in GlobalSensitivity.Pawn(x, y))
+                    bits.Append(BitConverter.DoubleToInt64Bits(value).ToString("X16"));
+                bits.Append(BitConverter.DoubleToInt64Bits(GlobalSensitivity.PawnMedian(x, y)).ToString("X16"));
+            }
+            Assert.AreEqual(PawnRegressionBits, bits.ToString());
+        }
+
+        /// <summary>
+        /// The concatenated big-endian bit patterns pinned by <see cref="Test_Pawn_BitwiseRegression"/>.
+        /// </summary>
+        private const string PawnRegressionBits =
+            "3FC4A800000000003FCA7800000000003FCCF98F9C18F9C23FD472A2576A25773FD290D1CB8D1CB93FD4CA82828282833FD1C081DF881DF9"
+            + "3FCC026B6526B6523FC8F3BF103BF1043FC5084FEC04FEC03FC60000000000003FCB3000000000003FCD7800000000003FCF3027F6027F60"
+            + "3FD563562A7562A73FD42FC3C3C3C3C43FD104F9C18F9C193FCBB7C40EFC40F03FC8B000000000003FC56800000000003FCC7DFD809FD80A"
+            + "3FDF85B9B9B9B9BA3FD6D2CF4C2CF4C33FCA4C86DE486DE53FD5521B7921B7923FDD2ECF4C2CF4C33FE04F23232323233FDC41B7921B7922"
+            + "3FCA44AED44AED453FD5527F6027F6023FE0AAE5C68E5C693FDFCC14141414143FD77B1F3831F3833FC42CAED44AED453FD772436F2436F2"
+            + "3FDF8AE3472E34733FE11214141414143FD8626B6526B6523FCA2E167A6167A63FD806077E2077E23FE07721B7921B793FD8343971A3971A"
+            + "3FCF3969696969693FBFD103BF103BF13FBCD2E3472E34733FB9FF4C2CF4C2CF3FB40C7CE0C7CE0C3FB18000000000003FBC690DBC90DBC9"
+            + "3FBBB31F3831F3833FB8309FD809FD813FB9040EFC40EFC43FBA5373737373733FBAC0EFC40EFC413FBB80EFC40EFC413FB5DA9D58A9D58B"
+            + "3FB4945EE845EE843FB84414141414143FBE70DBC90DBC913FB2A063E7063E703FC0A1999999999A3FD10E895DA895DB3FBA8A319BC137DA";
+
+        /// <summary>
+        /// Each per-bin PAWN statistic equals the two-sample Kolmogorov-Smirnov statistic of the sorted bin and
+        /// the sorted full output sample.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pawn_BinsMatchTwoSampleKolmogorovSmirnov()
+        {
+            IshigamiSample(1000, out var x1, out _, out _, out var y);
+            const int bins = 10;
+            var pawn = GlobalSensitivity.Pawn(x1, y, bins);
+            var order = new int[y.Length];
+            for (int i = 0; i < order.Length; i++) order[i] = i;
+            Array.Sort(order, (first, second) => { int c = x1[first].CompareTo(x1[second]); return c != 0 ? c : first.CompareTo(second); });
+            var sortedY = (double[])y.Clone();
+            Array.Sort(sortedY);
+            for (int b = 0; b < bins; b++)
+            {
+                int start = b * y.Length / bins, end = (b + 1) * y.Length / bins;
+                var bin = new double[end - start];
+                for (int i = start; i < end; i++) bin[i - start] = y[order[i]];
+                Array.Sort(bin);
+                Assert.AreEqual(pawn[b], HypothesisTests.TwoSampleKolmogorovSmirnov(bin, sortedY), 0d);
+            }
+        }
+
+        /// <summary>
         /// Equal rank values are resolved by their original sample indices, so a tied input with
         /// outputs split by original position forms the same two pure bins on every framework.
         /// </summary>
@@ -225,5 +283,82 @@ namespace Data.Statistics
             Assert.AreEqual(0d, GlobalSensitivity.FirstOrderSobol(x, new double[] { 3d, 3d, 3d, 3d }, 2), 0d);
         }
 
+        /// <summary>
+        /// Tied outputs share one class. A constant output carries no information about any input (analytic delta
+        /// 0; the first-order Sobol index agrees), and y = x mod 2 over x = 0..199 puts five even and five odd values
+        /// in every one of the 20 input bins, so each conditional distribution equals the marginal (analytic delta 0).
+        /// </summary>
+        [TestMethod]
+        public void Test_BorgonovoDelta_TiedOutputs()
+        {
+            var x = new double[200];
+            var constant = new double[200];
+            var parity = new double[200];
+            for (int i = 0; i < 200; i++)
+            {
+                x[i] = i;
+                constant[i] = 3d;
+                parity[i] = i % 2;
+            }
+            Assert.AreEqual(0d, GlobalSensitivity.BorgonovoDelta(x, constant), 0d);
+            Assert.AreEqual(0d, GlobalSensitivity.BorgonovoDelta(x, parity), 1E-15);
+            Assert.AreEqual(0d, GlobalSensitivity.FirstOrderSobol(x, parity), 1E-12);
+        }
+
+        /// <summary>
+        /// Untied outputs are classed exactly as without the tie rule: the delta equals, bit for bit, the
+        /// equal-frequency rank classes of the 2.2.0 estimator, kept as a bitwise reference.
+        /// </summary>
+        [TestMethod]
+        public void Test_BorgonovoDelta_UntiedUnchanged()
+        {
+            var rng = new Random(77);
+            var x = new double[1000];
+            var y = new double[1000];
+            for (int i = 0; i < x.Length; i++)
+            {
+                x[i] = rng.NextDouble();
+                y[i] = Math.Sin(3 * x[i]) + 0.3 * rng.NextDouble();
+            }
+            Assert.AreEqual(BitConverter.DoubleToInt64Bits(LegacyBorgonovoDelta(x, y, 20, 20)),
+                BitConverter.DoubleToInt64Bits(GlobalSensitivity.BorgonovoDelta(x, y)));
+        }
+
+        /// <summary>
+        /// The 2.2.0 estimator (output classes split ties by sample index), a bitwise reference for untied outputs.
+        /// </summary>
+        private static double LegacyBorgonovoDelta(double[] x, double[] y, int xBins, int yBins)
+        {
+            int n = x.Length;
+            int[] Order(double[] v)
+            {
+                var o = new int[n];
+                for (int i = 0; i < n; i++) o[i] = i;
+                Array.Sort(o, (a, b) => { int c = v[a].CompareTo(v[b]); return c != 0 ? c : a.CompareTo(b); });
+                return o;
+            }
+            var xOrder = Order(x);
+            var yOrder = Order(y);
+            var yClass = new int[n];
+            var classCounts = new int[yBins];
+            for (int c = 0; c < yBins; c++)
+            {
+                int start = (int)((long)c * n / yBins), end = (int)((long)(c + 1) * n / yBins);
+                classCounts[c] = end - start;
+                for (int i = start; i < end; i++) yClass[yOrder[i]] = c;
+            }
+            double delta = 0;
+            var counts = new int[yBins];
+            for (int b = 0; b < xBins; b++)
+            {
+                int start = (int)((long)b * n / xBins), end = (int)((long)(b + 1) * n / xBins), size = end - start;
+                Array.Clear(counts, 0, yBins);
+                for (int i = start; i < end; i++) counts[yClass[xOrder[i]]]++;
+                double tv = 0;
+                for (int c = 0; c < yBins; c++) tv += Math.Abs((double)counts[c] / size - (double)classCounts[c] / n);
+                delta += (double)size / n * tv;
+            }
+            return 0.5d * delta;
+        }
     }
 }

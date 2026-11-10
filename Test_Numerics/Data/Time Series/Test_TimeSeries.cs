@@ -335,8 +335,10 @@ namespace Data.TimeSeriesAnalysis
 
             for (int i = 1; i < newValues.Length; i++) { newValues[i] = values[i] - values[i - 1]; }
             var newTS = ts.Difference();
-            // don't want first value 
+            // don't want first value
             Equal(newTS, newValues.Skip(1).ToArray());
+            for (int i = 0; i < newTS.Count; i++)
+                Assert.AreEqual(ts[i].Index, newTS[i].Index);
         }
 
         /// <summary>
@@ -600,7 +602,7 @@ namespace Data.TimeSeriesAnalysis
 
         /// <summary>
         /// Test that MovingAverage with minValidCount=1 averages over non-NaN values only.
-        /// Denominator is the count of observed values, not the window size — this fixes the prior low-bias.
+        /// Denominator is the count of observed values, not the window size, so the average is not biased low.
         /// </summary>
         [TestMethod]
         public void Test_MovingAverage_NaN_SkipMode()
@@ -635,7 +637,7 @@ namespace Data.TimeSeriesAnalysis
 
         /// <summary>
         /// Test that CalendarYearSeries with Sum/Average drops years containing any NaN
-        /// (rather than the previous behavior of silently treating NaN as zero).
+        /// (rather than silently treating NaN as zero).
         /// </summary>
         [TestMethod]
         public void Test_CalendarYearSeries_NaN()
@@ -651,7 +653,7 @@ namespace Data.TimeSeriesAnalysis
             Assert.AreEqual(78.0, sumTS[0].Value);
             Assert.AreEqual(2023, sumTS[0].Index.Year);
 
-            // Average: same — year 2 dropped because NaN propagates
+            // Average: same; year 2 dropped because NaN propagates
             var avgTS = ts.CalendarYearSeries(BlockFunctionType.Average);
             Assert.AreEqual(1, avgTS.Count);
             Assert.AreEqual(78.0 / 12.0, avgTS[0].Value, 1E-9);
@@ -691,7 +693,7 @@ namespace Data.TimeSeriesAnalysis
         public void Test_PeaksOverThreshold_MovingSum_NaN()
         {
             // One legitimate 2-day exceedance (5 + 6 = 11). The trailing 8.0 sits at the very end
-            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0] —
+            // of the series with a NaN before it, so the only window touching it is [NaN, 8.0]:
             // a NaN window carries no event, so nothing above threshold 7 may come from it and
             // only [5, 6] = 11 remains.
             var values = new double[] { 0.1, 0.2, 5.0, 6.0, 0.1, 0.0, 0.1, 0.2, 0.0, double.NaN, 8.0 };
@@ -1191,7 +1193,7 @@ namespace Data.TimeSeriesAnalysis
                 Assert.AreEqual(values[i], monthlyTS[i].Value);
             }
 
-            // now the time interval is a week, so we will get different maxes
+            // with a weekly time interval the maxes differ
             var ts2 = new TimeSeries(TimeInterval.SevenDay, new DateTime(2023, 01, 01), values);
             var monthlyTS2 = ts2.MonthlySeries();
             var maxVals2 = new double[] { 244, 263, 205, 331, 262, 240, 195, 317, 204, 185, 337, 262, 182, 250, 239, 180 };
@@ -1452,7 +1454,7 @@ namespace Data.TimeSeriesAnalysis
             double grandMean = sumOfTailMeans / trials;
             double standardError = inputStd / Math.Sqrt(steps * trials);
 
-            // Allow 4x SE — generous to absorb short-series boundary effects in KNN.
+            // Allow 4x SE, generous to absorb short-series boundary effects in KNN.
             Assert.IsLessThan(4.0 * standardError + 0.05, Math.Abs(grandMean - inputMean),
                 $"KNN tails should preserve the marginal mean; input={inputMean:F4}, grand-mean={grandMean:F4}, " +
                 $"4*SE={4.0 * standardError:F4}.");
@@ -1460,8 +1462,8 @@ namespace Data.TimeSeriesAnalysis
 
         /// <summary>
         /// The marginal variance of resampled tails should be in the same regime as the input variance.
-        /// KNN can shrink variance because the conditional sampling pulls toward the local mean — we
-        /// only require the resample variance to remain within 50% of the input variance.
+        /// KNN can shrink variance because the conditional sampling pulls toward the local mean, so the test
+        /// only requires the resample variance to remain within 50% of the input variance.
         /// </summary>
         [TestMethod]
         public void Test_ResampleWithKNN_PreservesMarginalVariance()
@@ -1530,7 +1532,7 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public void Test_ResampleWithKNN_ThrowsForShortSeries()
         {
-            // Count = 10 — one less than required since we exclude the last index from candidates
+            // Count = 10: one less than required since the last index is excluded from candidates
             // and the underlying KNearestNeighbors needs ≥10 training points.
             var ts = MakeAR1(n: 10, phi: 0.5, sigma: 1.0, seed: 1);
             Assert.Throws<ArgumentException>(() => ts.ResampleWithKNN(timeSteps: 5, k: 5, seed: 42));
@@ -1599,7 +1601,7 @@ namespace Data.TimeSeriesAnalysis
 
         /// <summary>
         /// The marginal variance of block-bootstrap tails should be close to the input variance.
-        /// Block bootstrap preserves marginal variance well; we require within ±20%.
+        /// Block bootstrap preserves marginal variance well; the test requires within ±20%.
         /// </summary>
         [TestMethod]
         public void Test_ResampleWithBlockBootstrap_PreservesMarginalVariance()
@@ -1709,8 +1711,8 @@ namespace Data.TimeSeriesAnalysis
         /// <remarks>
         /// The smoothing branch was extracted from PeaksOverThresholdSeries so threshold-selection
         /// diagnostics can operate on the same series the extraction thresholds; this test pins the
-        /// branch behavior — moving average and moving sum smooth for periods above 1 and clone at
-        /// a period of 1, differencing applies at every period, and None clones — and that the
+        /// branch behavior (moving average and moving sum smooth for periods above 1 and clone at
+        /// a period of 1, differencing applies at every period, and None clones) and that the
         /// smoothed values genuinely differ from the raw values when smoothing is configured.
         /// </remarks>
         [TestMethod]
@@ -1750,6 +1752,556 @@ namespace Data.TimeSeriesAnalysis
             var none = series.SmoothedSeries(SmoothingFunctionType.None);
             for (int i = 0; i < series.Count; i++)
                 Assert.AreEqual(series[i].Value, none[i].Value, 0d);
+        }
+
+        /// <summary>
+        /// The direct clone matches an XML round trip (the 2.2.0 clone, kept as a bitwise reference) bit for bit,
+        /// and is independent of the source.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_MatchesXmlRoundTrip()
+        {
+            var ts = new TimeSeries(TimeInterval.OneHour);
+            var start = new DateTime(2021, 3, 14, 0, 0, 0);
+            var values = new double[] { 1.5, -0.0, 0.0, double.NaN, BitConverter.Int64BitsToDouble(0x7FF8000000000001), double.PositiveInfinity,
+                double.NegativeInfinity, double.Epsilon, double.MaxValue, 0.1 + 0.2, Math.PI * 1e-300, -123456.789 };
+            var kinds = new[] { DateTimeKind.Unspecified, DateTimeKind.Utc, DateTimeKind.Local };
+            for (int i = 0; i < values.Length; i++)
+                ts.Add(new SeriesOrdinate<DateTime, double>(DateTime.SpecifyKind(start.AddMinutes(37 * i).AddTicks(i), kinds[i % 3]), values[i]));
+            // A local time that may fall in a daylight-saving gap.
+            ts.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2021, 3, 14, 2, 30, 0, DateTimeKind.Local), 2));
+
+            var expected = new TimeSeries(ts.ToXElement());
+            var clone = ts.Clone();
+            Assert.AreEqual(expected.TimeInterval, clone.TimeInterval);
+            Assert.AreEqual(expected.Count, clone.Count);
+            for (int i = 0; i < expected.Count; i++)
+            {
+                Assert.AreEqual(expected[i].Index.Ticks, clone[i].Index.Ticks);
+                Assert.AreEqual(expected[i].Index.Kind, clone[i].Index.Kind);
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected[i].Value), BitConverter.DoubleToInt64Bits(clone[i].Value));
+                Assert.AreNotSame(ts[i], clone[i]);
+            }
+
+            clone[0].Value = 99;
+            Assert.AreEqual(1.5, ts[0].Value);
+            Assert.AreEqual(0, new TimeSeries(TimeInterval.Irregular).Clone().Count);
+            Assert.AreEqual(TimeInterval.Irregular, new TimeSeries(TimeInterval.Irregular).Clone().TimeInterval);
+        }
+
+        /// <summary>
+        /// The direct clone matches the XML round trip on random values of every magnitude.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_MatchesXmlRoundTrip_Random()
+        {
+            var rnd = new Random(42);
+            var bytes = new byte[8];
+            var data = new double[5000];
+            for (int i = 0; i < data.Length; i++)
+            {
+                rnd.NextBytes(bytes);
+                data[i] = BitConverter.ToDouble(bytes, 0);
+            }
+            var ts = new TimeSeries(TimeInterval.FifteenMinute, new DateTime(1950, 1, 1), data);
+            var expected = new TimeSeries(ts.ToXElement());
+            var clone = ts.Clone();
+            for (int i = 0; i < data.Length; i++)
+            {
+                Assert.AreEqual(expected[i].Index, clone[i].Index);
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected[i].Value), BitConverter.DoubleToInt64Bits(clone[i].Value));
+            }
+        }
+
+        /// <summary>
+        /// Missing values are interpolated on exact tick differences. Expected values are the exact rational
+        /// interpolants (Python fractions) rounded to double; interpolation on OLE Automation days would miss
+        /// the first two by about 7E-14 relative.
+        /// </summary>
+        [TestMethod]
+        public void Test_InterpolateMissingData_ExactTimeDifferences()
+        {
+            var hourly = new TimeSeries(TimeInterval.OneHour, new DateTime(2020, 6, 1, 12, 0, 0), new[] { 1000.123456789, double.NaN, double.NaN, 1003.987654321 });
+            hourly.InterpolateMissingData(5);
+            Assert.AreEqual(1001.411522633, hourly[1].Value, 1001.411522633 * 4E-16);
+            Assert.AreEqual(1002.699588477, hourly[2].Value, 1002.699588477 * 4E-16);
+
+            // A gap that runs to the end is extrapolated from the two preceding ordinates.
+            var tail = new TimeSeries(TimeInterval.OneHour, new DateTime(2020, 6, 1), new[] { 0.1, 0.7, double.NaN, double.NaN });
+            tail.InterpolateMissingData(5);
+            Assert.AreEqual(1.2999999999999998, tail[2].Value, 1.3 * 4E-16);
+            Assert.AreEqual(1.9, tail[3].Value, 1.9 * 4E-16);
+
+            // Irregular spacing: 7 of 30 minutes.
+            var irregular = new TimeSeries(TimeInterval.Irregular);
+            irregular.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2020, 6, 1, 0, 0, 0), 2.0));
+            irregular.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2020, 6, 1, 0, 7, 0), double.NaN));
+            irregular.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2020, 6, 1, 0, 30, 0), 9.0));
+            irregular.InterpolateMissingData(1);
+            Assert.AreEqual(3.6333333333333333, irregular[1].Value, 3.6333333333333333 * 4E-16);
+
+            // The indexed overload uses the same interpolation.
+            var indexed = new TimeSeries(TimeInterval.OneHour, new DateTime(2020, 6, 1, 12, 0, 0), new[] { 1000.123456789, double.NaN, double.NaN, 1003.987654321 });
+            indexed.InterpolateMissingData(5, new[] { 1, 2 });
+            Assert.AreEqual(hourly[1].Value, indexed[1].Value, 0d);
+            Assert.AreEqual(hourly[2].Value, indexed[2].Value, 0d);
+        }
+
+        /// <summary>
+        /// Irregular readings to hourly blocks match pandas 2.3.3 <c>resample('h', label='left', closed='left')</c>
+        /// for mean, sum with min_count 1 and 2, min and max, including an empty hour and a missing value.
+        /// </summary>
+        [TestMethod]
+        public void Test_AggregateByInterval_MatchesPandas()
+        {
+            var irregular = new TimeSeries(TimeInterval.Irregular);
+            var times = new[] { "00:05", "00:20", "00:50", "01:10", "03:40", "03:55", "03:59" };
+            var values = new[] { 1.5, 2.25, double.NaN, 4.0, 10.0, 11.5, 0.125 };
+            // Added out of order; the method sorts a copy.
+            foreach (int i in new[] { 4, 0, 2, 1, 3, 6, 5 })
+                irregular.Add(new SeriesOrdinate<DateTime, double>(DateTime.Parse("2024-03-10 " + times[i], CultureInfo.InvariantCulture), values[i]));
+
+            var mean = irregular.AggregateByInterval(TimeInterval.OneHour);
+            Assert.AreEqual(TimeInterval.OneHour, mean.TimeInterval);
+            CollectionAssert.AreEqual(new[] { new DateTime(2024, 3, 10, 0, 0, 0), new DateTime(2024, 3, 10, 1, 0, 0), new DateTime(2024, 3, 10, 2, 0, 0), new DateTime(2024, 3, 10, 3, 0, 0) },
+                mean.IndexesToArray());
+            AssertValues(new[] { 1.875, 4.0, double.NaN, 7.208333333333333 }, mean);
+            AssertValues(new[] { 3.75, 4.0, double.NaN, 21.625 }, irregular.AggregateByInterval(TimeInterval.OneHour, BlockFunctionType.Sum));
+            AssertValues(new[] { 3.75, double.NaN, double.NaN, 21.625 }, irregular.AggregateByInterval(TimeInterval.OneHour, BlockFunctionType.Sum, 2));
+            AssertValues(new[] { 1.5, 4.0, double.NaN, 0.125 }, irregular.AggregateByInterval(TimeInterval.OneHour, BlockFunctionType.Minimum));
+            AssertValues(new[] { 2.25, 4.0, double.NaN, 11.5 }, irregular.AggregateByInterval(TimeInterval.OneHour, BlockFunctionType.Maximum));
+            Assert.AreEqual(new DateTime(2024, 3, 10, 3, 40, 0), irregular[0].Index, "The series is not modified.");
+        }
+
+        /// <summary>
+        /// An hourly series starting at 05:00 aggregates to calendar days (pandas <c>resample('D').mean()</c>: 10, 25),
+        /// where ConvertTimeInterval counts 24-step blocks from 05:00. Quarters match pandas <c>resample('QS').sum(min_count=1)</c>.
+        /// </summary>
+        [TestMethod]
+        public void Test_AggregateByInterval_CalendarAlignment()
+        {
+            var hourly = new TimeSeries(TimeInterval.OneHour, new DateTime(2020, 1, 1, 5, 0, 0), Enumerable.Range(1, 30).Select(i => (double)i).ToArray());
+            var daily = hourly.AggregateByInterval(TimeInterval.OneDay);
+            CollectionAssert.AreEqual(new[] { new DateTime(2020, 1, 1), new DateTime(2020, 1, 2) }, daily.IndexesToArray());
+            AssertValues(new[] { 10.0, 25.0 }, daily);
+
+            var sixHour = hourly.AggregateByInterval(TimeInterval.SixHour, BlockFunctionType.Sum);
+            Assert.AreEqual(new DateTime(2020, 1, 1, 0, 0, 0), sixHour[0].Index);
+            Assert.AreEqual(1d, sixHour[0].Value, "Only 05:00 falls in the 00:00 block.");
+            Assert.AreEqual(new DateTime(2020, 1, 1, 6, 0, 0), sixHour[1].Index);
+            Assert.AreEqual(2d + 3d + 4d + 5d + 6d + 7d, sixHour[1].Value, "06:00 to 11:00 fall in the 06:00 block.");
+
+            var points = new TimeSeries(TimeInterval.Irregular);
+            foreach (var (d, v) in new[] { ("2021-01-31", 1.0), ("2021-02-01", 2.0), ("2021-05-15", 3.0), ("2021-12-31", 4.0) })
+                points.Add(new SeriesOrdinate<DateTime, double>(DateTime.Parse(d, CultureInfo.InvariantCulture), v));
+            var quarters = points.AggregateByInterval(TimeInterval.OneQuarter, BlockFunctionType.Sum);
+            CollectionAssert.AreEqual(new[] { new DateTime(2021, 1, 1), new DateTime(2021, 4, 1), new DateTime(2021, 7, 1), new DateTime(2021, 10, 1) }, quarters.IndexesToArray());
+            AssertValues(new[] { 3.0, 3.0, double.NaN, 4.0 }, quarters);
+            AssertValues(new[] { 10.0 }, points.AggregateByInterval(TimeInterval.OneYear, BlockFunctionType.Sum));
+            Assert.AreEqual(12, points.AggregateByInterval(TimeInterval.OneMonth).Count);
+
+            var weekly = points.AggregateByInterval(TimeInterval.SevenDay, BlockFunctionType.Sum);
+            Assert.AreEqual(new DateTime(2021, 1, 31), weekly[0].Index, "Seven-day blocks start at the first ordinate's date.");
+            Assert.AreEqual(3d, weekly[0].Value);
+        }
+
+        /// <summary>
+        /// Edge cases: an empty series, invalid arguments, infinities and UTC kind.
+        /// </summary>
+        [TestMethod]
+        public void Test_AggregateByInterval_EdgeCases()
+        {
+            Assert.AreEqual(0, new TimeSeries().AggregateByInterval(TimeInterval.OneDay).Count);
+            var ts = new TimeSeries(TimeInterval.Irregular);
+            ts.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2024, 1, 1, 1, 0, 0, DateTimeKind.Utc), double.NegativeInfinity));
+            Assert.ThrowsExactly<ArgumentException>(() => ts.AggregateByInterval(TimeInterval.Irregular));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => ts.AggregateByInterval(TimeInterval.OneDay, BlockFunctionType.Average, 0));
+            var max = ts.AggregateByInterval(TimeInterval.OneDay, BlockFunctionType.Maximum);
+            Assert.AreEqual(double.NegativeInfinity, max[0].Value);
+            Assert.AreEqual(DateTimeKind.Utc, max[0].Index.Kind);
+        }
+
+        /// <summary>
+        /// Asserts value bits equal, NaN included.
+        /// </summary>
+        private static void AssertValues(double[] expected, TimeSeries actual)
+        {
+            Assert.HasCount(expected.Length, actual.ValuesToArray());
+            for (int i = 0; i < expected.Length; i++)
+                Assert.AreEqual(expected[i], actual[i].Value, 0d, $"Block {i}");
+        }
+
+        /// <summary>
+        /// The ticks accessor returns each ordinate date's ticks in collection order.
+        /// </summary>
+        [TestMethod]
+        public void Test_IndexTicksToArray()
+        {
+            var ts = new TimeSeries(TimeInterval.OneHour, new DateTime(2020, 1, 1, 5, 0, 0), new double[] { 1, 2, 3 });
+            ts.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2019, 12, 31, 0, 0, 0, DateTimeKind.Utc), 4));
+            var ticks = ts.IndexTicksToArray();
+            var dates = ts.IndexesToArray();
+            Assert.HasCount(dates.Length, ticks);
+            for (int i = 0; i < dates.Length; i++)
+                Assert.AreEqual(dates[i].Ticks, ticks[i]);
+            Assert.AreEqual(new DateTime(2020, 1, 1, 6, 0, 0).Ticks, ticks[1]);
+            Assert.IsEmpty(new TimeSeries().IndexTicksToArray());
+        }
+
+        /// <summary>
+        /// Converting to a coarser step returns one ordinate per block that holds data; no empty block follows the data.
+        /// </summary>
+        /// <remarks>
+        /// Expected values match pandas <c>Series.resample('D').mean()</c> and <c>.sum()</c> of hourly values 1, 2, ..., n
+        /// starting at midnight.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ConvertTimeInterval_Coarser_NoEmptyTrailingBlock()
+        {
+            var start = new DateTime(2020, 1, 1);
+            var exact = new TimeSeries(TimeInterval.OneHour, start, Enumerable.Range(1, 72).Select(i => (double)i).ToArray());
+            var mean = exact.ConvertTimeInterval(TimeInterval.OneDay)!;
+            var sum = exact.ConvertTimeInterval(TimeInterval.OneDay, false)!;
+            AssertValues(new[] { 12.5, 36.5, 60.5 }, mean);
+            AssertValues(new[] { 300.0, 876.0, 1452.0 }, sum);
+            Assert.AreEqual(new DateTime(2020, 1, 3), mean.EndDate);
+
+            // A partial last block keeps the steps it has.
+            var partial = new TimeSeries(TimeInterval.OneHour, start, Enumerable.Range(1, 50).Select(i => (double)i).ToArray());
+            AssertValues(new[] { 12.5, 36.5, 49.5 }, partial.ConvertTimeInterval(TimeInterval.OneDay)!);
+            AssertValues(new[] { 300.0, 876.0, 99.0 }, partial.ConvertTimeInterval(TimeInterval.OneDay, false)!);
+
+            // One value into the next day gives a fourth block of one step.
+            var single = new TimeSeries(TimeInterval.OneHour, start, Enumerable.Range(1, 73).Select(i => (double)i).ToArray());
+            AssertValues(new[] { 12.5, 36.5, 60.5, 73.0 }, single.ConvertTimeInterval(TimeInterval.OneDay)!);
+
+            // A series shorter than one block gives one partial block.
+            var shortSeries = new TimeSeries(TimeInterval.OneHour, start, new double[] { 2, 4 });
+            AssertValues(new[] { 3.0 }, shortSeries.ConvertTimeInterval(TimeInterval.SixHour)!);
+        }
+
+        /// <summary>
+        /// By default each difference is labelled with the date of its earlier ordinate.
+        /// </summary>
+        /// <remarks>
+        /// Values are numpy <c>np.diff(x, n=differences)</c> for lag 1 and <c>x[lag:] - x[:-lag]</c> for a seasonal lag;
+        /// the labels are the first <c>Count - lag * differences</c> dates of the series.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Difference_LabelsAtEarlierDate()
+        {
+            var values = new double[] { 22, 16, 33, 5, 12, 36, 48, 10 };
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 1, 1), values);
+
+            var first = ts.Difference();
+            Assert.AreEqual(7, first.Count);
+            Assert.AreEqual(ts.StartDate, first.StartDate);
+            Assert.AreEqual(new DateTime(2023, 1, 7), first.EndDate);
+            Assert.AreEqual(-6.0, first[0].Value);
+            Assert.AreEqual(TimeInterval.OneDay, first.TimeInterval);
+
+            var seasonal = ts.Difference(3);
+            AssertValues(new[] { -17.0, -4.0, 3.0, 43.0, -2.0 }, seasonal);
+            for (int i = 0; i < seasonal.Count; i++)
+                Assert.AreEqual(ts[i].Index, seasonal[i].Index);
+
+            var second = ts.Difference(1, 2);
+            AssertValues(new[] { 23.0, -45.0, 35.0, 17.0, -12.0, -50.0 }, second);
+            for (int i = 0; i < second.Count; i++)
+                Assert.AreEqual(ts[i].Index, second[i].Index);
+
+            // The two-argument call and the explicit earlier label are the same.
+            var explicitEarlier = ts.Difference(3, 1, false);
+            AssertDates(seasonal.IndexesToArray(), explicitEarlier);
+            AssertValues(seasonal.ValuesToArray(), explicitEarlier);
+        }
+
+        /// <summary>
+        /// A series with gaps, or an irregular one, keeps its own dates as the difference labels.
+        /// </summary>
+        [TestMethod]
+        public void Test_Difference_GappedAndIrregularKeepRealDates()
+        {
+            var dates = new[] { new DateTime(2020, 1, 1), new DateTime(2020, 1, 2), new DateTime(2020, 1, 5), new DateTime(2020, 1, 6), new DateTime(2020, 1, 20) };
+            var values = new double[] { 1, 4, 9, 16, 25 };
+            foreach (var interval in new[] { TimeInterval.OneDay, TimeInterval.Irregular })
+            {
+                var ts = new TimeSeries(interval, dates.Select(d => d.Ticks).ToArray(), values);
+
+                var earlier = ts.Difference();
+                AssertDates(dates.Take(4).ToArray(), earlier);
+                AssertValues(new double[] { 3, 5, 7, 9 }, earlier);
+                Assert.AreEqual(interval, earlier.TimeInterval);
+
+                var later = ts.Difference(1, 1, true);
+                AssertDates(dates.Skip(1).ToArray(), later);
+                AssertValues(new double[] { 3, 5, 7, 9 }, later);
+
+                var second = ts.Difference(1, 2);
+                AssertDates(dates.Take(3).ToArray(), second);
+                AssertValues(new double[] { 2, 2, 2 }, second);
+            }
+        }
+
+        /// <summary>
+        /// With the later label, each difference is labelled with the date of its later ordinate.
+        /// </summary>
+        /// <remarks>
+        /// pandas: <c>s.diff(lag)</c> keeps the index of x[t], so after <c>dropna()</c> the first label is the
+        /// ordinate at <c>lag * differences</c>; <c>s.diff(1).diff(1)</c> for the second order.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Difference_LabelsAtLaterDate()
+        {
+            var values = new double[] { 22, 16, 33, 5, 12, 36, 48, 10 };
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2023, 1, 1), values);
+
+            var first = ts.Difference(1, 1, true);
+            Assert.AreEqual(7, first.Count);
+            Assert.AreEqual(new DateTime(2023, 1, 2), first.StartDate);
+            Assert.AreEqual(ts.EndDate, first.EndDate);
+            Assert.AreEqual(-6.0, first[0].Value);
+            Assert.AreEqual(TimeInterval.OneDay, first.TimeInterval);
+
+            var seasonal = ts.Difference(3, 1, true);
+            AssertValues(new[] { -17.0, -4.0, 3.0, 43.0, -2.0 }, seasonal);
+            for (int i = 0; i < seasonal.Count; i++)
+                Assert.AreEqual(ts[i + 3].Index, seasonal[i].Index);
+
+            var second = ts.Difference(1, 2, true);
+            AssertValues(new[] { 23.0, -45.0, 35.0, 17.0, -12.0, -50.0 }, second);
+            for (int i = 0; i < second.Count; i++)
+                Assert.AreEqual(ts[i + 2].Index, second[i].Index);
+        }
+
+        /// <summary>
+        /// Difference rejects an empty series and a series no longer than the lag, with either label.
+        /// </summary>
+        [TestMethod]
+        public void Test_Difference_InvalidInputs()
+        {
+            var shortSeries = new TimeSeries(TimeInterval.OneDay, new DateTime(2020, 1, 1), new double[] { 1, 2 });
+            Assert.Throws<ArgumentException>(() => shortSeries.Difference(2));
+            Assert.Throws<ArgumentException>(() => shortSeries.Difference(1, 2));
+            Assert.Throws<ArgumentException>(() => shortSeries.Difference(2, 1, true));
+            Assert.Throws<ArgumentException>(() => new TimeSeries(TimeInterval.OneDay).Difference());
+            Assert.Throws<ArgumentException>(() => new TimeSeries(TimeInterval.Irregular).Difference(1, 1, true));
+        }
+
+        /// <summary>
+        /// Month, quarter and year series chain <see cref="TimeSeries.AddTimeInterval"/> from the previous date, so a
+        /// start after day 28 settles on the shortest day of month it meets.
+        /// </summary>
+        /// <remarks>
+        /// Expected dates are .NET <c>DateTime.AddMonths(1)</c> (or <c>AddYears(1)</c>) applied to the previous date.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CalendarSteps_ChainFromPreviousDate()
+        {
+            var chained = new[] { new DateTime(2020, 1, 31), new DateTime(2020, 2, 29), new DateTime(2020, 3, 29), new DateTime(2020, 4, 29), new DateTime(2020, 5, 29) };
+            AssertDates(chained, new TimeSeries(TimeInterval.OneMonth, chained[0], new double[5]));
+            AssertDates(chained, new TimeSeries(TimeInterval.OneMonth, chained[0], chained[4]));
+            AssertDates(chained, new TimeSeries(TimeInterval.OneMonth, chained[0], chained[4], 2.5));
+
+            var quarters = new[] { new DateTime(2019, 11, 30), new DateTime(2020, 2, 29), new DateTime(2020, 5, 29), new DateTime(2020, 8, 29) };
+            AssertDates(quarters, new TimeSeries(TimeInterval.OneQuarter, quarters[0], new double[4]));
+
+            var years = new[] { new DateTime(2020, 2, 29), new DateTime(2021, 2, 28), new DateTime(2022, 2, 28), new DateTime(2023, 2, 28), new DateTime(2024, 2, 28) };
+            AssertDates(years, new TimeSeries(TimeInterval.OneYear, years[0], new double[5]));
+
+            // A start on day 28 or earlier keeps its day of month.
+            var fifteenths = new TimeSeries(TimeInterval.OneMonth, new DateTime(2023, 1, 15), new double[3]);
+            AssertDates(new[] { new DateTime(2023, 1, 15), new DateTime(2023, 2, 15), new DateTime(2023, 3, 15) }, fifteenths);
+
+            var hours = new TimeSeries(TimeInterval.SixHour, new DateTime(2020, 1, 31, 18, 0, 0), new double[3]);
+            AssertDates(new[] { new DateTime(2020, 1, 31, 18, 0, 0), new DateTime(2020, 2, 1), new DateTime(2020, 2, 1, 6, 0, 0) }, hours);
+        }
+
+        /// <summary>
+        /// Shifting, filling and resampling chain <see cref="TimeSeries.AddTimeInterval"/> from the previous date.
+        /// </summary>
+        [TestMethod]
+        public void Test_CalendarSteps_ShiftFillAndResampleChain()
+        {
+            var chained = new[] { new DateTime(2020, 1, 31), new DateTime(2020, 2, 29), new DateTime(2020, 3, 29), new DateTime(2020, 4, 29), new DateTime(2020, 5, 29) };
+
+            var shifted = new TimeSeries(TimeInterval.OneMonth, new DateTime(2019, 1, 1), new double[] { 1, 2, 3, 4, 5 });
+            shifted.ShiftAllDates(chained[0]);
+            AssertDates(chained, shifted);
+            AssertValues(new double[] { 1, 2, 3, 4, 5 }, shifted);
+
+            var sparse = new TimeSeries(TimeInterval.OneMonth);
+            sparse.Add(new SeriesOrdinate<DateTime, double>(chained[2], 7));
+            var filled = TimeSeries.FillMissingDates(sparse, chained[0], chained[4], -1);
+            AssertDates(chained, filled);
+            AssertValues(new double[] { -1, -1, 7, -1, -1 }, filled);
+
+            var source = new TimeSeries(TimeInterval.OneMonth, chained[0], Enumerable.Range(0, 24).Select(i => Math.Sin(i)).ToArray());
+            AssertDates(chained, source.ResampleWithBlockBootstrap(5, 3, 7));
+            AssertDates(chained, source.ResampleWithKNN(5, 3, 7));
+        }
+
+        /// <summary>
+        /// The start and end date constructors stop at the last stepped date on or before the end date.
+        /// </summary>
+        [TestMethod]
+        public void Test_StartEndConstructor_NoDateAfterEnd()
+        {
+            // Chained monthly dates from January 31 fall on the 29th, so June 30 is between two of them.
+            var chained = new[] { new DateTime(2020, 1, 31), new DateTime(2020, 2, 29), new DateTime(2020, 3, 29), new DateTime(2020, 4, 29), new DateTime(2020, 5, 29), new DateTime(2020, 6, 29) };
+            var monthly = new TimeSeries(TimeInterval.OneMonth, chained[0], new DateTime(2020, 6, 30));
+            AssertDates(chained, monthly);
+            Assert.IsTrue(monthly.ValuesToArray().All(double.IsNaN));
+            var fixedMonthly = new TimeSeries(TimeInterval.OneMonth, chained[0], new DateTime(2020, 6, 30), 4.5);
+            AssertDates(chained, fixedMonthly);
+            AssertValues(Enumerable.Repeat(4.5, 6).ToArray(), fixedMonthly);
+
+            // An end between two fixed steps.
+            var hourly = new TimeSeries(TimeInterval.SixHour, new DateTime(2020, 1, 1), new DateTime(2020, 1, 1, 13, 0, 0));
+            AssertDates(new[] { new DateTime(2020, 1, 1), new DateTime(2020, 1, 1, 6, 0, 0), new DateTime(2020, 1, 1, 12, 0, 0) }, hourly);
+
+            // An end on a stepped date is the last ordinate, and equal start and end dates give one ordinate.
+            AssertDates(chained.Take(5).ToArray(), new TimeSeries(TimeInterval.OneMonth, chained[0], chained[4]));
+            AssertDates(new[] { chained[0] }, new TimeSeries(TimeInterval.OneMonth, chained[0], chained[0], 1.0));
+            AssertDates(new[] { chained[0] }, new TimeSeries(TimeInterval.OneYear, chained[0], new DateTime(2020, 12, 31)));
+
+            Assert.Throws<ArgumentException>(() => new TimeSeries(TimeInterval.OneDay, chained[1], chained[0]));
+            Assert.Throws<ArgumentException>(() => new TimeSeries(TimeInterval.Irregular, chained[0], chained[1], 0.0));
+        }
+
+        /// <summary>
+        /// An end date found by chaining <see cref="TimeSeries.AddTimeInterval"/> n - 1 times from the start gives
+        /// exactly n ordinates, for every regular interval.
+        /// </summary>
+        [TestMethod]
+        public void Test_StartEndConstructor_ChainedEndGivesRequestedCount()
+        {
+            var starts = new[] { new DateTime(2000, 1, 1), new DateTime(2020, 1, 31), new DateTime(2020, 2, 29), new DateTime(2019, 8, 30), new DateTime(2021, 12, 31, 23, 45, 0) };
+            foreach (TimeInterval interval in Enum.GetValues(typeof(TimeInterval)))
+            {
+                if (interval == TimeInterval.Irregular) continue;
+                foreach (var start in starts)
+                {
+                    var end = start;
+                    for (int n = 1; n <= 30; n++)
+                    {
+                        var ts = new TimeSeries(interval, start, end);
+                        Assert.AreEqual(n, ts.Count, $"{interval} from {start:O}");
+                        Assert.AreEqual(end, ts.EndDate, $"{interval} from {start:O}");
+                        end = TimeSeries.AddTimeInterval(end, interval);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// <see cref="TimeSeries.AnchoredDates"/> counts month, quarter and year steps from the start date.
+        /// </summary>
+        /// <remarks>
+        /// Expected dates are pandas <c>Timestamp(start) + DateOffset(months=k)</c> (or <c>years=k</c>) for k = 0, 1, ...
+        /// </remarks>
+        [TestMethod]
+        public void Test_AnchoredDates_KeepDayOfMonth()
+        {
+            var monthEnds = new[] { new DateTime(2020, 1, 31), new DateTime(2020, 2, 29), new DateTime(2020, 3, 31), new DateTime(2020, 4, 30), new DateTime(2020, 5, 31) };
+            CollectionAssert.AreEqual(monthEnds, TimeSeries.AnchoredDates(monthEnds[0], 5, TimeInterval.OneMonth));
+
+            var quarters = new[] { new DateTime(2019, 11, 30), new DateTime(2020, 2, 29), new DateTime(2020, 5, 30), new DateTime(2020, 8, 30) };
+            CollectionAssert.AreEqual(quarters, TimeSeries.AnchoredDates(quarters[0], 4, TimeInterval.OneQuarter));
+
+            var leapYears = new[] { new DateTime(2020, 2, 29), new DateTime(2021, 2, 28), new DateTime(2022, 2, 28), new DateTime(2023, 2, 28), new DateTime(2024, 2, 29) };
+            CollectionAssert.AreEqual(leapYears, TimeSeries.AnchoredDates(leapYears[0], 5, TimeInterval.OneYear));
+
+            // A series on the anchored dates, through the ticks constructor.
+            var ticks = TimeSeries.AnchoredDates(monthEnds[0], 5, TimeInterval.OneMonth).Select(d => d.Ticks).ToArray();
+            var series = new TimeSeries(TimeInterval.OneMonth, ticks, new double[] { 1, 2, 3, 4, 5 });
+            AssertDates(monthEnds, series);
+        }
+
+        /// <summary>
+        /// <see cref="TimeSeries.AnchoredDates"/> equals the chained series dates for fixed intervals and for a start on
+        /// day 28 or earlier.
+        /// </summary>
+        [TestMethod]
+        public void Test_AnchoredDates_MatchChainedWhereTheyAgree()
+        {
+            var fixedIntervals = new[] { TimeInterval.OneMinute, TimeInterval.FiveMinute, TimeInterval.FifteenMinute, TimeInterval.ThirtyMinute, TimeInterval.OneHour, TimeInterval.SixHour, TimeInterval.TwelveHour, TimeInterval.OneDay, TimeInterval.SevenDay };
+            var start = new DateTime(2020, 1, 31, 18, 30, 0);
+            foreach (var interval in fixedIntervals)
+                CollectionAssert.AreEqual(new TimeSeries(interval, start, new double[40]).IndexesToArray(), TimeSeries.AnchoredDates(start, 40, interval), interval.ToString());
+
+            foreach (var interval in new[] { TimeInterval.OneMonth, TimeInterval.OneQuarter, TimeInterval.OneYear })
+            {
+                for (int day = 1; day <= 28; day++)
+                {
+                    var first = new DateTime(2019, 1, day);
+                    CollectionAssert.AreEqual(new TimeSeries(interval, first, new double[30]).IndexesToArray(), TimeSeries.AnchoredDates(first, 30, interval), $"{interval} day {day}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// <see cref="TimeSeries.AnchoredDates"/> handles an empty and a single-date sequence and rejects invalid input.
+        /// </summary>
+        [TestMethod]
+        public void Test_AnchoredDates_EdgeCasesAndInvalidInputs()
+        {
+            var start = new DateTime(2020, 1, 31);
+            Assert.IsEmpty(TimeSeries.AnchoredDates(start, 0, TimeInterval.OneMonth));
+            CollectionAssert.AreEqual(new[] { start }, TimeSeries.AnchoredDates(start, 1, TimeInterval.OneYear));
+            Assert.Throws<ArgumentException>(() => TimeSeries.AnchoredDates(start, 3, TimeInterval.Irregular));
+            Assert.Throws<ArgumentOutOfRangeException>(() => TimeSeries.AnchoredDates(start, -1, TimeInterval.OneMonth));
+            Assert.Throws<ArgumentOutOfRangeException>(() => TimeSeries.AnchoredDates(DateTime.MaxValue.AddMonths(-1), 3, TimeInterval.OneMonth));
+        }
+
+        /// <summary>
+        /// Asserts the ordinate dates equal, in order.
+        /// </summary>
+        private static void AssertDates(DateTime[] expected, TimeSeries actual)
+        {
+            Assert.HasCount(expected.Length, actual.IndexesToArray());
+            for (int i = 0; i < expected.Length; i++)
+                Assert.AreEqual(expected[i], actual[i].Index, $"Ordinate {i}");
+        }
+
+        /// <summary>
+        /// The ticks constructor round-trips <see cref="TimeSeries.IndexTicksToArray"/> and the values bit for bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_TicksConstructor_RoundTrip()
+        {
+            var nanPayload = BitConverter.Int64BitsToDouble(unchecked((long)0xFFF8_0000_0000_1234UL));
+            var ticks = new long[] { new DateTime(2020, 2, 29, 23, 59, 59).Ticks + 7, new DateTime(1850, 6, 1).Ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks };
+            var values = new double[] { nanPayload, -0.0, double.PositiveInfinity, 1.5 };
+
+            var ts = new TimeSeries(TimeInterval.Irregular, ticks, values);
+
+            Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
+            CollectionAssert.AreEqual(ticks, ts.IndexTicksToArray());
+            var stored = ts.ValuesToArray();
+            for (int i = 0; i < values.Length; i++)
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(values[i]), BitConverter.DoubleToInt64Bits(stored[i]));
+            Assert.AreEqual(DateTimeKind.Unspecified, ts[0].Index.Kind);
+
+            // The same dates and values as the start-date constructor.
+            var regular = new TimeSeries(TimeInterval.OneMonth, new DateTime(2020, 1, 31), new double[] { 1, 2, 3 });
+            var copy = new TimeSeries(TimeInterval.OneMonth, regular.IndexTicksToArray(), regular.ValuesToArray());
+            AssertDates(regular.IndexesToArray(), copy);
+            AssertValues(regular.ValuesToArray(), copy);
+            Assert.AreEqual(0, new TimeSeries(TimeInterval.OneDay, new long[0], new double[0]).Count);
+        }
+
+        /// <summary>
+        /// The ticks constructor rejects null, mismatched and out-of-range input.
+        /// </summary>
+        [TestMethod]
+        public void Test_TicksConstructor_InvalidInputs()
+        {
+            Assert.Throws<ArgumentNullException>(() => new TimeSeries(TimeInterval.OneDay, (IList<long>)null!, new double[0]));
+            Assert.Throws<ArgumentNullException>(() => new TimeSeries(TimeInterval.OneDay, new long[0], null!));
+            Assert.Throws<ArgumentException>(() => new TimeSeries(TimeInterval.OneDay, new long[] { 0, 1 }, new double[] { 1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TimeSeries(TimeInterval.OneDay, new long[] { -1 }, new double[] { 1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TimeSeries(TimeInterval.OneDay, new long[] { DateTime.MaxValue.Ticks + 1 }, new double[] { 1 }));
         }
 
     }

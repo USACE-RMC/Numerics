@@ -61,5 +61,17 @@ namespace Data.Statistics
                 double.NegativeInfinity,
                 YeoJohnson.LogLikelihood(new[] { -double.MaxValue, -double.MaxValue / 2d, -double.MaxValue / 4d }, 1d));
         }
+
+        /// <summary>
+        /// The log-likelihood is the full normal log-likelihood of the transformed values at the maximum likelihood
+        /// mean and variance plus the log-Jacobian: scipy 1.17.1 sum(norm.logpdf(yeojohnson(x, 0.7), mu, sigma)) +
+        /// (0.7 - 1) sum(sign(x) log1p(|x|)) = -16.78847767213403.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogLikelihood_FullNormalConstant()
+        {
+            var x = new double[] { -1.5, -0.3, 0.2, 0.8, 1.4, 2.2, 3.9, 5.1 };
+            Assert.AreEqual(-16.78847767213403, YeoJohnson.LogLikelihood(x, 0.7), 1E-10);
+        }
     }
 }

@@ -45,7 +45,7 @@ namespace Data.PairedData
         }
 
         /// <summary>
-        /// Verify that correlated smart searches, which now genuinely reach the hunt path, return the
+        /// Verify that correlated smart searches, which genuinely reach the hunt path, return the
         /// same bracket indexes as direct bisection searches.
         /// </summary>
         /// <remarks>
@@ -552,7 +552,7 @@ namespace Data.PairedData
         /// <summary>
         /// An extrapolating lookup is pushed through the lookup-axis transform, so the lookup value
         /// must lie in that transform's domain. A NormalZ lookup axis throws outside the unit
-        /// interval, where the endpoint hold used to answer; a Logarithmic lookup axis answers NaN
+        /// interval, where an endpoint hold would answer; a Logarithmic lookup axis answers NaN
         /// for a negative lookup and treats lookups below 1E-16 as 1E-16. These are the documented
         /// domain edges of the transforms, pinned here so a change to them is a deliberate one.
         /// </summary>
@@ -632,5 +632,19 @@ namespace Data.PairedData
             }
         }
 
+        /// <summary>
+        /// The limit used where a NormalZ y-transform sends an end of a segment to +∞ (a value of 1) applies inside the
+        /// segment only: extrapolating beyond it is not defined and returns NaN. Here x = {1, 2, 3}, y = {1, 1, 0.5}, so the
+        /// last segment runs from +∞ to 0 in z and its extension to x = 4 has no single limit.
+        /// </summary>
+        [TestMethod]
+        public void Test_NormalZInfiniteEndExtrapolationIsUndefined()
+        {
+            var opd = new OrderedPairedData(new[] { 1d, 2d, 3d }, new[] { 1d, 1d, 0.5 }, true, SortOrder.Ascending, false, SortOrder.Descending);
+            Assert.IsTrue(double.IsNaN(opd.GetYFromX(4d, Transform.None, Transform.NormalZ, ExtrapolationSides.Above)));
+            // Inside the segment the limit holds: 1 next to the infinite end, and the node values at the nodes.
+            Assert.AreEqual(1d, opd.GetYFromX(2.5, Transform.None, Transform.NormalZ), 0d);
+            Assert.AreEqual(0.5, opd.GetYFromX(3d, Transform.None, Transform.NormalZ), 1E-15);
+        }
     }
 }

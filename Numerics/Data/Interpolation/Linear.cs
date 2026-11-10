@@ -35,6 +35,30 @@ namespace Numerics.Data
         public Linear(IList<double> xValues, IList<double> yValues, SortOrder sortOrder = SortOrder.Ascending) : base(xValues, yValues, sortOrder){}
 
         /// <summary>
+        /// Constructs a linear interpolator over the lists of another one, without validation.
+        /// </summary>
+        /// <param name="source">The interpolator to copy.</param>
+        private Linear(Linear source) : base(source)
+        {
+            XTransform = source.XTransform;
+            YTransform = source.YTransform;
+        }
+
+        /// <summary>
+        /// Creates a copy that shares this interpolator's x and y lists.
+        /// </summary>
+        /// <returns>A new interpolator over the same lists, with the same sort order, transforms and search mode, and a fresh search state.</returns>
+        /// <remarks>
+        /// The lists are neither copied nor validated again, so the copy costs O(1). Interpolation only reads the lists,
+        /// so each thread can use its own copy; a single instance must not be shared across threads, because every search
+        /// updates its search state. The lists must not be modified while a copy is in use.
+        /// </remarks>
+        public Linear ShallowClone()
+        {
+            return new Linear(this);
+        }
+
+        /// <summary>
         /// The transform for the x-values. Default = None.
         /// </summary>
         public Transform XTransform { get; set; } = Transform.None;
@@ -102,6 +126,8 @@ namespace Numerics.Data
             {
                 y = y1 + (x - x1) / (x2 - x1) * (y2 - y1);
             }
+            // The NormalZ transform sends a value of 1 to +∞ (StandardZ(0) and Log10(0) stay finite).
+            if (double.IsNaN(y)) y = OrderedPairedData.InfiniteEndpointLimit(x, x1, x2, y1, y2);
             //
             if (YTransform == Transform.None)
             {
@@ -116,8 +142,27 @@ namespace Numerics.Data
                 return Normal.StandardCDF(y);
             }
 
-            // return NaN if we get to here
+            // return NaN if this point is reached
             return double.NaN;
+        }
+
+        /// <summary>
+        /// Given a list of x-values, returns an extrapolated value for each.
+        /// </summary>
+        /// <param name="x">The values to extrapolate.</param>
+        /// <returns>One value per x-value, each equal to <see cref="Extrapolate(double)"/> at that value.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="x"/> is null.</exception>
+        /// <remarks>
+        /// The values are evaluated in order through the scalar method, so the searches see the same sequence of
+        /// points and every value has the same bits as the scalar call.
+        /// </remarks>
+        public double[] Extrapolate(IList<double> x)
+        {
+            if (x == null) throw new ArgumentNullException(nameof(x));
+            var result = new double[x.Count];
+            for (int i = 0; i < x.Count; i++)
+                result[i] = Extrapolate(x[i]);
+            return result;
         }
 
         /// <summary>
@@ -198,7 +243,7 @@ namespace Numerics.Data
                 return Normal.StandardCDF(y);
             }
 
-            // return NaN if we get to here
+            // return NaN if this point is reached
             return double.NaN;
         }
 

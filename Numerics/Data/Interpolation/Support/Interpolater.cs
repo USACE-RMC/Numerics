@@ -48,7 +48,25 @@ namespace Numerics.Data
             // window pinned to a constant starves the hunt path. See the remarks on deltaStart.
             deltaStart = Math.Max(1, (int)Math.Pow((double)Count, 0.25));
             SortOrder = sortOrder;
-            
+
+        }
+
+        /// <summary>
+        /// Constructs an interpolater over the lists of another one, without validation.
+        /// </summary>
+        /// <param name="source">The interpolater whose lists, sort order and search mode are shared.</param>
+        /// <remarks>
+        /// The new instance shares the source's x and y lists by reference and starts with a fresh search state
+        /// (<see cref="SearchStart"/> = 0, uncorrelated), like a newly constructed interpolater.
+        /// </remarks>
+        protected Interpolater(Interpolater source)
+        {
+            Count = source.Count;
+            XValues = source.XValues;
+            YValues = source.YValues;
+            deltaStart = source.deltaStart;
+            SortOrder = source.SortOrder;
+            UseSmartSearch = source.UseSmartSearch;
         }
 
         /// <summary>
@@ -68,8 +86,8 @@ namespace Numerics.Data
         /// <remarks>
         /// The constructor assigns <c>Math.Max(1, (int)Math.Pow(Count, 0.25))</c>, the Numerical
         /// Recipes N^0.25 hunt heuristic, so the window grows with the table size. The value affects
-        /// only which search path runs — hunt and bisection return the same bracket for the same
-        /// input — so it is a performance characteristic rather than a correctness one.
+        /// only which search path runs (hunt and bisection return the same bracket for the same
+        /// input), so it is a performance characteristic rather than a correctness one.
         /// <see cref="SearchStart"/> and <see cref="UseSmartSearch"/> are public and settable, so a
         /// consumer that wants different search behaviour can steer the search directly.
         /// </remarks>

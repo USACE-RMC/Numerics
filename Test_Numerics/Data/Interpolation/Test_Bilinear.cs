@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 
 namespace Data.Interpolation
@@ -355,6 +356,48 @@ namespace Data.Interpolation
             Assert.IsFalse(double.IsNaN(atZero) || double.IsInfinity(atZero));
             Assert.IsFalse(double.IsNaN(belowFloor) || double.IsInfinity(belowFloor));
             Assert.AreEqual(linear.Interpolate(5E-17), belowFloor, 1E-28);
+        }
+
+        /// <summary>
+        /// The list overload evaluates (x1[i], x2[i]) pairs with the same bits as the scalar method.
+        /// </summary>
+        /// <remarks>
+        /// In-range values match scipy.interpolate.RegularGridInterpolator (linear): 874.84, 922.9125 and 873.718.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Interpolate_List()
+        {
+            var x1Array = new double[] { 100d, 200d, 300d, 400d, 500d };
+            var x2Array = new double[] { 50d, 100d, 150d, 200d, 250d };
+            var rows = new[]
+            {
+                new[] { 850.36, 868.45, 896.71, 914.78, 928.87 },
+                new[] { 865.39, 878.66, 901.2, 918.54, 929.46 },
+                new[] { 867.27, 880.47, 901.92, 919.14, 929.54 },
+                new[] { 869.71, 881.91, 902.4, 919.9, 929.62 },
+                new[] { 871.84, 883.19, 903.22, 920.18, 929.68 },
+            };
+            var yArray = new double[5, 5];
+            for (int i = 0; i < 5; i++)
+                for (int j = 0; j < 5; j++)
+                    yArray[i, j] = rows[i][j];
+
+            var x1 = new double[] { 350, 150, 480, 50, 600, 250, 450 };
+            var x2 = new double[] { 75, 225, 60, 300, 25, 10, 400 };
+            var list = new Bilinear(x1Array, x2Array, yArray).Interpolate(x1, x2);
+            var scalar = new Bilinear(x1Array, x2Array, yArray);
+            Assert.HasCount(x1.Length, list);
+            for (int i = 0; i < x1.Length; i++)
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(scalar.Interpolate(x1[i], x2[i])), BitConverter.DoubleToInt64Bits(list[i]));
+            Assert.AreEqual(874.84, list[0], 1e-10);
+            Assert.AreEqual(922.9125, list[1], 1e-10);
+            Assert.AreEqual(873.718, list[2], 1e-10);
+
+            var bilinear = new Bilinear(x1Array, x2Array, yArray);
+            Assert.IsEmpty(bilinear.Interpolate(new double[0], new double[0]));
+            Assert.Throws<ArgumentException>(() => bilinear.Interpolate(new double[] { 1, 2 }, new double[] { 1 }));
+            Assert.Throws<ArgumentNullException>(() => bilinear.Interpolate(null!, new double[] { 1 }));
+            Assert.Throws<ArgumentNullException>(() => bilinear.Interpolate(new double[] { 1 }, null!));
         }
 
 }

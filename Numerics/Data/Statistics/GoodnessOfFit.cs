@@ -1,7 +1,9 @@
 ﻿using Numerics.Distributions;
+using Numerics.MachineLearning;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Numerics.Data.Statistics
 {
@@ -542,6 +544,7 @@ namespace Numerics.Data.Statistics
         /// <item><description>If modeled values have zero variance (all constant), returns -10.0</description></item>
         /// <item><description>If observed values have zero variance, returns -10.0</description></item>
         /// <item><description>These cases indicate the model cannot capture any variability</description></item>
+        /// <item><description>A single pair (n = 1) has an undefined sample standard deviation and returns NaN</description></item>
         /// </list>
         /// </para>
         /// <para>
@@ -630,6 +633,7 @@ namespace Numerics.Data.Statistics
         /// <item><description>If modeled values have zero variance (all constant), returns -10.0</description></item>
         /// <item><description>If observed values have zero variance, returns -10.0</description></item>
         /// <item><description>These cases indicate the model cannot capture any variability</description></item>
+        /// <item><description>A single pair (n = 1) has an undefined sample standard deviation and returns NaN</description></item>
         /// </list>
         /// </para>
         /// <para>
@@ -711,13 +715,18 @@ namespace Numerics.Data.Statistics
         /// <returns>The PBIAS as a percentage.</returns>
         /// <remarks>
         /// <para>
-        /// PBIAS measures the average tendency of modeled values to be larger or smaller than observed values. 
-        /// It is expressed as a percentage:
+        /// PBIAS measures the average tendency of modeled values to be larger or smaller than observed values.
+        /// It follows Moriasi et al. (2007), PBIAS = 100 · Σ(Oᵢ − Mᵢ) / ΣOᵢ, expressed as a percentage:
         /// <list type="bullet">
         /// <item><description>PBIAS = 0: Perfect model with no bias</description></item>
         /// <item><description>PBIAS &gt; 0: Model underestimates (negative bias)</description></item>
         /// <item><description>PBIAS &lt; 0: Model overestimates (positive bias)</description></item>
         /// </list>
+        /// </para>
+        /// <para>
+        /// Reference: Moriasi, D. N., Arnold, J. G., Van Liew, M. W., Bingner, R. L., Harmel, R. D., and Veith, T. L.
+        /// (2007). Model evaluation guidelines for systematic quantification of accuracy in watershed simulations.
+        /// Transactions of the ASABE, 50(3), 885-900.
         /// </para>
         /// <para>
         /// Performance ratings for streamflow (Moriasi et al., 2007):
@@ -744,7 +753,7 @@ namespace Numerics.Data.Statistics
 
             for (int i = 0; i < n; i++)
             {
-                sumDiff += modeledValues[i] - observedValues[i];
+                sumDiff += observedValues[i] - modeledValues[i];
                 sumObs += observedValues[i];
             }
 
@@ -1361,9 +1370,32 @@ namespace Numerics.Data.Statistics
         /// Computes the Kolmogorov-Smirnov (K-S) test statistic, which measures the maximum vertical distance 
         /// between the empirical cumulative distribution function (ECDF) of the sample and the theoretical CDF.
         /// </summary>
-        /// <param name="observedValues">The list of observed values to measure against. Must be sorted in ascending order.</param>
+        /// <param name="observedValues">The list of observed values to measure against, in any order.</param>
         /// <param name="model">The univariate continuous distribution to test against.</param>
         /// <returns>The Kolmogorov-Smirnov test statistic (D).</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="observedValues"/> or <paramref name="model"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="observedValues"/> is empty.</exception>
+        /// <remarks>
+        /// Equivalent to <see cref="KolmogorovSmirnov(IList{double}, UnivariateDistributionBase, bool)"/> with
+        /// <c>dataIsSorted</c> false: the statistic is computed on a sorted copy, so ascending input gives the same result
+        /// bit for bit. Pass <c>dataIsSorted</c> true to skip the copy when the values are already ascending.
+        /// </remarks>
+        public static double KolmogorovSmirnov(IList<double> observedValues, UnivariateDistributionBase model)
+        {
+            return KolmogorovSmirnov(observedValues, model, false);
+        }
+
+        /// <summary>
+        /// Computes the Kolmogorov-Smirnov (K-S) test statistic, which measures the maximum vertical distance
+        /// between the empirical cumulative distribution function (ECDF) of the sample and the theoretical CDF.
+        /// </summary>
+        /// <param name="observedValues">The list of observed values to measure against.</param>
+        /// <param name="model">The univariate continuous distribution to test against.</param>
+        /// <param name="dataIsSorted">True when <paramref name="observedValues"/> is already in ascending order, so it is used
+        /// as given; false to compute the statistic on a sorted copy. The caller is responsible for the order when true.</param>
+        /// <returns>The Kolmogorov-Smirnov test statistic (D).</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="observedValues"/> or <paramref name="model"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="observedValues"/> is empty.</exception>
         /// <remarks>
         /// <para>
         /// The K-S test statistic D measures the maximum absolute difference between the ECDF and the theoretical CDF. 
@@ -1378,18 +1410,33 @@ namespace Numerics.Data.Statistics
         /// <see href="https://www.itl.nist.gov/div898/handbook/eda/section3/eda35g.htm"/>
         /// </para>
         /// </remarks>
-        public static double KolmogorovSmirnov(IList<double> observedValues, UnivariateDistributionBase model)
+        public static double KolmogorovSmirnov(IList<double> observedValues, UnivariateDistributionBase model, bool dataIsSorted)
         {
-            // Check if the lists are the same size
+            if (observedValues == null) throw new ArgumentNullException(nameof(observedValues));
+            if (model is null) throw new ArgumentNullException(nameof(model));
             if (observedValues.Count < 1)
-                throw new ArgumentOutOfRangeException(nameof(observedValues), "There must be more than one observed value.");
+                throw new ArgumentOutOfRangeException(nameof(observedValues), "There must be at least one observed value.");
+            if (!dataIsSorted) observedValues = SortedCopy(observedValues);
 
             int n = observedValues.Count;
             double D = double.MinValue;
+            if (Statistics.TryGetArray(observedValues, out var array, out int offset))
+            {
+                for (int i = 1; i <= n; i++)
+                {
+                    double p = model.CDF(array[offset + i - 1]);
+                    double left = p - ((double)i - 1) / n;
+                    double right = (double)i / n - p;
+                    D = Math.Max(D, Math.Max(left, right));
+                }
+                return D;
+            }
             for (int i = 1; i <= n; i++)
             {
-                double left = model.CDF(observedValues[i - 1]) - ((double)i - 1) / n;
-                double right = (double)i / n - model.CDF(observedValues[i - 1]);
+                // The CDF is evaluated once per value; both differences use the same probability.
+                double p = model.CDF(observedValues[i - 1]);
+                double left = p - ((double)i - 1) / n;
+                double right = (double)i / n - p;
                 D = Math.Max(D, Math.Max(left, right));
             }
             return D;
@@ -1437,9 +1484,32 @@ namespace Numerics.Data.Statistics
         /// Computes the Anderson-Darling (A-D) test statistic, which is a weighted goodness-of-fit measure 
         /// that gives more weight to discrepancies in the tails of the distribution.
         /// </summary>
-        /// <param name="observedValues">The list of observed values to measure against. Must be sorted in ascending order.</param>
+        /// <param name="observedValues">The list of observed values to measure against, in any order.</param>
         /// <param name="model">The univariate continuous distribution to test against.</param>
         /// <returns>The Anderson-Darling test statistic (A²).</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="observedValues"/> or <paramref name="model"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="observedValues"/> is empty.</exception>
+        /// <remarks>
+        /// Equivalent to <see cref="AndersonDarling(IList{double}, UnivariateDistributionBase, bool)"/> with
+        /// <c>dataIsSorted</c> false: the statistic is computed on a sorted copy, so ascending input gives the same result
+        /// bit for bit. Pass <c>dataIsSorted</c> true to skip the copy when the values are already ascending.
+        /// </remarks>
+        public static double AndersonDarling(IList<double> observedValues, UnivariateDistributionBase model)
+        {
+            return AndersonDarling(observedValues, model, false);
+        }
+
+        /// <summary>
+        /// Computes the Anderson-Darling (A-D) test statistic, which is a weighted goodness-of-fit measure
+        /// that gives more weight to discrepancies in the tails of the distribution.
+        /// </summary>
+        /// <param name="observedValues">The list of observed values to measure against.</param>
+        /// <param name="model">The univariate continuous distribution to test against.</param>
+        /// <param name="dataIsSorted">True when <paramref name="observedValues"/> is already in ascending order, so it is used
+        /// as given; false to compute the statistic on a sorted copy. The caller is responsible for the order when true.</param>
+        /// <returns>The Anderson-Darling test statistic (A²).</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="observedValues"/> or <paramref name="model"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="observedValues"/> is empty.</exception>
         /// <remarks>
         /// <para>
         /// The Anderson-Darling test is more sensitive to discrepancies in the tails of the distribution 
@@ -1455,18 +1525,128 @@ namespace Numerics.Data.Statistics
         /// <see href="https://www.itl.nist.gov/div898/handbook/eda/section3/eda35e.htm"/>
         /// </para>
         /// </remarks>
-        public static double AndersonDarling(IList<double> observedValues, UnivariateDistributionBase model)
+        public static double AndersonDarling(IList<double> observedValues, UnivariateDistributionBase model, bool dataIsSorted)
         {
-            // Check if the lists are the same size
+            if (observedValues == null) throw new ArgumentNullException(nameof(observedValues));
+            if (model is null) throw new ArgumentNullException(nameof(model));
             if (observedValues.Count < 1)
-                throw new ArgumentOutOfRangeException(nameof(observedValues), "There must be more than one observed value.");
+                throw new ArgumentOutOfRangeException(nameof(observedValues), "There must be at least one observed value.");
+            if (!dataIsSorted) observedValues = SortedCopy(observedValues);
 
             int n = observedValues.Count;
             double S = 0;
+            if (Statistics.TryGetArray(observedValues, out var array, out int offset))
+            {
+                for (int i = 1; i <= n; i++)
+                    S += (2 * (double)i - 1) * (model.LogCDF(array[offset + i - 1]) + model.LogCCDF(array[offset + n - i]));
+                return -n - S / n;
+            }
             for (int i = 1; i <= n; i++)
                 S += (2 * (double)i - 1) * (model.LogCDF(observedValues[i - 1]) + model.LogCCDF(observedValues[n - i]));
 
             return -n - S / n;
+        }
+
+        /// <summary>
+        /// Computes the Kolmogorov-Smirnov statistic (D) of each column of a matrix against the Uniform(0, 1)
+        /// distribution, for example the probability integral transforms of many samples.
+        /// </summary>
+        /// <param name="sortedSamples">The samples, one per column, each ascending down its rows, with every value in [0, 1].</param>
+        /// <returns>One statistic per column.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sortedSamples"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="sortedSamples"/> has no rows.</exception>
+        /// <exception cref="ArgumentException">Thrown when a value is NaN or outside [0, 1], or a column is not ascending.</exception>
+        /// <remarks>
+        /// Each value is bitwise <see cref="KolmogorovSmirnov(IList{double}, UnivariateDistributionBase, bool)"/> of the column
+        /// against <c>new Uniform(0, 1)</c>. The columns are evaluated in parallel above a work threshold, each into its own
+        /// result entry, so the result does not depend on the machine or the thread count. Evaluates all columns in one call.
+        /// </remarks>
+        public static double[] ColumnKolmogorovSmirnovUniform(double[,] sortedSamples)
+        {
+            return ColumnUniformStatistic(sortedSamples, (sample, model) => KolmogorovSmirnov(sample, model, true), 60);
+        }
+
+        /// <summary>
+        /// Computes the Anderson-Darling statistic (A²) of each column of a matrix against the Uniform(0, 1)
+        /// distribution, for example the probability integral transforms of many samples.
+        /// </summary>
+        /// <param name="sortedSamples">The samples, one per column, each ascending down its rows, with every value in [0, 1].</param>
+        /// <returns>One statistic per column; positive infinity for a column with a value at 0 or 1.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sortedSamples"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="sortedSamples"/> has no rows.</exception>
+        /// <exception cref="ArgumentException">Thrown when a value is NaN or outside [0, 1], or a column is not ascending.</exception>
+        /// <remarks>
+        /// Each value is bitwise <see cref="AndersonDarling(IList{double}, UnivariateDistributionBase, bool)"/> of the column
+        /// against <c>new Uniform(0, 1)</c>. The columns are evaluated in parallel above a work threshold, each into its own
+        /// result entry, so the result does not depend on the machine or the thread count. Evaluates all columns in one call.
+        /// </remarks>
+        public static double[] ColumnAndersonDarlingUniform(double[,] sortedSamples)
+        {
+            return ColumnUniformStatistic(sortedSamples, (sample, model) => AndersonDarling(sample, model, true), 150);
+        }
+
+        /// <summary>
+        /// Returns an ascending copy of a sample; the input is not modified.
+        /// </summary>
+        /// <param name="values">The sample.</param>
+        /// <returns>A new array holding the values in ascending order.</returns>
+        private static double[] SortedCopy(IList<double> values)
+        {
+            var copy = values.ToArray();
+            Array.Sort(copy);
+            return copy;
+        }
+
+        /// <summary>
+        /// Validates a matrix of ascending samples in [0, 1] and evaluates a goodness-of-fit statistic of each column
+        /// against Uniform(0, 1), in parallel over the columns when the matrix is large enough.
+        /// </summary>
+        /// <param name="sortedSamples">The samples, one per column.</param>
+        /// <param name="statistic">The statistic of one column against a model.</param>
+        /// <param name="workPerEntry">The approximate cost of the statistic per entry, which sets the matrix size below
+        /// which the columns run sequentially (see <see cref="Numerics.MachineLearning.RangeParallel"/>): 60 for the
+        /// Kolmogorov-Smirnov statistic, sequential below about 3,300 entries, and 150 for the Anderson-Darling statistic,
+        /// whose two logarithms per entry cost more, sequential below about 1,300 entries. Each column is evaluated into
+        /// its own result entry, so the result is bitwise the same on either path.</param>
+        /// <returns>One statistic per column.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="sortedSamples"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="sortedSamples"/> has no rows.</exception>
+        /// <exception cref="ArgumentException">Thrown when a value is NaN or outside [0, 1], or a column is not ascending.</exception>
+        private static double[] ColumnUniformStatistic(double[,] sortedSamples, Func<IList<double>, UnivariateDistributionBase, double> statistic, long workPerEntry)
+        {
+            if (sortedSamples == null) throw new ArgumentNullException(nameof(sortedSamples));
+            int rows = sortedSamples.GetLength(0);
+            int columns = sortedSamples.GetLength(1);
+            if (rows < 1) throw new ArgumentOutOfRangeException(nameof(sortedSamples), "There must be at least one observed value.");
+            // Each column is validated while it is gathered, and the first invalid row is recorded rather than thrown,
+            // so the error reported below is the one a column-by-column scan finds first, on either path.
+            var result = new double[columns];
+            var invalidRow = new int[columns];
+            RangeParallel.For(columns, (long)rows * columns * workPerEntry, j =>
+            {
+                var column = new double[rows];
+                double previous = 0d;
+                for (int i = 0; i < rows; i++)
+                {
+                    double u = sortedSamples[i, j];
+                    // The negated test also rejects NaN.
+                    if (!(u >= previous && u <= 1d))
+                    {
+                        invalidRow[j] = i + 1;
+                        return;
+                    }
+                    column[i] = u;
+                    previous = u;
+                }
+                result[j] = statistic(column, new Uniform(0d, 1d));
+            });
+            for (int j = 0; j < columns; j++)
+            {
+                if (invalidRow[j] == 0) continue;
+                int i = invalidRow[j] - 1;
+                throw new ArgumentException($"Column {j} must be ascending with every value in [0, 1]; row {i} holds {sortedSamples[i, j]}.", nameof(sortedSamples));
+            }
+            return result;
         }
 
         #endregion

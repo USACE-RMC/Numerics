@@ -86,7 +86,7 @@ namespace Numerics.Data.Statistics
             /// <param name="other">The bin to compare with</param>
             /// <returns>
             /// 0 if the upper bound and lower bound are bit-for-bit equal.
-            /// +1 if this bin is lower than the compared bin.
+            /// +1 if this bin is higher than the compared bin (or the compared bin is null).
             /// -1 otherwise.
             /// </returns>
             public int CompareTo(Bin? other)
@@ -168,7 +168,8 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
-        /// Constructs a histogram based on the data provided. The Rice Rule is used to set the bin sizes.
+        /// Constructs a histogram based on the data provided. The bin count is ceil(2 n^(1/3)) + 1, one more than the
+        /// Rice Rule ceil(2 n^(1/3)).
         /// </summary>
         /// <param name="data">The data to construct a histogram with.</param>
         public Histogram(IList<double> data)
@@ -314,7 +315,9 @@ namespace Numerics.Data.Statistics
                 for (int i = 0; i < _bins.Count; i++)
                     total += _bins[i].Frequency;
                 if (total == 0) return double.NaN;
-                int halfTotal = (int)(total / 2d);
+                // The median bin holds the (n/2)-th count for even n and the ((n+1)/2)-th for odd n; truncating
+                // n/2 to an integer stopped one count early for odd n.
+                double halfTotal = total / 2d;
                 int m = 0;
                 int v = 0;
                 while (m < _bins.Count)

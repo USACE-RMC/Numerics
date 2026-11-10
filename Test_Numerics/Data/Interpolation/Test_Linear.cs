@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 
@@ -82,7 +83,7 @@ namespace Data.Interpolation
         }
 
         /// <summary>
-        /// Verify that correlated smart searches, which now genuinely reach the hunt path, return the
+        /// Verify that correlated smart searches, which genuinely reach the hunt path, return the
         /// same interpolated values as cold bisection searches.
         /// </summary>
         /// <remarks>
@@ -440,5 +441,79 @@ namespace Data.Interpolation
             }
         }
 
+        /// <summary>
+        /// The shallow clone shares the lists, keeps the settings, starts a fresh search and interpolates bit for bit like the source.
+        /// </summary>
+        [TestMethod]
+        public void Test_ShallowClone()
+        {
+            var x = new double[] { 0.001, 0.01, 0.1, 0.5, 0.9, 0.99, 0.999 };
+            var y = new double[] { 10, 50, 120, 300, 800, 1500, 4000 };
+            foreach (var order in new[] { SortOrder.Ascending, SortOrder.Descending })
+            {
+                var xs = order == SortOrder.Ascending ? x : Enumerable.Reverse(x).ToArray();
+                var ys = order == SortOrder.Ascending ? y : Enumerable.Reverse(y).ToArray();
+                var source = new Linear(xs, ys, order) { XTransform = Transform.NormalZ, YTransform = Transform.Logarithmic, UseSmartSearch = false };
+                source.Interpolate(0.95);
+                var clone = source.ShallowClone();
+                Assert.AreSame(source.XValues, clone.XValues);
+                Assert.AreSame(source.YValues, clone.YValues);
+                Assert.AreEqual(source.SortOrder, clone.SortOrder);
+                Assert.AreEqual(source.XTransform, clone.XTransform);
+                Assert.AreEqual(source.YTransform, clone.YTransform);
+                Assert.AreEqual(source.UseSmartSearch, clone.UseSmartSearch);
+                Assert.AreEqual(0, clone.SearchStart);
+
+                var fresh = new Linear(xs, ys, order) { XTransform = Transform.NormalZ, YTransform = Transform.Logarithmic, UseSmartSearch = false };
+                var rnd = new Random(12);
+                for (int i = 0; i < 500; i++)
+                {
+                    // Includes points outside the table, which interpolation clamps and extrapolation extends.
+                    double q = 0.0001 + rnd.NextDouble() * 0.9998;
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(fresh.Interpolate(q)), BitConverter.DoubleToInt64Bits(clone.Interpolate(q)));
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(fresh.Extrapolate(q)), BitConverter.DoubleToInt64Bits(clone.Extrapolate(q)));
+                }
+            }
+        }
+
+        /// <summary>
+        /// The list overload of Extrapolate gives the same bits as the scalar method, inside and outside the data.
+        /// </summary>
+        /// <remarks>
+        /// Values beyond the data match R Hmisc approxExtrap: 600, 620, 700, 800 and 880 above, 0 and -20 below.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Extrapolate_List()
+        {
+            var XArray = new double[] { 50d, 100d, 150d, 200d, 250d };
+            var YArray = new double[] { 100d, 200d, 300d, 400d, 500d };
+            var x = new double[] { 300, 310, 350, 400, 440, 75, 0, -10, 125 };
+            var list = new Linear(XArray, YArray) { XTransform = Transform.Logarithmic }.Extrapolate(x);
+            var scalar = new Linear(XArray, YArray) { XTransform = Transform.Logarithmic };
+            for (int i = 0; i < x.Length; i++)
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(scalar.Extrapolate(x[i])), BitConverter.DoubleToInt64Bits(list[i]));
+
+            var linear = new Linear(XArray, YArray).Extrapolate(new[] { 300.0, 310, 350, 400, 440, 0, -10, 75 });
+            var expected = new[] { 600.0, 620, 700, 800, 880, 0, -20, 150 };
+            for (int i = 0; i < expected.Length; i++)
+                Assert.AreEqual(expected[i], linear[i], 1e-10);
+
+            var LI = new Linear(XArray, YArray);
+            Assert.IsEmpty(LI.Extrapolate(new double[0]));
+            Assert.Throws<ArgumentNullException>(() => LI.Extrapolate((System.Collections.Generic.IList<double>)null!));
+        }
+
+        /// <summary>
+        /// A NormalZ y-transform with a table that reaches 1 has an infinite segment end in z: the node next to it
+        /// interpolates to its own value rather than NaN, and the inside of the segment to the limit 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_NormalZNodeNextToOne()
+        {
+            var linear = new Linear(new[] { 0d, 1d, 2d, 4d }, new[] { 0d, 0.2, 0.7, 1d }) { YTransform = Transform.NormalZ };
+            Assert.AreEqual(0.7, linear.Interpolate(2d), 1E-15);
+            Assert.AreEqual(1d, linear.Interpolate(3d), 0d);
+            Assert.AreEqual(0.2, linear.Interpolate(1d), 1E-15);
+        }
     }
 }

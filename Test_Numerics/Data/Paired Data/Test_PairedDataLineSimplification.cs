@@ -88,8 +88,8 @@ namespace Data.PairedData
 
         /// <summary>
         /// The guarded early return of LangSimplify hands back a distinct object, matching the
-        /// other simplifiers' contract; it previously returned the receiver itself, so mutating the
-        /// "simplified" result silently mutated the original curve.
+        /// other simplifiers' contract; returning the receiver itself would let a mutation of the
+        /// "simplified" result silently mutate the original curve.
         /// </summary>
         [TestMethod]
         public void Test_LangSimplify_GuardReturnsADistinctObject()
@@ -107,9 +107,9 @@ namespace Data.PairedData
 
         /// <summary>
         /// RamerDouglasPeucker's output parameter holds the simplified curve alone on every path.
-        /// The recursion branch previously appended to whatever the caller's list already held,
-        /// while the endpoint branch replaced it, so a pre-populated list's final content depended
-        /// on which branch the curve happened to take.
+        /// A recursion branch that appends to whatever the caller's list already holds,
+        /// while the endpoint branch replaces it, would make a pre-populated list's final content depend
+        /// on which branch the curve happens to take.
         /// </summary>
         [TestMethod]
         public void Test_RamerDouglasPeucker_ClearsThePrePopulatedOutput()

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 using Numerics.Data.Statistics;
@@ -34,6 +35,118 @@ namespace Data.Statistics
             var true_acvf = new double[] { 22.105148d, 21.129089d, 20.268354d, 19.478147d, 18.595148d, 17.568448d, 16.893142d, 16.297683d, 15.644932d, 15.187918d, 14.655771d, 13.893153d, 13.017684d, 12.294179d, 11.298568d, 10.43392d, 9.836657d, 9.290689d, 8.714833d, 8.114298d, 7.537443d, 7.01491d, 6.621986d, 5.987118d };
             for (int i = 0; i < true_acvf.Length; i++)
                 Assert.AreEqual(acvf[i, 1], true_acvf[i], 0.0001d);
+        }
+
+        /// <summary>
+        /// The uncentered functions of a zero-mean process, against exact rational values (fractions.Fraction): the
+        /// autocovariance Σ x_t x_(t-k) / n, the autocorrelation Σ x_t x_(t-k) / Σ x_t² (numpy agrees), and the partial
+        /// autocorrelation from the exact Yule-Walker solutions. The centered default is unchanged.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Uncentered()
+        {
+            var sample = new[] { 0.3, -1.2, 0.8, 0.5, -0.7, 1.1, -0.4, -0.9, 0.6, 0.2 };
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2000, 1, 1, 0, 0, 0), sample);
+            var cov = new[] { 0.549, -0.254, -0.15, 0.288 };
+            var acf = new[] { 1.0, -0.46265938069216755, -0.273224043715847, 0.5245901639344263 };
+            var pacf = new[] { -0.46265938069216755, -0.6199886020642927, 0.06813084015755634 };
+            foreach (var (c, r, p) in new[]
+            {
+                (Autocorrelation.Function(sample, 3, Autocorrelation.Type.Covariance, false), Autocorrelation.Function(sample, 3, Autocorrelation.Type.Correlation, false), Autocorrelation.Function(sample, 3, Autocorrelation.Type.Partial, false)),
+                (Autocorrelation.Function(ts, 3, Autocorrelation.Type.Covariance, false), Autocorrelation.Function(ts, 3, Autocorrelation.Type.Correlation, false), Autocorrelation.Function(ts, 3, Autocorrelation.Type.Partial, false)),
+            })
+            {
+                for (int k = 0; k <= 3; k++)
+                {
+                    Assert.AreEqual(k, c![k, 0]);
+                    Assert.AreEqual(cov[k], c[k, 1], 1e-15);
+                    Assert.AreEqual(acf[k], r![k, 1], 1e-15);
+                }
+                for (int k = 0; k < 3; k++)
+                {
+                    Assert.AreEqual(k + 1, p![k, 0]);
+                    Assert.AreEqual(pacf[k], p[k, 1], 1e-14);
+                }
+            }
+
+            var centered = Autocorrelation.Function(sample, 3, Autocorrelation.Type.Correlation, true)!;
+            var byDefault = Autocorrelation.Function(sample, 3)!;
+            for (int k = 0; k <= 3; k++)
+                Assert.AreEqual(byDefault[k, 1], centered[k, 1], 0d);
+        }
+
+        /// <summary>
+        /// The autocorrelation about zero to lag 20 of a 200-value series, against the correctly rounded exact
+        /// ratios S_k / S_0 of the double inputs (Python fractions.Fraction, Python 3 with numpy 2.5.4;
+        /// statsmodels 0.15.0 acovf(demean=False, adjusted=False, fft=False) / acovf[0] is within 3 ulp of the
+        /// same values). The autocovariance about zero keeps the bits of the centered loop evaluated about zero,
+        /// the correlation is each lag sum divided once by S_0, and the list, array and time-series inputs agree
+        /// bitwise.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Uncentered_ExactRatios()
+        {
+            const int n = 200, lagMax = 20;
+            var x = new double[n];
+            for (int t = 0; t < n; t++)
+                x[t] = ((t * 37) % 101 - 50) / 10.0 + 0.3 * ((t * 53) % 17 - 8) / 7.0;
+            var exact = new[] { 1.0, -0.3787176557080698, -0.1830780409782735, 0.46746662717808185, -0.4772807834319895, 0.1338066896813549, 0.055205326588923714, -0.4526233763951284, 0.5690599179503525, -0.23206700297672522, -0.32468748660343033, 0.7943325964057234, -0.400576463671353, -0.10203088730921354, 0.32548062290471713, -0.4542297178755157, 0.23414858498380062, -0.034700514748903295, -0.4042519183294049, 0.6732011249496646, -0.2785445052303177 };
+
+            var sums = new double[lagMax + 1];
+            for (int lag = 0; lag <= lagMax; lag++)
+                for (int t = lag; t < n; t++)
+                    sums[lag] += (x[t] - 0d) * (x[t - lag] - 0d);
+
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2000, 1, 1, 0, 0, 0), x);
+            var inputs = new[]
+            {
+                (Autocorrelation.Function(x, lagMax, Autocorrelation.Type.Correlation, false)!, Autocorrelation.Function(x, lagMax, Autocorrelation.Type.Covariance, false)!),
+                (Autocorrelation.Function(new List<double>(x), lagMax, Autocorrelation.Type.Correlation, false)!, Autocorrelation.Function(new List<double>(x), lagMax, Autocorrelation.Type.Covariance, false)!),
+                (Autocorrelation.Function(ts, lagMax, Autocorrelation.Type.Correlation, false)!, Autocorrelation.Function(ts, lagMax, Autocorrelation.Type.Covariance, false)!),
+            };
+            foreach (var (acf, acvf) in inputs)
+            {
+                Assert.AreEqual(lagMax + 1, acf.GetLength(0));
+                for (int k = 0; k <= lagMax; k++)
+                {
+                    Assert.AreEqual(k, acf[k, 0]);
+                    Assert.AreEqual(k, acvf[k, 0]);
+                    Assert.AreEqual(exact[k], acf[k, 1], 2e-15);
+                    Assert.AreEqual(sums[k] / sums[0], acf[k, 1], 0d);
+                    Assert.AreEqual(sums[k] / n, acvf[k, 1], 0d);
+                }
+            }
+
+            Assert.IsNull(Autocorrelation.Function(new double[10], 3, Autocorrelation.Type.Correlation, false));
+            Assert.IsNull(Autocorrelation.Function(new[] { 1.0 }, 1, Autocorrelation.Type.Correlation, false));
+        }
+
+        /// <summary>
+        /// The centered default keeps the bits of the mean-removed loop S_k / n divided by S_0 / n.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Centered_Bitwise()
+        {
+            const int n = 200, lagMax = 20;
+            var x = new double[n];
+            for (int t = 0; t < n; t++)
+                x[t] = ((t * 37) % 101 - 50) / 10.0 + 0.3 * ((t * 53) % 17 - 8) / 7.0 + 140.0;
+            double mean = Numerics.Data.Statistics.Statistics.Mean(x);
+            var cov = new double[lagMax + 1];
+            for (int lag = 0; lag <= lagMax; lag++)
+            {
+                double c = 0d;
+                for (int t = lag; t < n; t++)
+                    c += (x[t] - mean) * (x[t - lag] - mean);
+                cov[lag] = c / n;
+            }
+            var acf = Autocorrelation.Function(x, lagMax)!;
+            var acvf = Autocorrelation.Function(x, lagMax, Autocorrelation.Type.Covariance)!;
+            for (int k = 0; k <= lagMax; k++)
+            {
+                Assert.AreEqual(cov[k], acvf[k, 1], 0d);
+                Assert.AreEqual(cov[k] / cov[0], acf[k, 1], 0d);
+            }
         }
 
         /// <summary>
@@ -130,6 +243,38 @@ namespace Data.Statistics
                 }
             }
 
+        }
+
+        /// <summary>
+        /// A maximum lag at or beyond the number of observations gives one row per lag, with zero for every lag of n or
+        /// more, centered and uncentered, for a list and a time series; the lower lags match the call with lagMax = n - 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_LagMaxBeyondSampleSize()
+        {
+            var d = new double[] { 1, -2, 3, -1, 2 };
+            var ts = new TimeSeries(TimeInterval.OneDay, new DateTime(2020, 1, 1), d);
+            foreach (bool centered in new[] { true, false })
+            {
+                foreach (var type in new[] { Autocorrelation.Type.Covariance, Autocorrelation.Type.Correlation })
+                {
+                    foreach (var acf in new[] { Autocorrelation.Function(d, 10, type, centered), Autocorrelation.Function(ts, 10, type, centered) })
+                    {
+                        var reference = Autocorrelation.Function(d, 4, type, centered);
+                        Assert.AreEqual(11, acf!.GetLength(0));
+                        for (int lag = 0; lag <= 10; lag++)
+                        {
+                            Assert.AreEqual(lag, acf[lag, 0]);
+                            Assert.AreEqual(lag <= 4 ? reference![lag, 1] : 0d, acf[lag, 1], 1E-15, $"{type} centered={centered} lag {lag}");
+                        }
+                    }
+                }
+                var pacf = Autocorrelation.Function(d, 10, Autocorrelation.Type.Partial, centered);
+                var pacfReference = Autocorrelation.Function(d, 4, Autocorrelation.Type.Partial, centered);
+                Assert.AreEqual(10, pacf!.GetLength(0));
+                for (int lag = 0; lag < 4; lag++)
+                    Assert.AreEqual(pacfReference![lag, 1], pacf[lag, 1], 1E-15, $"Partial centered={centered} row {lag}");
+            }
         }
     }
 }

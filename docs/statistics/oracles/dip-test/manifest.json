@@ -1,0 +1,15 @@
+{
+  "generator": "dip-test.R",
+  "r": "4.4.3 (2025-02-28 ucrt)",
+  "diptest": "0.77-2 (CRAN, GPL; used as a black-box oracle, no code or tables copied)",
+  "seeds": "set.seed(3) for the simulated p-value (B = 100000); set.seed(20261105) for the optional 400-sample validation set",
+  "consumer": "Test_Numerics/Data/Statistics/Test_HypothesisTests.cs (Test_HartiganDip_MatchesR, Test_HartiganDipTest_MatchesR; the tests use inline fixtures)",
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "files": [
+    {
+      "file": "dip-test.csv",
+      "rows": 15,
+      "sha256Utf8Lf": "56df3d3b458afd029a00cde7faba9275db3470fcdc24c88c00428e05d243758b"
+    }
+  ]
+}

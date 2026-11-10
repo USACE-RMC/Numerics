@@ -121,7 +121,7 @@ namespace Numerics.Data.Statistics
                 for (int i = start; i < end; i++)
                     binY[i - start] = y[order[i]];
                 Array.Sort(binY);
-                result[b] = TwoSampleKolmogorovSmirnov(binY, sortedY);
+                result[b] = HypothesisTests.TwoSampleKolmogorovSmirnovSorted(binY, sortedY);
             }
             return result;
         }
@@ -159,6 +159,9 @@ namespace Numerics.Data.Statistics
         /// functionally dependent output saturates at 1 - 1/yBins, and an independent input carries
         /// a positive finite-sample bias on the order of the square root of the class count over the
         /// bin size, so small deltas require samples much larger than the histogram resolution.
+        /// Equal output values always share one class (the class of the run's first rank), so a constant output
+        /// gives 0 and a discrete output is classed by its values, not by sample order; classes may then hold
+        /// unequal counts or none. Untied outputs are classed exactly as before.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when either sample is null.</exception>
         /// <exception cref="ArgumentException">Thrown when the samples differ in length or are shorter than either bin count.</exception>
@@ -172,16 +175,26 @@ namespace Numerics.Data.Statistics
             var xOrder = SortIndicesBy(x);
             var yOrder = SortIndicesBy(y);
 
-            // Assign each observation its equal-frequency output class by rank.
-            var yClass = new int[n];
-            var classCounts = new int[yBins];
+            // Assign each rank its equal-frequency output class.
+            var rankClass = new int[n];
             for (int c = 0; c < yBins; c++)
             {
                 int start = (int)((long)c * n / yBins);
                 int end = (int)((long)(c + 1) * n / yBins);
-                classCounts[c] = end - start;
                 for (int i = start; i < end; i++)
-                    yClass[yOrder[i]] = c;
+                    rankClass[i] = c;
+            }
+            // Tied outputs are one value, so a run of equal outputs takes the class of its first rank; splitting
+            // the run across classes by sample index would show dependence that is not in the data.
+            var yClass = new int[n];
+            var classCounts = new int[yBins];
+            int runStart = 0;
+            for (int r = 0; r < n; r++)
+            {
+                if (y[yOrder[r]] != y[yOrder[runStart]]) runStart = r;
+                int c = rankClass[runStart];
+                yClass[yOrder[r]] = c;
+                classCounts[c]++;
             }
 
             double delta = 0;
@@ -242,31 +255,6 @@ namespace Numerics.Data.Statistics
                 return comparison != 0 ? comparison : first.CompareTo(second);
             });
             return order;
-        }
-
-        /// <summary>
-        /// Computes the exact two-sample Kolmogorov-Smirnov statistic between two sorted samples,
-        /// evaluating the gap only after advancing both empirical distributions through tied values.
-        /// </summary>
-        /// <param name="first">The first sorted sample.</param>
-        /// <param name="second">The second sorted sample.</param>
-        /// <returns>The supremum absolute difference of the empirical distributions.</returns>
-        private static double TwoSampleKolmogorovSmirnov(double[] first, double[] second)
-        {
-            int n1 = first.Length, n2 = second.Length;
-            int i = 0, j = 0;
-            double supremum = 0;
-            while (i < n1 && j < n2)
-            {
-                double value = Math.Min(first[i], second[j]);
-                while (i < n1 && first[i] == value) i++;
-                while (j < n2 && second[j] == value) j++;
-                double gap = Math.Abs((double)i / n1 - (double)j / n2);
-                if (gap > supremum) supremum = gap;
-            }
-            // The remaining tail of either sample only shrinks toward equality at one, and the gap
-            // at the crossover was already recorded, so the sweep is complete.
-            return supremum;
         }
 
     }

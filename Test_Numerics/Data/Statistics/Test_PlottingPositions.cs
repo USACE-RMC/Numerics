@@ -34,6 +34,29 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// One and two values take the formula (i − α) / (N + 1 − 2α) directly: Weibull 1/2 for one value and
+        /// 1/3, 2/3 for two; Hazen 1/2 and 1/4, 3/4; Kaplan-Meier 1 and 1/2, 1. Invalid sizes, a NaN alpha and the
+        /// 0/0 case N = 1 with α = 1 are refused.
+        /// </summary>
+        [TestMethod]
+        public void Test_SmallSamples()
+        {
+            CollectionAssert.AreEqual(new[] { 0.5 }, PlottingPositions.Weibull(1));
+            CollectionAssert.AreEqual(new[] { 1d / 3d, 2d / 3d }, PlottingPositions.Weibull(2));
+            CollectionAssert.AreEqual(new[] { 0.5 }, PlottingPositions.Hazen(1));
+            CollectionAssert.AreEqual(new[] { 0.25, 0.75 }, PlottingPositions.Hazen(2));
+            CollectionAssert.AreEqual(new[] { 1d }, PlottingPositions.KaplanMeier(1));
+            CollectionAssert.AreEqual(new[] { 0.5, 1d }, PlottingPositions.KaplanMeier(2));
+            CollectionAssert.AreEqual(new[] { 0.5 }, PlottingPositions.Function(1, PlottingPositions.PlottingPostionType.Gringorten));
+            CollectionAssert.AreEqual(new[] { 0d, 1d }, PlottingPositions.Function(2, 1d));
+
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => PlottingPositions.Function(0, 0.4));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => PlottingPositions.KaplanMeier(0));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => PlottingPositions.Function(5, double.NaN));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => PlottingPositions.Function(1, 1d));
+        }
+
+        /// <summary>
         /// Test the Blom plotting position.
         /// </summary>
         [TestMethod]

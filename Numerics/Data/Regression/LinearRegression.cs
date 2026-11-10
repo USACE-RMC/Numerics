@@ -53,9 +53,10 @@ namespace Numerics.Data
 
             // Set parameter names for summary report.
             if (hasIntercept) ParameterNames.Add("Intercept");
-            if (X.Header != null && X.Header.Length == x.NumberOfColumns)
+            // Read the caller's column names: X is the intercept-augmented copy when hasIntercept is true.
+            if (x.Header != null && x.Header.Length == x.NumberOfColumns)
             {
-                ParameterNames.AddRange(X.Header);
+                ParameterNames.AddRange(x.Header);
             }
             else
             {
@@ -102,6 +103,10 @@ namespace Numerics.Data
         /// <summary>
         /// The list of the estimated parameter t-statistics.
         /// </summary>
+        /// <remarks>
+        /// The t-statistic of parameter j is <c>Parameters[j] / ParameterStandardErrors[j]</c>, as printed by
+        /// <see cref="Summary"/>.
+        /// </remarks>
         public List<double> ParameterTStats { get; private set; } = null!;
 
         /// <summary>
@@ -157,9 +162,8 @@ namespace Numerics.Data
             {
                 var name = ParameterNames[i].Length < 15 ? ParameterNames[i] : ParameterNames[i].Substring(0, 14);
                 // Get T-stats
-                var tdist = new StudentT(DegreesOfFreedom) ;
                 double tval = Parameters[i] / ParameterStandardErrors[i];
-                double pval = (1 - tdist.CDF(Math.Abs(tval))) * 2;
+                double pval = 2d * new StudentT(DegreesOfFreedom).CCDF(Math.Abs(tval));
                 string pvalStrg = pval > 1E-4 ? pval.ToString("N4") : pval < 1E-15 ? "< 1E-15" : pval.ToString("E2");
                 string sig =  pval < 1E-3 ? " ***" : pval < 1E-2 ? " **" : pval < 0.05 ? " *" : pval < 0.1 ? " ." : "  ";
 
@@ -237,6 +241,8 @@ namespace Numerics.Data
             Parameters = betas.ToList();
             ParameterStandardErrors = new List<double>();
             for (j = 0; j < m; j++) ParameterStandardErrors.Add(Math.Sqrt(Covariance[j, j]) * SE);
+            ParameterTStats = new List<double>();
+            for (j = 0; j < m; j++) ParameterTStats.Add(Parameters[j] / ParameterStandardErrors[j]);
             StandardError = SE;
             RSquared = 1 - sse / sst;
             AdjRSquared = 1 - (1 - RSquared) * (n - 1) / (DegreesOfFreedom);
@@ -295,6 +301,14 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="x">The matrix of predictor values.</param>
         /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% prediction intervals.</param>
+        /// <returns>One row per row of <paramref name="x"/>: the lower bound, the upper bound and the predicted mean.</returns>
+        /// <remarks>
+        /// Each interval is the alpha / 2 and 1 − alpha / 2 quantiles of a Student-t distribution with n − p degrees of
+        /// freedom, centered on the prediction ŷ₀ = x₀ᵀβ, with scale s √(1 + x₀ᵀ(XᵀX)⁻¹x₀), where s is
+        /// <see cref="StandardError"/>, (XᵀX)⁻¹ is <see cref="Covariance"/> and x₀ includes the leading 1 of the
+        /// intercept. This is the prediction interval of R's predict(..., interval = "prediction"); it widens with
+        /// the leverage of x₀, away from the center of the data.
+        /// </remarks>
         public double[,] PredictionIntervals(Matrix x, double alpha = 0.1)
         {
             var xp = PrepareDesignMatrix(x);
@@ -303,10 +317,14 @@ namespace Numerics.Data
             for (int i = 0; i < xp.NumberOfRows; i++)
             {
                 double mu = Tools.SumProduct(Parameters, xp.Row(i));
+                // Leverage x0' (X'X)^-1 x0.
+                double leverage = 0d;
+                for (int j = 0; j < xp.NumberOfColumns; j++)
+                    for (int k = 0; k < xp.NumberOfColumns; k++)
+                        leverage += xp[i, j] * Covariance[j, k] * xp[i, k];
                 var s = StandardError;
-                var s2 = s * s;
                 var n = DegreesOfFreedom;
-                var t = new StudentT(mu, Math.Sqrt(s2 / n + s2), n);
+                var t = new StudentT(mu, s * Math.Sqrt(1d + leverage), n);
                 result[i, 0] = t.InverseCDF(percentiles[0]);
                 result[i, 1] = t.InverseCDF(percentiles[1]);
                 result[i, 2] = mu;

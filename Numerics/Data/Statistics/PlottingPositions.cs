@@ -26,19 +26,30 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// The general plotting position formula. This formula assumes the data is uncensored and complete.
         /// </summary>
-        /// <param name="N">The sample size.</param>
-        /// <param name="alpha">The alpha coefficient. Range (0,1).</param>
-        /// <returns>An array of plotting positions of size N.</returns>
+        /// <param name="N">The sample size, at least one.</param>
+        /// <param name="alpha">The alpha coefficient. Range [0,1].</param>
+        /// <returns>An array of plotting positions of size N, (i − α) / (N + 1 − 2α) for i = 1..N.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="N"/> is less than one,
+        /// <paramref name="alpha"/> is NaN or outside [0, 1], or N = 1 with α = 1, where the formula is 0 / 0.</exception>
+        /// <remarks>
+        /// The formula is defined for one and two values: a single value sits at the median position 1/2 for every
+        /// α &lt; 1.
+        /// </remarks>
         public static double[] Function(int N, double alpha)
         {
-            if (N <= 2)
+            if (N < 1)
             {
-                throw new ArgumentOutOfRangeException(nameof(N), "The sample size N must be greater than 2.");
+                throw new ArgumentOutOfRangeException(nameof(N), "The sample size N must be at least 1.");
             }
 
-            if (alpha < 0d || alpha > 1d)
+            if (double.IsNaN(alpha) || alpha < 0d || alpha > 1d)
             {
                 throw new ArgumentOutOfRangeException(nameof(alpha), "The alpha coefficient must be between 0 and 1.");
+            }
+
+            if (N == 1 && alpha == 1d)
+            {
+                throw new ArgumentOutOfRangeException(nameof(alpha), "The alpha coefficient must be less than 1 for a single value.");
             }
 
             var PP = new double[N];
@@ -93,7 +104,7 @@ namespace Numerics.Data.Statistics
             for (int i = 0; i < n; i++)
             {
                 double weight = weights[i];
-                if (double.IsNaN(weight) || double.IsInfinity(weight) || weight < 0d)
+                if (!Tools.IsFinite(weight) || weight < 0d)
                     throw new ArgumentOutOfRangeException(nameof(weights), "Each weight must be finite and non-negative.");
                 run += weight;
                 cumulative[i] = run;
@@ -170,7 +181,7 @@ namespace Numerics.Data.Statistics
             for (int i = 0; i < n; i++)
             {
                 double weight = weights[i];
-                if (double.IsNaN(weight) || double.IsInfinity(weight) || weight < 0d)
+                if (!Tools.IsFinite(weight) || weight < 0d)
                     throw new ArgumentOutOfRangeException(nameof(weights), "Each weight must be finite and non-negative.");
                 run += weight;
                 cumulative[i] = run;
@@ -288,13 +299,14 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// The Kaplan-Meier plotting position formula for uncensored data (k/n).
         /// </summary>
-        /// <param name="N">The sample size.</param>
+        /// <param name="N">The sample size, at least one.</param>
         /// <returns>An array of plotting positions of size N.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="N"/> is less than one.</exception>
         public static double[] KaplanMeier(int N)
         {
-            if (N <= 2)
+            if (N < 1)
             {
-                throw new ArgumentOutOfRangeException(nameof(N), "The sample size N must be greater than 2.");
+                throw new ArgumentOutOfRangeException(nameof(N), "The sample size N must be at least 1.");
             }
             var PP = new double[N];
             for (int i = 1; i <= N; i++)

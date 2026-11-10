@@ -11,8 +11,8 @@ namespace Data.Statistics
     /// <see cref="PlottingPositions.Function(IList{double}, PlottingPositions.PlottingPostionType)"/>.
     /// </summary>
     /// <remarks>
-    /// The named formulas now read their coefficient from the table; the regression cases pin their positions bitwise
-    /// to the formula at the literal coefficients they used before. The alpha values are those of the published
+    /// The named formulas read their coefficient from the table; the regression cases pin their positions bitwise
+    /// to the formula evaluated at the literal coefficients. The alpha values are those of the published
     /// formulas (Weibull 0, Median 0.3175, Blom 0.375, Cunnane 0.40, Gringorten 0.44, Hazen 0.50).
     /// </remarks>
     [TestClass]
