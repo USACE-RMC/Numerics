@@ -1,8 +1,0 @@
-# Staged by scripts/build_wheel.py from the RMC.Numerics NuGet package; never tracked.
-src/rmc_numerics/_bin/*.dll
-build/
-dist/
-*.egg-info/
-__pycache__/
-.pytest_cache/
-.venv/

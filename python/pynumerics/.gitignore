@@ -1,0 +1,11 @@
+# Staged by scripts/build_wheel.py from the RMC.Numerics NuGet package; never tracked.
+src/pynumerics/_bin/*.dll
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.venv/
+# Sphinx output and the autosummary pages it generates.
+docs/_build/
+docs/generated/
