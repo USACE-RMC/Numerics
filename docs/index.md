@@ -20,30 +20,40 @@ The library is designed for engineers, scientists, and researchers who need reli
 - Uncertainty analysis via bootstrap resampling
 - Bivariate copulas for dependency modeling
 - Multivariate distributions (Normal, Student-t, Dirichlet, Multinomial)
+- Regional frequency analysis (Hosking-Wallis discordancy, heterogeneity, goodness of fit, and regional growth curves)
 
 ### Statistical Analysis
 - Comprehensive goodness-of-fit metrics (NSE, KGE, RMSE, PBIAS, AIC/BIC)
 - Descriptive statistics and hypothesis tests
+- Column statistics, plotting-position percentiles, and compensated summation
 - Autocorrelation and time series analysis
 - Outlier detection (Multiple Grubbs-Beck Test)
 
 ### Numerical Methods
-- Adaptive numerical integration (Simpson's Rule, Gauss-Lobatto, Gauss-Kronrod)
+- Adaptive numerical integration (Simpson's Rule, Gauss-Lobatto, Gauss-Kronrod, and opt-in QUADPACK QAGS)
 - Multidimensional integration (Monte Carlo, MISER, VEGAS)
 - Numerical differentiation (two-point, Ridder's method)
 - Root finding algorithms (Bisection, Brent, Newton-Raphson)
 - ODE solvers (Runge-Kutta methods)
+- Linear algebra (Cholesky, LU, QR, SVD, and Jacobi and QL eigensolvers)
+- Fourier methods (FFT of any length, convolution, and autocorrelation)
 
 ### Optimization
-- Local optimization (BFGS, Nelder-Mead, Powell, Golden Section)
-- Global optimization (Differential Evolution, SCE-UA, Simulated Annealing, Particle Swarm)
+- Local optimization (BFGS, L-BFGS-B, Nelder-Mead, Powell, Golden Section, Brent)
+- Global optimization (Differential Evolution, SCE-UA, Simulated Annealing, Particle Swarm, CMA-ES, Dynamically Dimensioned Search, MultiStart, MLSL)
 - Constrained optimization (Augmented Lagrangian)
+- Multi-objective and discrete optimization (Pareto fronts, dynamic programming, knapsack, shortest paths)
+
+### Machine Learning
+- Regression (generalized linear models, elastic net, Gaussian process regression, kriging)
+- Classification (decision trees, random forests, k-nearest neighbors, naive Bayes)
+- Clustering and dimension reduction (k-means, Gaussian mixture models, Jenks natural breaks, principal component analysis)
 
 ### MCMC Sampling
 - Random Walk Metropolis-Hastings (RWMH)
 - Adaptive Random Walk Metropolis-Hastings (ARWMH)
 - Differential Evolution MCMC (DE-MCz, DE-MCzs)
-- Hamiltonian Monte Carlo (HMC)
+- Hamiltonian Monte Carlo (HMC) and the No-U-Turn Sampler (NUTS)
 - Gibbs sampling
 - Convergence diagnostics (Gelman-Rubin, Effective Sample Size)
 
@@ -194,6 +204,14 @@ Or using the .NET CLI:
 
 ```
 dotnet add package RMC.Numerics
+```
+
+Version 2.3.0 targets .NET 10 (`net10.0`, on Windows and Linux) and .NET Framework 4.8.1 (`net481`).
+
+Python users can install [pynumerics](../python/pynumerics/README.md), which ships the same `Numerics.dll` with typed wrappers and needs the .NET 10 runtime:
+
+```bash
+pip install pynumerics
 ```
 
 ## Support and Contributing

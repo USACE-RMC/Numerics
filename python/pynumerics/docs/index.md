@@ -38,4 +38,5 @@ machine_learning
 :caption: Reference
 
 api
+changelog
 ```

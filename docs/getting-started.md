@@ -6,7 +6,7 @@ This guide will help you get up and running with the ***Numerics*** library quic
 
 ## Installation
 
-Version 2.3.0 targets .NET 10 (`net10.0`) and .NET Framework 4.8.1 (`net481`). Applications on .NET 8 or .NET 9 can stay on version 2.2.0.
+Version 2.3.0 targets .NET 10 (`net10.0`) and .NET Framework 4.8.1 (`net481`). Applications on .NET 8 or .NET 9 can stay on version 2.2.0. The .NET 10 build runs on Windows and Linux. Python users can install the [pynumerics](../python/pynumerics/README.md) package (`pip install pynumerics`), which ships the same assembly.
 
 ### NuGet Package
 

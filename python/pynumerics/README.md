@@ -35,7 +35,9 @@ The user guide and the API reference are in
 [`docs/`](https://github.com/USACE-RMC/Numerics/tree/main/python/pynumerics/docs): start with
 [getting started](https://github.com/USACE-RMC/Numerics/blob/main/python/pynumerics/docs/getting-started.md),
 which covers installation, `PYNUMERICS_DLL_DIR` and runtime selection, arrays and errors, value
-semantics, callbacks and migration from rmc-numerics. Build the HTML pages, including the API
+semantics, callbacks and migration from rmc-numerics. The
+[changelog](https://github.com/USACE-RMC/Numerics/blob/main/python/pynumerics/CHANGELOG.md) lists
+the changes of each release. Build the HTML pages, including the API
 reference generated from the docstrings, from `python/pynumerics`:
 
 ```bash

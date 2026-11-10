@@ -9,19 +9,27 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pynumerics"
 dynamic = ["version"]
-description = "RMC.Numerics for Python: the Numerics assembly, a CoreCLR loader and typed wrappers."
+description = "RMC.Numerics for Python: probability distributions, statistics, MCMC, optimization and numerical methods from the USACE-RMC Numerics library."
 readme = "README.md"
 requires-python = ">=3.10,<3.15"
 license = "0BSD"
 license-files = ["LICENSE"]
 authors = [{ name = "Haden Smith", email = "cole.h.smith@usace.army.mil" }]
-keywords = ["statistics", "probability distributions", "Monte Carlo", "uncertainty analysis", "pythonnet"]
+keywords = ["statistics", "probability distributions", "hydrology", "flood frequency analysis", "L-moments", "MCMC", "optimization", "Monte Carlo", "uncertainty analysis", "pythonnet"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Hydrology",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Typing :: Typed",
 ]
@@ -36,8 +44,11 @@ test = ["pytest>=8", "numpydoc>=1.8", "ruff>=0.6", "scipy>=1.11", "statsmodels>=
 docs = ["sphinx>=8,<10", "numpydoc>=1.8", "myst-parser>=4"]
 
 [project.urls]
+Homepage = "https://github.com/USACE-RMC/Numerics"
+Documentation = "https://github.com/USACE-RMC/Numerics/tree/main/python/pynumerics/docs"
 Repository = "https://github.com/USACE-RMC/Numerics"
 Issues = "https://github.com/USACE-RMC/Numerics/issues"
+Changelog = "https://github.com/USACE-RMC/Numerics/blob/main/python/pynumerics/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = { attr = "pynumerics._version.__version__" }
