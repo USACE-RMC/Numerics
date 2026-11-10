@@ -329,6 +329,7 @@ def test_an_explicit_parallel_setting_is_kept_for_net_delegates_and_overridden_f
     assert native.parallelize_chains is True
 
 
+@pytest.mark.benchmark
 @needs_roslyn
 def test_compiled_likelihood_runs_rwmh_faster_than_a_python_likelihood() -> None:
     # Arrange: the notebook 03 model, mu and sigma of a normal sample

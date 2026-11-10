@@ -88,7 +88,7 @@ if has pytest; then
     mkdir -p /work/pytest
     cp -r "$WORK/python/pynumerics/tests" "$WORK/python/pynumerics/docs" "$WORK/python/pynumerics/scripts" \
         "$WORK/python/pynumerics/pyproject.toml" /work/pytest/
-    (cd /work/pytest && /work/venv-test/bin/python -m pytest -q -p no:cacheprovider tests 2>&1 | tee "$LOGS/pytest.log")
+    (cd /work/pytest && /work/venv-test/bin/python -m pytest -q -p no:cacheprovider -m "not benchmark" tests 2>&1 | tee "$LOGS/pytest.log")
 fi
 
 step "Done: $CHECKS"

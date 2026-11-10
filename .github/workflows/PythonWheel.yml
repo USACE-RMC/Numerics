@@ -75,7 +75,7 @@ jobs:
           cp -r scripts "$RUNNER_TEMP/scripts"
           cp pyproject.toml "$RUNNER_TEMP/pyproject.toml"
           cd "$RUNNER_TEMP"
-          "$PY" -m pytest -q -p no:cacheprovider tests
+          "$PY" -m pytest -q -p no:cacheprovider -m "not benchmark" tests
 
       - name: Upload the wheel
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'

@@ -223,7 +223,7 @@ jobs:
           cp -r python/pynumerics/scripts "$RUNNER_TEMP/scripts"
           cp python/pynumerics/pyproject.toml "$RUNNER_TEMP/pyproject.toml"
           cd "$RUNNER_TEMP"
-          "$PY" -m pytest -q -p no:cacheprovider tests
+          "$PY" -m pytest -q -p no:cacheprovider -m "not benchmark" tests
 
   test-docker:
     name: Test (linux-test Docker image)

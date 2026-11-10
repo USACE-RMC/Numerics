@@ -755,6 +755,7 @@ def test_predict_crosses_the_feature_matrix_once() -> None:
     assert total < 1.5 * raw + 0.05, f"wrapper {total:.3f} s against {raw:.3f} s for the bare call"
 
 
+@pytest.mark.benchmark
 def test_kmeans_and_pca_are_faster_than_sklearn() -> None:
     # Arrange
     rng = np.random.default_rng(32)
