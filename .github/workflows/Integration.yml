@@ -21,8 +21,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
             10.0.x
 
       - name: Build
@@ -34,3 +32,7 @@ jobs:
         # Live provider outages and full-record download timeouts must not block PRs.
         # Keep deterministic download, parsing, validation, and numerical tests in the gate.
         run: dotnet test -c Release --no-build --filter "TestCategory!=LiveServiceIntegration"
+
+      - name: Pack and validate against the baseline release
+        # Package validation compares the public API with PackageValidationBaselineVersion on nuget.org.
+        run: dotnet pack Numerics/Numerics.csproj -c Release --no-build -o ./packages

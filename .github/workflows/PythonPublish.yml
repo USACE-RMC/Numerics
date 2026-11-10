@@ -1,0 +1,153 @@
+# Publishes the pynumerics wheel to PyPI with trusted publishing (no API token).
+#
+# Order of a release:
+#   1. NuGetPublish.yml publishes RMC.Numerics X.Y.Z to NuGet.org (GitHub Release vX.Y.Z).
+#   2. A PR moves python/pynumerics/src/pynumerics/_version.py to X.Y.Z: NUMERICS_SHA256 is the SHA-256
+#      of lib/net10.0/Numerics.dll in the published package, NUMERICS_SOURCE_COMMIT and
+#      NUMERICS_BUILD_COMMAND become empty. Merge it.
+#   3. Tag that merge commit pynumerics-vX.Y.Z (or a post release, pynumerics-vX.Y.Z.postN) and push the tag.
+#      This workflow builds the wheel from the nuget.org package (SHA-256 checked by build_wheel.py),
+#      tests it on Linux and Windows, then publishes it to TestPyPI and, after the pypi environment's
+#      required reviewer approves, to PyPI.
+#
+# One-time setup on pypi.org and test.pypi.org: add a trusted publisher (pending publisher before the
+# first upload) for project "pynumerics", owner USACE-RMC, repository Numerics, workflow
+# PythonPublish.yml, environment "pypi" (and "testpypi"). In the repository settings, create those two
+# environments; give "pypi" a required reviewer.
+#
+# Only the wheel is published. An sdist would not contain Numerics.dll (it is staged at build time and
+# never tracked), so it could not be installed.
+
+name: Publish Python package
+
+on:
+  push:
+    tags: [ 'pynumerics-v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: python/pynumerics
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check the tag, the distribution version and the release pins agree
+        run: |
+          python - <<'EOF'
+          import os, runpy
+          v = runpy.run_path("src/pynumerics/_version.py")
+          ref = os.environ.get("GITHUB_REF_NAME", "")
+          if ref.startswith("pynumerics-v"):
+              tag = ref.removeprefix("pynumerics-v")
+              assert tag == v["__version__"], f"tag {tag} != __version__ {v['__version__']}"
+          assert ".dev" not in v["__version__"], "a development version is never published"
+          assert v["NUMERICS_SOURCE_COMMIT"] == "" and v["NUMERICS_BUILD_COMMAND"] == "", \
+              "the pins still name a locally built Numerics.dll"
+          print("publishing", v["__version__"], "with RMC.Numerics", v["NUMERICS_VERSION"])
+          EOF
+
+      - name: Build (Numerics.dll from the pinned nuget.org package, SHA-256 checked)
+        run: |
+          python -m pip install build
+          python scripts/build_wheel.py --download --out dist
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: python/pynumerics/dist/*.whl
+          if-no-files-found: error
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ ubuntu-24.04, windows-2025 ]
+        python: [ '3.10', '3.14' ]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout (tests only)
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download the wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+
+      - name: Install the wheel into a clean environment and run the tests
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ -x "$RUNNER_TEMP/venv/bin/python" ]; then PY="$RUNNER_TEMP/venv/bin/python"; else PY="$RUNNER_TEMP/venv/Scripts/python.exe"; fi
+          "$PY" -m pip install dist/pynumerics-*-py3-none-any.whl pytest numpydoc scipy statsmodels scikit-learn shapely "arviz>=0.17,<1" "dataretrieval>=1.4" "wetterdienst>=0.184" "kiwis-pie>=0.10.5"
+          cp -r python/pynumerics/tests "$RUNNER_TEMP/tests"
+          cp -r python/pynumerics/docs "$RUNNER_TEMP/docs"
+          cd "$RUNNER_TEMP"
+          "$PY" -m pytest -q -p no:cacheprovider tests
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: test
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/pynumerics
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: publish-testpypi
+    if: startsWith(github.ref, 'refs/tags/pynumerics-v')
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pynumerics
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

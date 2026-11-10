@@ -4,13 +4,13 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'python/rmc-numerics/**'
+      - 'python/pynumerics/**'
       - '.github/workflows/PythonWheel.yml'
   workflow_dispatch:
 
 jobs:
   wheel:
-    name: rmc-numerics (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: pynumerics (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -21,47 +21,107 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: python/rmc-numerics
+        working-directory: python/pynumerics
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # A branch that still pins a locally built development Numerics.dll (NUMERICS_VERSION such as
+      # 2.3.0-dev.3) has no nuget.org package to download, so the wheel cannot be built here. The job
+      # reports the skip in the log and the run summary; once _version.py pins a published package,
+      # every step below runs.
+      - name: Check the Numerics pin
+        id: pin
+        run: |
+          version=$(tr -d '\r' < src/pynumerics/_version.py | sed -n 's/^NUMERICS_VERSION = "\(.*\)"$/\1/p')
+          if [ -z "$version" ]; then
+            echo "::error::NUMERICS_VERSION not found in src/pynumerics/_version.py"
+            exit 1
+          fi
+          if [[ "$version" == *-dev* ]]; then
+            message="Skipping the wheel build and tests: _version.py pins the development Numerics.dll $version, which is not published on nuget.org."
+            echo "::warning title=pynumerics wheel skipped::$message"
+            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Building the wheel with RMC.Numerics $version from nuget.org."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup .NET
+        if: steps.pin.outputs.skip != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
       - name: Setup Python
+        if: steps.pin.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
       - name: Build the wheel (Numerics.dll from the pinned nuget.org package, SHA-256 checked)
+        if: steps.pin.outputs.skip != 'true'
         run: |
           python -m pip install build
           python scripts/build_wheel.py --download --out dist
 
       - name: Install the wheel into a clean environment
+        if: steps.pin.outputs.skip != 'true'
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           if [ -x "$RUNNER_TEMP/venv/bin/python" ]; then PY="$RUNNER_TEMP/venv/bin/python"; else PY="$RUNNER_TEMP/venv/Scripts/python.exe"; fi
           echo "PY=$PY" >> "$GITHUB_ENV"
-          "$PY" -m pip install dist/rmc_numerics-*-py3-none-any.whl pytest numpydoc ruff
+          "$PY" -m pip install dist/pynumerics-*-py3-none-any.whl pytest numpydoc ruff scipy statsmodels scikit-learn shapely "arviz>=0.17,<1" "dataretrieval>=1.4" "wetterdienst>=0.184" "kiwis-pie>=0.10.5"
 
       - name: Lint
+        if: steps.pin.outputs.skip != 'true'
         run: |
           "$PY" -m ruff check src tests scripts
 
       - name: Test the installed wheel
+        if: steps.pin.outputs.skip != 'true'
         run: |
           cp -r tests "$RUNNER_TEMP/tests"
+          cp -r docs "$RUNNER_TEMP/docs"
           cd "$RUNNER_TEMP"
           "$PY" -m pytest -q -p no:cacheprovider tests
 
       - name: Upload the wheel
-        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
+        if: steps.pin.outputs.skip != 'true' && matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         uses: actions/upload-artifact@v4
         with:
-          name: rmc-numerics-wheel
-          path: python/rmc-numerics/dist/*.whl
+          name: pynumerics-wheel
+          path: python/pynumerics/dist/*.whl
+
+  docs:
+    name: pynumerics docs (warnings as errors)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: python/pynumerics
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Importing pynumerics does not start .NET, so the API reference builds without the runtime
+      # or Numerics.dll; the code blocks of every page run in tests/test_docs.py in the wheel job.
+      - name: Build the documentation
+        run: |
+          python -m pip install -e ".[docs]"
+          python -m sphinx -W --keep-going -b html docs docs/_build/html
+
+      - name: Upload the documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: pynumerics-docs
+          path: python/pynumerics/docs/_build/html
