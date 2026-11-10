@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- The benchmarks and the projects BenchmarkDotNet generates beside them are not documented API. -->
+  <PropertyGroup>
+    <EnforceXmlDocumentation>false</EnforceXmlDocumentation>
+  </PropertyGroup>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>
