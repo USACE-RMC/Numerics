@@ -70,8 +70,10 @@ Use this workflow for release-preparation pull requests and public package relea
 
 ### Release PR Planning
 
-- Base release PRs on `bug-fixes-and-enhancements` targeting `main` unless the user gives a different branch plan.
-- Identify the last merged PR from the release branch and list every commit since that merge.
+- Cut a `release/X.Y.Z` branch from `main` for each release and open the release PR from `release/X.Y.Z` into `main`, unless the user gives a different branch plan.
+- Merge the release PR with a merge commit, not a squash or rebase, so the tag `vX.Y.Z` points at the merge commit on `main`.
+- Keep `release/X.Y.Z` after the merge as the record of the release; delete the working branches merged into it.
+- Identify the previous release tag and list every commit since that tag.
 - Merge `origin/main` into the release branch before editing so current README, JOSS, citation, and metadata updates are preserved.
 - Define the release outcome up front, including the exact `RMC.Numerics` version that NuGet.org must show as the latest public package after publishing.
 
@@ -83,6 +85,9 @@ Update and cross-check every version-bearing file for each release:
 - `CITATION.cff`: set `version` and `date-released`.
 - `codemeta.json`: set `version` and `dateModified`.
 - `.github/workflows/Snapshot.yml`: advance the snapshot version to the next patch after the release.
+- `python/pynumerics/src/pynumerics/_version.py`: set `__version__`, `NUMERICS_VERSION`, and `NUMERICS_ASSEMBLY_VERSION`; keep `NUMERICS_SHA256`, `NUMERICS_SOURCE_COMMIT`, and `NUMERICS_BUILD_COMMAND` empty, because the wheel build writes the published package's identity.
+- `python/pynumerics/CHANGELOG.md`: add the `X.Y.Z` entry.
+- `Numerics/Numerics.csproj`: keep `PackageValidationBaselineVersion` at the previous release until `X.Y.Z` is published; then advance it to `X.Y.Z` and remove the suppressions in `Numerics/CompatibilitySuppressions.xml` that only covered the previous baseline.
 - `Numerics/Numerics.csproj`: after the release, advance `PackageValidationBaselineVersion` to the version just released and delete `Numerics/CompatibilitySuppressions.xml` entries that no longer apply.
 - Keep `PackageReleaseNotes` concise because NuGet.org displays this field on the package page.
 
@@ -131,3 +136,5 @@ dotnet add package RMC.Numerics --version X.Y.Z
 - Create and publish a non-draft, non-prerelease GitHub Release for `vX.Y.Z`.
 - Confirm `.github/workflows/NuGetPublish.yml` publishes `RMC.Numerics.X.Y.Z.nupkg` to NuGet.org.
 - Verify NuGet.org shows `RMC.Numerics X.Y.Z` as the latest public package.
+- Confirm `.github/workflows/PythonPublish.yml` starts after the NuGet publish, builds and tests the `pynumerics` wheel from the NuGet.org package, and publishes it to TestPyPI; approve the `pypi` environment to publish it to PyPI.
+- Verify `pip install pynumerics==X.Y.Z` installs and `pynumerics.assert_numerics_identity()` passes.
