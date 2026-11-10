@@ -520,7 +520,7 @@ namespace Distributions.BivariateCopulas
         /// (agreement ≤ 1E-15). The finite-difference cross-check against CDF is asserted at
         /// only 1E-3 because the copula CDF is itself a K = 200 stratified numerical
         /// integration (MultivariateStudentT.CDF) whose discretization error dominates the
-        /// difference quotient — the precision anchor for the analytic conditional is the
+        /// difference quotient; the precision anchor for the analytic conditional is the
         /// pyvinecopulib pin set, not the finite difference.
         /// </summary>
         [TestMethod]
@@ -569,5 +569,64 @@ namespace Distributions.BivariateCopulas
             }
         }
 
+        /// <summary>
+        /// The copula CDF equals the exact bivariate t CDF at the t quantiles, including the upper tail where
+        /// the joint exceedance probability is small.
+        /// </summary>
+        /// <remarks>
+        /// References: R 4.4.3 mvtnorm <c>pmvt(upper = qt(c(u, v), df), df, sigma = matrix(c(1, ρ, ρ, 1), 2))</c>,
+        /// the Dunnett and Sobel closed form.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_MatchesExactBivariateT()
+        {
+            Assert.AreEqual(0.262514753056988, new StudentTCopula(0.5, 5).CDF(0.3, 0.7), 1E-10);
+            Assert.AreEqual(0.948652507262837, new StudentTCopula(0.8, 3).CDF(0.95, 0.99), 1E-10);
+            var tail = new StudentTCopula(0.5, 5);
+            Assert.AreEqual(0.998226172581377, tail.CDF(0.999, 0.999), 1E-10);
+            Assert.AreEqual(1 - 2 * 0.999 + 0.998226172581377, tail.ANDJointExceedanceProbability(0.999, 0.999), 1E-10);
+        }
+
+        /// <summary>
+        /// At u = 0 and u = 1 the conditional CDF tends to the constant c = T_{ν+1}(±ρ·√((ν+1)/(1−ρ²))) on (0, 1), so the
+        /// inverse is 0 for t ≤ c and 1 for t > c; t = 0 and t = 1 are kept. For ρ = 0.6 and ν = 5,
+        /// c = T_6(1.8371173070873834) = 0.94208 (scipy.stats.t(6).cdf, SciPy 1.18.1), and 1 - c at u = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFEdges()
+        {
+            var copula = new StudentTCopula(0.6, 5d);
+            Assert.AreEqual(0d, copula.InverseConditionalCDF(0d, 0.5), 0d);
+            Assert.AreEqual(0d, copula.InverseConditionalCDF(0d, 0.94), 0d);
+            Assert.AreEqual(1d, copula.InverseConditionalCDF(0d, 0.945), 0d);
+            Assert.AreEqual(0d, copula.InverseConditionalCDF(1d, 0.057), 0d);
+            Assert.AreEqual(1d, copula.InverseConditionalCDF(1d, 0.06), 0d);
+            Assert.AreEqual(1d, copula.InverseConditionalCDF(1d, 0.5), 0d);
+            foreach (double u in new[] { 0d, 1d })
+            {
+                Assert.AreEqual(0d, copula.InverseConditionalCDF(u, 0d), 0d);
+                Assert.AreEqual(1d, copula.InverseConditionalCDF(u, 1d), 0d);
+            }
+            // The limits are approached from inside the square.
+            Assert.IsLessThan(1E-100, copula.InverseConditionalCDF(1E-300, 0.9));
+            Assert.IsGreaterThan(1d - 1E-6, copula.InverseConditionalCDF(1d - 1E-15, 0.5));
+        }
+
+        /// <summary>
+        /// On the upper edges of the unit square the copula CDF is the other margin: C(1, v) = v and C(u, 1) = u.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_UpperEdges()
+        {
+            foreach (var copula in new[] { new StudentTCopula(0.5, 5d), new StudentTCopula(-0.3, 3.5d) })
+            {
+                foreach (double p in new[] { 0.01, 0.3, 0.5, 0.9 })
+                {
+                    Assert.AreEqual(p, copula.CDF(1d, p), 1E-12);
+                    Assert.AreEqual(p, copula.CDF(p, 1d), 1E-12);
+                }
+                Assert.AreEqual(1d, copula.CDF(1d, 1d), 0d);
+            }
+        }
     }
 }

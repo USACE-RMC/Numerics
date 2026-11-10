@@ -49,8 +49,8 @@ namespace Distributions.BivariateCopulas
 
         /// <summary>
         /// Test that the copula is permanently valid: ValidateParameter always returns null
-        /// and never throws, and no Theta assignment — not even NaN, which every
-        /// parameterized family rejects — can invalidate it, because the dependency
+        /// and never throws, and no Theta assignment (not even NaN, which every
+        /// parameterized family rejects) can invalidate it, because the dependency
         /// parameter carries no meaning for a zero-parameter copula.
         /// </summary>
         [TestMethod]

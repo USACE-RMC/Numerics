@@ -3,6 +3,8 @@ using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Sampling;
+using Numerics.Mathematics.SpecialFunctions;
+using Numerics.Mathematics.LinearAlgebra;
 
 namespace Distributions.Multivariate
 {
@@ -273,52 +275,86 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Verify 2D CDF against Monte Carlo reference values from scipy.
-        /// These are approximate (MC tolerance ≈ 0.01).
+        /// Verify the 2-D CDF against R mvtnorm <c>pmvt</c>, which is exact for integer ν.
         /// </summary>
+        /// <remarks>
+        /// R 4.4.3, mvtnorm <c>pmvt(upper, delta = c(1, 2), type = "shifted", df = 5, sigma)</c>, which uses
+        /// the Dunnett and Sobel closed form for two variables. The 2-D CDF is deterministic and exact to
+        /// rounding for integer ν.
+        /// </remarks>
         [TestMethod]
         public void Test_CDF_2D()
         {
             var mvt = CreateStandard2D();
-
-            // CDF at (1, 2) ≈ 0.3076 (MC, N=10M)
-            double cdf_12 = mvt.CDF(new[] { 1.0, 2.0 });
-            Assert.AreEqual(0.3076, cdf_12, 0.01,
-                $"CDF at (1,2) = {cdf_12:F4}, expected ≈ 0.3076");
-
-            // CDF at (3, 5) ≈ 0.9166 (MC, N=10M)
-            double cdf_35 = mvt.CDF(new[] { 3.0, 5.0 });
-            Assert.AreEqual(0.9166, cdf_35, 0.01,
-                $"CDF at (3,5) = {cdf_35:F4}, expected ≈ 0.9166");
-
-            // CDF at (0, 0) ≈ 0.0454 (MC, N=10M)
-            double cdf_00 = mvt.CDF(new[] { 0.0, 0.0 });
-            Assert.AreEqual(0.0454, cdf_00, 0.01,
-                $"CDF at (0,0) = {cdf_00:F4}, expected ≈ 0.0454");
+            Assert.AreEqual(0.307513364040654, mvt.CDF(new[] { 1.0, 2.0 }), 1E-13);
+            Assert.AreEqual(0.916691875747275, mvt.CDF(new[] { 3.0, 5.0 }), 1E-13);
+            Assert.AreEqual(0.045330531801717, mvt.CDF(new[] { 0.0, 0.0 }), 1E-13);
         }
 
         /// <summary>
-        /// Verify the 3-D CDF against <c>scipy.stats.multivariate_t.cdf</c>.
+        /// Verify the 2-D CDF for integer and non-integer ν against exact references.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Above two dimensions the CDF takes a different route than the 1-D and 2-D closed forms: it is a
-        /// 200-stratum quadrature over the χ²(ν) mixing variable against the Genz MVNDST randomized-lattice
-        /// multivariate normal CDF. Neither <see cref="Test_CDF_1D"/> nor <see cref="Test_CDF_2D"/> touches
-        /// that path, so these are the first tests to cover it.
+        /// Integer ν: R mvtnorm <c>pmvt</c> (Dunnett and Sobel closed form). Non-integer ν, which R rejects:
+        /// scipy 1.18.1 <c>integrate.quad</c> of the conditional representation
+        /// P = ∫ t_ν(z) T_{ν+1}((b − ρz) / √((1 − ρ²)(ν + z²)/(ν + 1))) dz over z ≤ a, with
+        /// <c>epsabs = 1e-15</c> and <c>epsrel = 1e-13</c>. scipy <c>multivariate_t.cdf</c> differs from
+        /// these by 1E-7 (and by 8E-3 at ν = 0.7), so it is not used as the oracle here.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_2D_ExactReferences()
+        {
+            var unit = new[,] { { 1.0, 0.5 }, { 0.5, 1.0 } };
+            Assert.AreEqual(0.608087548485468, new MultivariateStudentT(4.0, new double[2], unit).CDF(new[] { 0.5, 1.0 }), 1E-13);
+            Assert.AreEqual(0.601335006849738, new MultivariateStudentT(3.0, new double[2], unit).CDF(new[] { 0.5, 1.0 }), 1E-13);
+            Assert.AreEqual(0.172262649663075, new MultivariateStudentT(1.0, new[] { 0.2, -0.1 }, new[,] { { 2.0, -0.8 }, { -0.8, 1.5 } }).CDF(new[] { -1.0, 2.0 }), 1E-13);
+            Assert.AreEqual(0.386278426142133, new MultivariateStudentT(7.0, new double[2], new[,] { { 1.0, 0.9 }, { 0.9, 1.0 } }).CDF(new[] { 1.5, -0.3 }), 1E-13);
+            Assert.AreEqual(0.973475415534262, new MultivariateStudentT(50.0, new double[2], new[,] { { 1.0, 0.6 }, { 0.6, 1.0 } }).CDF(new[] { 3.0, 2.0 }), 1E-13);
+
+            Assert.AreEqual(0.596164276990205, new MultivariateStudentT(2.5, new double[2], unit).CDF(new[] { 0.5, 1.0 }), 1E-12);
+            Assert.AreEqual(0.064686896498365, new MultivariateStudentT(0.7, new double[2], new[,] { { 1.0, -0.3 }, { -0.3, 2.0 } }).CDF(new[] { -2.0, -1.0 }), 1E-12);
+            Assert.AreEqual(0.715454606930225, new MultivariateStudentT(30.5, new double[2], new[,] { { 1.0, 0.2 }, { 0.2, 1.0 } }).CDF(new[] { 1.0, 1.0 }), 1E-12);
+        }
+
+        /// <summary>
+        /// The integer and non-integer 2-D routes agree where they meet, and the 2-D CDF is consistent with
+        /// its univariate margins, the sign symmetry at the centre and the orthant formula at ρ = 0.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_2D_Consistency()
+        {
+            var unit = new[,] { { 1.0, 0.4 }, { 0.4, 1.0 } };
+            var x = new[] { 0.7, -0.4 };
+            double integer = new MultivariateStudentT(6.0, new double[2], unit).CDF(x);
+            double nearby = new MultivariateStudentT(6.0 + 1E-9, new double[2], unit).CDF(x);
+            Assert.AreEqual(integer, nearby, 1E-10);
+
+            // P(X ≤ 0, Y ≤ 0) = 1/4 + asin(ρ)/(2π) for every elliptical distribution centred at zero.
+            foreach (double nu in new[] { 1.0, 2.5, 9.0 })
+                Assert.AreEqual(0.25 + Math.Asin(0.4) / (2 * Math.PI), new MultivariateStudentT(nu, new double[2], unit).CDF(new[] { 0.0, 0.0 }), 1E-13);
+
+            // A coordinate at +∞ leaves the univariate margin; one at −∞ gives zero; NaN gives NaN.
+            var mvt = new MultivariateStudentT(3.5, new[] { 1.0, -2.0 }, new[,] { { 4.0, 1.0 }, { 1.0, 2.0 } });
+            Assert.AreEqual(new StudentT(1.0, 2.0, 3.5).CDF(1.7), mvt.CDF(new[] { 1.7, double.PositiveInfinity }), 1E-15);
+            Assert.AreEqual(0.0, mvt.CDF(new[] { 1.7, double.NegativeInfinity }));
+            Assert.AreEqual(1.0, mvt.CDF(new[] { double.PositiveInfinity, double.PositiveInfinity }));
+            Assert.IsTrue(double.IsNaN(mvt.CDF(new[] { double.NaN, 0.0 })));
+        }
+
+        /// <summary>
+        /// Verify the 3-D CDF against R mvtnorm <c>pmvt</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Above two dimensions the CDF is the Genz-Bretz randomized lattice rule, so it carries a stochastic
+        /// error bounded by <see cref="MultivariateStudentT.AbsoluteError"/> or the evaluation budget. The
+        /// references are R 4.4.3 mvtnorm <c>pmvt(upper, df = 5, sigma, algorithm = GenzBretz(maxpts = 5e7,
+        /// abseps = 1e-11, releps = 0))</c>, whose reported errors are at most 5.1E-9.
         /// </para>
         /// <para>
-        /// The oracle is scipy 1.17.1's <c>multivariate_t(loc, shape, df).cdf(x)</c>, an independent
-        /// implementation. The correspondence with this class was confirmed on the existing 2-D fixture,
-        /// where scipy returns 0.3075081, 0.9166859 and 0.0453216 against the 0.3076, 0.9166 and 0.0454 that
-        /// <see cref="Test_CDF_2D"/> asserts. scipy's cdf is itself randomised quasi-Monte-Carlo, so the
-        /// values below are means over 8 seeds, with a seed-to-seed spread of 3E-05 to 8E-05.
-        /// </para>
-        /// <para>
-        /// The tolerances are measured rather than guessed. This implementation agrees with the scipy means
-        /// to 1.21E-05, 1.30E-05, 2.05E-05 and 1.46E-05 at the four points, which is the same order as
-        /// scipy's own repeatability, so each tolerance below is that measurement rounded out. All four are
-        /// far inside the 1E-02 that the 2-D tests use.
+        /// The default settings (1E-5 absolute, 25,000 evaluations) are asserted to 5E-5.
         /// </para>
         /// </remarks>
         [TestMethod]
@@ -327,38 +363,23 @@ namespace Distributions.Multivariate
             double[,] shape = { { 1.0, 0.5, 0.3 }, { 0.5, 1.0, 0.4 }, { 0.3, 0.4, 1.0 } };
 
             // A fresh instance per point. Above two dimensions the CDF advances the instance's MVNUNI, so
-            // reusing one instance would make each assertion depend on how many CDF calls preceded it, and
-            // the pinned values would shift if a call were inserted or reordered. Constructing per point
-            // makes every value a first-call value, which is also the protocol the agreements below were
-            // measured under.
+            // reusing one instance would make each assertion depend on how many CDF calls preceded it.
             double Cdf(double[] point) => new MultivariateStudentT(5.0, new double[3], shape).CDF(point);
 
-            // measured agreement 1.21E-05
-            Assert.AreEqual(0.2236624425, Cdf(new[] { 0.0, 0.0, 0.0 }), 5E-5);
-            // measured agreement 1.30E-05
-            Assert.AreEqual(0.6307840101, Cdf(new[] { 1.0, 1.0, 1.0 }), 5E-5);
-            // measured agreement 2.05E-05
-            Assert.AreEqual(0.7480738713, Cdf(new[] { 2.0, 1.5, 1.0 }), 5E-5);
-            // measured agreement 1.46E-05
-            Assert.AreEqual(0.1566553047, Cdf(new[] { -1.0, 0.5, 2.0 }), 5E-5);
+            Assert.AreEqual(0.223660808397517, Cdf(new[] { 0.0, 0.0, 0.0 }), 5E-5);
+            Assert.AreEqual(0.630773655475288, Cdf(new[] { 1.0, 1.0, 1.0 }), 5E-5);
+            Assert.AreEqual(0.748065888540367, Cdf(new[] { 2.0, 1.5, 1.0 }), 5E-5);
+            Assert.AreEqual(0.156657192198460, Cdf(new[] { -1.0, 0.5, 2.0 }), 5E-5);
         }
 
         /// <summary>
-        /// Verify the 4-D CDF against <c>scipy.stats.multivariate_t.cdf</c> and, at the origin, against an
-        /// analytic value.
+        /// Verify the 4-D CDF against R mvtnorm <c>pmvt</c> and, at the origin, against an analytic value.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// The origin is not a Monte Carlo reference. For any elliptically symmetric distribution centred at
-        /// the origin the lower-orthant probability is exactly 1/2ᵈ by sign symmetry, so the expected value
-        /// at (0,0,0,0) is 0.0625 exactly. scipy reproduces it with zero spread across seeds, and this
-        /// implementation returns it exactly, so it is asserted tightly.
-        /// </para>
-        /// <para>
-        /// The two off-origin points are scipy means over 8 seeds, with spreads of 4.3E-05 and 5.8E-05. This
-        /// implementation agrees to 6.04E-06 and 4.78E-05 respectively; the tolerances below are those
-        /// measurements rounded out.
-        /// </para>
+        /// For any elliptically symmetric distribution centred at the origin the lower-orthant probability
+        /// with identity scale is exactly 1/2ᵈ by sign symmetry, so the expected value at (0,0,0,0) is 0.0625.
+        /// The off-origin references are R mvtnorm <c>pmvt(upper, df = 4, sigma = diag(4))</c> with
+        /// <c>abseps = 1e-11</c>.
         /// </remarks>
         [TestMethod]
         public void Test_CDF_4D_Scipy()
@@ -373,14 +394,70 @@ namespace Distributions.Multivariate
             // A fresh instance per point, for the reason given in Test_CDF_3D_Scipy.
             double Cdf(double[] point) => new MultivariateStudentT(4.0, new double[4], shape).CDF(point);
 
-            // Analytic: 1/2^4 by sign symmetry about the origin. Returned exactly.
-            Assert.AreEqual(0.0625, Cdf(new[] { 0.0, 0.0, 0.0, 0.0 }), 1E-12,
-                "The lower-orthant probability at the centre of a symmetric 4-D distribution is exactly 1/16.");
+            Assert.AreEqual(0.0625, Cdf(new[] { 0.0, 0.0, 0.0, 0.0 }), 5E-5);
+            Assert.AreEqual(0.464278546668952, Cdf(new[] { 1.0, 1.0, 1.0, 1.0 }), 5E-5);
+            Assert.AreEqual(0.808700624242298, Cdf(new[] { 2.0, 2.0, 2.0, 2.0 }), 5E-5);
+        }
 
-            // measured agreement 6.04E-06
-            Assert.AreEqual(0.4642714854, Cdf(new[] { 1.0, 1.0, 1.0, 1.0 }), 5E-5);
-            // measured agreement 4.78E-05
-            Assert.AreEqual(0.8086925605, Cdf(new[] { 2.0, 2.0, 2.0, 2.0 }), 1E-4);
+        /// <summary>
+        /// Verify the 3-D to 5-D CDF against R mvtnorm <c>pmvt</c> and an exact quadrature reference, at the
+        /// default settings and with tightened error control.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// References: R 4.4.3 mvtnorm <c>pmvt(..., type = "shifted", algorithm = GenzBretz(maxpts = 5e7,
+        /// abseps = 1e-11, releps = 0))</c>, reported errors at most 5.2E-8. The two 5-D equicorrelated cases
+        /// (ρ = 0.5) also have exact references from a nested scipy <c>quad</c> over the χ mixing variable and
+        /// the one-factor representation of the equicorrelated normal, 0.5424399974658651 and
+        /// 0.22774378585881705, which agree with R to 6E-9.
+        /// </para>
+        /// <para>
+        /// With the default 25,000 evaluations the measured errors are at most 3.7E-5; with an absolute
+        /// tolerance of 1E-7 and 2,000,000 evaluations the 3-D case agrees to 2E-6.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_HigherDimensions_RReferences()
+        {
+            double[,] s3 = { { 1, .5, .3 }, { .5, 2, -.4 }, { .3, -.4, 1.5 } };
+            double[,] s4 = { { 1, .6, .2, .1 }, { .6, 1, .3, .2 }, { .2, .3, 1, .4 }, { .1, .2, .4, 1 } };
+            var s5 = new double[5, 5];
+            for (int i = 0; i < 5; i++)
+                for (int j = 0; j < 5; j++)
+                    s5[i, j] = i == j ? 1.0 : 0.5;
+
+            Assert.AreEqual(0.245158928145245, new MultivariateStudentT(4, new double[3], s3).CDF(new[] { 0.5, 1, -0.2 }), 5E-5);
+            Assert.AreEqual(0.322182324464740, new MultivariateStudentT(1, new[] { 0.1, -0.2, 0.3 }, s3).CDF(new[] { 1.2, 0.3, 0.8 }), 5E-5);
+            Assert.AreEqual(0.143730839188514, new MultivariateStudentT(6, new double[4], s4).CDF(new double[4]), 5E-5);
+            Assert.AreEqual(0.5424399974658651, new MultivariateStudentT(3, new double[5], s5).CDF(new[] { 1.0, 1, 1, 1, 1 }), 5E-5);
+            Assert.AreEqual(0.22774378585881705, new MultivariateStudentT(10, new double[5], s5).CDF(new[] { -0.5, 2, 0.7, 1.1, 0.2 }), 5E-5);
+
+            var tight = new MultivariateStudentT(4, new double[3], s3) { AbsoluteError = 1E-7, MaxEvaluations = 2000000 };
+            Assert.AreEqual(0.245158928145245, tight.CDF(new[] { 0.5, 1, -0.2 }), 2E-6);
+        }
+
+        /// <summary>
+        /// Verify the error-control properties: defaults, validation and that <see cref="MultivariateStudentT.Clone"/>
+        /// copies them.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_ErrorControlProperties()
+        {
+            var mvt = new MultivariateStudentT(4, new double[3], new[,] { { 1, .5, .2 }, { .5, 1, .3 }, { .2, .3, 1 } });
+            Assert.AreEqual(1E-5, mvt.AbsoluteError);
+            Assert.AreEqual(0d, mvt.RelativeError);
+            Assert.AreEqual(25000, mvt.MaxEvaluations);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => mvt.AbsoluteError = -1E-3);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => mvt.AbsoluteError = double.NaN);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => mvt.RelativeError = -1E-3);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => mvt.MaxEvaluations = 0);
+            mvt.AbsoluteError = 1E-7;
+            mvt.RelativeError = 1E-6;
+            mvt.MaxEvaluations = 123456;
+            var clone = (MultivariateStudentT)mvt.Clone();
+            Assert.AreEqual(1E-7, clone.AbsoluteError);
+            Assert.AreEqual(1E-6, clone.RelativeError);
+            Assert.AreEqual(123456, clone.MaxEvaluations);
         }
 
         /// <summary>
@@ -391,7 +468,7 @@ namespace Distributions.Multivariate
         /// Above two dimensions the CDF draws lattice shifts from <see cref="MultivariateStudentT.MVNUNI"/>,
         /// so the result is reproducible only because that generator is seeded by default. Two freshly
         /// constructed instances therefore agree bit for bit, and so do two instances given generators with
-        /// the same non-default seed — but the non-default seed must produce a different answer, otherwise
+        /// the same non-default seed, but the non-default seed must produce a different answer, otherwise
         /// the property would be inert and the escape hatch it advertises would not exist. The difference is
         /// bounded to confirm it is quadrature noise on the same quantity and not a different quantity.
         /// </remarks>
@@ -1080,6 +1157,142 @@ namespace Distributions.Multivariate
                 $"InverseCDF[0] = {xInv[0]:F6}, GenerateRandomValues[0] = {samples[0, 0]:F6}");
             Assert.AreEqual(samples[0, 1], xInv[1], 1E-10,
                 $"InverseCDF[1] = {xInv[1]:F6}, GenerateRandomValues[1] = {samples[0, 1]:F6}");
+        }
+
+        #endregion
+
+        #region Allocation-Free Paths
+
+        /// <summary>
+        /// Verifies that the density after <see cref="MultivariateStudentT.SetParameters"/> equals, bit for
+        /// bit, the density formed from a separate Cholesky factorization of the same scale matrix.
+        /// </summary>
+        [TestMethod]
+        public void Test_SetParameters_DensityMatchesAnIndependentFactorization()
+        {
+            var location = new[] { 0.5d, -1d, 2d };
+            var scale = new[,] { { 2d, 0.4d, -0.3d }, { 0.4d, 1d, 0.2d }, { -0.3d, 0.2d, 1.5d } };
+            double nu = 4.5d;
+            var x = new[] { 1d, 0d, 1.5d };
+
+            var cholesky = new CholeskyDecomposition(new Matrix(scale));
+            var z = new double[3];
+            for (int i = 0; i < 3; i++) z[i] = x[i] - location[i];
+            var solved = cholesky.Solve(new Vector(z));
+            double quadratic = 0d;
+            for (int i = 0; i < 3; i++) quadratic += solved[i] * z[i];
+            double lnConstant = Gamma.LogGamma((nu + 3) / 2.0) - Gamma.LogGamma(nu / 2.0)
+                                - (3 / 2.0) * Math.Log(nu * Math.PI) - 0.5 * cholesky.LogDeterminant();
+            double expected = lnConstant - ((nu + 3) / 2.0) * Math.Log(1.0 + quadratic / nu);
+
+            var mvt = new MultivariateStudentT(3, 2d);
+            mvt.SetParameters(nu, location, scale);
+            Assert.AreEqual(expected, mvt.LogPDF(x), 0d);
+        }
+
+        /// <summary>
+        /// Verifies that the generator overload of <see cref="MultivariateStudentT.GenerateRandomValues(int, int)"/>
+        /// reproduces the seeded overload and rejects a null generator.
+        /// </summary>
+        [TestMethod]
+        public void Test_GenerateRandomValues_GeneratorOverloadMatchesSeed()
+        {
+            var mvt = new MultivariateStudentT(4d, new[] { 0.5d, -1d }, new[,] { { 2d, 0.4d }, { 0.4d, 1d } });
+            var seeded = mvt.GenerateRandomValues(250, 99);
+            var generated = mvt.GenerateRandomValues(250, new MersenneTwister(99));
+            for (int i = 0; i < 250; i++)
+                for (int j = 0; j < 2; j++)
+                    Assert.AreEqual(seeded[i, j], generated[i, j], 0d);
+            Assert.ThrowsExactly<ArgumentNullException>(() => mvt.GenerateRandomValues(10, (Random)null!));
+        }
+
+        /// <summary>
+        /// Pins the three-dimensional CDF on a seeded generator exactly.
+        /// </summary>
+        /// <remarks>
+        /// The value agrees with R 4.4.3 mvtnorm <c>pmvt(upper, df = 4, sigma, algorithm = GenzBretz(maxpts =
+        /// 5e7, abseps = 1e-11, releps = 0))</c> (0.292885603159458, reported error 2.4E-9) to within the
+        /// error of the default 25,000-evaluation lattice rule.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_ThreeDimensionalValueIsPinned()
+        {
+            var mvt = new MultivariateStudentT(4d, new double[3], new[,] { { 1d, 0.5d, 0.2d }, { 0.5d, 1d, 0.3d }, { 0.2d, 0.3d, 1d } })
+            {
+                MVNUNI = new MersenneTwister(7)
+            };
+            double cdf = mvt.CDF(new[] { 0.5d, 1d, -0.2d });
+            Assert.AreEqual(0.29288308329891316d, cdf, 0d);
+            Assert.AreEqual(0.292885603159458d, cdf, 1E-5);
+        }
+
+        /// <summary>
+        /// A coordinate at +∞ drops out wherever it sits, so the CDF equals the CDF of the remaining margin.
+        /// </summary>
+        /// <remarks>
+        /// The infinite coordinate is placed first and in the middle, where the limit sorting must move it past
+        /// finite coordinates. The three-dimensional references are the two-dimensional marginal distributions,
+        /// whose CDF is deterministic.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_PositiveInfinityAnyPosition_EqualsMarginal()
+        {
+            double inf = double.PositiveInfinity;
+
+            // Two dimensions, +∞ first: the univariate margin of the second coordinate.
+            var mvt2 = new MultivariateStudentT(5d, new double[2], new[,] { { 1d, 0.5d }, { 0.5d, 1d } });
+            Assert.AreEqual(new StudentT(5d).CDF(0.3d), mvt2.CDF(new[] { inf, 0.3d }), 1E-15);
+
+            // Three dimensions, +∞ in each position: the bivariate margin of the other two coordinates.
+            var location = new[] { 1d, 2d, 3d };
+            var scale = new[,] { { 4d, 1d, 0.5d }, { 1d, 2d, 0.3d }, { 0.5d, 0.3d, 1d } };
+            var mvt3 = new MultivariateStudentT(6d, location, scale);
+            var x = new[] { 2d, 2.5d, 3.2d };
+            for (int drop = 0; drop < 3; drop++)
+            {
+                int a = drop == 0 ? 1 : 0, b = drop == 2 ? 1 : 2;
+                var margin = new MultivariateStudentT(6d, new[] { location[a], location[b] },
+                    new[,] { { scale[a, a], scale[a, b] }, { scale[b, a], scale[b, b] } });
+                var point = (double[])x.Clone();
+                point[drop] = inf;
+                Assert.AreEqual(margin.CDF(new[] { x[a], x[b] }), mvt3.CDF(point), 1E-13, $"+inf at index {drop}");
+            }
+
+            // Five dimensions, +∞ at indices 1 and 2: the three-dimensional margin, to the lattice-rule tolerance.
+            var s5 = new double[5, 5];
+            for (int i = 0; i < 5; i++)
+                for (int j = 0; j < 5; j++)
+                    s5[i, j] = i == j ? 1d : 0.4d;
+            var mvt5 = new MultivariateStudentT(7d, new double[5], s5);
+            var mvt3Equi = new MultivariateStudentT(7d, new double[3], new[,] { { 1d, 0.4d, 0.4d }, { 0.4d, 1d, 0.4d }, { 0.4d, 0.4d, 1d } });
+            Assert.AreEqual(mvt3Equi.CDF(new[] { 0d, 0d, 0.5d }), mvt5.CDF(new[] { 0d, inf, inf, 0d, 0.5d }), 1E-4);
+        }
+
+        /// <summary>
+        /// The two-dimensional CDF uses no shared instance state, so concurrent calls on one instance return
+        /// the sequential values exactly.
+        /// </summary>
+        [TestMethod]
+        public void Test_CDF_2D_ConcurrentCallsMatchSequential()
+        {
+            var mvt = new MultivariateStudentT(5d, new[] { 0.5d, -1d }, new[,] { { 2d, 0.6d }, { 0.6d, 1d } });
+            var nonInteger = new MultivariateStudentT(4.5d, new[] { 0.5d, -1d }, new[,] { { 2d, 0.6d }, { 0.6d, 1d } });
+            var random = new MersenneTwister(12345);
+            const int n = 2000;
+            var points = new double[n][];
+            for (int i = 0; i < n; i++)
+                points[i] = new[] { 6d * random.NextDouble() - 3d, 6d * random.NextDouble() - 3d };
+
+            foreach (var distribution in new[] { mvt, nonInteger })
+            {
+                var sequential = new double[n];
+                for (int i = 0; i < n; i++)
+                    sequential[i] = distribution.CDF(points[i]);
+                var concurrent = new double[n];
+                System.Threading.Tasks.Parallel.For(0, n, i => concurrent[i] = distribution.CDF(points[i]));
+                for (int i = 0; i < n; i++)
+                    Assert.AreEqual(sequential[i], concurrent[i], 0d, $"point {i}");
+            }
         }
 
         #endregion

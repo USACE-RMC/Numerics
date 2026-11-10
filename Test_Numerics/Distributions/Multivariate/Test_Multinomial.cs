@@ -267,5 +267,170 @@ namespace Distributions.Multivariate
             Assert.Throws<NotImplementedException>(() => M.CDF(new double[] { 5, 5 }));
         }
 
+        /// <summary>
+        /// The categorical index map reproduces the reference vectors and numpy
+        /// clip(searchsorted(c, u, side="right"), 0, n - 1): boundaries select the next category, a zero-weight
+        /// category is skipped, and variates at or above the last entry clip to the last category.
+        /// </summary>
+        [TestMethod]
+        public void Test_CategoricalIndices_ReferenceVectors()
+        {
+            var uniforms = new[] { 0.0, 0.1999999999999999, 0.2, 0.2000000000000001, 0.5, 0.75, 0.9999999999999999, 1.0, 1.5 };
+            CollectionAssert.AreEqual(new[] { 0, 0, 1, 1, 2, 2, 2, 2, 2 }, Multinomial.CategoricalIndices(new[] { 0.2, 0.5, 1.0 }, uniforms));
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 0, 2, 2, 2, 2, 2 }, Multinomial.CategoricalIndices(new[] { 0.5, 0.5, 1.0 }, uniforms));
+
+            // numpy oracle values, including infinities, negative variates and repeated entries.
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 1, 2, 2, 2 },
+                Multinomial.CategoricalIndices(new[] { 0.2, 0.5, 1.0 }, new[] { double.NegativeInfinity, -1.0, 0.0, 0.2, 0.5, 1.0, double.PositiveInfinity }));
+            CollectionAssert.AreEqual(new[] { 0, 2, 2, 5, 5, 5, 6, 6 },
+                Multinomial.CategoricalIndices(new[] { 0.0, 0.0, 0.3, 0.3, 0.3, 0.9, 0.9 }, new[] { -0.1, 0.0, 0.1, 0.3, 0.29999999999999999, 0.5, 0.9, 0.95 }));
+            CollectionAssert.AreEqual(new[] { 0, 0, 0 }, Multinomial.CategoricalIndices(new[] { 2.5 }, new[] { 0.0, 2.5, 3.0 }));
+            Assert.IsEmpty(Multinomial.CategoricalIndices(new[] { 0.2, 1.0 }, new double[0]));
+        }
+
+        /// <summary>
+        /// On random unnormalized tables with ties, every index equals the definition (the first k with
+        /// c[k] &gt; u, else n - 1) found by a linear scan, and the index frequencies match the weights.
+        /// </summary>
+        [TestMethod]
+        public void Test_CategoricalIndices_MatchesLinearScanAndFrequencies()
+        {
+            var rng = new MersenneTwister(2026);
+            for (int trial = 0; trial < 20; trial++)
+            {
+                int n = 1 + trial * 7;
+                var cumulative = new double[n];
+                double running = 0;
+                for (int k = 0; k < n; k++)
+                {
+                    running += rng.NextDouble() < 0.2 ? 0.0 : 3.0 * rng.NextDouble();
+                    cumulative[k] = running;
+                }
+                var uniforms = new double[500];
+                for (int i = 0; i < uniforms.Length; i++)
+                    uniforms[i] = i % 10 == 0 ? cumulative[rng.Next(0, n)] : (1.2 * rng.NextDouble() - 0.1) * running;
+                var indices = Multinomial.CategoricalIndices(cumulative, uniforms);
+                for (int i = 0; i < uniforms.Length; i++)
+                {
+                    int expected = n - 1;
+                    for (int k = 0; k < n; k++)
+                        if (cumulative[k] > uniforms[i]) { expected = k; break; }
+                    Assert.AreEqual(expected, indices[i]);
+                }
+            }
+
+            var weights = new[] { 0.1, 0.0, 0.25, 0.4, 0.25 };
+            var table = new double[weights.Length];
+            double sum = 0;
+            for (int k = 0; k < weights.Length; k++) { sum += weights[k]; table[k] = sum; }
+            var draws = new double[200000];
+            for (int i = 0; i < draws.Length; i++) draws[i] = rng.NextDouble();
+            var counts = new int[weights.Length];
+            foreach (int k in Multinomial.CategoricalIndices(table, draws)) counts[k]++;
+            for (int k = 0; k < weights.Length; k++)
+                Assert.AreEqual(weights[k], (double)counts[k] / draws.Length, 0.005);
+            Assert.AreEqual(0, counts[1]);
+        }
+
+        /// <summary>
+        /// Null arrays, an empty table, non-finite or decreasing table entries, and NaN variates throw the
+        /// documented exceptions naming the argument.
+        /// </summary>
+        [TestMethod]
+        public void Test_CategoricalIndices_InvalidInputs()
+        {
+            var table = new[] { 0.2, 0.5, 1.0 };
+            var u = new[] { 0.3 };
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentNullException>(() => Multinomial.CategoricalIndices(null!, u)).ParamName);
+            Assert.AreEqual("uniforms", Assert.Throws<ArgumentNullException>(() => Multinomial.CategoricalIndices(table, null!)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentException>(() => Multinomial.CategoricalIndices(new double[0], u)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentException>(() => Multinomial.CategoricalIndices(new[] { 0.5, 0.4, 1.0 }, u)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentOutOfRangeException>(() => Multinomial.CategoricalIndices(new[] { 0.5, double.NaN }, u)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentOutOfRangeException>(() => Multinomial.CategoricalIndices(new[] { 0.5, double.PositiveInfinity }, u)).ParamName);
+            Assert.AreEqual("uniforms", Assert.Throws<ArgumentOutOfRangeException>(() => Multinomial.CategoricalIndices(table, new[] { 0.1, double.NaN })).ParamName);
+        }
+
+        /// <summary>
+        /// The inclusive form reproduces numpy clip(searchsorted(c, u, side="left"), 0, n - 1): a variate on a boundary
+        /// c[k] selects category k (the lowest k of a repeated entry), u = 0 selects category 0 even when c[0] is zero,
+        /// variates near and at one clip as the definition requires, and the strict default is unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_CategoricalIndices_InclusiveReferenceVectors()
+        {
+            var uniforms = new[] { 0.0, 0.1999999999999999, 0.2, 0.2000000000000001, 0.5, 0.75, 0.9999999999999999, 1.0, 1.5 };
+            var table = new[] { 0.2, 0.5, 1.0 };
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 1, 1, 2, 2, 2, 2 }, Multinomial.CategoricalIndices(table, uniforms, true));
+            CollectionAssert.AreEqual(new[] { 0, 0, 1, 1, 2, 2, 2, 2, 2 }, Multinomial.CategoricalIndices(table, uniforms, false));
+            CollectionAssert.AreEqual(Multinomial.CategoricalIndices(table, uniforms), Multinomial.CategoricalIndices(table, uniforms, false));
+
+            // numpy side="left" oracle values on a table with zero weights, repeated entries and saturation at one.
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 2, 2, 2, 5, 5, 6 },
+                Multinomial.CategoricalIndices(new[] { 0.0, 0.0, 0.3, 0.3, 0.3, 0.9, 0.9 },
+                    new[] { double.NegativeInfinity, -0.1, 0.0, 0.1, 0.3, 0.29999999999999999, 0.5, 0.9, 0.95 }, true));
+            CollectionAssert.AreEqual(new[] { 0, 2, 2, 3, 4 },
+                Multinomial.CategoricalIndices(new[] { 0.25, 0.5, 0.9999999999999999, 1.0, 1.0 },
+                    new[] { 0.0, 0.75, 0.9999999999999999, 1.0, double.PositiveInfinity }, true));
+            CollectionAssert.AreEqual(new[] { 0, 0, 0 }, Multinomial.CategoricalIndices(new[] { 2.5 }, new[] { 0.0, 2.5, 3.0 }, true));
+            Assert.IsEmpty(Multinomial.CategoricalIndices(new[] { 0.2, 1.0 }, new double[0], true));
+        }
+
+        /// <summary>
+        /// On a Poisson CDF table the inclusive form is the inverse-transform count min{k : F(k) ≥ u}: at every exact
+        /// tie u = F(k) it returns k where the strict form returns k + 1, and on random variates both forms equal
+        /// their linear-scan definitions.
+        /// </summary>
+        [TestMethod]
+        public void Test_CategoricalIndices_InclusivePoissonTiesAndLinearScan()
+        {
+            var poisson = new Poisson(3.5);
+            var cdf = new double[40];
+            for (int k = 0; k < cdf.Length; k++) cdf[k] = poisson.CDF(k);
+            int last = cdf.Length - 1;
+
+            var ties = new double[last];
+            Array.Copy(cdf, ties, last);
+            var inclusive = Multinomial.CategoricalIndices(cdf, ties, true);
+            var strict = Multinomial.CategoricalIndices(cdf, ties, false);
+            for (int k = 0; k < last; k++)
+            {
+                int first = Array.IndexOf(cdf, cdf[k]);
+                Assert.AreEqual(first, inclusive[k], $"tie at k = {k}");
+                int expectedStrict = last;
+                for (int j = 0; j < last; j++) if (cdf[j] > cdf[k]) { expectedStrict = j; break; }
+                Assert.AreEqual(expectedStrict, strict[k], $"tie at k = {k}");
+            }
+            Assert.AreEqual(0, Multinomial.CategoricalIndices(cdf, new[] { 0.0 }, true)[0]);
+
+            var rng = new MersenneTwister(7);
+            var uniforms = new double[2000];
+            for (int i = 0; i < uniforms.Length; i++) uniforms[i] = i % 5 == 0 ? cdf[rng.Next(0, cdf.Length)] : rng.NextDouble();
+            uniforms[0] = 1d - Math.Pow(2, -53);
+            var mapped = Multinomial.CategoricalIndices(cdf, uniforms, true);
+            for (int i = 0; i < uniforms.Length; i++)
+            {
+                int expected = last;
+                for (int k = 0; k < last; k++)
+                    if (cdf[k] >= uniforms[i]) { expected = k; break; }
+                Assert.AreEqual(expected, mapped[i]);
+            }
+        }
+
+        /// <summary>
+        /// The inclusive overload validates its arguments exactly as the strict form does.
+        /// </summary>
+        [TestMethod]
+        public void Test_CategoricalIndices_InclusiveInvalidInputs()
+        {
+            var table = new[] { 0.2, 0.5, 1.0 };
+            var u = new[] { 0.3 };
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentNullException>(() => Multinomial.CategoricalIndices(null!, u, true)).ParamName);
+            Assert.AreEqual("uniforms", Assert.Throws<ArgumentNullException>(() => Multinomial.CategoricalIndices(table, null!, true)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentException>(() => Multinomial.CategoricalIndices(new double[0], u, true)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentException>(() => Multinomial.CategoricalIndices(new[] { 0.5, 0.4, 1.0 }, u, true)).ParamName);
+            Assert.AreEqual("cumulativeWeights", Assert.Throws<ArgumentOutOfRangeException>(() => Multinomial.CategoricalIndices(new[] { 0.5, double.NegativeInfinity }, u, true)).ParamName);
+            Assert.AreEqual("uniforms", Assert.Throws<ArgumentOutOfRangeException>(() => Multinomial.CategoricalIndices(table, new[] { double.NaN }, true)).ParamName);
+        }
+
     }
 }

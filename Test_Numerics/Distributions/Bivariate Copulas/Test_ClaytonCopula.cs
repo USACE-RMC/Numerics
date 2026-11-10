@@ -296,5 +296,207 @@ namespace Distributions.BivariateCopulas
                 }
             }
         }
+
+        /// <summary>
+        /// LogPDF and PDF against the closed-form log density evaluated in mpmath 1.3.0 at 120 digits, for θ from -0.9 to 100
+        /// and u, v from 1E-12 to 1 - 1E-12, where the direct density underflows or overflows. The log density is within 1E-12
+        /// (relative above 1 in magnitude) and PDF is its exponential.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDFMatchesMpmath()
+        {
+            double[,] cases =
+            {
+            { -0.9, 1e-12, 1e-12, double.NegativeInfinity },
+            { -0.9, 1e-12, 0.5, double.NegativeInfinity },
+            { -0.9, 1e-12, 0.999999999999, 22.61729917857869 },
+            { -0.9, 0.01, 0.99, 2.5894456155757988 },
+            { -0.9, 0.2, 0.8, 0.4921553035203186 },
+            { -0.9, 0.5, 0.5, 0.1775914309458633 },
+            { -0.9, 0.999999999999, 0.5, -1.6787526304885023 },
+            { -0.9, 0.999999999999, 0.999999999999, -2.302585092992246 },
+            { -0.5, 1e-12, 1e-12, double.NegativeInfinity },
+            { -0.5, 1e-12, 0.5, double.NegativeInfinity },
+            { -0.5, 1e-12, 0.999999999999, 13.12236337740483 },
+            { -0.5, 0.01, 0.99, 1.614463080360851 },
+            { -0.5, 0.2, 0.8, 0.2231435513142097 },
+            { -0.5, 0.5, 0.5, 0.0 },
+            { -0.5, 0.999999999999, 0.5, -0.34657359027947265 },
+            { -0.5, 0.999999999999, 0.999999999999, -0.6931471805589453 },
+            { 2.0, 1e-12, 1e-12, 26.996765453196794 },
+            { 2.0, 1e-12, 0.5, -52.08398840150915 },
+            { 2.0, 1e-12, 0.999999999999, -54.16342994318599 },
+            { 2.0, 0.01, 0.99, -8.081582151755068 },
+            { 2.0, 0.2, 0.8, -1.5064594045945112 },
+            { 2.0, 0.5, 0.5, 0.3927199993894983 },
+            { 2.0, 0.999999999999, 0.5, -0.28768207245003097 },
+            { 2.0, 0.999999999999, 0.999999999999, 1.0986122886641099 },
+            { 100.0, 1e-12, 1e-12, 30.852915799844318 },
+            { 100.0, 1e-12, 0.5, -2688.479125839459 },
+            { 100.0, 1e-12, 0.999999999999, -2758.4869910759126 },
+            { 100.0, 0.01, 0.99, -454.88681416076423 },
+            { 100.0, 0.2, 0.8, -133.7911720438336 },
+            { 100.0, 0.5, 0.5, 3.9150418644757146 },
+            { 100.0, 0.999999999999, 0.5, -64.69959753905228 },
+            { 100.0, 0.999999999999, 0.999999999999, 4.615120516641264 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new ClaytonCopula(cases[i, 0]);
+                double u = cases[i, 1], v = cases[i, 2], expected = cases[i, 3];
+                double actual = copula.LogPDF(u, v);
+                if (double.IsNegativeInfinity(expected))
+                {
+                    Assert.IsTrue(double.IsNegativeInfinity(actual), $"case {i}");
+                    Assert.AreEqual(0d, copula.PDF(u, v), 0d, $"case {i}");
+                    continue;
+                }
+                Assert.AreEqual(expected, actual, 1E-12 * Math.Max(1d, Math.Abs(expected)), $"case {i}: theta={cases[i, 0]}, u={u:R}, v={v:R}");
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(Math.Exp(actual)), BitConverter.DoubleToInt64Bits(copula.PDF(u, v)), $"case {i}");
+            }
+        }
+
+        /// <summary>
+        /// t = 1 returns 1 at every u, including u = 0 where the closed form multiplies an infinite power by zero; the other
+        /// edges keep the closed-form limits.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFEdges()
+        {
+            var copula = new ClaytonCopula(2d);
+            Assert.AreEqual(1d, copula.InverseConditionalCDF(0d, 1d), 0d);
+            Assert.AreEqual(1d, copula.InverseConditionalCDF(1E-300, 1d), 0d);
+            Assert.AreEqual(0d, copula.InverseConditionalCDF(0d, 0.5), 0d);
+            Assert.AreEqual(Math.Pow(0.5, 1d / 3d), copula.InverseConditionalCDF(1d, 0.5), 1E-15);
+            Assert.AreEqual(1d, new ClaytonCopula(-0.5).InverseConditionalCDF(0d, 0.5), 0d);
+        }
+
+        /// <summary>
+        /// θ = 0 is the independence limit: PDF 1, LogPDF 0, CDF uv, ConditionalCDF v and InverseConditionalCDF t, on the
+        /// closed unit square.
+        /// </summary>
+        [TestMethod]
+        public void Test_ThetaZeroIsIndependence()
+        {
+            var copula = new ClaytonCopula(0d);
+            double[] grid = { 0d, 1E-12, 0.01, 0.3, 0.5, 0.7, 0.99, 1d - 1E-12, 1d };
+            foreach (double u in grid)
+            {
+                foreach (double v in grid)
+                {
+                    Assert.AreEqual(1d, copula.PDF(u, v), 0d);
+                    Assert.AreEqual(0d, copula.LogPDF(u, v), 0d);
+                    Assert.AreEqual(u * v, copula.CDF(u, v), 0d);
+                    Assert.AreEqual(v, copula.ConditionalCDF(u, v), 0d);
+                    Assert.AreEqual(v, copula.InverseConditionalCDF(u, v), 0d);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The members are continuous through θ = 0: at θ = ±1E-12 and ±1E-9 they agree with mpmath 1.3.0 at 80 digits to
+        /// 5E-14 (relative for CDF, ConditionalCDF and InverseConditionalCDF, absolute for LogPDF), and so with the θ = 0
+        /// limits to within θ times a bounded factor.
+        /// </summary>
+        [TestMethod]
+        public void Test_ContinuousThroughThetaZero()
+        {
+            // theta, u, v, then mpmath CDF(u, v), LogPDF(u, v), ConditionalCDF(u, v) and InverseConditionalCDF(u, v).
+            double[,] cases =
+            {
+            { -1e-09, 1e-12, 0.5, 4.999999904238178e-13, 8.171803680557638e-09, 0.49999999077039137, 0.5000000092296085 },
+            { -1e-09, 0.3, 0.7, 0.20999999990982032, 1.3122081580171854e-10, 0.6999999999490736, 0.7000000000509263 },
+            { -1e-09, 0.99, 0.01, 0.009899999999541793, 3.5689370142956436e-09, 0.010000000045588868, 0.009999999954411134 },
+            { -1e-09, 0.5, 1e-06, 4.999999952119089e-07, 3.932475496458715e-09, 1.0000000042393283e-06, 9.999999957606716e-07 },
+            { -1e-12, 1e-12, 0.5, 4.999999999904238e-13, 8.171803913756873e-12, 0.4999999999907704, 0.5000000000092296 },
+            { -1e-12, 0.3, 0.7, 0.2099999999999098, 1.3122081577798051e-13, 0.699999999999949, 0.7000000000000509 },
+            { -1e-12, 0.99, 0.01, 0.009899999999999541, 3.5689370148093665e-12, 0.010000000000045589, 0.009999999999954412 },
+            { -1e-12, 0.5, 1e-06, 4.999999999952119e-07, 3.9324755472243095e-12, 1.0000000000042394e-06, 9.999999999957606e-07 },
+            { 1e-12, 1e-12, 0.5, 5.000000000095762e-13, -8.17180391422374e-12, 0.5000000000092296, 0.4999999999907704 },
+            { 1e-12, 0.3, 0.7, 0.21000000000009017, -1.3122081577793298e-13, 0.7000000000000509, 0.699999999999949 },
+            { 1e-12, 0.99, 0.01, 0.009900000000000459, -3.568937014810395e-12, 0.009999999999954412, 0.010000000000045589 },
+            { 1e-12, 0.5, 1e-06, 5.00000000004788e-07, -3.932475547325942e-12, 9.999999999957606e-07, 1.0000000000042394e-06 },
+            { 1e-09, 1e-12, 0.5, 5.000000095761821e-13, -8.171804147422972e-09, 0.5000000092296085, 0.49999999077039137 },
+            { 1e-09, 0.3, 0.7, 0.21000000009017963, -1.3122081575419498e-10, 0.7000000000509263, 0.6999999999490736 },
+            { 1e-09, 0.99, 0.01, 0.009900000000458207, -3.5689370153241182e-09, 0.009999999954411134, 0.010000000045588866 },
+            { 1e-09, 0.5, 1e-06, 5.000000047880911e-07, -3.932475598091537e-09, 9.999999957606716e-07, 1.0000000042393285e-06 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new ClaytonCopula(cases[i, 0]);
+                double u = cases[i, 1], v = cases[i, 2];
+                Assert.AreEqual(cases[i, 3], copula.CDF(u, v), 5E-14 * cases[i, 3], $"case {i}: CDF");
+                Assert.AreEqual(cases[i, 4], copula.LogPDF(u, v), 5E-14, $"case {i}: LogPDF");
+                Assert.AreEqual(cases[i, 5], copula.ConditionalCDF(u, v), 5E-14 * cases[i, 5], $"case {i}: ConditionalCDF");
+                Assert.AreEqual(cases[i, 6], copula.InverseConditionalCDF(u, v), 5E-14 * cases[i, 6], $"case {i}: InverseConditionalCDF");
+                // Within 1E-12 of independence the values sit within about 30·|θ| of the limits.
+                Assert.AreEqual(u * v, copula.CDF(u, v), 1E-7 * u * v);
+                Assert.AreEqual(0d, copula.LogPDF(u, v), 1E-7);
+            }
+        }
+
+        /// <summary>
+        /// Every generator member against mpmath 1.3.0 at 150 digits, for φ(t) = (t^(−θ) − 1)/θ (Nelsen 2006, Table 4.1), with the independence limit −ln t at θ = 0: Generator, GeneratorInverse (at
+        /// the rounded generator value), GeneratorPrime, GeneratorPrime2 and GeneratorPrimeInverse (at the rounded slope),
+        /// on t from 1E-12 to 1 - 1E-12 and θ including the independence region, to 1E-13 relative.
+        /// </summary>
+        [TestMethod]
+        public void Test_GeneratorMembersMatchMpmath()
+        {
+            // theta, t, phi(t), phi^-1(phi), phi'(t), phi''(t), (phi')^-1(phi').
+            double[,] cases =
+            {
+            { -0.9, 1e-12, 1.1111111110935012, 9.999944734812045e-13, -15.848931924611126, 1584893192461.1123, 9.999999999999996e-13 },
+            { -0.9, 0.01, 1.093501186750432, 0.00999999999999999, -1.5848931924611134, 15.84893192461113, 0.009999999999999997 },
+            { -0.9, 0.5, 0.5156814097020593, 0.5, -1.0717734625362931, 0.21435469250725858, 0.5000000000000001 },
+            { -0.9, 0.99, 0.0100050184301842, 0.99, -1.0010055388008428, 0.10111167058594368, 0.989999999999999 },
+            { -0.9, 0.999999999999, 9.999778782799286e-13, 0.999999999999, -1.0000000000001, 0.10000000000010997, 0.9999999999990008 },
+            { -1e-12, 1e-12, 27.63102111554681, 9.999999999999998e-13, -999999999972.369, 9.99999999971369e+23, 1e-12 },
+            { -1e-12, 0.01, 4.605170185977488, 0.009999999999999997, -99.99999999953948, 9999.999999943948, 0.01 },
+            { -1e-12, 0.5, 0.693147180559705, 0.5, -1.9999999999986138, 3.999999999993227, 0.5 },
+            { -1e-12, 0.99, 0.0100503358535014, 0.99, -1.010101010101, 1.0203040506060503, 0.99 },
+            { -1e-12, 0.999999999999, 9.999778782803785e-13, 0.999999999999, -1.0000000000009999, 1.0000000000009999, 0.9999999999990001 },
+            { 0.0, 1e-12, 27.631021115928547, 1.000000000000001e-12, -1000000000000.0, 1e+24, 1e-12 },
+            { 0.0, 0.01, 4.605170185988091, 0.010000000000000004, -100.0, 10000.0, 0.01 },
+            { 0.0, 0.5, 0.6931471805599453, 0.5, -2.0, 4.0, 0.5 },
+            { 0.0, 0.99, 0.01005033585350145, 0.99, -1.0101010101010102, 1.0203040506070808, 0.99 },
+            { 0.0, 0.999999999999, 9.999778782803785e-13, 0.999999999999, -1.000000000001, 1.000000000002, 0.9999999999989999 },
+            { 1e-12, 1e-12, 27.631021116310286, 9.999999999999986e-13, -1000000000027.631, 1.000000000028631e+24, 1e-12 },
+            { 1e-12, 0.01, 4.605170185998695, 0.010000000000000004, -100.00000000046052, 10000.000000056052, 0.01 },
+            { 1e-12, 0.5, 0.6931471805601855, 0.5, -2.0000000000013864, 4.000000000006772, 0.49999999999999994 },
+            { 1e-12, 0.99, 0.010050335853501501, 0.99, -1.0101010101010202, 1.0203040506081116, 0.9900000000000001 },
+            { 1e-12, 0.999999999999, 9.999778782803785e-13, 0.999999999999, -1.000000000001, 1.000000000003, 0.9999999999989999 },
+            { 2.0, 1e-12, 5e+23, 1e-12, -1e+36, 3e+48, 1e-12 },
+            { 2.0, 0.01, 4999.5, 0.01, -999999.9999999999, 300000000.0, 0.01 },
+            { 2.0, 0.5, 1.5, 0.5, -8.0, 48.0, 0.5 },
+            { 2.0, 0.99, 0.010152025303540464, 0.99, -1.0306101521283646, 3.1230610670556502, 0.99 },
+            { 2.0, 0.999999999999, 9.999778782813784e-13, 0.999999999999, -1.000000000003, 3.0000000000119997, 0.999999999999 },
+            { 50.0, 1e-12, double.PositiveInfinity, 0.0, double.NegativeInfinity, double.PositiveInfinity, 0.0 },
+            { 50.0, 0.01, 1.999999999999998e+98, 0.01, -9.99999999999999e+101, 5.099999999999995e+105, 0.01 },
+            { 50.0, 0.5, 22517998136852.46, 0.5, -2251799813685248.0, 2.296835809958953e+17, 0.5 },
+            { 50.0, 0.99, 0.013057519728068095, 0.99, -1.6695717034377826, 86.00823926800699, 0.99 },
+            { 50.0, 0.999999999999, 9.999778783053773e-13, 0.999999999999, -1.000000000050999, 51.000000002651944, 0.999999999999 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new ClaytonCopula(cases[i, 0]);
+                double t = cases[i, 1];
+                AssertClose(cases[i, 2], copula.Generator(t), $"case {i}: Generator");
+                if (cases[i, 2] > 0d && !double.IsInfinity(cases[i, 2]))
+                    AssertClose(cases[i, 3], copula.GeneratorInverse(cases[i, 2]), $"case {i}: GeneratorInverse");
+                AssertClose(cases[i, 4], copula.GeneratorPrime(t), $"case {i}: GeneratorPrime");
+                AssertClose(cases[i, 5], copula.GeneratorPrime2(t), $"case {i}: GeneratorPrime2");
+                if (cases[i, 4] < 0d && !double.IsInfinity(cases[i, 4]))
+                    AssertClose(cases[i, 6], copula.GeneratorPrimeInverse(cases[i, 4]), $"case {i}: GeneratorPrimeInverse");
+            }
+        }
+
+        private static void AssertClose(double expected, double actual, string message)
+        {
+            if (double.IsInfinity(expected) || expected == 0d)
+                Assert.AreEqual(expected, actual, 1E-300, message);
+            else
+                Assert.AreEqual(expected, actual, 1E-13 * Math.Abs(expected), message);
+        }
     }
 }

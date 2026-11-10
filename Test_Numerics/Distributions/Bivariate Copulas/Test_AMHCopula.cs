@@ -289,6 +289,158 @@ namespace Distributions.BivariateCopulas
                 }
             }
         }
-    }
 
+        /// <summary>
+        /// Every generator member against mpmath 1.3.0 at 150 digits, for φ(t) = ln((1 − θ(1 − t))/t), the independence generator −ln t at θ = 0: Generator, GeneratorInverse (at
+        /// the rounded generator value), GeneratorPrime, GeneratorPrime2 and GeneratorPrimeInverse (at the rounded slope),
+        /// on t from 1E-12 to 1 - 1E-12 and θ including the independence region, to 1E-13 relative.
+        /// </summary>
+        [TestMethod]
+        public void Test_GeneratorMembersMatchMpmath()
+        {
+            // theta, t, phi(t), phi^-1(phi), phi'(t), phi''(t), (phi')^-1(phi').
+            double[,] cases =
+            {
+            { -0.99, 1e-12, 28.31915575466445, 1.0000000000000014e-12, -1000000000000.4976, 1e+24, 1e-12 },
+            { -0.99, 0.01, 5.288317534469703, 0.009999999999999998, -100.49997474875006, 9999.750025250612, 0.01 },
+            { -0.99, 0.5, 1.095273387402595, 0.5, -2.6622073578595318, 3.561481415196698, 0.5 },
+            { -0.99, 0.99, 0.01990165190387564, 0.99, -1.9903960888216754, 0.05932560924312536, 0.9900000000000018 },
+            { -0.99, 0.999999999999, 1.9899559777769683e-12, 0.999999999999, -1.99000000000002, 0.01990000000394053, 0.9999999999989958 },
+            { -1e-12, 1e-12, 27.63102111592955, 9.999999999999992e-13, -1000000000000.0, 1e+24, 1e-12 },
+            { -1e-12, 0.01, 4.605170185989081, 0.010000000000000002, -100.000000000001, 10000.0, 0.01 },
+            { -1e-12, 0.5, 0.6931471805604453, 0.5, -2.000000000001, 4.0, 0.5 },
+            { -1e-12, 0.99, 0.01005033585351145, 0.99, -1.01010101010201, 1.0203040506070808, 0.9900000000000001 },
+            { -1e-12, 0.999999999999, 9.999778782813784e-13, 0.999999999999, -1.000000000002, 1.000000000002, 0.999999999999 },
+            { 0.0, 1e-12, 27.631021115928547, 1.000000000000001e-12, -1000000000000.0, 1e+24, 1e-12 },
+            { 0.0, 0.01, 4.605170185988091, 0.010000000000000004, -100.0, 10000.0, 0.01 },
+            { 0.0, 0.5, 0.6931471805599453, 0.5, -2.0, 4.0, 0.5 },
+            { 0.0, 0.99, 0.01005033585350145, 0.99, -1.0101010101010102, 1.0203040506070808, 0.99 },
+            { 0.0, 0.999999999999, 9.999778782803785e-13, 0.999999999999, -1.000000000001, 1.000000000002, 0.9999999999989999 },
+            { 0.5, 1e-12, 26.937873935369602, 1.000000000000001e-12, -999999999999.0, 1e+24, 1e-12 },
+            { 0.5, 0.01, 3.9219733362813143, 0.009999999999999998, -99.00990099009901, 9999.019703950593, 0.01 },
+            { 0.5, 0.5, 0.4054651081081644, 0.5, -1.3333333333333333, 3.5555555555555554, 0.5 },
+            { 0.5, 0.99, 0.0050377940299571634, 0.99, -0.5075884472869397, 0.767785174821116, 0.99 },
+            { 0.5, 0.999999999999, 4.999889391403143e-13, 0.999999999999, -0.50000000000075, 0.7500000000017499, 0.999999999999 },
+            { 0.99, 1e-12, 23.025850930039457, 1.0000000000000006e-12, -999999999901.0, 1e+24, 1e-12 },
+            { 0.99, 0.01, 0.6881346387364015, 0.01, -50.25125628140706, 7525.062498421759, 0.01 },
+            { 0.99, 0.5, 0.009950330853168092, 0.5, -0.03960396039603964, 0.15684736790510748, 0.5 },
+            { 0.99, 0.99, 0.00010100499983335884, 0.99, -0.010202010000010212, 0.020506040204101534, 0.99 },
+            { 0.99, 0.999999999999, 9.999778782808743e-15, 0.999999999999, -0.010000000000019908, 0.01990000000005942, 0.999999999999 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new AMHCopula(cases[i, 0]);
+                double t = cases[i, 1];
+                AssertClose(cases[i, 2], copula.Generator(t), $"case {i}: Generator");
+                if (cases[i, 2] > 0d && !double.IsInfinity(cases[i, 2]))
+                    AssertClose(cases[i, 3], copula.GeneratorInverse(cases[i, 2]), $"case {i}: GeneratorInverse");
+                AssertClose(cases[i, 4], copula.GeneratorPrime(t), $"case {i}: GeneratorPrime");
+                AssertClose(cases[i, 5], copula.GeneratorPrime2(t), $"case {i}: GeneratorPrime2");
+                if (cases[i, 4] < 0d && !double.IsInfinity(cases[i, 4]))
+                    AssertClose(cases[i, 6], copula.GeneratorPrimeInverse(cases[i, 4]), $"case {i}: GeneratorPrimeInverse");
+            }
+        }
+
+        private static void AssertClose(double expected, double actual, string message)
+        {
+            if (double.IsInfinity(expected) || expected == 0d)
+                Assert.AreEqual(expected, actual, 1E-300, message);
+            else
+                Assert.AreEqual(expected, actual, 1E-13 * Math.Abs(expected), message);
+        }
+
+        /// <summary>
+        /// InverseConditionalCDF against the root of h(v|u) = t found by mpmath 1.3.0 at 150 digits, including θ = 0
+        /// (independence, where the quadratic degenerates), u = 0 and 1, and t = 1E-12, to 1E-13 relative.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFMatchesMpmath()
+        {
+            double[,] cases =
+            {
+            { -0.99, 0.0, 1e-12, 1.98999999999803e-12 },
+            { -0.99, 0.0, 0.5, 0.6655518394648829 },
+            { -0.99, 0.0, 0.9, 0.9471179270227393 },
+            { -0.99, 0.3, 1e-12, 1.4403261306526e-12 },
+            { -0.99, 0.3, 0.5, 0.5870931406611762 },
+            { -0.99, 0.3, 0.9, 0.9265696347374848 },
+            { -0.99, 1.0, 1e-12, 5.02512562814196e-13 },
+            { -0.99, 1.0, 0.5, 0.29436350457014576 },
+            { -0.99, 1.0, 0.9, 0.6871895156048573 },
+            { 0.0, 0.0, 1e-12, 1e-12 },
+            { 0.0, 0.0, 0.5, 0.5 },
+            { 0.0, 0.0, 0.9, 0.9 },
+            { 0.0, 0.3, 1e-12, 1e-12 },
+            { 0.0, 0.3, 0.5, 0.5 },
+            { 0.0, 0.3, 0.9, 0.9 },
+            { 0.0, 1.0, 1e-12, 1e-12 },
+            { 0.0, 1.0, 0.5, 0.5 },
+            { 0.0, 1.0, 0.9, 0.9 },
+            { 0.5, 0.0, 1e-12, 5.0000000000025e-13 },
+            { 0.5, 0.0, 0.5, 0.3333333333333333 },
+            { 0.5, 0.0, 0.9, 0.8181818181818182 },
+            { 0.5, 0.3, 1e-12, 8.450000000000549e-13 },
+            { 0.5, 0.3, 0.5, 0.4496674680413865 },
+            { 0.5, 0.3, 0.9, 0.8784373287140119 },
+            { 0.5, 1.0, 1e-12, 1.9999999999959998e-12 },
+            { 0.5, 1.0, 0.5, 0.6180339887498949 },
+            { 0.5, 1.0, 0.9, 0.9317821063276354 },
+            { 0.99, 0.0, 1e-12, 1.0000000000009908e-14 },
+            { 0.99, 0.0, 0.5, 0.00990099009900991 },
+            { 0.99, 0.0, 0.9, 0.08256880733944963 },
+            { 0.99, 0.3, 1e-12, 9.424899991606978e-12 },
+            { 0.99, 0.3, 0.5, 0.42000440550164764 },
+            { 0.99, 0.3, 0.9, 0.8479796616237846 },
+            { 0.99, 1.0, 1e-12, 9.999999900999993e-11 },
+            { 0.99, 1.0, 0.5, 0.7056364954298543 },
+            { 0.99, 1.0, 0.9, 0.9484254604002106 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new AMHCopula(cases[i, 0]);
+                Assert.AreEqual(cases[i, 3], copula.InverseConditionalCDF(cases[i, 1], cases[i, 2]), 1E-13 * cases[i, 3], $"case {i}");
+            }
+        }
+
+        /// <summary>
+        /// t = 0 returns 0 at every θ, including θ = 1, where the quadratic degenerates; t = 1 returns 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFAtZeroAndOne()
+        {
+            foreach (double theta in new[] { -1d, -0.5, 0d, 0.5, 1d })
+            {
+                var copula = new AMHCopula(theta);
+                foreach (double u in new[] { 0d, 0.3, 1d })
+                {
+                    Assert.AreEqual(0d, copula.InverseConditionalCDF(u, 0d), 0d, $"theta={theta}, u={u}");
+                    Assert.AreEqual(1d, copula.InverseConditionalCDF(u, 1d), 1E-15, $"theta={theta}, u={u}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// At θ = 1, where the generator is identically zero, the CDF and the conditional CDF use the closed forms
+        /// C = uv / (u + v - uv) and h = v² / (u + v - uv)², and agree with θ = 1 - 1E-9.
+        /// </summary>
+        [TestMethod]
+        public void Test_ThetaOne_ClosedForm()
+        {
+            var copula = new AMHCopula(1d);
+            Assert.AreEqual(0.25d, copula.CDF(0.3d, 0.6d), 1E-15);
+            Assert.AreEqual(0.36d / 0.5184d, copula.ConditionalCDF(0.3d, 0.6d), 1E-15);
+            Assert.AreEqual(0d, copula.CDF(0d, 0.5d));
+            Assert.AreEqual(0d, copula.ConditionalCDF(0.5d, 0d));
+            Assert.AreEqual(1d, copula.ConditionalCDF(0.5d, 1d));
+            var near = new AMHCopula(1d - 1E-9);
+            foreach (double u in new[] { 0.01d, 0.2d, 0.5d, 0.8d, 0.99d })
+            {
+                foreach (double v in new[] { 0.01d, 0.2d, 0.5d, 0.8d, 0.99d })
+                {
+                    Assert.AreEqual(near.CDF(u, v), copula.CDF(u, v), 1E-7, $"u={u}, v={v}");
+                    Assert.AreEqual(near.ConditionalCDF(u, v), copula.ConditionalCDF(u, v), 1E-7, $"u={u}, v={v}");
+                }
+            }
+        }
+    }
 }

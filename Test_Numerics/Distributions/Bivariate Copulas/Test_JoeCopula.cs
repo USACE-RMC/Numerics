@@ -124,7 +124,9 @@ namespace Distributions.BivariateCopulas
             ((IEstimation)copula.MarginalDistributionY).Estimate(data2, ParameterEstimationMethod.MaximumLikelihood);
             // Fit copula
             BivariateCopulaEstimation.Estimate(ref copula, data1, data2, CopulaEstimationMethod.InferenceFromMargins);
-            Assert.AreEqual(2.965269, copula.Theta, 1E-4);
+            // IFM with exact Normal MLE margins (sample mean, population SD) maximized in Python 3.14 with scipy 1.17.1
+            // (scipy.optimize.minimize_scalar on the Joe copula log-likelihood of the margin CDFs): theta = 2.9656127.
+            Assert.AreEqual(2.9655784, copula.Theta, 1E-4);
         }
 
         /// <summary>
@@ -280,7 +282,7 @@ namespace Distributions.BivariateCopulas
         /// Test the inverse conditional at conditional probabilities within rounding distance
         /// of the boundaries. In exact arithmetic h(1|u) = 1, but the floating-point objective
         /// can round below 1, so a requested level of t = 1 − 1E-16 can exceed the attainable maximum of
-        /// the objective — rarely at moderate θ but for most of the unit interval at θ = 20; the solver
+        /// the objective (rarely at moderate θ but for most of the unit interval at θ = 20); the solver
         /// must still complete. The asserted contract is the
         /// inverse relationship, not a particular value: every call returns a probability in
         /// [0, 1] whose value is monotone in the conditional level. The contract is
@@ -288,7 +290,7 @@ namespace Distributions.BivariateCopulas
         /// the Archimedean families evaluate that through the generator ratio
         /// φ′(u)/φ′(C(u,v)) rather than the closed form this inverse solves, and its precision
         /// degrades at v = 1 for large θ (the generator-ratio form returns about 0.52 at θ = 20, u = 0.846,
-        /// where the exact value is 1 — a property of that formula, not of this inverse).
+        /// where the exact value is 1; a property of that formula, not of this inverse).
         /// Interior levels are pinned against reference values above.
         /// </summary>
         [TestMethod]
@@ -460,5 +462,277 @@ namespace Distributions.BivariateCopulas
             Assert.AreEqual(0d, JoeCopula.KendallsTauFromTheta(copula.Theta), 1E-12);
         }
 
+        /// <summary>
+        /// LogPDF and PDF against the closed-form log density evaluated in mpmath 1.3.0 at 120 digits, for θ from 1 to 100
+        /// and u, v from 1E-12 to 1 - 1E-12, where the direct density underflows or overflows. The log density is within 1E-12
+        /// (relative above 1 in magnitude) and PDF is its exponential.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDFMatchesMpmath()
+        {
+            double[,] cases =
+            {
+            { 1.0, 1e-12, 1e-12, 0.0 },
+            { 1.0, 1e-12, 0.5, 0.0 },
+            { 1.0, 1e-12, 0.999999999999, 0.0 },
+            { 1.0, 0.01, 0.99, 0.0 },
+            { 1.0, 0.2, 0.8, 0.0 },
+            { 1.0, 0.5, 0.5, 0.0 },
+            { 1.0, 0.999999999999, 0.5, 0.0 },
+            { 1.0, 0.999999999999, 0.999999999999, 0.0 },
+            { 2.0, 1e-12, 1e-12, 0.6931471805579453 },
+            { 2.0, 1e-12, 0.5, 5.000000000001562e-13 },
+            { 2.0, 1e-12, 0.999999999999, -26.937896057332413 },
+            { 2.0, 0.01, 0.99, -3.9019242064047326 },
+            { 2.0, 0.2, 0.8, -0.6930883178759377 },
+            { 2.0, 0.5, 0.5, 0.21662899234617974 },
+            { 2.0, 0.999999999999, 0.5, -26.02160532545926 },
+            { 2.0, 0.999999999999, 0.999999999999, 26.59132246705344 },
+            { 10.0, 1e-12, 1e-12, 2.3025850929760456 },
+            { 10.0, 1e-12, 0.5, -3.9357395320364796 },
+            { 10.0, 1e-12, 0.999999999999, -246.37680404803717 },
+            { 10.0, 0.01, 0.99, -39.05305102231144 },
+            { 10.0, 0.2, 0.8, -10.044422871067932 },
+            { 10.0, 0.5, 0.5, 1.5745369601826287 },
+            { 10.0, 0.999999999999, 0.5, -239.55058425704655 },
+            { 10.0, 0.999999999999, 0.999999999999, 28.51128817216568 },
+            { 100.0, 1e-12, 1e-12, 4.605170185790091 },
+            { 100.0, 1e-12, 0.5, -64.01640068934749 },
+            { 100.0, 1e-12, 0.999999999999, -2730.8681103653553 },
+            { 100.0, 0.01, 0.99, -450.3080044991592 },
+            { 100.0, 0.2, 0.8, -132.42487834941832 },
+            { 100.0, 0.5, 0.5, 3.908904141380244 },
+            { 100.0, 0.999999999999, 0.5, -2661.5634426453134 },
+            { 100.0, 0.999999999999, 0.999999999999, 30.84680019871366 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new JoeCopula(cases[i, 0]);
+                double u = cases[i, 1], v = cases[i, 2], expected = cases[i, 3];
+                double actual = copula.LogPDF(u, v);
+                if (double.IsNegativeInfinity(expected))
+                {
+                    Assert.IsTrue(double.IsNegativeInfinity(actual), $"case {i}");
+                    Assert.AreEqual(0d, copula.PDF(u, v), 0d, $"case {i}");
+                    continue;
+                }
+                Assert.AreEqual(expected, actual, 1E-12 * Math.Max(1d, Math.Abs(expected)), $"case {i}: theta={cases[i, 0]}, u={u:R}, v={v:R}");
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(Math.Exp(actual)), BitConverter.DoubleToInt64Bits(copula.PDF(u, v)), $"case {i}");
+            }
+        }
+
+        /// <summary>
+        /// At u = 0 the inverse conditional CDF is the exact 1 - (1 - t)^(1/θ) of h(v|0) = 1 - (1 - v)^θ, accurate in relative
+        /// terms for small t (mpmath: 5.00000000000125e-13 at t = 1e-12, θ = 2); at u = 1 it is the
+        /// limit 1 for θ > 1 and 0 &lt; t &lt; 1, and t at θ = 1 and for t = 0 or t = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFEdges()
+        {
+            var copula = new JoeCopula(2d);
+            Assert.AreEqual(5.00000000000125e-13, copula.InverseConditionalCDF(0d, 1E-12), 1E-27);
+            foreach (double t in new[] { 1E-9, 0.3, 0.5, 0.9, 1d - 1E-9 })
+            {
+                Assert.AreEqual(-Numerics.Tools.Expm1(Numerics.Tools.Log1p(-t) / 2d), copula.InverseConditionalCDF(0d, t), 0d);
+                Assert.AreEqual(1d, copula.InverseConditionalCDF(1d, t), 0d);
+                Assert.AreEqual(t, new JoeCopula(1d).InverseConditionalCDF(1d, t), 0d);
+                // The exact u = 0 inverse agrees with the numerical inverse just inside the square.
+                Assert.AreEqual(copula.InverseConditionalCDF(0d, t), copula.InverseConditionalCDF(1E-12, t), 1E-7);
+            }
+            foreach (double u in new[] { 0d, 1d })
+            {
+                Assert.AreEqual(0d, copula.InverseConditionalCDF(u, 0d), 0d);
+                Assert.AreEqual(1d, copula.InverseConditionalCDF(u, 1d), 0d);
+            }
+        }
+
+        /// <summary>
+        /// Every generator member against mpmath 1.3.0 at 150 digits, for φ(t) = −ln(1 − (1 − t)^θ), the independence generator −ln t at θ = 1: Generator, GeneratorInverse (at
+        /// the rounded generator value), GeneratorPrime, GeneratorPrime2 and GeneratorPrimeInverse (at the rounded slope),
+        /// on t from 1E-12 to 1 - 1E-12 and θ including the independence region, to 1E-13 relative.
+        /// </summary>
+        [TestMethod]
+        public void Test_GeneratorMembersMatchMpmath()
+        {
+            // theta, t, phi(t), phi^-1(phi), phi'(t), phi''(t), (phi')^-1(phi').
+            double[,] cases =
+            {
+            { 1.0, 1e-12, 27.631021115928547, 1.000000000000001e-12, -1000000000000.0, 1e+24, 1e-12 },
+            { 1.0, 0.01, 4.605170185988091, 0.010000000000000004, -100.0, 10000.0, 0.01 },
+            { 1.0, 0.5, 0.6931471805599453, 0.5, -2.0, 4.0, 0.5 },
+            { 1.0, 0.99, 0.01005033585350145, 0.99, -1.0101010101010102, 1.0203040506070808, 0.99 },
+            { 1.0, 0.999999999999, 9.999778782803785e-13, 0.999999999999, -1.000000000001, 1.000000000002, 0.9999999999989999 },
+            { 1.000000000001, 1e-12, 27.63102111592755, 9.999999999999992e-13, -1000000000000.0, 1e+24, 1e-12 },
+            { 1.000000000001, 0.01, 4.605170185987096, 0.010000000000000002, -99.99999999999949, 10000.0, 0.01 },
+            { 1.000000000001, 0.5, 0.6931471805592521, 0.5, -1.9999999999992273, 4.0000000000009095, 0.5 },
+            { 1.000000000001, 0.99, 0.010050335853454929, 0.99, -1.0101010100973211, 1.0203040507006478, 0.9900000000000001 },
+            { 1.000000000001, 0.999999999999, 9.999778782527455e-13, 0.999999999999, -0.9999999999743666, 2.000111024681618, 0.999999999999 },
+            { 2.0, 1e-12, 26.937873935369105, 9.999999999999984e-13, -999999999999.5, 1e+24, 1e-12 },
+            { 2.0, 0.01, 3.9170355472516905, 0.009999999999999998, -99.49748743718592, 10000.252518875786, 0.01 },
+            { 2.0, 0.5, 0.2876820724517809, 0.5, -1.3333333333333333, 4.444444444444445, 0.5 },
+            { 2.0, 0.99, 0.00010000500033335852, 0.99, -0.02000200020002002, 2.000600100014002, 0.99 },
+            { 2.0, 0.999999999999, 9.999557570491275e-25, 0.999999999999, -1.999955756559757e-12, 2.0, 0.999999999999 },
+            { 20.0, 1e-12, 24.635288842384057, 1.0000000000000004e-12, -999999999990.5, 1e+24, 1e-12 },
+            { 20.0, 0.01, 1.703237390707595, 0.01, -90.7413619095708, 9975.495646336885, 0.01 },
+            { 20.0, 0.5, 9.5367477115389e-07, 0.5, -3.8147009036072765e-05, 0.0014495877985650635, 0.5 },
+            { 20.0, 0.99, 1.0000000000000177e-40, 0.99, -2.0000000000000335e-37, 3.800000000000061e-34, 0.99 },
+            { 20.0, 0.999999999999, 9.99557658565625e-241, 0.999999999999, -1.9991595419791159e-227, 3.798487158830133e-214, 0.999999999999 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new JoeCopula(cases[i, 0]);
+                double t = cases[i, 1];
+                AssertClose(cases[i, 2], copula.Generator(t), $"case {i}: Generator");
+                if (cases[i, 2] > 0d && !double.IsInfinity(cases[i, 2]))
+                    AssertClose(cases[i, 3], copula.GeneratorInverse(cases[i, 2]), $"case {i}: GeneratorInverse");
+                AssertClose(cases[i, 4], copula.GeneratorPrime(t), $"case {i}: GeneratorPrime");
+                AssertClose(cases[i, 5], copula.GeneratorPrime2(t), $"case {i}: GeneratorPrime2");
+                if (cases[i, 4] < 0d && !double.IsInfinity(cases[i, 4]))
+                    AssertClose(cases[i, 6], copula.GeneratorPrimeInverse(cases[i, 4]), $"case {i}: GeneratorPrimeInverse");
+            }
+        }
+
+        private static void AssertClose(double expected, double actual, string message)
+        {
+            if (double.IsInfinity(expected) || expected == 0d)
+                Assert.AreEqual(expected, actual, 1E-300, message);
+            else
+                Assert.AreEqual(expected, actual, 1E-13 * Math.Abs(expected), message);
+        }
+
+        /// <summary>
+        /// ConditionalCDF against its closed form evaluated in mpmath 1.3.0 at 150 digits, for θ = 1, 2 and 20 and u, v from
+        /// 1E-12 to 1 - 1E-12, to 1E-13 relative; near u, v = 1 the generic ratio φ′(u)/φ′(C(u,v)) loses up to 1E-5 there.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalCDFMatchesMpmath()
+        {
+            double[,] cases =
+            {
+            { 1.0, 1e-12, 0.5, 0.5 },
+            { 1.0, 0.01, 0.99, 0.99 },
+            { 1.0, 0.5, 0.5, 0.5 },
+            { 1.0, 0.99, 0.01, 0.01 },
+            { 1.0, 0.999999, 0.999999, 0.999999 },
+            { 1.0, 0.999999999999, 0.3, 0.3 },
+            { 2.0, 1e-12, 0.5, 0.7499999999998125 },
+            { 2.0, 0.01, 0.99, 0.9998989849005357 },
+            { 2.0, 0.5, 0.5, 0.5669467095138409 },
+            { 2.0, 0.99, 0.01, 0.00020100989694444877 },
+            { 2.0, 0.999999, 0.999999, 0.7071067811860172 },
+            { 2.0, 0.999999999999, 0.3, 7.285553113181972e-13 },
+            { 20.0, 1e-12, 0.5, 0.9999990463256836 },
+            { 20.0, 0.01, 0.99, 1.0 },
+            { 20.0, 0.5, 0.5, 0.5176322027528624 },
+            { 20.0, 0.99, 0.01, 2.2040665446405282e-39 },
+            { 20.0, 0.999999, 0.999999, 0.5176324619206888 },
+            { 20.0, 0.999999999999, 0.3, 8.76209639087174e-226 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new JoeCopula(cases[i, 0]);
+                // For a tiny h the rounding of its exponent, about |ln h|·eps, sets the relative accuracy.
+                double tolerance = 1E-13 * Math.Max(1d, -Math.Log(cases[i, 3]) / 100d);
+                Assert.AreEqual(cases[i, 3], copula.ConditionalCDF(cases[i, 1], cases[i, 2]), tolerance * cases[i, 3], $"case {i}");
+            }
+        }
+
+        /// <summary>
+        /// InverseConditionalCDF against the root of the closed-form conditional found by mpmath 1.3.0 at 60 digits
+        /// (bisection in the logit of v to 1E-40), for θ = 1.5, 5 and 20, u = 1E-12, 0.3 and 0.99, and t = 1E-12, 0.5 and
+        /// 1 - 1E-6, to 1E-14 relative. Over the wider grid θ ∈ {1, 1.5, 2, 5, 20}, u from 1E-12 to 1 - 1E-6 and t from
+        /// 1E-12 to 1 - 1E-12 the largest error is under 7E-15.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFMatchesMpmath()
+        {
+            double[,] cases =
+            {
+            { 1.5, 1e-12, 1e-12, 6.666666666671111e-13 },
+            { 1.5, 1e-12, 0.5, 0.37003947505266843 },
+            { 1.5, 1e-12, 0.999999, 0.9998999999999981 },
+            { 1.5, 0.3, 1e-12, 7.96819072889623e-13 },
+            { 1.5, 0.3, 0.5, 0.411386995790335 },
+            { 1.5, 0.3, 0.999999, 0.9999131647920092 },
+            { 1.5, 0.99, 1e-12, 6.6666666666555744e-12 },
+            { 1.5, 0.99, 0.5, 0.9639536478607388 },
+            { 1.5, 0.99, 0.999999, 0.9999979226822505 },
+            { 5.0, 1e-12, 1e-12, 2.0000000000088e-13 },
+            { 5.0, 1e-12, 0.5, 0.12944943670422407 },
+            { 5.0, 1e-12, 0.999999, 0.9369042655516683 },
+            { 5.0, 0.3, 1e-12, 8.329862557258591e-13 },
+            { 5.0, 0.3, 0.5, 0.2939244657895933 },
+            { 5.0, 0.3, 0.999999, 0.9541958196135466 },
+            { 5.0, 0.99, 1e-12, 1.999920003199897e-05 },
+            { 5.0, 0.99, 0.5, 0.9893370849425304 },
+            { 5.0, 0.99, 0.999999, 0.9993402458961683 },
+            { 20.0, 1e-12, 1e-12, 5.0000000000973746e-14 },
+            { 20.0, 1e-12, 0.5, 0.03406367107561327 },
+            { 20.0, 1e-12, 0.999999, 0.49881276637248323 },
+            { 20.0, 0.3, 1e-12, 4.386390011143973e-11 },
+            { 20.0, 0.3, 0.5, 0.2975198976662111 },
+            { 20.0, 0.3, 0.999999, 0.648268738141192 },
+            { 20.0, 0.99, 1e-12, 0.9571866760128065 },
+            { 20.0, 0.99, 0.5, 0.9899640963614083 },
+            { 20.0, 0.99, 0.999999, 0.9949752571368045 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                var copula = new JoeCopula(cases[i, 0]);
+                double v = copula.InverseConditionalCDF(cases[i, 1], cases[i, 2]);
+                Assert.AreEqual(cases[i, 3], v, 1E-14 * cases[i, 3], $"case {i}");
+                // The root reproduces t through the conditional CDF, to the change a few ulps of v make in h, plus the
+                // rounding of h's exponent, about |ln t| ulps of t.
+                double slack = 8.9E-16 * (v * copula.PDF(cases[i, 1], v) + cases[i, 2] * (1d - Math.Log(cases[i, 2])));
+                Assert.AreEqual(cases[i, 2], copula.ConditionalCDF(cases[i, 1], v), slack, $"case {i}: round trip");
+            }
+        }
+
+        /// <summary>
+        /// A generator-inverse value too small for its half-angle form, at s = 740 where φ⁻¹(s) = e^(−740) for θ = 1,
+        /// is returned exactly rather than lost to the halving of a subnormal argument. At s = 745, e^(−s) is the
+        /// smallest subnormal on .NET, but .NET Framework's Math.Exp returns 0 there, so the value is only required
+        /// to be non-negative on that runtime.
+        /// </summary>
+        [TestMethod]
+        public void Test_GeneratorInverseSubnormal()
+        {
+            Assert.AreEqual(Math.Exp(-740d), new JoeCopula(1d).GeneratorInverse(740d), 0d);
+#if NETFRAMEWORK
+            Assert.IsGreaterThanOrEqualTo(0d, new JoeCopula(1.5d).GeneratorInverse(745d));
+#else
+            Assert.IsGreaterThan(0d, new JoeCopula(1.5d).GeneratorInverse(745d));
+#endif
+        }
+
+        /// <summary>
+        /// The safeguarded Newton solver accepts a converged step that rounds onto the end of its bracket. The function
+        /// z − 1 + 1E-300 has its root within rounding of z = 1, where the Newton step from z = 1 does not move z; the
+        /// solver returns there after one evaluation instead of stepping 8 away from the root and bisecting back.
+        /// </summary>
+        [TestMethod]
+        public void Test_SolveIncreasingAcceptsConvergedStepOnBracketEnd()
+        {
+            int evaluations = 0;
+            double root = SolverProbe.Solve(z =>
+            {
+                evaluations++;
+                return (z - 1d + 1E-300, 1d);
+            }, 1d);
+            Assert.AreEqual(1d, root, 0d);
+            Assert.AreEqual(1, evaluations);
+        }
+
+        /// <summary>
+        /// Exposes the protected Archimedean root solver to the tests.
+        /// </summary>
+        private sealed class SolverProbe : JoeCopula
+        {
+            /// <summary>Calls the safeguarded Newton solver.</summary>
+            /// <param name="g">The increasing function and its slope.</param>
+            /// <param name="start">The starting point.</param>
+            /// <returns>The root.</returns>
+            internal static double Solve(Func<double, (double Value, double Slope)> g, double start) => SolveIncreasing(g, start);
+        }
     }
 }

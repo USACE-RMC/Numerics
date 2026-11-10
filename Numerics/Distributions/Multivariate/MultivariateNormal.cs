@@ -155,8 +155,8 @@ namespace Numerics.Distributions
         /// <para>
         /// The literal must be 2⁻⁵² bit-exactly, so it is written out rather than derived as
         /// <c>2d * Tools.DoubleMachineEpsilon</c>: that constant is the decimal literal
-        /// 1.11022302462516E-16, which slightly exceeds 2⁻⁵³ — it parses to 1.0000000000000031
-        /// times 2⁻⁵³ — so doubling it gives 2.0000000000000062 times 2⁻⁵³, overshooting 2⁻⁵², and
+        /// 1.11022302462516E-16, which slightly exceeds 2⁻⁵³ (it parses to 1.0000000000000031
+        /// times 2⁻⁵³), so doubling it gives 2.0000000000000062 times 2⁻⁵³, overshooting 2⁻⁵², and
         /// the thresholds built on it would drift off scipy's by a few ulps.
         /// </para>
         /// </remarks>
@@ -180,7 +180,7 @@ namespace Numerics.Distributions
         /// </summary>
         /// <remarks>
         /// Every instance left at the default replays the identical lattice shifts, so the small
-        /// quadrature errors of separate instances are correlated rather than independent — they do
+        /// quadrature errors of separate instances are correlated rather than independent: they do
         /// not average out when many CDF evaluations are aggregated. Callers aggregating across many
         /// instances should derive per-instance seeds (for example, from model content) through
         /// <see cref="MVNUNI"/> or a consumer-level seed property.
@@ -195,7 +195,7 @@ namespace Numerics.Distributions
         /// dimensions carries a small stochastic error and only reproduces when the generator is
         /// seeded. The default is the fixed <see cref="DefaultMVNUNISeed"/>; assign a seeded
         /// generator to tie results to a caller's own seed and to decorrelate the quadrature error
-        /// across instances. Not thread-safe — MVNDST advances the generator, so every concurrently
+        /// across instances. Not thread-safe: MVNDST advances the generator, so every concurrently
         /// evaluated instance must own a distinct generator. <see cref="Clone"/> preserves this
         /// generator by reference and therefore does not provide that isolation.
         /// </remarks>
@@ -216,7 +216,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// The absolute error tolerance when computing the multivariate CDF. Default = 1E-3.
+        /// The absolute error tolerance when computing the multivariate CDF. Default = 1E-4.
         /// </summary>
         public double AbsoluteError
         {
@@ -225,7 +225,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// The relative error tolerance when computing the multivariate CDF. Default = 1E-8.
+        /// The relative error tolerance when computing the multivariate CDF. Default = 1E-4.
         /// </summary>
         public double RelativeError
         {
@@ -342,25 +342,21 @@ namespace Numerics.Distributions
         /// <para>
         /// The selector is fixed at construction and is honoured by every re-factorization performed by
         /// <see cref="SetParameters"/>, <see cref="TrySetParameters"/> and <see cref="TrySetCovariance"/>.
-        /// Every cached quantity — the normalizing constant and the sampling factor — is built for it, so
+        /// Every cached quantity (the normalizing constant and the sampling factor) is built for it, so
         /// selecting a different method requires constructing a new distribution.
         /// </para>
         /// <para>
         /// The selector governs the density (<see cref="PDF"/>, <see cref="LogPDF"/>,
         /// <see cref="Mahalanobis"/>), the log-determinant carried in the normalizing constant, and the
         /// factor A with A·Aᵀ = Σ used by <see cref="InverseCDF"/>,
-        /// <see cref="GenerateRandomValues"/>, <see cref="LatinHypercubeRandomValues"/> and
+        /// <see cref="GenerateRandomValues(int, int)"/>, <see cref="LatinHypercubeRandomValues(int, int)"/> and
         /// <see cref="StratifiedRandomValues"/>. It does <b>not</b> govern <see cref="CDF"/> or
         /// <see cref="Interval"/>: the Genz MVNDST numerical integrator factorizes the correlation matrix
-        /// internally and is unaffected. Nor does it govern <see cref="Conditional"/> and
-        /// <see cref="Marginal"/>, which factorize the observed sub-covariance with its own Cholesky
-        /// decomposition and return distributions that use the default
-        /// <see cref="DecompositionMethod.Cholesky"/> selector. Those two helpers therefore <b>throw</b>
-        /// when the sub-covariance they need is singular, even on a distribution built with
-        /// <see cref="DecompositionMethod.SingularValue"/> whose own density evaluates perfectly well.
-        /// To work around it, take the marginal or conditional mean and covariance and construct the
-        /// sub-distribution explicitly with the <see cref="DecompositionMethod.SingularValue"/>
-        /// constructor.
+        /// internally and is unaffected. <see cref="Marginal"/> and <see cref="Conditional"/> return
+        /// distributions built with the same selector, so the marginal or conditional of a singular
+        /// distribution is accepted when its covariance is positive semi-definite. <see cref="Conditional"/>
+        /// still solves against the observed sub-covariance with a Cholesky decomposition, and throws when
+        /// that sub-covariance is singular.
         /// </para>
         /// <para>
         /// Under <see cref="DecompositionMethod.SingularValue"/> the distribution follows the degenerate
@@ -376,18 +372,18 @@ namespace Numerics.Distributions
         /// ε = <see cref="ZeroToleranceFactor"/> · <see cref="RelativeMachineEpsilon"/> · max|λ| decides
         /// what counts as a zero eigenvalue, and it is applied consistently to acceptance, the rank, the
         /// null space, the log pseudo-determinant and the pseudo-inverse. A covariance is rejected when its
-        /// smallest eigenvalue is below −ε, and every eigenvalue with |λ| ≤ ε — negative by roundoff or
-        /// exactly zero alike — is set to zero rather than kept. This is
+        /// smallest eigenvalue is below −ε, and every eigenvalue with |λ| ≤ ε, negative by roundoff or
+        /// exactly zero alike, is set to zero rather than kept. This is
         /// <c>scipy.stats._multivariate._eigvalsh_to_eps</c> and <c>_PSD</c>, verified value for value
         /// against scipy 1.17.1. One consequence is worth knowing: because ε is relative to the largest
-        /// eigenvalue, a covariance that mixes wildly different scales loses its smallest directions — for
+        /// eigenvalue, a covariance that mixes wildly different scales loses its smallest directions: for
         /// Σ = diag(1E8, 1E-8) the threshold is 2.2E-2, so the second direction is treated as null. That is
         /// scipy's behaviour as well, and it is the price of a scale-invariant threshold.
         /// </para>
         /// <para>
         /// <b>What that rank drop looks like from the outside.</b> It is silent: no exception is raised and no
         /// diagnostic is produced. What the caller observes is that <see cref="LogPDF"/> returns negative
-        /// infinity — and <see cref="PDF"/> zero — at essentially every point, because after the drop the
+        /// infinity (and <see cref="PDF"/> zero) at essentially every point, because after the drop the
         /// support is the retained subspace and a general point has a non-negligible component off it. Inside
         /// a likelihood evaluation or an MCMC loop that reads as total collapse rather than as a
         /// conditioning problem, and the rank is not exposed publicly, so the only available signal is
@@ -401,7 +397,7 @@ namespace Numerics.Distributions
         /// <b>Two deliberate departures from scipy.</b> First, a point is tested against the support with a
         /// tolerance proportional to ‖x − μ‖, where scipy uses one proportional to the eigenvalue scale of
         /// Σ. For a large-scale singular covariance scipy therefore admits points that are visibly off the
-        /// support — for Σ = 1E12 · [[1,1],[1,1]] scipy returns a finite density at (1, −1) — where this
+        /// support (for Σ = 1E12 · [[1,1],[1,1]] scipy returns a finite density at (1, −1)), where this
         /// class returns negative infinity, the mathematically exact answer.
         /// Second, when Σ is identically zero the support is the single point μ; this class reports
         /// <see cref="PDF"/> = 1 and <see cref="LogPDF"/> = 0 there, the counting-measure density that the
@@ -434,10 +430,10 @@ namespace Numerics.Distributions
         /// </remarks>
         public void SetParameters(double[] mean, double[,] covariance)
         {
-            // Under the singular value path the validation already builds the decomposition it needs,
-            // so it is handed back and reused for the factorization rather than recomputed.
-            ValidateParameters(mean, covariance, true, out var singularValues);
-            SetParametersCore(mean, covariance, singularValues);
+            // The validation already builds the decomposition the factorization needs, so it is
+            // handed back and reused rather than recomputed.
+            ValidateParameters(mean, covariance, true, out var singularValues, out var cholesky);
+            SetParametersCore(mean, covariance, singularValues, cholesky);
         }
 
         /// <summary>
@@ -447,8 +443,8 @@ namespace Numerics.Distributions
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the mean is null, contains a
         /// non-finite value, or its length does not match the current dimension.</exception>
         /// <remarks>
-        /// A translation of the distribution changes no covariance-derived quantity — the factorization,
-        /// the log determinant, and the normalizing constant all depend on Σ alone — so a caller that
+        /// A translation of the distribution changes no covariance-derived quantity (the factorization,
+        /// the log determinant, and the normalizing constant all depend on Σ alone), so a caller that
         /// moves the distribution around a fixed covariance (for example a random walk proposal) can
         /// avoid refactorizing an unchanged matrix on every step. The mean checks here are the same ones
         /// <see cref="SetParameters(double[], double[,])"/> applies.
@@ -475,19 +471,23 @@ namespace Numerics.Distributions
         /// <param name="singularValues">The decomposition of <paramref name="covariance"/> produced by
         /// validation under <see cref="DecompositionMethod.SingularValue"/>; null under
         /// <see cref="DecompositionMethod.Cholesky"/>, where it is not used.</param>
+        /// <param name="cholesky">The decomposition of <paramref name="covariance"/> produced by
+        /// validation under <see cref="DecompositionMethod.Cholesky"/>; null under
+        /// <see cref="DecompositionMethod.SingularValue"/>, where it is not used.</param>
         /// <remarks>
         /// Shared by the throwing <see cref="SetParameters"/> and the non-throwing
         /// <see cref="TrySetParameters"/> so that each entry point validates once and factorizes once,
-        /// reusing the decomposition built during validation.
+        /// reusing the decomposition built during validation. The validation factors its own copy of
+        /// the same values, so the reused factor is identical to one computed from the stored covariance.
         /// </remarks>
-        private void SetParametersCore(double[] mean, double[,] covariance, SingularValueDecomposition? singularValues)
+        private void SetParametersCore(double[] mean, double[,] covariance, SingularValueDecomposition? singularValues, CholeskyDecomposition? cholesky)
         {
             _dimension = mean.Length;
             _mean = mean;
             _covariance = new Matrix(covariance);
             if (_decomposition == DecompositionMethod.Cholesky)
             {
-                _cholesky = new CholeskyDecomposition(_covariance);
+                _cholesky = cholesky ?? new CholeskyDecomposition(_covariance);
                 double lndet = _cholesky.LogDeterminant();
                 _lnconstant = -(Math.Log(2d * Math.PI) * _mean.Length + lndet) * 0.5d;
                 // The sampling factor A with A*A^T = Sigma is the lower triangular Cholesky factor itself.
@@ -527,7 +527,7 @@ namespace Numerics.Distributions
         /// <remarks>
         /// <para>
         /// The threshold below which a singular value counts as zero comes from
-        /// <see cref="SingularValueThreshold"/> and is passed explicitly to every query — never left to the
+        /// <see cref="SingularValueThreshold"/> and is passed explicitly to every query, never left to the
         /// default. This matters twice over. <see cref="SingularValueDecomposition"/> recomputes its
         /// <see cref="SingularValueDecomposition.Threshold"/> on each call that takes a threshold argument,
         /// including when the argument is negative, so passing the value explicitly is the only way to keep
@@ -537,7 +537,7 @@ namespace Numerics.Distributions
         /// reliably.
         /// </para>
         /// <para>
-        /// Because Σ is symmetric positive semi-definite — enforced by <see cref="ValidateParameters(double[], double[,], bool)"/> — the
+        /// Because Σ is symmetric positive semi-definite (enforced by <see cref="ValidateParameters(double[], double[,], bool)"/>), the
         /// left and right singular vectors coincide for every singular value above the threshold, so
         /// Σ = U·W·Uᵀ and A = U·sqrt(W) satisfies A·Aᵀ = Σ. This is the factor NumPy builds for
         /// <c>multivariate_normal(..., method='svd')</c>. Null directions get a zero column and therefore
@@ -579,8 +579,8 @@ namespace Numerics.Distributions
         /// This is <c>scipy.stats._multivariate._eigvalsh_to_eps</c>. The singular values of a symmetric
         /// matrix are the absolute values of its eigenvalues and
         /// <see cref="SingularValueDecomposition"/> returns them in descending order, so the first one is
-        /// max|λ|. Every consumer of the decomposition in this class — acceptance, rank, null space, log
-        /// pseudo-determinant and pseudo-inverse — is given this same value, so they cannot disagree about
+        /// max|λ|. Every consumer of the decomposition in this class (acceptance, rank, null space, log
+        /// pseudo-determinant and pseudo-inverse) is given this same value, so they cannot disagree about
         /// which directions are null.
         /// </remarks>
         private static double SingularValueThreshold(SingularValueDecomposition singularValues)
@@ -611,7 +611,7 @@ namespace Numerics.Distributions
         /// The scaling is by ‖x − μ‖, which is <b>not</b> what
         /// <c>scipy.stats.multivariate_normal</c> does: scipy scales its support tolerance by the
         /// eigenvalue magnitude of Σ instead. The two agree whenever Σ is of order one, and diverge for a
-        /// large-scale singular Σ, where scipy's tolerance becomes very loose — for Σ = 1E12 · [[1,1],[1,1]]
+        /// large-scale singular Σ, where scipy's tolerance becomes very loose: for Σ = 1E12 · [[1,1],[1,1]]
         /// scipy's tolerance is about 4.4E+5, so it returns a finite density at (1, −1), a point plainly off
         /// the support. This class returns negative infinity there, which is the exact answer.
         /// </para>
@@ -689,7 +689,7 @@ namespace Numerics.Distributions
         /// </remarks>
         public ArgumentOutOfRangeException? ValidateParameters(double[] mean, double[,] covariance, bool throwException)
         {
-            return ValidateParameters(mean, covariance, throwException, out _);
+            return ValidateParameters(mean, covariance, throwException, out _, out _);
         }
 
         /// <summary>
@@ -701,10 +701,13 @@ namespace Numerics.Distributions
         /// <param name="throwException">Determines whether to throw an exception or not.</param>
         /// <param name="singularValues">On return, the decomposition of the covariance matrix under
         /// <see cref="DecompositionMethod.SingularValue"/> when the parameters are valid; null otherwise.</param>
+        /// <param name="cholesky">On return, the decomposition of the covariance matrix under
+        /// <see cref="DecompositionMethod.Cholesky"/> when the parameters are valid; null otherwise.</param>
         /// <returns>The reason the parameters are invalid, or null when they are valid.</returns>
-        private ArgumentOutOfRangeException? ValidateParameters(double[] mean, double[,] covariance, bool throwException, out SingularValueDecomposition? singularValues)
+        private ArgumentOutOfRangeException? ValidateParameters(double[] mean, double[,] covariance, bool throwException, out SingularValueDecomposition? singularValues, out CholeskyDecomposition? cholesky)
         {
             singularValues = null;
+            cholesky = null;
             if (mean == null)
             {
                 var ex = new ArgumentOutOfRangeException(nameof(mean), "Mean vector must not be null.");
@@ -750,7 +753,7 @@ namespace Numerics.Distributions
             {
                 try
                 {
-                    _ = new CholeskyDecomposition(m);
+                    cholesky = new CholeskyDecomposition(m);
                 }
                 catch (Exception exception)
                 {
@@ -792,10 +795,10 @@ namespace Numerics.Distributions
         /// <returns>True when the matrix is symmetric with no eigenvalue below −ε.</returns>
         /// <remarks>
         /// <para>
-        /// Singular values are unsigned — Wⱼ = |λⱼ| — so they cannot by themselves tell a negative eigenvalue
+        /// Singular values are unsigned (Wⱼ = |λⱼ|), so they cannot by themselves tell a negative eigenvalue
         /// from a positive one. The signed eigenvalues are recovered as the Rayleigh quotients
         /// λⱼ = uⱼᵀ·Σ·uⱼ, which is exact whenever the columns of U are eigenvectors of Σ. The matrix is
-        /// rejected when min(λ) &lt; −ε, with ε from <see cref="SingularValueThreshold"/> — the same threshold
+        /// rejected when min(λ) &lt; −ε, with ε from <see cref="SingularValueThreshold"/>, the same threshold
         /// that later decides the rank, the null space, the pseudo-determinant and the pseudo-inverse.
         /// Sharing it is what makes the outcome coherent: an eigenvalue this test tolerates as
         /// negative-by-roundoff is one the factorization then <b>zeroes</b>, so it can contribute neither
@@ -805,8 +808,8 @@ namespace Numerics.Distributions
         /// <para>
         /// The Rayleigh quotients alone are not sufficient, because they are only the eigenvalues when U is
         /// an eigenbasis. When Σ is asymmetric, or when eigenvalues of equal magnitude and opposite sign make
-        /// the singular subspace ambiguous — Σ = [[0, 2], [2, 0]] has eigenvalues +2 and −2, and every
-        /// quotient comes out at zero — U is not an eigenbasis and the quotients say nothing useful. The
+        /// the singular subspace ambiguous (Σ = [[0, 2], [2, 0]] has eigenvalues +2 and −2, and every
+        /// quotient comes out at zero), U is not an eigenbasis and the quotients say nothing useful. The
         /// second test closes that gap by requiring Σ to equal its own reconstruction Σⱼ λⱼ uⱼ uⱼᵀ, which is
         /// precisely the property the sampling factor A = U·sqrt(W) relies on. For [[0, 2], [2, 0]] the
         /// reconstruction misses by 2.0 and the matrix is correctly rejected.
@@ -859,7 +862,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Attempts to set the distribution parameters without throwing: the covariance
         /// is factorized eagerly, and when it is not positive-definite the density is
-        /// marked invalid — <see cref="LogPDF"/> returns negative infinity and
+        /// marked invalid: <see cref="LogPDF"/> returns negative infinity and
         /// <see cref="PDF"/> returns zero until a valid covariance is set.
         /// </summary>
         /// <param name="mean">The mean vector μ (mu) for the distribution.</param>
@@ -873,16 +876,16 @@ namespace Numerics.Distributions
         /// </remarks>
         public bool TrySetParameters(double[] mean, double[,] covariance)
         {
-            // The Cholesky constructor throws on any rejected pivot — it never returns
-            // with IsPositiveDefinite false — so the non-throwing contract absorbs the
+            // The Cholesky constructor throws on any rejected pivot (it never returns
+            // with IsPositiveDefinite false), so the non-throwing contract absorbs the
             // decomposition failure here.
             try
             {
                 // Validate through the overload that hands back the decomposition and apply it directly,
                 // so the covariance is validated and factorized exactly once per call.
-                if (ValidateParameters(mean, covariance, false, out var singularValues) is null)
+                if (ValidateParameters(mean, covariance, false, out var singularValues, out var cholesky) is null)
                 {
-                    SetParametersCore(mean, covariance, singularValues);
+                    SetParametersCore(mean, covariance, singularValues, cholesky);
                     _densityValid = true;
                     return true;
                 }
@@ -919,13 +922,17 @@ namespace Numerics.Distributions
         private bool _densityValid = true;
 
         /// <summary>
-        /// Returns the marginal distribution over a subset of the dimensions — the
+        /// Returns the marginal distribution over a subset of the dimensions: the
         /// sub-mean and sub-covariance at the given indices (the marginal of a joint
         /// Gaussian is the corresponding sub-Gaussian).
         /// </summary>
         /// <param name="indices">The zero-based dimension indices to keep, in the output order.</param>
         /// <returns>The marginal distribution.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the indices are null, empty, repeated, or out of range.</exception>
+        /// <remarks>
+        /// The marginal uses this distribution's <see cref="Decomposition"/> and shares its
+        /// <see cref="MVNUNI"/> generator by reference, as <see cref="Clone"/> does.
+        /// </remarks>
         public MultivariateNormal Marginal(params int[] indices)
         {
             ValidateIndices(indices, Dimension);
@@ -939,7 +946,7 @@ namespace Numerics.Distributions
                     covariance[i, j] = _covariance[indices[i], indices[j]];
                 }
             }
-            return new MultivariateNormal(mean, covariance);
+            return new MultivariateNormal(mean, covariance, _decomposition) { MVNUNI = _MVNUNI };
         }
 
         /// <summary>
@@ -951,10 +958,18 @@ namespace Numerics.Distributions
         /// <param name="observedIndices">The zero-based dimension indices of the observed subset.</param>
         /// <param name="observedValues">The observed values, parallel to the indices.</param>
         /// <returns>The conditional distribution over the remaining dimensions, in ascending dimension order.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the indices are invalid, the values length differs, or every dimension is observed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the indices are invalid, the values length
+        /// differs, every dimension is observed, or the observed sub-covariance is not positive-definite.</exception>
         /// <remarks>
+        /// <para>
+        /// The conditional distribution uses this distribution's <see cref="Decomposition"/> and shares its
+        /// <see cref="MVNUNI"/> generator by reference, as <see cref="Clone"/> does. The observed
+        /// sub-covariance Σ₂₂ is always solved through a Cholesky decomposition.
+        /// </para>
+        /// <para>
         /// Reference: Eaton, M.L. (1983). Multivariate Statistics: A Vector Space
         /// Approach. Wiley. (The Gaussian conditioning identities.)
+        /// </para>
         /// </remarks>
         public MultivariateNormal Conditional(int[] observedIndices, double[] observedValues)
         {
@@ -984,9 +999,15 @@ namespace Numerics.Distributions
                 for (int j = 0; j < nObserved; j++)
                     sigma22[i, j] = _covariance[observedIndices[i], observedIndices[j]];
             }
-            var cholesky22 = new CholeskyDecomposition(sigma22);
-            if (!cholesky22.IsPositiveDefinite)
-                throw new ArgumentOutOfRangeException(nameof(observedIndices), "The observed sub-covariance is not positive-definite.");
+            CholeskyDecomposition cholesky22;
+            try
+            {
+                cholesky22 = new CholeskyDecomposition(sigma22);
+            }
+            catch (Exception exception)
+            {
+                throw new ArgumentOutOfRangeException("The observed sub-covariance is not positive-definite.", exception);
+            }
 
             var z = new double[nObserved];
             for (int i = 0; i < nObserved; i++)
@@ -1019,7 +1040,7 @@ namespace Numerics.Distributions
                     conditionalCovariance[i, k] = _covariance[free[i], free[k]] - schur;
                 }
             }
-            return new MultivariateNormal(conditionalMean, conditionalCovariance);
+            return new MultivariateNormal(conditionalMean, conditionalCovariance, _decomposition) { MVNUNI = _MVNUNI };
         }
 
         /// <summary>
@@ -1252,23 +1273,63 @@ namespace Numerics.Distributions
         /// </remarks>
         public double[,] GenerateRandomValues(int sampleSize, int seed = -1)
         {
-            // Create PRNG for generating random numbers
-            var rnd = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
+            return GenerateRandomValues(sampleSize, seed > 0 ? new MersenneTwister(seed) : new MersenneTwister());
+        }
+
+        /// <summary>
+        /// Generate random values of a distribution given a sample size, drawing from a supplied generator.
+        /// </summary>
+        /// <param name="sampleSize">Size of random sample to generate.</param>
+        /// <param name="random">The generator. One value is drawn per dimension per row, row by row.</param>
+        /// <returns>
+        /// Array of random values. The number of rows are equal to the sample size.
+        /// The number of columns are equal to the dimensions of this distribution.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="random"/> is null.</exception>
+        /// <remarks>
+        /// The sample is a deterministic function of the generator state, with no clock fallback, so a
+        /// seeded generator always gives the same sample. Passing <c>new MersenneTwister(seed)</c> with a
+        /// positive seed reproduces <see cref="GenerateRandomValues(int, int)"/> with that seed exactly.
+        /// The generator advances by <paramref name="sampleSize"/> · <see cref="Dimension"/> draws, so one
+        /// generator can be shared by consecutive calls to draw independent samples.
+        /// </remarks>
+        public double[,] GenerateRandomValues(int sampleSize, Random random)
+        {
+            if (random == null) throw new ArgumentNullException(nameof(random));
             var sample = new double[sampleSize, Dimension];
-            // Generate values
+            var z = new double[Dimension];
             for (int i = 0; i < sampleSize; i++)
             {
                 // Create vector z of standard normal variates for each dimension
-                var z = new double[Dimension];
                 for (int j = 0; j < Dimension; j++)
-                    z[j] = Normal.StandardZ(rnd.NextDouble());
-                // x = A*z + mu
-                var Az = _factor * z;
-                for (int j = 0; j < Dimension; j++)
-                    sample[i, j] = Az[j] + _mean[j];
+                    z[j] = Normal.StandardZ(random.NextDouble());
+                Correlate(z, sample, i);
             }
-            // Return array of random values
             return sample;
+        }
+
+        /// <summary>
+        /// Writes x = A·z + μ into one row of a sample, where A is the factor with A·Aᵀ = Σ.
+        /// </summary>
+        /// <param name="z">The standard normal variates.</param>
+        /// <param name="sample">The sample to write.</param>
+        /// <param name="row">The row of <paramref name="sample"/> to write.</param>
+        /// <remarks>
+        /// Each product A·z is summed over the columns in ascending order, as
+        /// <see cref="Matrix.Multiply(Vector)"/> does, so the row equals <c>_factor * z</c> plus μ bit for
+        /// bit without allocating per row.
+        /// </remarks>
+        private void Correlate(double[] z, double[,] sample, int row)
+        {
+            var factor = _factor.Array;
+            int n = z.Length;
+            for (int j = 0; j < n; j++)
+            {
+                double sum = 0.0d;
+                for (int k = 0; k < n; k++)
+                    sum += factor[j, k] * z[k];
+                sample[row, j] = sum + _mean[j];
+            }
         }
 
         /// <summary>
@@ -1286,21 +1347,44 @@ namespace Numerics.Distributions
         /// </remarks>
         public double[,] LatinHypercubeRandomValues(int sampleSize, int seed)
         {
-            var r = LatinHypercube.Random(sampleSize, Dimension, seed);
+            return CorrelateUniforms(LatinHypercube.Random(sampleSize, Dimension, seed));
+        }
+
+        /// <summary>
+        /// Use Latin hypercube method to generate random values of a distribution given a sample size,
+        /// drawing from a supplied generator.
+        /// </summary>
+        /// <param name="sampleSize">Size of random sample to generate.</param>
+        /// <param name="random">The master generator passed to <see cref="LatinHypercube.Random(int, int, Random)"/>.</param>
+        /// <returns>Array of random values.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="random"/> is null.</exception>
+        /// <remarks>
+        /// The sample is a deterministic function of the generator state, with no clock fallback.
+        /// Passing <c>new MersenneTwister(seed)</c> with a positive seed reproduces
+        /// <see cref="LatinHypercubeRandomValues(int, int)"/> with that seed exactly.
+        /// </remarks>
+        public double[,] LatinHypercubeRandomValues(int sampleSize, Random random)
+        {
+            return CorrelateUniforms(LatinHypercube.Random(sampleSize, Dimension, random));
+        }
+
+        /// <summary>
+        /// Maps a design of uniform variates to standard normal variates and correlates each row.
+        /// </summary>
+        /// <param name="uniforms">The uniform design, one row per sample and one column per dimension.</param>
+        /// <returns>The correlated sample, x = A·z + μ per row.</returns>
+        private double[,] CorrelateUniforms(double[,] uniforms)
+        {
+            int sampleSize = uniforms.GetLength(0);
             var sample = new double[sampleSize, Dimension];
-            // Generate values
+            var z = new double[Dimension];
             for (int i = 0; i < sampleSize; i++)
             {
                 // Create vector z of standard normal variates for each dimension
-                var z = new double[Dimension];
                 for (int j = 0; j < Dimension; j++)
-                    z[j] = Normal.StandardZ(r[i, j]);
-                // x = A*z + mu
-                var Az = _factor * z;
-                for (int j = 0; j < Dimension; j++)
-                    sample[i, j] = Az[j] + _mean[j];
+                    z[j] = Normal.StandardZ(uniforms[i, j]);
+                Correlate(z, sample, i);
             }
-            // Return array of random values
             return sample;
         }
 
@@ -1319,11 +1403,11 @@ namespace Numerics.Distributions
             int samplesize = stratificationBins.Count;
             var r = new MersenneTwister(seed);
             var sample = new double[samplesize, Dimension];
+            var z = new double[Dimension];
             // Generate values
             for (int i = 0; i < samplesize; i++)
             {
                 // Create vector z of standard normal variates for each dimension
-                var z = new double[Dimension];
                 for (int j = 0; j < Dimension; j++)
                 {
                     if (j == 0)
@@ -1333,12 +1417,9 @@ namespace Numerics.Distributions
                     else
                     {
                         z[j] = Normal.StandardZ(r.NextDouble());
-                    }               
-                }               
-                // x = A*z + mu
-                var Az = _factor * z;
-                for (int j = 0; j < Dimension; j++)
-                    sample[i, j] = Az[j] + _mean[j];
+                    }
+                }
+                Correlate(z, sample, i);
             }
             // Return array of random values
             return sample;
@@ -1587,9 +1668,15 @@ namespace Numerics.Distributions
 
 
         /// <summary>
-        /// A function for computing the bivariate normal CDF.
+        /// Computes the bivariate standard normal upper orthant probability P(X &gt; z1, Y &gt; z2) for
+        /// correlation r.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// This is the Genz BVN convention: the integral runs from the limits to +∞, so the value is the joint
+        /// exceedance probability, not the lower orthant CDF P(X &lt;= z1, Y &lt;= z2). By symmetry of the normal
+        /// distribution the lower orthant probability is BivariateCDF(-z1, -z2, r).
+        /// </para>
         /// <para>
         /// This code was copied from Accord Math Library, http://accord-framework.net
         /// </para>
@@ -1608,6 +1695,7 @@ namespace Numerics.Distributions
         /// <param name="z1">The z variate for the first Normal.</param>
         /// <param name="z2">The z variate for the second Normal.</param>
         /// <param name="r">The correlation coefficient.</param>
+        /// <returns>The upper orthant probability P(X &gt; z1, Y &gt; z2).</returns>
         public static double BivariateCDF(double z1, double z2, double r)
         {
 
@@ -1742,55 +1830,6 @@ namespace Numerics.Distributions
         private static readonly double[] BVND_WN6 = new[] { 0.1713244923791705d, 0.36076157304813838d, 0.46791393457269043d };
         private static readonly double[] BVND_XN6 = new[] { -0.93246951420315216d, -0.6612093864662647d, -0.238619186083197d };
 
-
-        private static double[] MVNPHI_A = new double[]
-        {
-            6.10143081923200417926465815756E-1,
-            -4.34841272712577471828182820888E-1,
-            1.76351193643605501125840298123E-1,
-            -6.0710795609249414860051215825E-2,
-            1.7712068995694114486147141191E-2,
-            -4.321119385567293818599864968E-3,
-            8.54216676887098678819832055E-4,
-            -1.27155090609162742628893940E-4,
-            1.1248167243671189468847072E-5,
-            3.13063885421820972630152E-7,
-            -2.70988068537762022009086E-7,
-            3.0737622701407688440959E-8,
-            2.515620384817622937314E-9,
-            -1.028929921320319127590E-9,
-            2.9944052119949939363E-11,
-            2.6051789687266936290E-11,
-            -2.634839924171969386E-12,
-            -6.43404509890636443E-13,
-            1.12457401801663447E-13,
-            1.7281533389986098E-14,
-            -4.264101694942375E-15,
-            -5.45371977880191E-16,
-            1.58697607761671E-16,
-            2.0899837844334E-17,
-            -5.900526869409E-18,
-            -9.41893387554E-19,
-            2.14977356470E-19,
-            4.6660985008E-20,
-            -7.243011862E-21,
-            -2.387966824E-21,
-            1.91177535E-22,
-            1.20482568E-22,
-            -6.72377E-25,
-            -5.747997E-24,
-            -4.28493E-25,
-            2.44856E-25,
-            4.3793E-26,
-            -8.151E-27,
-            -3.089E-27,
-            9.3E-29,
-            1.74E-28,
-            1.6E-29,
-            -8.0E-30,
-            -2.0E-30
-        };
-
         /// <summary>
         /// Gauss Legendre Points and Weights, N = 6, 12, and 20
         /// </summary>
@@ -1825,14 +1864,55 @@ namespace Numerics.Distributions
         //SAVE A, B, INFI, COV
         // NL = 500
         private int NL = 500;
-        private double[] MVNDFN_A = new double[500];
-        private double[] MVNDFN_B = new double[500];
-        private int[] MVNDFN_INFI = new int[500];
-        private double[] MVNDFN_COV = new double[125250]; //NL*(NL+1)/2
+        private double[] MVNDFN_A = null!;
+        private double[] MVNDFN_B = null!;
+        private int[] MVNDFN_INFI = null!;
+        private double[] MVNDFN_COV = null!; //NL*(NL+1)/2
+        private double[][] MVNDFN_Y = null!;
+        private double[] MVNDFN_LaneA = null!;
+        private double[] MVNDFN_LaneB = null!;
+        private double[] MVNDFN_LaneD = null!;
+        private double[] MVNDFN_LaneE = null!;
+        private bool[] MVNDFN_LaneActive = null!;
+        private double[] DKSMRC_W = null!;
+        private double[] DKBVRC_X = null!;
+        private double[] DKBVRC_VK = null!;
+        private readonly double[] DKSMRC_Values = new double[IntegrandLanes];
+        private readonly double[] DKSMRC_Scale = new double[IntegrandLanes];
+
+        /// <summary>
+        /// The degrees of freedom of the multivariate t integrand while <see cref="MVTDST"/> runs; zero selects
+        /// the multivariate normal integrand.
+        /// </summary>
+        private double _studentTDegreesOfFreedom;
+
+        /// <summary>
+        /// The largest uniform passed to the radial inverse of the multivariate t integrand, 1 - 2^-53, so the
+        /// radial factor stays finite at a lattice coordinate of exactly one.
+        /// </summary>
+        private const double StudentTMaximumUniform = 1d - 1.1102230246251565E-16;
+
+        /// <summary>
+        /// Allocates the integration workspace on the first evaluation that needs it.
+        /// </summary>
+        /// <remarks>
+        /// The workspace holds about 1 MB, sized for the 500-dimension limit of <see cref="MVNDST"/>.
+        /// Allocating it on first use keeps instances that never evaluate a lattice-rule probability
+        /// (densities, sampling, marginals and conditionals) free of that cost. The arrays start
+        /// zero-filled and persist across calls.
+        /// </remarks>
+        private void EnsureIntegrationWorkspace()
+        {
+            if (MVNDFN_COV != null) return;
+            MVNDFN_A = new double[500];
+            MVNDFN_B = new double[500];
+            MVNDFN_INFI = new int[500];
+            MVNDFN_COV = new double[125250];
+        }
 
         // Optimal Parameters for Lattice Rules
-        private int[] DKBVRC_P = new int[28] { 31, 47, 73, 113, 173, 263, 397, 593, 907, 1361, 2053, 3079, 4621, 6947, 10427, 15641, 23473, 35221, 52837, 79259, 118891, 178349, 267523, 401287, 601943, 902933, 1354471, 2031713 };
-        private int[,] DKBVRC_C = new int[28, 99]
+        private static readonly int[] DKBVRC_P = new int[28] { 31, 47, 73, 113, 173, 263, 397, 593, 907, 1361, 2053, 3079, 4621, 6947, 10427, 15641, 23473, 35221, 52837, 79259, 118891, 178349, 267523, 401287, 601943, 902933, 1354471, 2031713 };
+        private static readonly int[,] DKBVRC_C = new int[28, 99]
                 {
                     {12, 9, 9, 13, 12, 12, 12, 12, 12, 12, 12, 12, 3, 3, 3, 12, 7, 7, 12, 12, 12, 12, 12, 12, 12, 12, 12, 3, 3, 3, 12, 7, 7, 12, 12, 12, 12, 12, 12, 12, 12, 12, 3, 3, 3, 12, 7, 7, 12, 12, 12, 12, 12, 12, 12, 12, 12, 3, 3, 3, 12, 7, 7, 12, 12, 12, 12, 12, 12, 12, 12, 7, 3, 3, 3, 7, 7, 7, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,},
                     {13, 11, 17, 10, 15, 15, 15, 15, 15, 15, 22, 15, 15, 6, 6, 6, 15, 15, 9, 13, 2, 2, 2, 13, 11, 11, 10, 15, 15, 15, 15, 15, 15, 15, 15, 15, 6, 6, 6, 15, 15, 9, 13, 2, 2, 2, 13, 11, 11, 10, 15, 15, 15, 15, 15, 15, 15, 15, 15, 6, 6, 6, 15, 15, 9, 13, 2, 2, 2, 13, 11, 11, 10, 10, 15, 15, 15, 15, 15, 15, 15, 15, 6, 2, 3, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,},
@@ -1910,6 +1990,7 @@ namespace Numerics.Distributions
             else
             {
                 INFORM = 0;
+                EnsureIntegrationWorkspace();
                 MVNDNT(N, CORREL, LOWER, UPPER, INFIN, ref INFIS, ref D, ref E, Y);
                 if (N - INFIS == 0)
                 {
@@ -1927,83 +2008,502 @@ namespace Numerics.Distributions
                 {
                     // Call the lattice rule integration subroutine.
                     IVLS = 0;
-                    DKBVRC(N - INFIS - 1, IVLS, MAXPTS, MVNDFN, ABSEPS, RELEPS, ref ERROR, ref VALUE, ref INFORM);
+                    DKBVRC(N - INFIS - 1, IVLS, MAXPTS, ABSEPS, RELEPS, ref ERROR, ref VALUE, ref INFORM);
                 }
             }
         }
 
         /// <summary>
-        /// Integrand subroutine.
+        /// Computes a multivariate Student's t probability over a rectangle with the Genz-Bretz method.
         /// </summary>
-        /// <param name="N"></param>
-        /// <param name="W"></param>
-        /// <returns></returns>
-        private double MVNDFN(int N, double[] W)
+        /// <param name="N">The number of variables.</param>
+        /// <param name="NU">The degrees of freedom ν, greater than zero.</param>
+        /// <param name="LOWER">The standardized lower integration limits.</param>
+        /// <param name="UPPER">The standardized upper integration limits.</param>
+        /// <param name="INFIN">The integration limit flags, as for <see cref="MVNDST"/>.</param>
+        /// <param name="CORREL">The packed strict-lower-triangle correlation coefficients, as for <see cref="MVNDST"/>.</param>
+        /// <param name="MAXPTS">The maximum number of integrand evaluations of the lattice rule.</param>
+        /// <param name="ABSEPS">The absolute error tolerance.</param>
+        /// <param name="RELEPS">The relative error tolerance.</param>
+        /// <param name="ERROR">Receives the estimated absolute error, with 99% confidence for the lattice rule.</param>
+        /// <param name="VALUE">Receives the probability.</param>
+        /// <param name="INFORM">Receives 0 on normal completion, 1 when the lattice rule used <paramref name="MAXPTS"/>
+        /// evaluations without meeting the tolerance, and 2 when N is outside [1, 500].</param>
+        /// <remarks>
+        /// <para>
+        /// This follows Alan Genz's Fortran <c>MVTDST</c>. The limits are sorted and the scale correlation is
+        /// factored by the same routine as <see cref="MVNDST"/>. One remaining variable uses the univariate t
+        /// CDF. Two remaining variables use the bivariate t probability: the Dunnett and Sobel (1954) closed
+        /// form of Genz's <c>MVBVTL</c> for integer ν up to 10,000, and otherwise an adaptive Gauss-Kronrod
+        /// integral of the exact bivariate normal probability over the χ(ν)/√ν mixing variable. Three or more
+        /// remaining variables use the randomized Korobov lattice rule of <see cref="MVNDST"/> with one extra
+        /// coordinate for the mixing variable, so the result carries a stochastic error bounded by the
+        /// tolerances and draws its lattice shifts from <see cref="MVNUNI"/>.
+        /// </para>
+        /// <para>
+        /// References: Genz, A. and Bretz, F. (2009). Computation of Multivariate Normal and t Probabilities.
+        /// Lecture Notes in Statistics 195, Springer. Dunnett, C. W. and Sobel, M. (1954). A bivariate
+        /// generalization of Student's t-distribution with tables for certain special cases. Biometrika 41,
+        /// 153-169.
+        /// </para>
+        /// </remarks>
+        internal void MVTDST(int N, double NU, double[] LOWER, double[] UPPER, int[] INFIN, double[] CORREL, int MAXPTS, double ABSEPS, double RELEPS, ref double ERROR, ref double VALUE, ref int INFORM)
         {
+            if (N > 500 || N < 1)
+            {
+                INFORM = 2;
+                VALUE = 0;
+                ERROR = 1;
+                return;
+            }
+            INFORM = 0;
+            int INFIS = 0;
+            var Y = new double[500];
+            double[] A, B, COV;
+            int[] INFI;
+            if (N <= 2)
+            {
+                // One or two variables never reach the lattice rule, so they use call-local arrays and leave the
+                // instance workspace untouched; concurrent calls on one instance are then independent.
+                A = new double[2];
+                B = new double[2];
+                INFI = new int[2];
+                COV = new double[3];
+            }
+            else
+            {
+                EnsureIntegrationWorkspace();
+                A = MVNDFN_A;
+                B = MVNDFN_B;
+                INFI = MVNDFN_INFI;
+                COV = MVNDFN_COV;
+            }
+            COVSRT(N, LOWER, UPPER, CORREL, INFIN, Y, ref INFIS, A, B, COV, INFI);
+            int ND = N - INFIS;
+            if (ND == 0)
+            {
+                VALUE = 1;
+                ERROR = 0;
+            }
+            else if (ND == 1)
+            {
+                VALUE = StudentTInterval(NU, A[0], B[0], INFI[0]);
+                ERROR = 2E-16;
+            }
+            else if (ND == 2 && Math.Abs(COV[2]) > 0)
+            {
+                double D = Math.Sqrt(1 + Math.Pow(COV[1], 2));
+                if (INFI[1] != 0) { A[1] = A[1] / D; }
+                if (INFI[1] != 1) { B[1] = B[1] / D; }
+                VALUE = BivariateStudentT(NU, A, B, INFI, COV[1] / D);
+                ERROR = 1E-14;
+            }
+            else if (ND == 2)
+            {
+                // The second variable is a multiple of the first: merge the limits, as MVNDNT does.
+                if (INFI[0] != 0)
+                { if (INFI[1] != 0) { A[0] = Math.Max(A[0], A[1]); } }
+                else
+                { if (INFI[1] != 0) { A[0] = A[1]; } }
+                if (INFI[0] != 1)
+                { if (INFI[1] != 1) { B[0] = Math.Min(B[0], B[1]); } }
+                else
+                { if (INFI[1] != 1) { B[0] = B[1]; } }
+                if (INFI[0] != INFI[1]) { INFI[0] = 2; }
+                VALUE = StudentTInterval(NU, A[0], B[0], INFI[0]);
+                ERROR = 2E-16;
+            }
+            else
+            {
+                _studentTDegreesOfFreedom = NU;
+                try
+                {
+                    DKBVRC(ND, 0, MAXPTS, ABSEPS, RELEPS, ref ERROR, ref VALUE, ref INFORM);
+                }
+                finally
+                {
+                    _studentTDegreesOfFreedom = 0;
+                }
+            }
+            VALUE = Tools.Clamp(VALUE, 0d, 1d);
+        }
 
-            double SUM, AI = 0, BI = 0, DI = 0, EI = 0;
+        /// <summary>
+        /// Returns the standard univariate Student's t probability of an interval.
+        /// </summary>
+        /// <param name="nu">The degrees of freedom.</param>
+        /// <param name="a">The lower limit.</param>
+        /// <param name="b">The upper limit.</param>
+        /// <param name="infin">The limit flag: 0 for (-∞, b], 1 for [a, ∞), 2 for [a, b], negative for (-∞, ∞).</param>
+        /// <returns>The interval probability.</returns>
+        private static double StudentTInterval(double nu, double a, double b, int infin)
+        {
+            if (infin < 0) return 1d;
+            var t = new StudentT(nu);
+            if (infin == 0) return t.CDF(b);
+            if (infin == 1) return t.CCDF(a);
+            return Math.Max(0d, t.CDF(b) - t.CDF(a));
+        }
 
-            var Y = new double[NL];
+        /// <summary>
+        /// Returns the standard bivariate Student's t probability of a rectangle.
+        /// </summary>
+        /// <param name="nu">The degrees of freedom.</param>
+        /// <param name="LOWER">The lower limits.</param>
+        /// <param name="UPPER">The upper limits.</param>
+        /// <param name="INFIN">The limit flags, as for <see cref="BVNMVN"/>.</param>
+        /// <param name="CORREL">The correlation coefficient.</param>
+        /// <returns>The rectangle probability.</returns>
+        /// <remarks>
+        /// This is Genz's <c>MVBVT</c>. Integer ν up to 10,000 uses the Dunnett and Sobel closed form
+        /// (<see cref="BivariateStudentTLower"/>). Other ν integrate the exact bivariate normal rectangle
+        /// probability, with the limits multiplied by r = χ(ν)/√ν, over the uniform u of r² ν / 2 ~ Gamma(ν/2)
+        /// by adaptive Gauss-Kronrod quadrature (interval tolerances 1E-13 absolute and 1E-11 relative), which
+        /// agrees with exact references to about 1E-14.
+        /// </remarks>
+        private double BivariateStudentT(double nu, double[] LOWER, double[] UPPER, int[] INFIN, double CORREL)
+        {
+            if (nu == Math.Floor(nu) && nu <= 10000d)
+            {
+                int n = (int)nu;
+                double result = 0;
+                if (INFIN[0] == 2 && INFIN[1] == 2)
+                {
+                    result = BivariateStudentTLower(n, UPPER[0], UPPER[1], CORREL) - BivariateStudentTLower(n, UPPER[0], LOWER[1], CORREL)
+                           - BivariateStudentTLower(n, LOWER[0], UPPER[1], CORREL) + BivariateStudentTLower(n, LOWER[0], LOWER[1], CORREL);
+                }
+                else if (INFIN[0] == 2 && INFIN[1] == 1)
+                {
+                    result = BivariateStudentTLower(n, -LOWER[0], -LOWER[1], CORREL) - BivariateStudentTLower(n, -UPPER[0], -LOWER[1], CORREL);
+                }
+                else if (INFIN[0] == 1 && INFIN[1] == 2)
+                {
+                    result = BivariateStudentTLower(n, -LOWER[0], -LOWER[1], CORREL) - BivariateStudentTLower(n, -LOWER[0], -UPPER[1], CORREL);
+                }
+                else if (INFIN[0] == 2 && INFIN[1] == 0)
+                {
+                    result = BivariateStudentTLower(n, UPPER[0], UPPER[1], CORREL) - BivariateStudentTLower(n, LOWER[0], UPPER[1], CORREL);
+                }
+                else if (INFIN[0] == 0 && INFIN[1] == 2)
+                {
+                    result = BivariateStudentTLower(n, UPPER[0], UPPER[1], CORREL) - BivariateStudentTLower(n, UPPER[0], LOWER[1], CORREL);
+                }
+                else if (INFIN[0] == 1 && INFIN[1] == 0)
+                {
+                    result = BivariateStudentTLower(n, -LOWER[0], UPPER[1], -CORREL);
+                }
+                else if (INFIN[0] == 0 && INFIN[1] == 1)
+                {
+                    result = BivariateStudentTLower(n, UPPER[0], -LOWER[1], -CORREL);
+                }
+                else if (INFIN[0] == 1 && INFIN[1] == 1)
+                {
+                    result = BivariateStudentTLower(n, -LOWER[0], -LOWER[1], CORREL);
+                }
+                else if (INFIN[0] == 0 && INFIN[1] == 0)
+                {
+                    result = BivariateStudentTLower(n, UPPER[0], UPPER[1], CORREL);
+                }
+                return Tools.Clamp(result, 0d, 1d);
+            }
 
-            double result = 1;
+            double halfNu = nu / 2d;
+            double logGammaHalfNu = Gamma.LogGamma(halfNu);
+            var lower = new double[2];
+            var upper = new double[2];
+            double integrand(double u)
+            {
+                double r = MultivariateStudentT.RadialFactor(halfNu, logGammaHalfNu, u);
+                for (int i = 0; i < 2; i++)
+                {
+                    lower[i] = r * LOWER[i];
+                    upper[i] = r * UPPER[i];
+                }
+                return BVNMVN(lower, upper, INFIN, CORREL);
+            }
+            var integrator = new Mathematics.Integration.AdaptiveGaussKronrod(integrand, 0d, 1d)
+            {
+                AbsoluteTolerance = 1E-13,
+                RelativeTolerance = 1E-11,
+                ReportFailure = false
+            };
+            integrator.Integrate();
+            return Tools.Clamp(integrator.Result, 0d, 1d);
+        }
+
+        /// <summary>
+        /// Returns the standard bivariate Student's t lower orthant probability P(X &lt; dh, Y &lt; dk) for an
+        /// integer number of degrees of freedom.
+        /// </summary>
+        /// <param name="nu">The degrees of freedom, at least one.</param>
+        /// <param name="dh">The first upper limit.</param>
+        /// <param name="dk">The second upper limit.</param>
+        /// <param name="r">The correlation coefficient.</param>
+        /// <returns>The lower orthant probability.</returns>
+        /// <remarks>
+        /// A translation of Alan Genz's <c>MVBVTL</c>, the Dunnett and Sobel (1954) finite series, which needs
+        /// about ν/2 terms and is exact to rounding.
+        /// </remarks>
+        private static double BivariateStudentTLower(int nu, double dh, double dk, double r)
+        {
+            const double EPS = 1E-15;
+            double snu = Math.Sqrt(nu);
+            double ors = 1 - r * r;
+            double hrk = dh - r * dk;
+            double krh = dk - r * dh;
+            double xnhk, xnkh;
+            if (Math.Abs(hrk) + ors > 0)
+            {
+                xnhk = hrk * hrk / (hrk * hrk + ors * (nu + dk * dk));
+                xnkh = krh * krh / (krh * krh + ors * (nu + dh * dh));
+            }
+            else
+            {
+                xnhk = 0;
+                xnkh = 0;
+            }
+            double hs = hrk < 0 ? -1d : 1d;
+            double ks = krh < 0 ? -1d : 1d;
+            double bvt;
+            if (nu % 2 == 0)
+            {
+                bvt = Math.Atan2(Math.Sqrt(ors), -r) / (2 * Math.PI);
+                double gmph = dh / Math.Sqrt(16 * (nu + dh * dh));
+                double gmpk = dk / Math.Sqrt(16 * (nu + dk * dk));
+                double btnckh = 2 * Math.Atan2(Math.Sqrt(xnkh), Math.Sqrt(1 - xnkh)) / Math.PI;
+                double btpdkh = 2 * Math.Sqrt(xnkh * (1 - xnkh)) / Math.PI;
+                double btnchk = 2 * Math.Atan2(Math.Sqrt(xnhk), Math.Sqrt(1 - xnhk)) / Math.PI;
+                double btpdhk = 2 * Math.Sqrt(xnhk * (1 - xnhk)) / Math.PI;
+                for (int j = 1; j <= nu / 2; j++)
+                {
+                    bvt += gmph * (1 + ks * btnckh);
+                    bvt += gmpk * (1 + hs * btnchk);
+                    btnckh += btpdkh;
+                    btpdkh = 2 * j * btpdkh * (1 - xnkh) / (2 * j + 1);
+                    btnchk += btpdhk;
+                    btpdhk = 2 * j * btpdhk * (1 - xnhk) / (2 * j + 1);
+                    gmph = gmph * (2 * j - 1) / (2 * j * (1 + dh * dh / nu));
+                    gmpk = gmpk * (2 * j - 1) / (2 * j * (1 + dk * dk / nu));
+                }
+            }
+            else
+            {
+                double qhrk = Math.Sqrt(dh * dh + dk * dk - 2 * r * dh * dk + nu * ors);
+                double hkrn = dh * dk + r * nu;
+                double hkn = dh * dk - nu;
+                double hpk = dh + dk;
+                bvt = Math.Atan2(-snu * (hkn * qhrk + hpk * hkrn), hkn * hkrn - nu * hpk * qhrk) / (2 * Math.PI);
+                if (bvt < -EPS) bvt += 1;
+                double gmph = dh / (2 * Math.PI * snu * (1 + dh * dh / nu));
+                double gmpk = dk / (2 * Math.PI * snu * (1 + dk * dk / nu));
+                double btnckh = Math.Sqrt(xnkh);
+                double btpdkh = btnckh;
+                double btnchk = Math.Sqrt(xnhk);
+                double btpdhk = btnchk;
+                for (int j = 1; j <= (nu - 1) / 2; j++)
+                {
+                    bvt += gmph * (1 + ks * btnckh);
+                    bvt += gmpk * (1 + hs * btnchk);
+                    btpdkh = (2 * j - 1) * btpdkh * (1 - xnkh) / (2 * j);
+                    btnckh += btpdkh;
+                    btpdhk = (2 * j - 1) * btpdhk * (1 - xnhk) / (2 * j);
+                    btnchk += btpdhk;
+                    gmph = 2 * j * gmph / ((2 * j + 1) * (1 + dh * dh / nu));
+                    gmpk = 2 * j * gmpk / ((2 * j + 1) * (1 + dk * dk / nu));
+                }
+            }
+            return bvt;
+        }
+
+        /// <summary>
+        /// The number of integrand points evaluated together by <see cref="MVNDFN4"/>.
+        /// </summary>
+        private const int IntegrandLanes = 4;
+
+        /// <summary>
+        /// Integrand subroutine, evaluated at four points at once.
+        /// </summary>
+        /// <param name="N">The number of integration variables.</param>
+        /// <param name="stride">The distance between consecutive lanes in <paramref name="W"/>, at least N + 1.</param>
+        /// <param name="W">The four points, lane l occupying entries [l·stride, l·stride + N + 1).</param>
+        /// <param name="values">Receives the integrand value at each of the four points.</param>
+        /// <param name="scale">
+        /// Null for the multivariate normal integrand; otherwise the radial factor r of each lane for the
+        /// multivariate t integrand, which multiplies every finite standardized limit before the conditional
+        /// shift is subtracted, as in the <c>MVVLSB</c> integrand of Genz's <c>MVTDST</c>.
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// This is the <c>MVNDFN</c> integrand of Alan Genz applied to four independent points in
+        /// lockstep. Each lane performs exactly the floating-point operations of a single evaluation, in
+        /// the same order, so every value equals the one-point evaluation bit for bit. Running the lanes
+        /// together lets the processor overlap their dependency chains, chiefly the Chebyshev recurrence
+        /// of <see cref="MVNPHI"/>, which a single evaluation leaves latency-bound.
+        /// </para>
+        /// <para>
+        /// The sorted bound flags and covariance factor are shared, so the lanes visit the same
+        /// variables and keep a common position in the packed factor. A lane leaves the computation
+        /// when its integration interval is empty, which gives it the value zero.
+        /// </para>
+        /// </remarks>
+        private void MVNDFN4(int N, int stride, double[] W, double[] values, double[]? scale)
+        {
+            if (MVNDFN_Y == null || MVNDFN_Y[0].Length != NL)
+            {
+                MVNDFN_Y = new double[IntegrandLanes][];
+                for (int l = 0; l < IntegrandLanes; l++)
+                    MVNDFN_Y[l] = new double[NL];
+            }
+            if (MVNDFN_LaneA == null)
+            {
+                MVNDFN_LaneA = new double[IntegrandLanes];
+                MVNDFN_LaneB = new double[IntegrandLanes];
+                MVNDFN_LaneD = new double[IntegrandLanes];
+                MVNDFN_LaneE = new double[IntegrandLanes];
+                MVNDFN_LaneActive = new bool[IntegrandLanes];
+            }
+            // Every entry of a lane's conditioning vector that is read was written earlier in the same
+            // evaluation, so the buffers are reused across lattice points.
+            var Y = MVNDFN_Y;
+            var AI = MVNDFN_LaneA;
+            var BI = MVNDFN_LaneB;
+            var DI = MVNDFN_LaneD;
+            var EI = MVNDFN_LaneE;
+            var active = MVNDFN_LaneActive;
+            for (int l = 0; l < IntegrandLanes; l++)
+            {
+                values[l] = 1;
+                AI[l] = 0;
+                BI[l] = 0;
+                active[l] = true;
+            }
+            int remaining = IntegrandLanes;
+
             int INFA = 0;
             int INFB = 0;
             int IK = 0;
             int IJ = 0;
             for (int i = 0; i < N + 1; i++)
             {
-                SUM = 0;
-                for (int j = 0; j <= i - 1; j++)
+                int start = IJ;
+                int terms = Math.Min(i, IK);
+                for (int l = 0; l < IntegrandLanes; l++)
                 {
-                    if (j < IK) { SUM += MVNDFN_COV[IJ] * Y[j]; }
-                    IJ++;
-                }
+                    if (!active[l]) continue;
+                    var y = Y[l];
+                    double SUM = 0;
+                    for (int j = 0; j < terms; j++)
+                        SUM += MVNDFN_COV[start + j] * y[j];
 
-                if (MVNDFN_INFI[i] != 0)
-                {
-                    if (INFA == 1)
-                    { AI = Math.Max(AI, MVNDFN_A[i] - SUM); }
-                    else
+                    if (MVNDFN_INFI[i] != 0)
                     {
-                        AI = MVNDFN_A[i] - SUM;
-                        INFA = 1;
+                        double limit = scale == null ? MVNDFN_A[i] : scale[l] * MVNDFN_A[i];
+                        if (INFA == 1)
+                        { AI[l] = Math.Max(AI[l], limit - SUM); }
+                        else
+                        { AI[l] = limit - SUM; }
+                    }
+                    if (MVNDFN_INFI[i] != 1)
+                    {
+                        double limit = scale == null ? MVNDFN_B[i] : scale[l] * MVNDFN_B[i];
+                        if (INFB == 1)
+                        { BI[l] = Math.Min(BI[l], limit - SUM); }
+                        else
+                        { BI[l] = limit - SUM; }
                     }
                 }
-                if (MVNDFN_INFI[i] != 1)
-                {
-                    if (INFB == 1)
-                    {
-                        BI = Math.Min(BI, MVNDFN_B[i] - SUM);
-                    }
-                    else
-                    {
-                        BI = MVNDFN_B[i] - SUM;
-                        INFB = 1;
-                    }
-                }
-                IJ++;
+                if (MVNDFN_INFI[i] != 0) INFA = 1;
+                if (MVNDFN_INFI[i] != 1) INFB = 1;
+                IJ = start + i + 1;
 
                 if (i == (N) || MVNDFN_COV[IJ + IK + 1] > 0)
                 {
-                    MVNLMS(AI, BI, 2 * INFA + INFB - 1, ref DI, ref EI);
-
-                    if (DI >= EI)
+                    // MVNLMS for every lane, with the normal probabilities taken four at a time.
+                    int INFIN = 2 * INFA + INFB - 1;
+                    for (int l = 0; l < IntegrandLanes; l++)
                     {
-                        result = 0;
-                        break;
+                        DI[l] = 0;
+                        EI[l] = 1;
                     }
-                    else
+                    if (INFIN >= 0)
                     {
-                        result = result * (EI - DI);
-                        if (i <= N) { Y[IK] = PHINVS(DI + W[IK] * (EI - DI)); }
-                        IK = IK + 1;
-                        INFA = 0;
-                        INFB = 0;
+                        if (INFIN != 0) MVNPHI4(AI, active, DI);
+                        if (INFIN != 1) MVNPHI4(BI, active, EI);
                     }
+                    for (int l = 0; l < IntegrandLanes; l++)
+                    {
+                        if (!active[l]) continue;
+                        EI[l] = Math.Max(EI[l], DI[l]);
+                        if (DI[l] >= EI[l])
+                        {
+                            values[l] = 0;
+                            active[l] = false;
+                            remaining--;
+                        }
+                        else
+                        {
+                            values[l] = values[l] * (EI[l] - DI[l]);
+                            if (i <= N) { Y[l][IK] = PHINVS(DI[l] + W[l * stride + IK] * (EI[l] - DI[l])); }
+                        }
+                    }
+                    if (remaining == 0) break;
+                    IK = IK + 1;
+                    INFA = 0;
+                    INFB = 0;
                 }
-
             }
-            return result;
+        }
+
+        /// <summary>
+        /// Computes the standard normal CDF of four arguments at once, each value identical to
+        /// <see cref="MVNPHI"/> of that argument.
+        /// </summary>
+        /// <param name="z">The four arguments.</param>
+        /// <param name="active">The lanes to compute; the result of an inactive lane is left unchanged.</param>
+        /// <param name="p">Receives the probabilities of the active lanes.</param>
+        /// <remarks>
+        /// The four Chebyshev recurrences run interleaved, each with the operations of
+        /// <see cref="MVNPHI"/> in the same order, so the processor can overlap them.
+        /// </remarks>
+        private static void MVNPHI4(double[] z, bool[] active, double[] p)
+        {
+            const double RTWO = 1.414213562373095048801688724209;
+            double z0 = active[0] ? z[0] : 0d;
+            double z1 = active[1] ? z[1] : 0d;
+            double z2 = active[2] ? z[2] : 0d;
+            double z3 = active[3] ? z[3] : 0d;
+            double xa0 = Math.Abs(z0) / RTWO, xa1 = Math.Abs(z1) / RTWO, xa2 = Math.Abs(z2) / RTWO, xa3 = Math.Abs(z3) / RTWO;
+            double t0 = (8 * xa0 - 30) / (4 * xa0 + 15), t1 = (8 * xa1 - 30) / (4 * xa1 + 15);
+            double t2 = (8 * xa2 - 30) / (4 * xa2 + 15), t3 = (8 * xa3 - 30) / (4 * xa3 + 15);
+            double bm0 = 0, b0 = 0, bp0 = 0, bm1 = 0, b1 = 0, bp1 = 0;
+            double bm2 = 0, b2 = 0, bp2 = 0, bm3 = 0, b3 = 0, bp3 = 0;
+            var a = Erf.ScaledErfcCoefficients;
+            for (int i = 24; i >= 0; i--)
+            {
+                double ai = a[i];
+                bp0 = b0; b0 = bm0; bm0 = t0 * b0 - bp0 + ai;
+                bp1 = b1; b1 = bm1; bm1 = t1 * b1 - bp1 + ai;
+                bp2 = b2; b2 = bm2; bm2 = t2 * b2 - bp2 + ai;
+                bp3 = b3; b3 = bm3; bm3 = t3 * b3 - bp3 + ai;
+            }
+            if (active[0]) p[0] = PhiFromRecurrence(z0, xa0, bm0 - bp0);
+            if (active[1]) p[1] = PhiFromRecurrence(z1, xa1, bm1 - bp1);
+            if (active[2]) p[2] = PhiFromRecurrence(z2, xa2, bm2 - bp2);
+            if (active[3]) p[3] = PhiFromRecurrence(z3, xa3, bm3 - bp3);
+        }
+
+        /// <summary>
+        /// Completes <see cref="MVNPHI"/> from its Chebyshev recurrence.
+        /// </summary>
+        /// <param name="z">The argument.</param>
+        /// <param name="xa">The scaled magnitude |z|/√2.</param>
+        /// <param name="difference">The difference b_0 - b_2 of the final recurrence value and the value two steps before it.</param>
+        /// <returns>The standard normal CDF of <paramref name="z"/>.</returns>
+        private static double PhiFromRecurrence(double z, double xa, double difference)
+        {
+            double P = xa > 100 ? 0 : Math.Exp(-xa * xa) * difference / 4;
+            if (z > 0) P = 1 - P;
+            return P;
         }
 
         /// <summary>
@@ -2135,22 +2635,22 @@ namespace Numerics.Distributions
             // First move any doubly infinite limits to innermost positions.
             if (INFIS < N)
             {
+                // Each of the last INFIS positions that holds a finite variable swaps it with the first
+                // doubly infinite variable before it, so the finite variables fill the first N - INFIS positions.
                 for (int i = N - 1; i >= N - INFIS; i--)
                 {
                     if (INFI[i] >= 0)
                     {
-                        for (int j = 0; j < i - 1; j++)
+                        for (int j = 0; j < i; j++)
                         {
                             if (INFI[j] < 0)
                             {
                                 RCSWP(j, i, A, B, INFI, N, COV);
-                                goto ten;
+                                break;
                             }
                         }
                     }
                 }
-
-            ten:
 
                 // Sort remaining limits and determine Cholesky factor.
                 II = 0;
@@ -2380,21 +2880,27 @@ namespace Numerics.Distributions
         /// <param name="NDIM">Number of variables, must exceed 1, but not exceed 40.</param>
         /// <param name="MINVLS">minimum number of function evaluations allowed. MINVLS must not exceed MAXVLS.If MINVLS &lt; 0 then the routine assumes a previous call has been made with the same integrand and continues that calculation.</param>
         /// <param name="MAXVLS">maximum number of function evaluations allowed.</param>
-        /// <param name="FUNCTN">EXTERNALly declared user defined function to be integrated. It must have parameters (NDIM, Z), where Z is a real array of dimension NDIM.</param>
         /// <param name="ABSEPS">Required absolute accuracy.</param>
         /// <param name="RELEPS">Required relative accuracy.</param>
         /// <param name="ABSERR">Estimated absolute accuracy of FINEST.</param>
         /// <param name="FINEST">Estimated value of integral.</param>
         /// <param name="INFORM">INFORM = 0 for normal exit, when ABSERR &lt;= MAX(ABSEPS, RELEPS* ABS(FINEST)) and INTVLS &lt;= MAXCLS. 
         ///                      INFORM = 1 If MAXVLS was too small to obtain the required accuracy.In this case a value FINEST is returned with estimated absolute accuracy ABSERR.</param>
-        private void DKBVRC(int NDIM, int MINVLS, int MAXVLS, Func<int, double[], double> FUNCTN, double ABSEPS, double RELEPS, ref double ABSERR, ref double FINEST, ref int INFORM)
+        private void DKBVRC(int NDIM, int MINVLS, int MAXVLS, double ABSEPS, double RELEPS, ref double ABSERR, ref double FINEST, ref int INFORM)
         {
 
             int PLIM = 28, NLIM = 1000, KLIM = 100, KLIMI, K, INTVLS, MINSMP = 8;
 
             double DIFINT, FINVAL, VARSQR, VARPRD, VALUE = 0;
-            double[] X = new double[2 * NLIM];
-            double[] VK = new double[NLIM];
+            // Every entry read from the workspaces is written earlier in the same call, so they are
+            // allocated once per instance.
+            if (DKBVRC_X == null)
+            {
+                DKBVRC_X = new double[2 * NLIM];
+                DKBVRC_VK = new double[NLIM];
+            }
+            double[] X = DKBVRC_X;
+            double[] VK = DKBVRC_VK;
 
             // DKBVRC SAVE P, C, SAMPLS, NP, VAREST
             INFORM = 1;
@@ -2436,7 +2942,7 @@ namespace Numerics.Distributions
 
             for (int i = 1; i <= DKBVRC_SAMPLS; i++)
             {
-                DKSMRC(NDIM, KLIMI, ref VALUE, DKBVRC_P[DKBVRC_NP], ref VK, FUNCTN, ref X);
+                DKSMRC(NDIM, KLIMI, ref VALUE, DKBVRC_P[DKBVRC_NP], ref VK, ref X);
                 DIFINT = (VALUE - FINVAL) / i;
                 FINVAL += DIFINT;
                 VARSQR = (i - 2) * VARSQR / i + Math.Pow(DIFINT, 2);
@@ -2477,13 +2983,14 @@ namespace Numerics.Distributions
         /// <param name="SUMKRO">Receives the running lattice-rule mean.</param>
         /// <param name="PRIME">The number of lattice points.</param>
         /// <param name="VK">The lattice-generator vector, randomized in place.</param>
-        /// <param name="FUNCTN">The transformed integrand.</param>
-        /// <param name="X">The coordinate and random-shift workspace.</param>
+        /// <param name="X">The workspace whose entries [NDIM, 2·NDIM) receive the random shift.</param>
         /// <remarks>
         /// <paramref name="VK"/> must contain at least <paramref name="NDIM"/> entries and
         /// <paramref name="X"/> at least twice that many. Random shifts are drawn from <see cref="MVNUNI"/>.
+        /// The transformed integrand is <see cref="MVNDFN4"/>: the multivariate normal integrand, or the
+        /// multivariate t integrand while <see cref="MVTDST"/> runs.
         /// </remarks>
-        private void DKSMRC(int NDIM, int KLIM, ref double SUMKRO, int PRIME, ref double[] VK, Func<int, double[], double> FUNCTN, ref double[] X)
+        private void DKSMRC(int NDIM, int KLIM, ref double SUMKRO, int PRIME, ref double[] VK, ref double[] X)
         {
             double sampleValue;
             double XT;
@@ -2505,23 +3012,63 @@ namespace Numerics.Distributions
             }
 
 
-            for (int i = 1; i <= PRIME; i++)
+            // The lattice points are evaluated four at a time, a point and its antithetic image for two
+            // consecutive indices, and the running mean is then updated in the order of the one-point
+            // loop: f(x_i), f(1 - x_i), f(x_(i+1)), f(1 - x_(i+1)). When PRIME is odd the last index fills
+            // two lanes, and the other two repeat it and are discarded.
+            int stride = NDIM + 1;
+            if (DKSMRC_W == null || DKSMRC_W.Length < IntegrandLanes * stride) DKSMRC_W = new double[IntegrandLanes * stride];
+            var W = DKSMRC_W;
+            var values = DKSMRC_Values;
+            for (int i = 1; i <= PRIME; i += 2)
             {
-
-                for (int j = 0; j < NDIM; j++)
+                int pairs = i < PRIME ? 2 : 1;
+                for (int pair = 0; pair < 2; pair++)
                 {
-                    X[j] = Math.Abs(2d * ((i * VK[j] + X[NDIM + j]) % 1d) - 1);
+                    int index = pair < pairs ? i + pair : i;
+                    int point = 2 * pair * stride;
+                    int image = point + stride;
+                    for (int j = 0; j < NDIM; j++)
+                    {
+                        // The argument is non-negative (i ≥ 1, the generator entries and the shift lie in
+                        // [0, 1)), where t - floor(t) is exact and equals the remainder t % 1.
+                        double t = index * VK[j] + X[NDIM + j];
+                        double x = Math.Abs(2d * (t - Math.Floor(t)) - 1);
+                        W[point + j] = x;
+                        W[image + j] = 1 - x;
+                    }
+                    // The integrand reads one entry past the coordinates only to fill a conditioning
+                    // entry it never uses; it receives the value the one-point layout placed there.
+                    W[point + NDIM] = X[NDIM];
+                    W[image + NDIM] = X[NDIM];
                 }
 
-                SUMKRO += (FUNCTN(NDIM, X) - SUMKRO) / (2 * i - 1);
-
-                for (int j = 0; j < NDIM; j++)
+                if (_studentTDegreesOfFreedom > 0)
                 {
-                    X[j] = 1 - X[j];
+                    // The last lattice coordinate is the radial variable r = sqrt(W / ν), W ~ χ²(ν), drawn
+                    // through the Halley inverse of the regularized lower incomplete gamma function; the other
+                    // coordinates drive the conditional normal integrand of the remaining NDIM - 1 variables.
+                    double halfNu = _studentTDegreesOfFreedom / 2d;
+                    double logGammaHalfNu = Gamma.LogGamma(halfNu);
+                    for (int l = 0; l < IntegrandLanes; l++)
+                    {
+                        double u = Math.Min(W[l * stride + NDIM - 1], StudentTMaximumUniform);
+                        DKSMRC_Scale[l] = MultivariateStudentT.RadialFactor(halfNu, logGammaHalfNu, u);
+                    }
+                    MVNDFN4(NDIM - 1, stride, W, values, DKSMRC_Scale);
                 }
-                SUMKRO += (FUNCTN(NDIM, X) - SUMKRO) / (2 * i);
+                else
+                {
+                    MVNDFN4(NDIM, stride, W, values, null);
+                }
+
+                for (int pair = 0; pair < pairs; pair++)
+                {
+                    int index = i + pair;
+                    SUMKRO += (values[2 * pair] - SUMKRO) / (2 * index - 1);
+                    SUMKRO += (values[2 * pair + 1] - SUMKRO) / (2 * index);
+                }
             }
-
         }
 
         /// <summary>
@@ -2591,33 +3138,17 @@ namespace Numerics.Distributions
             //     Reference: J.L.Schonfelder, Math Comp 32(1978), pp 1232-1240. 
             //
             double RTWO = 1.414213562373095048801688724209;
-            int IM = 24;
-            double BM, B, BP = 0, P, T, XA;
-
-            //     
-            XA = Math.Abs(Z) / RTWO;
-            if (XA > 100)
+            const int Terms = 25;
+            double XA = Math.Abs(Z) / RTWO;
+            double D = 0;
+            if (!(XA > 100))
             {
-                P = 0;
-            }
-            else
-            {
-                T = (8 * XA - 30) / (4 * XA + 15);
-                BM = 0;
-                B = 0;
-                for (int i = IM; i >= 0; i--)
-                {
-                    BP = B;
-                    B = BM;
-                    BM = T * B - BP + MVNPHI_A[i];
-                }
-
-                P = Math.Exp(-XA * XA) * (BM - BP) / 4;
+                double T = (8 * XA - 30) / (4 * XA + 15);
+                // Twice the Clenshaw sum (b_0 - b_2)/2 is b_0 - b_2 exactly.
+                D = 2d * Evaluate.Chebyshev(Erf.ScaledErfcCoefficients, T, Terms);
             }
 
-            if (Z > 0) P = 1 - P;
-
-            return P;
+            return PhiFromRecurrence(Z, XA, D);
         }
 
         //    Coefficients for P close to 0.5
@@ -2852,8 +3383,8 @@ namespace Numerics.Distributions
         /// Creates a copy of the distribution.
         /// </summary>
         /// <remarks>
-        /// Distribution parameters and numerical work arrays are copied, but <see cref="MVNUNI"/>
-        /// is shared by reference. This preserves a caller-supplied random stream across clones;
+        /// Distribution parameters, numerical work arrays and <see cref="IsDensityValid"/> are copied, but
+        /// <see cref="MVNUNI"/> is shared by reference. This preserves a caller-supplied random stream across clones;
         /// callers evaluating clones concurrently must assign a distinct generator to each clone.
         /// </remarks>
         public override MultivariateDistribution Clone()
@@ -2885,6 +3416,7 @@ namespace Numerics.Distributions
                 _infin = this._infin.ToArray(),
                 _covSRTed = this._covSRTed,
                 _correlationMatrixCreated = this._correlationMatrixCreated,
+                _densityValid = this._densityValid,
             };
 
             return mvn;

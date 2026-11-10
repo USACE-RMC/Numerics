@@ -321,5 +321,32 @@ namespace Distributions.BivariateCopulas
                 }
             }
         }
+
+        /// <summary>
+        /// At u = 0 and u = 1 the inverse conditional CDF is its limit: 0 for ρ > 0 at u = 0 and for ρ &lt; 0 at u = 1, 1 at the
+        /// other end, for 0 &lt; t &lt; 1; t for ρ = 0 and for t = 0 or t = 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseConditionalCDFEdges()
+        {
+            var positive = new NormalCopula(0.6);
+            var negative = new NormalCopula(-0.6);
+            foreach (double t in new[] { 1E-9, 0.3, 0.5, 0.9, 1d - 1E-9 })
+            {
+                Assert.AreEqual(0d, positive.InverseConditionalCDF(0d, t), 0d);
+                Assert.AreEqual(1d, positive.InverseConditionalCDF(1d, t), 0d);
+                Assert.AreEqual(1d, negative.InverseConditionalCDF(0d, t), 0d);
+                Assert.AreEqual(0d, negative.InverseConditionalCDF(1d, t), 0d);
+                Assert.AreEqual(t, new NormalCopula(0d).InverseConditionalCDF(0d, t), 0d);
+            }
+            foreach (var copula in new[] { positive, negative })
+            {
+                foreach (double u in new[] { 0d, 1d })
+                {
+                    Assert.AreEqual(0d, copula.InverseConditionalCDF(u, 0d), 0d);
+                    Assert.AreEqual(1d, copula.InverseConditionalCDF(u, 1d), 0d);
+                }
+            }
+        }
     }
 }

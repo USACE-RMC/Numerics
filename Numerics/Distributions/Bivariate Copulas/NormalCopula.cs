@@ -152,7 +152,7 @@ namespace Numerics.Distributions.Copulas
             if (_parametersValid == false) ValidateParameter(Theta, true);
             // BivariateCDF implements Genz's BVND which computes Phi2(-h,-k;r).
             // To get the copula C(u,v) = Phi2(Phi^-1(u), Phi^-1(v); r),
-            // we pass -Phi^-1(u) = Phi^-1(1-u) as arguments.
+            // the arguments are -Phi^-1(u) = Phi^-1(1-u).
             return MultivariateNormal.BivariateCDF(-Normal.StandardZ(u), -Normal.StandardZ(v), _theta);
         }
 
@@ -174,11 +174,19 @@ namespace Numerics.Distributions.Copulas
         /// <remarks>
         /// Uses the Gaussian closed-form conditional inversion
         /// v = Φ(ρΦ⁻¹(u) + √(1 − ρ²)·Φ⁻¹(t)).
+        /// At u = 0 and u = 1 the inverse is its limit: for ρ ≠ 0 and 0 &lt; t &lt; 1, ρΦ⁻¹(u) tends to −∞ or +∞, so the
+        /// inverse tends to 0 when ρ > 0 and u = 0 or ρ &lt; 0 and u = 1, and to 1 otherwise; for ρ = 0, and for t = 0
+        /// or t = 1, it is t.
         /// </remarks>
         public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
+            if (u == 0d || u == 1d)
+            {
+                if (_theta == 0d || !(t > 0d && t < 1d)) return t;
+                return (u == 0d) == (_theta > 0d) ? 0d : 1d;
+            }
             double z1 = Normal.StandardZ(u);
             double z2 = Normal.StandardZ(t);
             double r = _theta;

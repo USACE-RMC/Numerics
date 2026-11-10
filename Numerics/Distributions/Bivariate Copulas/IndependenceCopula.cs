@@ -19,7 +19,7 @@ namespace Numerics.Distributions.Copulas
     /// The Independence copula couples two marginal distributions with no dependence at all:
     /// C(u,v) = u·v, the copula of any pair of independent random variables per Sklar's theorem.
     /// It is the natural default when no dependence structure has been asserted, and the
-    /// identity against which dependence modeling is compared — every copula family that
+    /// identity against which dependence modeling is compared: every copula family that
     /// admits independence in its parameter interior reduces to it there.
     /// </para>
     /// <para>

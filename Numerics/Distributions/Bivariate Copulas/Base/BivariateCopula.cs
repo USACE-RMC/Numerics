@@ -109,7 +109,13 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         /// <param name="u">The reduced variate between 0 and 1.</param>
         /// <param name="v">The reduced variate between 0 and 1.</param>
-        public double LogPDF(double u, double v)
+        /// <returns>The log density; negative infinity where the density is zero, infinite or NaN.</returns>
+        /// <remarks>
+        /// The base implementation takes the log of <see cref="PDF(double, double)"/>. Families whose density
+        /// underflows or overflows in direct form override it with a log-space evaluation, which the
+        /// likelihood methods use.
+        /// </remarks>
+        public virtual double LogPDF(double u, double v)
         {
             double f = PDF(u, v);
             if (double.IsNaN(f) || double.IsInfinity(f) || f <= 0d)
@@ -287,7 +293,7 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         /// <remarks>
         /// Marginals are deep-copied through <see cref="CloneMarginal"/> because
-        /// distributions memoize internal state lazily — clones sharing marginal
+        /// distributions memoize internal state lazily; clones sharing marginal
         /// references are not safe to use concurrently (e.g., one clone per thread in
         /// Monte Carlo frameworks or parallel likelihood evaluation).
         /// </remarks>
@@ -299,7 +305,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="marginal">The marginal distribution, or null when unattached.</param>
         /// <returns>An independent copy of the marginal; null when unattached. A marginal
         /// implementation outside <see cref="UnivariateDistributionBase"/> (which carries the
-        /// clone support) is returned by reference, preserving the previous behavior.</returns>
+        /// clone support) is returned by reference.</returns>
         protected static IUnivariateDistribution? CloneMarginal(IUnivariateDistribution? marginal)
         {
             if (marginal is UnivariateDistributionBase cloneable)
@@ -332,7 +338,36 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public double[,] GenerateRandomValues(int sampleSize, int seed = -1)
         {
-            var rand = LatinHypercube.Random(sampleSize, 2, seed);
+            return TransformDesign(LatinHypercube.Random(sampleSize, 2, seed));
+        }
+
+        /// <summary>
+        /// Generates a random sample from the copula, drawing the Latin hypercube design from a supplied generator.
+        /// </summary>
+        /// <param name="sampleSize">The number of samples to generate.</param>
+        /// <param name="random">The master generator passed to <see cref="LatinHypercube.Random(int, int, Random)"/>.</param>
+        /// <returns>A <paramref name="sampleSize"/> by 2 array of samples, in the units of the marginal distributions
+        /// when both are attached and as non-exceedance probabilities otherwise.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="random"/> is null.</exception>
+        /// <remarks>
+        /// The sample is a deterministic function of the generator state, with no clock fallback. Passing
+        /// <c>new MersenneTwister(seed)</c> with a positive seed reproduces
+        /// <see cref="GenerateRandomValues(int, int)"/> with that seed exactly.
+        /// </remarks>
+        public double[,] GenerateRandomValues(int sampleSize, Random random)
+        {
+            return TransformDesign(LatinHypercube.Random(sampleSize, 2, random));
+        }
+
+        /// <summary>
+        /// Maps a two-column uniform design to copula samples by conditional inversion, then through the
+        /// marginal distributions when both are attached.
+        /// </summary>
+        /// <param name="rand">The uniform design, one row per sample.</param>
+        /// <returns>The sample, one row per design row.</returns>
+        private double[,] TransformDesign(double[,] rand)
+        {
+            int sampleSize = rand.GetLength(0);
             var sample = new double[sampleSize, 2];
             for (int i = 0; i < sampleSize; i++)
             {
@@ -415,11 +450,12 @@ namespace Numerics.Distributions.Copulas
         /// order. A zero-parameter copula writes an empty "Parameters" attribute.
         /// </returns>
         /// <remarks>
-        /// Marginal distributions are deliberately not serialized: consumers own their
-        /// marginals and attach them separately, so the element captures the dependence
-        /// structure alone. Serializing the type by name (never by numeric value) keeps the
-        /// payload valid as long as <see cref="CopulaType"/> members are only ever appended.
-        /// <see cref="CopulaFactory.CreateCopula(XElement)"/> reconstructs the copula.
+        /// Marginal distributions are not serialized by this overload: the element captures the
+        /// dependence structure alone, for consumers that own their marginals and attach them
+        /// separately. <see cref="ToXElement(bool)"/> includes them. Serializing the type by name
+        /// (never by numeric value) keeps the payload valid as long as <see cref="CopulaType"/>
+        /// members are only ever appended. <see cref="CopulaFactory.CreateCopula(XElement)"/>
+        /// reconstructs the copula.
         /// </remarks>
         public virtual XElement ToXElement()
         {
@@ -431,6 +467,48 @@ namespace Numerics.Distributions.Copulas
                 values[i] = parameters[i].ToString("G17", CultureInfo.InvariantCulture);
             result.SetAttributeValue("Parameters", string.Join("|", values));
             return result;
+        }
+
+        /// <summary>
+        /// Returns an XElement of the copula's type and parameters, optionally with its attached
+        /// marginal distributions.
+        /// </summary>
+        /// <param name="includeMarginals">True to append each attached marginal distribution.</param>
+        /// <returns>
+        /// The element written by <see cref="ToXElement()"/>. When <paramref name="includeMarginals"/>
+        /// is true, each attached marginal is appended as a child element named
+        /// "MarginalDistributionX" or "MarginalDistributionY" that holds the element written by
+        /// <see cref="UnivariateDistributionBase.ToXElement"/>; an unattached marginal is omitted.
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="includeMarginals"/> is true and an
+        /// attached marginal does not derive from <see cref="UnivariateDistributionBase"/>, which carries the
+        /// serialization support.</exception>
+        /// <remarks>
+        /// <see cref="CopulaFactory.CreateCopula(XElement, bool)"/> reconstructs the copula and its marginals.
+        /// </remarks>
+        public XElement ToXElement(bool includeMarginals)
+        {
+            var result = ToXElement();
+            if (!includeMarginals) return result;
+            AppendMarginal(result, nameof(MarginalDistributionX), MarginalDistributionX);
+            AppendMarginal(result, nameof(MarginalDistributionY), MarginalDistributionY);
+            return result;
+        }
+
+        /// <summary>
+        /// Appends an attached marginal distribution to a serialized copula.
+        /// </summary>
+        /// <param name="element">The copula element.</param>
+        /// <param name="name">The name of the child element.</param>
+        /// <param name="marginal">The marginal distribution, or null when unattached.</param>
+        /// <exception cref="ArgumentException">Thrown when the marginal does not derive from
+        /// <see cref="UnivariateDistributionBase"/>.</exception>
+        private static void AppendMarginal(XElement element, string name, IUnivariateDistribution? marginal)
+        {
+            if (marginal == null) return;
+            if (marginal is not UnivariateDistributionBase serializable)
+                throw new ArgumentException("The marginal distribution " + name + " does not derive from UnivariateDistributionBase and cannot be serialized.", "includeMarginals");
+            element.Add(new XElement(name, serializable.ToXElement()));
         }
 
         #endregion

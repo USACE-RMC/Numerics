@@ -495,7 +495,7 @@ namespace Distributions.Multivariate
         /// Test 1: Perfectly Negative correlation. 
         /// The matrix must be positive semi-definite. 
         /// So, the smallest allowable negative value is -1/(D-1) + an offset for machine double precision. 
-        /// For simplicity, I offset by 0.01. 
+        /// For simplicity, the offset is 0.01. 
         /// </summary>
         [TestMethod]
         public void Test_MultivariateNormalCDF_R_PerfectNegative()
@@ -514,7 +514,7 @@ namespace Distributions.Multivariate
         /// <summary>
         /// Verified against R "mvtnorm" package.
         /// Test 2: Perfectly positive correlation. 
-        /// Again, I offset my 0.01 to keep it positive definite.
+        /// Again, the offset of 0.01 keeps it positive definite.
         /// </summary>
         [TestMethod]
         public void Test_MultivariateNormalCDF_R_PerfectPositive()
@@ -678,7 +678,7 @@ namespace Distributions.Multivariate
         };
 
         /// <summary>
-        /// Case 3 of the reference set: a singular 2-D covariance of rank one — two perfectly correlated
+        /// Case 3 of the reference set: a singular 2-D covariance of rank one, two perfectly correlated
         /// components.
         /// </summary>
         private static readonly double[,] Case3Covariance =
@@ -796,7 +796,7 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Case 2: a singular covariance of rank two — the gridded-data structure of issue #145, where the
+        /// Case 2: a singular covariance of rank two, the gridded-data structure of issue #145, where the
         /// third component repeats the first. The singular value path must reproduce the scipy oracle,
         /// report the covariance as not positive-definite, and return zero density off the support.
         /// </summary>
@@ -822,7 +822,7 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Case 3: a singular covariance of rank one — two perfectly correlated components. The singular
+        /// Case 3: a singular covariance of rank one, two perfectly correlated components. The singular
         /// value path must reproduce the scipy oracle on the support and return negative infinity off it.
         /// </summary>
         /// <remarks>
@@ -853,12 +853,11 @@ namespace Distributions.Multivariate
         /// use the rank of the covariance matrix, not its dimension.
         /// </summary>
         /// <remarks>
-        /// An SVD fallback carried by this class in the repository's first commit (46d5487, removed in
-        /// ad0b293) computed the constant as
-        /// <c>-(Math.Log(2d * Math.PI) * _mean.Length + lndet) * 0.5d</c> — the dimension where the rank
+        /// A normalizing constant computed as
+        /// <c>-(Math.Log(2d * Math.PI) * _mean.Length + lndet) * 0.5d</c> uses the dimension where the rank
         /// belongs. Using the dimension shifts the log density by exactly 0.5 * (d - rank) * log(2π), which
         /// is 0.9189385332046727 per deficient dimension, a factor of 2.5066282746310002 on the density.
-        /// Cases 2 and 3 are each rank-deficient by exactly one, so that bug would put every one of their
+        /// Cases 2 and 3 are each rank-deficient by exactly one, so that error would put every one of their
         /// oracle values off by that fixed amount. This test asserts both that the oracle value is
         /// reproduced and that the value the dimension-based constant would produce is exactly that far
         /// away, so it fails loudly if the constant ever regresses.
@@ -869,7 +868,7 @@ namespace Distributions.Multivariate
             double shiftPerDeficientDimension = 0.5d * Math.Log(2d * Math.PI);
             Assert.AreEqual(0.9189385332046727d, shiftPerDeficientDimension, 1E-15d);
 
-            // Case 2: dimension 3, rank 2 — deficient by one.
+            // Case 2: dimension 3, rank 2, deficient by one.
             var case2 = new MultivariateNormal(new[] { 0d, 0d, 0d }, Case2Covariance, DecompositionMethod.SingularValue);
             double case2Oracle = -2.4642585506570285d;
             double case2Actual = case2.LogPDF(new[] { 0d, 0d, 0d });
@@ -877,7 +876,7 @@ namespace Distributions.Multivariate
             Assert.IsGreaterThan(0.9d, Math.Abs(case2Actual - (case2Oracle - shiftPerDeficientDimension)),
                 "The log density must not carry the dimension-based constant.");
 
-            // Case 3: dimension 2, rank 1 — deficient by one.
+            // Case 3: dimension 2, rank 1, deficient by one.
             var case3 = new MultivariateNormal(new[] { 0d, 0d }, Case3Covariance, DecompositionMethod.SingularValue);
             double case3Oracle = -1.2655121234846454d;
             double case3Actual = case3.LogPDF(new[] { 0d, 0d });
@@ -977,10 +976,10 @@ namespace Distributions.Multivariate
         /// </summary>
         /// <remarks>
         /// The expected values were captured from the library immediately before the decomposition selector
-        /// of issue #145 was added, and are asserted exactly — not within a tolerance — so the Cholesky path
-        /// is held bit-identical. Every entry point that was rewired to the shared sampling factor is
-        /// covered: <see cref="MultivariateNormal.GenerateRandomValues"/>,
-        /// <see cref="MultivariateNormal.LatinHypercubeRandomValues"/>,
+        /// of issue #145 was added, and are asserted exactly, not within a tolerance, so the Cholesky path
+        /// is held bit-identical. Every entry point that uses the shared sampling factor is
+        /// covered: <see cref="MultivariateNormal.GenerateRandomValues(int, int)"/>,
+        /// <see cref="MultivariateNormal.LatinHypercubeRandomValues(int, int)"/>,
         /// <see cref="MultivariateNormal.StratifiedRandomValues"/> and
         /// <see cref="MultivariateNormal.InverseCDF"/>; so are the three that gained a branch on the
         /// selector, <see cref="MultivariateNormal.PDF"/>, <see cref="MultivariateNormal.LogPDF"/> and
@@ -1124,7 +1123,7 @@ namespace Distributions.Multivariate
         /// 4.440892E-16 rather than exactly zero, so under a purely absolute <c>pivot &lt;= 0</c> test the
         /// factorization completes with a factor entry of order 1E-8 and reports the matrix
         /// positive-definite; the resulting log density at the origin is +14.638629610696878 against the
-        /// correct -2.4642585506570285 — wrong by 17.1 nats, a factor of about 2.7E+7 on the density —
+        /// correct -2.4642585506570285 (wrong by 17.1 nats, a factor of about 2.7E+7 on the density)
         /// with no exception, no warning and no flag. That silent wrong answer is the failure mode issue
         /// #145 describes, and it is what the scale-relative pivot test in
         /// <see cref="CholeskyDecomposition"/> catches: the pivot ratio is 2.220446E-16 against a
@@ -1196,14 +1195,13 @@ namespace Distributions.Multivariate
         }
 
         /// <summary>
-        /// Verifies the paths the selector does not govern: the
-        /// Genz MVNDST integrator behind <see cref="MultivariateNormal.CDF"/> factorizes the correlation
-        /// matrix internally, and <see cref="MultivariateNormal.Conditional"/> and
-        /// <see cref="MultivariateNormal.Marginal"/> factorize the sub-covariance with their own Cholesky
-        /// decomposition and return Cholesky-based distributions.
+        /// Verifies that the Genz MVNDST integrator behind <see cref="MultivariateNormal.CDF"/>, which
+        /// factorizes the correlation matrix internally, is unaffected by the selector, and that
+        /// <see cref="MultivariateNormal.Conditional"/> and <see cref="MultivariateNormal.Marginal"/>
+        /// return distributions on the selector of the parent.
         /// </summary>
         [TestMethod]
-        public void Test_Decomposition_CdfAndConditionalHelpersAreUnaffected()
+        public void Test_Decomposition_CdfIsUnaffectedAndHelpersInheritTheSelector()
         {
             var cholesky = new MultivariateNormal(Case1Mean, Case1Covariance);
             var singular = new MultivariateNormal(Case1Mean, Case1Covariance, DecompositionMethod.SingularValue);
@@ -1217,17 +1215,83 @@ namespace Distributions.Multivariate
             Assert.AreEqual(expectedCdf, cholesky.CDF(new[] { 2d, 3d, 4d }), 0d);
             Assert.AreEqual(expectedCdf, singular.CDF(new[] { 2d, 3d, 4d }), 0d);
 
-            // The conditional and marginal helpers return distributions on the default selector.
+            // The conditional and marginal helpers return distributions on the selector of the parent.
             var conditional = singular.Conditional(new[] { 2 }, new[] { 3d });
-            Assert.AreEqual(DecompositionMethod.Cholesky, conditional.Decomposition);
+            Assert.AreEqual(DecompositionMethod.SingularValue, conditional.Decomposition);
             var marginal = singular.Marginal(0, 1);
-            Assert.AreEqual(DecompositionMethod.Cholesky, marginal.Decomposition);
-
-            // They agree with the Cholesky parent, which is the behaviour they have today.
+            Assert.AreEqual(DecompositionMethod.SingularValue, marginal.Decomposition);
             var choleskyConditional = cholesky.Conditional(new[] { 2 }, new[] { 3d });
-            Assert.AreEqual(choleskyConditional.LogPDF(new[] { 1d, 2d }), conditional.LogPDF(new[] { 1d, 2d }), 0d);
+            Assert.AreEqual(DecompositionMethod.Cholesky, choleskyConditional.Decomposition);
             var choleskyMarginal = cholesky.Marginal(0, 1);
-            Assert.AreEqual(choleskyMarginal.LogPDF(new[] { 1d, 2d }), marginal.LogPDF(new[] { 1d, 2d }), 0d);
+            Assert.AreEqual(DecompositionMethod.Cholesky, choleskyMarginal.Decomposition);
+
+            // On a full-rank covariance the two selectors give the same density up to rounding.
+            Assert.AreEqual(choleskyConditional.LogPDF(new[] { 1d, 2d }), conditional.LogPDF(new[] { 1d, 2d }), 1E-12);
+            Assert.AreEqual(choleskyMarginal.LogPDF(new[] { 1d, 2d }), marginal.LogPDF(new[] { 1d, 2d }), 1E-12);
+        }
+
+        /// <summary>
+        /// Verifies that the marginal and conditional of a singular distribution are degenerate normals on
+        /// the singular value selector, against scipy 1.17.1
+        /// <c>multivariate_normal(mean, cov, allow_singular=True).logpdf</c>, and that both share the
+        /// generator of the parent.
+        /// </summary>
+        /// <remarks>
+        /// Σ = [[1, 1, 0], [1, 1, 0], [0, 0, 2]] with μ = (0.5, −0.25, 1). The marginal over the first two
+        /// dimensions has the singular covariance [[1, 1], [1, 1]]; the third dimension is independent of
+        /// them, so conditioning on it leaves the same distribution. scipy gives
+        /// logpdf((1, 0.25)) = logpdf((0, −0.75)) = −1.3905121234846454 and logpdf((1, 0)) = −∞.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SingularParent_MarginalAndConditionalAreDegenerateNormals()
+        {
+            var mean = new[] { 0.5d, -0.25d, 1d };
+            var covariance = new[,] { { 1d, 1d, 0d }, { 1d, 1d, 0d }, { 0d, 0d, 2d } };
+            var parent = new MultivariateNormal(mean, covariance, DecompositionMethod.SingularValue);
+
+            var marginal = parent.Marginal(0, 1);
+            Assert.AreEqual(DecompositionMethod.SingularValue, marginal.Decomposition);
+            Assert.AreEqual(-1.3905121234846454d, marginal.LogPDF(new[] { 1d, 0.25d }), 1E-12);
+            Assert.AreEqual(double.NegativeInfinity, marginal.LogPDF(new[] { 1d, 0d }));
+            Assert.AreSame(parent.MVNUNI, marginal.MVNUNI);
+
+            var conditional = parent.Conditional(new[] { 2 }, new[] { 3d });
+            Assert.AreEqual(DecompositionMethod.SingularValue, conditional.Decomposition);
+            Assert.AreEqual(0.5d, conditional.Mean[0], 0d);
+            Assert.AreEqual(-0.25d, conditional.Mean[1], 0d);
+            Assert.AreEqual(-1.3905121234846454d, conditional.LogPDF(new[] { 0d, -0.75d }), 1E-12);
+            Assert.AreSame(parent.MVNUNI, conditional.MVNUNI);
+        }
+
+        /// <summary>
+        /// Verifies that conditioning on a singular observed sub-covariance throws the documented
+        /// <see cref="ArgumentOutOfRangeException"/>, with the decomposition failure as the inner exception.
+        /// </summary>
+        [TestMethod]
+        public void Test_Conditional_SingularObservedBlockThrowsOutOfRange()
+        {
+            var parent = new MultivariateNormal(new[] { 0.5d, -0.25d, 1d },
+                new[,] { { 1d, 1d, 0d }, { 1d, 1d, 0d }, { 0d, 0d, 2d } }, DecompositionMethod.SingularValue);
+            var thrown = AssertThrowsOutOfRange(() => parent.Conditional(new[] { 0, 1 }, new[] { 0d, 0d }));
+            Assert.IsNotNull(thrown.InnerException);
+        }
+
+        /// <summary>
+        /// Verifies that a clone of a distribution left invalid by a rejected covariance is invalid as well.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_PreservesInvalidDensityState()
+        {
+            var mvn = new MultivariateNormal(new[] { 1d, 2d }, new[,] { { 1d, 0.3d }, { 0.3d, 2d } });
+            Assert.IsFalse(mvn.TrySetCovariance(new[,] { { 1d, 1.5d }, { 1.5d, 1d } }));
+
+            var clone = (MultivariateNormal)mvn.Clone();
+            Assert.IsFalse(clone.IsDensityValid);
+            Assert.AreEqual(double.NegativeInfinity, clone.LogPDF(new[] { 1.2d, 1.8d }));
+            Assert.AreEqual(0d, clone.PDF(new[] { 1.2d, 1.8d }), 0d);
+
+            var valid = (MultivariateNormal)new MultivariateNormal(new[] { 1d, 2d }, new[,] { { 1d, 0.3d }, { 0.3d, 2d } }).Clone();
+            Assert.IsTrue(valid.IsDensityValid);
         }
 
 
@@ -1237,18 +1301,17 @@ namespace Distributions.Multivariate
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Σ = [[4, 0], [0, −1E-10]] is the case that forced this threshold to be reworked. The class
-        /// originally carried two different notions of "numerically zero" about 6.7 orders of magnitude
-        /// apart: an acceptance tolerance of roughly 5.6E-11·max|Σᵢⱼ| and a rank threshold of roughly
-        /// 1.5E-16·λmax. Everything in that band was mishandled, because a tolerated eigenvalue was
-        /// <b>kept</b> rather than zeroed — the direction acquired sqrt(|λ|) of sampling noise and
-        /// contributed log|λ| to the log pseudo-determinant. This matrix was accepted, reported
-        /// <see cref="MultivariateNormal.IsPositiveDefinite"/> true, and returned a log density of about
-        /// +8.98 at the origin: a negative variance silently turned into a positive one, which is the
+        /// Σ = [[4, 0], [0, −1E-10]] guards against two different notions of "numerically zero" about 6.7
+        /// orders of magnitude apart: an acceptance tolerance of roughly 5.6E-11·max|Σᵢⱼ| and a rank
+        /// threshold of roughly 1.5E-16·λmax. Under that pair everything in the band is mishandled, because
+        /// a tolerated eigenvalue is <b>kept</b> rather than zeroed: the direction acquires sqrt(|λ|) of
+        /// sampling noise and contributes log|λ| to the log pseudo-determinant. This matrix is then accepted,
+        /// reports <see cref="MultivariateNormal.IsPositiveDefinite"/> true, and returns a log density of
+        /// about +8.98 at the origin: a negative variance silently turned into a positive one, which is the
         /// failure mode issue #145 exists to remove.
         /// </para>
         /// <para>
-        /// A single threshold ε = 1E6·2⁻⁵²·max|λ| = 8.881784197001252E-10 now governs acceptance, rank,
+        /// A single threshold ε = 1E6·2⁻⁵²·max|λ| = 8.881784197001252E-10 governs acceptance, rank,
         /// null space, pseudo-determinant and pseudo-inverse alike. The eigenvalue −1E-10 lies inside it,
         /// so the matrix is accepted and that direction is zeroed, giving a rank-1 normal on the x-axis with
         /// log pseudo-determinant log(4) = 1.3862943611198906 and
@@ -1282,7 +1345,7 @@ namespace Distributions.Multivariate
                 Assert.AreEqual(0d, sample[i, 1], 0d);
 
             // The default Cholesky selector still rejects this matrix outright. The two paths diverge here
-            // by design — Cholesky factorizes only strictly positive-definite matrices — and that
+            // by design (Cholesky factorizes only strictly positive-definite matrices), and that
             // divergence is asserted rather than left to chance.
             AssertThrowsAny(() => new MultivariateNormal(mean, covariance));
         }
@@ -1329,7 +1392,7 @@ namespace Distributions.Multivariate
         /// <remarks>
         /// Case 2 is rank-deficient by exactly one, and its null singular value comes out at about
         /// 3.23E-16 rather than exactly zero. Against the roundoff-based default threshold of the
-        /// decomposition, 6.107E-16, that is a margin of only 1.9x — thin enough that a slightly different
+        /// decomposition, 6.107E-16, that is a margin of only 1.9x, thin enough that a slightly different
         /// matrix, or a slightly less accurate decomposition, misdetects the rank, at which point
         /// <see cref="SingularValueDecomposition.Nullspace"/> comes back empty and off-support detection is
         /// silently disabled. The scipy threshold of 1E6·2⁻⁵²·λmax ≈ 9.233E-10 turns that 1.9x into about
@@ -1373,7 +1436,7 @@ namespace Distributions.Multivariate
         /// negative infinity even at μ. Verified against scipy 1.17.1: the rank and log pseudo-determinant
         /// that scipy itself reports for this matrix are 0 and 0.0, which imply a log density of zero, but
         /// its support test compares the residual with a strict <c>&lt;</c> against a threshold that is
-        /// itself exactly zero here, so no point at all passes — including the mean.
+        /// itself exactly zero here, so no point at all passes, including the mean.
         /// </para>
         /// </remarks>
         [TestMethod]
@@ -1397,6 +1460,148 @@ namespace Distributions.Multivariate
                 Assert.AreEqual(mean[0], sample[i, 0], 0d);
                 Assert.AreEqual(mean[1], sample[i, 1], 0d);
             }
+        }
+
+        #endregion
+
+        #region Allocation-Free Paths
+
+        /// <summary>
+        /// A five-dimensional covariance with unequal variances and alternating correlations.
+        /// </summary>
+        private static double[,] FiveDimensionalCovariance()
+        {
+            var covariance = new double[5, 5];
+            for (int i = 0; i < 5; i++)
+                for (int j = 0; j < 5; j++)
+                    covariance[i, j] = (i == j ? 1d : 0.5d * Math.Pow(-0.6d, Math.Abs(i - j))) * (1d + 0.25d * i) * (1d + 0.25d * j);
+            return covariance;
+        }
+
+        /// <summary>
+        /// Verifies that the density after <see cref="MultivariateNormal.SetParameters"/> and
+        /// <see cref="MultivariateNormal.TrySetCovariance"/> equals, bit for bit, the density formed from a
+        /// separate Cholesky factorization of the same covariance.
+        /// </summary>
+        [TestMethod]
+        public void Test_SetParameters_DensityMatchesAnIndependentFactorization()
+        {
+            var mean = new[] { 0.1d, -0.2d, 0.3d, 0d, 0.5d };
+            var covariance = FiveDimensionalCovariance();
+            var x = new[] { 0.5d, 0d, 1d, -0.3d, 2d };
+
+            var cholesky = new CholeskyDecomposition(new Matrix(covariance));
+            var z = new double[5];
+            for (int i = 0; i < 5; i++) z[i] = x[i] - mean[i];
+            var solved = cholesky.Solve(new Vector(z));
+            double quadratic = 0d;
+            for (int i = 0; i < 5; i++) quadratic += solved[i] * z[i];
+            double lnConstant = -(Math.Log(2d * Math.PI) * 5 + cholesky.LogDeterminant()) * 0.5d;
+            double expected = -0.5d * quadratic + lnConstant;
+
+            var mvn = new MultivariateNormal(5);
+            mvn.SetParameters(mean, covariance);
+            Assert.AreEqual(expected, mvn.LogPDF(x), 0d);
+
+            var mutable = new MultivariateNormal(mean, new[,] { { 1d, 0d, 0d, 0d, 0d }, { 0d, 1d, 0d, 0d, 0d }, { 0d, 0d, 1d, 0d, 0d }, { 0d, 0d, 0d, 1d, 0d }, { 0d, 0d, 0d, 0d, 1d } });
+            Assert.IsTrue(mutable.TrySetCovariance(covariance));
+            Assert.AreEqual(expected, mutable.LogPDF(x), 0d);
+        }
+
+        /// <summary>
+        /// Verifies that the sampling methods equal, bit for bit, the product L·z + μ formed with
+        /// <see cref="Matrix"/> multiplication, and that the generator overloads reproduce the seeded ones.
+        /// </summary>
+        [TestMethod]
+        public void Test_Sampling_MatchesTheMatrixProductAndTheSeededOverloads()
+        {
+            var mean = new[] { 0.1d, -0.2d, 0.3d, 0d, 0.5d };
+            var covariance = FiveDimensionalCovariance();
+            var mvn = new MultivariateNormal(mean, covariance);
+            var factor = new CholeskyDecomposition(new Matrix(covariance)).L;
+
+            // GenerateRandomValues: one generator draw per dimension, row by row.
+            var sample = mvn.GenerateRandomValues(200, 31);
+            var random = new MersenneTwister(31);
+            for (int i = 0; i < 200; i++)
+            {
+                var z = new double[5];
+                for (int j = 0; j < 5; j++) z[j] = Normal.StandardZ(random.NextDouble());
+                var product = factor * z;
+                for (int j = 0; j < 5; j++) Assert.AreEqual(product[j] + mean[j], sample[i, j], 0d);
+            }
+            AssertIdentical(sample, mvn.GenerateRandomValues(200, new MersenneTwister(31)));
+
+            // LatinHypercubeRandomValues: the same product over the Latin hypercube design.
+            var lhs = mvn.LatinHypercubeRandomValues(100, 17);
+            var design = LatinHypercube.Random(100, 5, 17);
+            for (int i = 0; i < 100; i++)
+            {
+                var z = new double[5];
+                for (int j = 0; j < 5; j++) z[j] = Normal.StandardZ(design[i, j]);
+                var product = factor * z;
+                for (int j = 0; j < 5; j++) Assert.AreEqual(product[j] + mean[j], lhs[i, j], 0d);
+            }
+            AssertIdentical(lhs, mvn.LatinHypercubeRandomValues(100, new MersenneTwister(17)));
+
+            // StratifiedRandomValues: the first dimension at the bin midpoints.
+            var bins = Stratify.Probabilities(new StratificationOptions(0.001, 0.999, 20, false));
+            var stratified = mvn.StratifiedRandomValues(bins, 5);
+            var generator = new MersenneTwister(5);
+            for (int i = 0; i < bins.Count; i++)
+            {
+                var z = new double[5];
+                z[0] = Normal.StandardZ(bins[i].Midpoint);
+                for (int j = 1; j < 5; j++) z[j] = Normal.StandardZ(generator.NextDouble());
+                var product = factor * z;
+                for (int j = 0; j < 5; j++) Assert.AreEqual(product[j] + mean[j], stratified[i, j], 0d);
+            }
+
+            Assert.ThrowsExactly<ArgumentNullException>(() => mvn.GenerateRandomValues(10, (Random)null!));
+            Assert.ThrowsExactly<ArgumentNullException>(() => mvn.LatinHypercubeRandomValues(10, (Random)null!));
+        }
+
+        /// <summary>
+        /// Pins the lattice-rule probabilities of <see cref="MultivariateNormal.CDF"/> and
+        /// <see cref="MultivariateNormal.Interval"/> exactly, including an interval that is empty in one
+        /// dimension and a deep lower tail, on a seeded generator.
+        /// </summary>
+        /// <remarks>
+        /// The integrand is evaluated four lattice points at a time; each value must equal the one-point
+        /// evaluation bit for bit, so these probabilities are asserted without tolerance. They agree with
+        /// scipy 1.17.1 <c>multivariate_normal.cdf</c> at a 1E-9 tolerance (0.05879224410872116,
+        /// 0.01657749045903727 and 3.4449276973407745E-12) to within the 1E-4 absolute tolerance the
+        /// integrator is given.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_LatticeRuleValuesArePinned()
+        {
+            var mvn = new MultivariateNormal(new[] { 0.1d, -0.2d, 0.3d, 0d, 0.5d }, FiveDimensionalCovariance()) { MVNUNI = new MersenneTwister(2026) };
+            var x = new[] { 0.5d, 0d, 1d, -0.3d, 2d };
+            Assert.AreEqual(0.058777737098073685d, mvn.CDF(x), 0d);
+            Assert.AreEqual(0.05878681212886847d, mvn.CDF(x), 0d);
+
+            var lower = new[] { -1d, double.NegativeInfinity, 0d, -2d, 0.5d };
+            var upper = new[] { 1d, 0.5d, double.PositiveInfinity, -0.5d, 0.5d };
+            Assert.AreEqual(0d, mvn.Interval(lower, upper), 0d);
+            lower[4] = -0.5d;
+            Assert.AreEqual(0.01657796863587785d, mvn.Interval(lower, upper), 0d);
+            Assert.AreEqual(3.4445844703355637E-12d, mvn.CDF(new[] { -6d, 0d, 1d, -0.3d, 2d }), 0d);
+            Assert.AreEqual(0.05879224410872116d, new MultivariateNormal(new[] { 0.1d, -0.2d, 0.3d, 0d, 0.5d }, FiveDimensionalCovariance()).CDF(x), 1E-4);
+        }
+
+        /// <summary>
+        /// Asserts that two arrays are identical, entry for entry.
+        /// </summary>
+        /// <param name="expected">The expected array.</param>
+        /// <param name="actual">The actual array.</param>
+        private static void AssertIdentical(double[,] expected, double[,] actual)
+        {
+            Assert.AreEqual(expected.GetLength(0), actual.GetLength(0));
+            Assert.AreEqual(expected.GetLength(1), actual.GetLength(1));
+            for (int i = 0; i < expected.GetLength(0); i++)
+                for (int j = 0; j < expected.GetLength(1); j++)
+                    Assert.AreEqual(expected[i, j], actual[i, j], 0d);
         }
 
         #endregion
