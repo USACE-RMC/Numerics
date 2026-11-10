@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net10.0;net9.0;net8.0;net481</TargetFrameworks>
+    <TargetFrameworks>net10.0;net481</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -21,6 +21,23 @@
     <PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
     <PackageId>RMC.Numerics</PackageId>
   </PropertyGroup>
+
+  <!-- Pack-time API compatibility check against the last public release on nuget.org. Advance the baseline after each release. -->
+  <PropertyGroup>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>2.2.0</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
+  <!-- System.ValueTuple is a .NET Framework 4.8.1 facade, so it is not among the net481 compile references; package validation needs it to compare net481 tuple signatures. -->
+  <Target Name="AddValueTupleFacadeToPackageValidation" BeforeTargets="RunPackageValidation">
+    <PropertyGroup>
+      <_ValueTupleFacade Condition="'$(_ValueTupleFacade)' == ''">$(MSBuildProgramFiles32)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8.1\Facades\System.ValueTuple.dll</_ValueTupleFacade>
+    </PropertyGroup>
+    <ItemGroup>
+      <PackageValidationReferencePath Condition="'%(Identity)' == 'net481' and Exists('$(_ValueTupleFacade)')" ReferencePath="%(ReferencePath),$(_ValueTupleFacade)" />
+    </ItemGroup>
+    <Message Importance="high" Condition="!Exists('$(_ValueTupleFacade)')" Text="Package validation: the .NET Framework 4.8.1 targeting pack was not found at '$(_ValueTupleFacade)', so the net481 comparison runs without System.ValueTuple and does not fully compare tuple signatures." />
+  </Target>
 
   <!-- Otherwise targets C# 7.3 which doesn't have global usings and some other syntactic sugar utilized here.  -->
   <PropertyGroup Condition="'$(TargetFramework)' == 'net481'">
