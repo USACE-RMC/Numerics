@@ -45,9 +45,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>2.2.0</Version>
-    <PackageReleaseNotes>Version 2.2.0 adds weighted statistics and global sensitivity estimators; adaptive two-dimensional Gauss-Kronrod integration; scrambled Sobol/Vegas sampling; conditional copulas and an Independence copula; composable, serializable functions; empirical convolution; sided extrapolation; singular-covariance multivariate normal support; and expanded shortest-path routing. It improves distribution tails, censored and interval likelihoods, uncertainty calculations, mixture and competing-risk evaluation, adaptive NUTS and MCMC diagnostics, BFGS convergence, matrix regularization, and regression coverage. Upgrade considerations: R-hat/ESS definitions, default NUTS mass adaptation, corrected numerical methods and fitting constraints can change reported results. See the v2.2.0 GitHub release notes for details.</PackageReleaseNotes>
-    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <Version>2.3.0</Version>
+    <PackageReleaseNotes>Version 2.3.0 adds Hosking-Wallis regional frequency analysis (Numerics.Distributions.Regional), Gaussian process regression, kriging, elastic net and PCA, the L-BFGS-B, CMA-ES and DDS optimizers with Pareto-front, dynamic programming and knapsack utilities, a QL eigensolver, an opt-in QAGS integrator, multi-source CSR shortest paths, column statistics, and per-element Poisson and Binomial array members. It fixes accuracy defects in StudentT, the incomplete beta and inverse incomplete gamma functions, the Joe, Clayton, Frank and Gumbel copula densities, GEV, Gamma and Pearson Type III L-moments, variance, covariance and Pearson correlation on offset data, and Kernel Density and Truncated modes. GEV ParametersFromLinearMoments now throws for a non-positive L-scale, and Dijkstra and Network reject negative edge weights. Breaking: the package targets net10.0 and net481 only; .NET 8 and .NET 9 reach end of support on November 10, 2026, so projects on those runtimes can stay on 2.2.0. See the v2.3.0 GitHub release notes for the full list and the results that move.</PackageReleaseNotes>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
   </PropertyGroup>
 
 	<PropertyGroup>

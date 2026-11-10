@@ -4,9 +4,9 @@
   "name": "Numerics: A .NET Library for Numerical Computing, Statistical Analysis, and Risk Assessment",
   "alternateName": "Numerics",
   "description": "A free and open-source .NET library providing numerical methods, probability distributions, statistical analysis, and Bayesian inference tools for quantitative risk assessment in water resources engineering.",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "dateCreated": "2023-09-28",
-  "dateModified": "2026-09-18",
+  "dateModified": "2026-11-09",
   "license": "https://spdx.org/licenses/0BSD",
   "codeRepository": "https://github.com/USACE-RMC/Numerics",
   "issueTracker": "https://github.com/USACE-RMC/Numerics/issues",
@@ -15,7 +15,7 @@
     "name": "C#",
     "url": "https://learn.microsoft.com/en-us/dotnet/csharp/"
   },
-  "runtimePlatform": ".NET 8.0, 9.0, 10.0, .NET Framework 4.8.1",
+  "runtimePlatform": ".NET 10.0, .NET Framework 4.8.1",
   "operatingSystem": "Windows, Linux, macOS",
   "keywords": [
     "statistics",
