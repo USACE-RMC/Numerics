@@ -158,6 +158,10 @@ namespace Numerics.Functions
         /// </summary>
         /// <param name="phi">The parameter vector in link-space (transformed coordinates).</param>
         /// <returns>log|det(&#8706;&#952;/&#8706;&#966;)|, the log absolute determinant of the inverse Jacobian.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when an inverse link rounds a component to its domain boundary (for example a logit
+        /// component above about 37), because the link derivative rejects the boundary.
+        /// </exception>
         /// <remarks>
         /// <para>
         ///     Used in transformed-space probability calculations: p(&#966;) = p(&#952;) |&#8706;&#952;/&#8706;&#966;|.

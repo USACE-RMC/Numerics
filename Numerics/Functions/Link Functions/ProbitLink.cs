@@ -18,6 +18,12 @@ namespace Numerics.Functions
     ///     It assumes an underlying normally distributed latent variable.
     /// </para>
     /// <para>
+    ///     Inputs inside the domain are clamped to [1e-12, 1 &#8722; 1e-12] before the link and its
+    ///     derivative are evaluated, so the round trip h&#8315;&#185;(h(x)) returns the clamp bound
+    ///     for x closer to the boundary than 1e-12, and <see cref="DLink(double)"/> returns the
+    ///     derivative at the bound.
+    /// </para>
+    /// <para>
     ///     <b> Authors: </b>
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>

@@ -254,7 +254,7 @@ namespace Numerics.Functions
         /// Serializes the function's configuration to an XElement: the parameters α, β, ξ, and σ,
         /// the deterministic and inverse flags, and the upper support bound.
         /// <see cref="Minimum"/> is derived from ξ and <see cref="ConfidenceLevel"/> is runtime
-        /// sampling state — neither is serialized.
+        /// sampling state; neither is serialized.
         /// </summary>
         /// <returns>An XElement representation of the power function.</returns>
         public XElement ToXElement()

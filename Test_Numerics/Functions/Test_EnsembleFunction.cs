@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -200,5 +202,78 @@ namespace Functions
                 .SetAttributeValue(nameof(ParameterSet.Fitness), "NaN");
             Assert.Throws<ArgumentException>(() => EnsembleFunction.FromXElement(invalidFitness));
         }
+
+        /// <summary>Builds the composite-template ensemble used by the template-pool regression tests.</summary>
+        private static EnsembleFunction BuildPoolFixture()
+        {
+            var children = new List<IUnivariateFunction>
+            {
+                new LinearFunction(1.0, 0.5, 0.2) { IsDeterministic = false },
+                new PowerFunction(2.0, 1.5, 0.0, 0.1) { IsDeterministic = false },
+                new LinearFunction(-0.5, 1.25, 0.3) { IsDeterministic = false }
+            };
+            var template = new CompositeFunction(children, new[] { 0.2, 0.5, 0.3 });
+            var sets = new[]
+            {
+                new ParameterSet(new[] { 0.2, 0.5, 0.3 }, 0),
+                new ParameterSet(new[] { 0.6, 0.1, 0.3 }, 0),
+                new ParameterSet(new[] { 0.0, 0.0, 1.0 }, 0),
+            };
+            return new EnsembleFunction(template, sets);
+        }
+
+        /// <summary>Reference values of each fixture draw at confidence level 0.3.</summary>
+        private static readonly double[][] PoolFixtureExpected =
+        {
+            new[] { 0.5548187073790324, 1.4057391387195495, 4.920228816135511, 9.473117576320714 },
+            new[] { 0.744474047137527, 1.2046581334056303, 2.7775560688888223, 4.558133820925863 },
+            new[] { -0.03232015381241218, 0.5926798461875878, 2.467679846187588, 4.342679846187588 },
+        };
+
+        /// <summary>
+        /// Test that repeated draws from the pooled parsed template reproduce fixed reference
+        /// values exactly.
+        /// </summary>
+        [TestMethod]
+        public void Test_TemplatePool_MatchesReferenceValuesExactly()
+        {
+            var ensemble = BuildPoolFixture();
+            var xs = new[] { 0.5, 1.0, 2.5, 4.0 };
+            for (int repeat = 0; repeat < 3; repeat++)
+            {
+                for (int i = 0; i < ensemble.Count; i++)
+                {
+                    var draw = ensemble.SampleAt(i);
+                    draw.ConfidenceLevel = 0.3;
+                    for (int j = 0; j < xs.Length; j++)
+                        Assert.AreEqual(PoolFixtureExpected[i][j], draw.Function(xs[j]), 0d);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test that concurrent draws through the shared template pool return independent clones
+        /// with exactly the sequential values.
+        /// </summary>
+        [TestMethod]
+        public void Test_TemplatePool_ParallelDrawsMatchSequential()
+        {
+            var ensemble = BuildPoolFixture();
+            var xs = new[] { 0.5, 1.0, 2.5, 4.0 };
+            int mismatches = 0;
+            Parallel.For(0, 3000, k =>
+            {
+                int i = k % ensemble.Count;
+                var draw = ensemble.Sample((i + 0.5) / ensemble.Count);
+                draw.ConfidenceLevel = 0.3;
+                for (int j = 0; j < xs.Length; j++)
+                {
+                    if (draw.Function(xs[j]) != PoolFixtureExpected[i][j])
+                        Interlocked.Increment(ref mismatches);
+                }
+            });
+            Assert.AreEqual(0, mismatches);
+        }
+
     }
 }

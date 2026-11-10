@@ -15,6 +15,12 @@ namespace Numerics.Functions
     ///     variance-stabilizing link.
     /// </para>
     /// <para>
+    ///     The image of the transformation is the full real line only for 0 &lt;= lambda &lt;= 2.
+    ///     For lambda &lt; 0 the image is bounded above by &#8722;1/lambda, and for lambda &gt; 2 it is
+    ///     bounded below by &#8722;1/(lambda &#8722; 2). <see cref="InverseLink(double)"/> does not check
+    ///     that eta lies in the image; outside it the result is not an inverse.
+    /// </para>
+    /// <para>
     ///     The transformation parameter lambda is restricted to the range used by
     ///     <see cref="YeoJohnson.FitLambda(System.Collections.Generic.IList{double})"/>, -5 &lt;= lambda &lt;= 5.
     /// </para>
@@ -76,6 +82,8 @@ namespace Numerics.Functions
         /// <param name="xElement">The XML element to read.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when the element does not contain a Lambda attribute.</exception>
+        /// <exception cref="FormatException">Thrown when the Lambda attribute is not a number.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the Lambda value is not finite or is outside [-5, 5].</exception>
         public YeoJohnsonLink(XElement xElement)
         {
             if (xElement == null)

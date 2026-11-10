@@ -22,7 +22,7 @@ namespace Numerics.Functions
         Identity,
 
         /// <summary>
-        /// Log link: &#951; = log(x). Canonical link for the Poisson and Exponential families.
+        /// Log link: &#951; = log(x). Canonical link for the Poisson family.
         /// </summary>
         Log,
 
