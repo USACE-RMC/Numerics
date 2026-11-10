@@ -17,7 +17,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Haden Smith", email = "cole.h.smith@usace.army.mil" }]
 keywords = ["statistics", "probability distributions", "hydrology", "flood frequency analysis", "L-moments", "MCMC", "optimization", "Monte Carlo", "uncertainty analysis", "pythonnet"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Developers",
     "Operating System :: Microsoft :: Windows",
