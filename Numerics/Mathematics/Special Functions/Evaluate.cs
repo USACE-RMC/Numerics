@@ -112,5 +112,65 @@ namespace Numerics.Mathematics.SpecialFunctions
             }
             return value;
         }
+
+        /// <summary>
+        /// Sums a Chebyshev series c₀/2 + Σ cₖ Tₖ(x/2) by the Clenshaw recurrence.
+        /// </summary>
+        /// <param name="coefficients">The coefficients of the series. Item[0] is the order-zero term, which is taken at half weight.</param>
+        /// <param name="x">The argument, already mapped to [-2, 2]: twice the Chebyshev variable.</param>
+        /// <returns>The series evaluated at x.</returns>
+        /// <remarks>
+        /// <para>
+        /// The recurrence b_k = x b_{k+1} - b_{k+2} + c_k runs from the highest order down, and the sum is
+        /// (b_0 - b_2)/2. The argument convention is that of the Cephes routine chbevl: the caller maps its interval
+        /// onto [-2, 2], for example x = 4t/b - 2 for t in [0, b].
+        /// </para>
+        /// <para>
+        /// References:
+        /// <list type="bullet">
+        /// <item><description>
+        /// C. W. Clenshaw, "A note on the summation of Chebyshev series," Mathematical Tables and Other Aids to
+        /// Computation, vol. 9, no. 51, pp. 118-120, 1955.
+        /// </description></item>
+        /// <item><description>
+        /// S. L. Moshier, "Methods and Programs for Mathematical Functions," Ellis Horwood, 1989.
+        /// </description></item>
+        /// </list>
+        /// </para>
+        /// </remarks>
+        public static double Chebyshev(double[] coefficients, double x)
+        {
+            return Chebyshev(coefficients, x, coefficients.Length);
+        }
+
+        /// <summary>
+        /// Sums the leading terms of a Chebyshev series c₀/2 + Σ cₖ Tₖ(x/2) by the Clenshaw recurrence.
+        /// </summary>
+        /// <param name="coefficients">The coefficients of the series. Item[0] is the order-zero term, which is taken at half weight.</param>
+        /// <param name="x">The argument, already mapped to [-2, 2]: twice the Chebyshev variable.</param>
+        /// <param name="terms">The number of leading coefficients summed, so the series is truncated after order terms - 1.</param>
+        /// <returns>The truncated series evaluated at x.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="terms"/> is less than one or greater than the number of coefficients.</exception>
+        /// <remarks>
+        /// See <see cref="Chebyshev(double[], double)"/> for the recurrence and the argument convention.
+        /// </remarks>
+        public static double Chebyshev(double[] coefficients, double x, int terms)
+        {
+            if (terms < 1 || terms > coefficients.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(terms), "The number of terms must be between one and the number of coefficients.");
+            }
+
+            double b0 = coefficients[terms - 1];
+            double b1 = 0d;
+            double b2 = 0d;
+            for (int i = terms - 2; i >= 0; i--)
+            {
+                b2 = b1;
+                b1 = b0;
+                b0 = x * b1 - b2 + coefficients[i];
+            }
+            return 0.5d * (b0 - b2);
+        }
     }
 }

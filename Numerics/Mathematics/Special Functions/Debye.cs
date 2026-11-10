@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Numerics.Mathematics.SpecialFunctions
 {
@@ -28,6 +29,10 @@ namespace Numerics.Mathematics.SpecialFunctions
     /// <b> References: </b>
     /// <list type="bullet">
     /// <item><description>
+    /// Abramowitz, M. and Stegun, I.A. (1972). "Handbook of Mathematical Functions." National Bureau of Standards,
+    /// Applied Mathematics Series 55. Section 27.1.
+    /// </description></item>
+    /// <item><description>
     /// <see href = "https://en.wikipedia.org/wiki/Debye_function" />
     /// </description></item>
     /// </list>
@@ -35,65 +40,85 @@ namespace Numerics.Mathematics.SpecialFunctions
     public class Debye
     {
         /// <summary>
+        /// The Maclaurin coefficients of the order-3 Debye function for the even powers x², x⁴, ... x⁵².
+        /// </summary>
+        /// <remarks>
+        /// The k-th entry is 3 B(2k) / ((2k + 3) (2k)!), where B(2k) is the 2k-th Bernoulli number. The entries
+        /// were evaluated with mpmath at 50 digits and rounded once to double.
+        /// </remarks>
+        private static readonly double[] Debye3SeriesCoefficients =
+        {
+            0.05, -0.0005952380952380953, 1.1022927689594357E-05,
+            -2.2546897546897547E-07, 4.8177131510464845E-09, -1.0568380277374986E-10,
+            2.3616240936502374E-12, -5.352126783667236E-14, 1.2265802937539779E-15,
+            -2.8367852589887764E-17, 6.610803394032275E-19, -1.5504960762013913E-20,
+            3.656593489271863E-22, -8.664694284229884E-24, 2.061774956670621E-25,
+            -4.924106287604745E-27, 1.1798695748228635E-28, -2.8353807235887003E-30,
+            6.831756773484179E-32, -1.6500156388609047E-33, 3.99378117498809E-35,
+            -9.68588224128696E-37, 2.3533213012984824E-38, -5.727266513321583E-40,
+            1.3959888929437818E-41, -3.4074964046294964E-43
+        };
+
+        /// <summary>
+        /// The limit of the order-3 Debye integral, ∫[0 to ∞] t³ / (e^t - 1) dt = π⁴/15.
+        /// </summary>
+        private const double Debye3Limit = 6.493939402266829;
+
+        /// <summary>
         /// Computes the order-3 Debye function D₃(x).
         /// </summary>
-        /// <param name="x">The point in the series to evaluate.</param>
+        /// <param name="x">The point to evaluate. Must be non-negative.</param>
+        /// <returns>
+        /// The order-3 Debye function evaluated at the given x, with D₃(0) = 1 and D₃(+∞) = 0.
+        /// </returns>
         /// <remarks>
         /// <para>
-        ///     Authors:
-        ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
+        /// D₃(x) = (3/x³) ∫[0 to x] t³ / (e^t - 1) dt. Two branches are used, the expansions of Abramowitz and
+        /// Stegun (1972), 27.1.1 and 27.1.2. For 0 &lt; x ≤ 3 the Maclaurin series
+        /// D₃(x) = 1 - 3x/8 + Σ[k ≥ 1] 3 B(2k) x^(2k) / ((2k + 3) (2k)!) is summed by Horner's rule through x⁵²,
+        /// where the next term is below 1E-18 of the value; the series converges for x &lt; 2π. For x &gt; 3 the
+        /// integral is written against its limit π⁴/15, giving
+        /// D₃(x) = (3/x³) (π⁴/15 - Σ[k ≥ 1] e^(-kx) (x³/k + 3x²/k² + 6x/k³ + 6/k⁴)), summed until a term falls
+        /// below 1E-18 of π⁴/15; from x = 60 the sum is below double precision and is skipped. The divisions by x
+        /// are applied one at a time, so x³ never overflows before the result underflows.
         /// </para>
-        /// References:
-        /// <list type="bullet">
-        /// <item><description>
-        /// <see href = "http://duffy.princeton.edu/sites/default/files/pdfs/links/Debye_Function.pdf"/>
-        /// </description></item>
-        /// </list>
+        /// <para>
+        /// <b> Accuracy. </b> Measured against mpmath at 50 digits over x in [1E-6, 1000], the worst relative
+        /// error is about 1E-15 (see docs/mathematics/oracles/special-functions).
+        /// </para>
         /// </remarks>
-        /// <returns>
-        /// The order-3 Debye function evaluated at the given x
-        /// </returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when x &lt; 0.</exception>
         public static double Function(double x)
         {
-            
-            if (x <0.0) { throw new ArgumentOutOfRangeException(nameof(x), "X must be positive."); }
+            if (x < 0.0) { throw new ArgumentOutOfRangeException(nameof(x), "X must be positive."); }
+            if (double.IsNaN(x)) return double.NaN;
+            if (x == 0.0) return 1.0;
 
+            if (x <= 3.0)
+            {
+                double z = x * x;
+                double sum = 0.0;
+                for (int k = Debye3SeriesCoefficients.Length - 1; k >= 0; k--)
+                    sum = sum * z + Debye3SeriesCoefficients[k];
+                return 1.0 - 0.375 * x + sum * z;
+            }
 
-            if (x == 0.0)
+            double remainder = 0.0;
+            if (x < 60.0)
             {
-                return 1.0;
-            }
-            else if ( x > 0.0 && x <= 0.1)
-            {
-                double t = 5.952380953E-4;
-                return 1.0 - 0.375 * x + x * x * (0.05 - t * x * x);
-            }
-            else if (x > 0.1 && x <= 7.25)
-            {
-                return ((((0.0946173 * x - 4.432582) * x + 85.07724) * x - 800.6087) * x + 3953.632) / ((((x + 15.121491) * x + 143.155337) * x + 682.0012) * x + 3953.632) ;
-            }
-            else if (x > 7.25)
-            {
-                double N = 25 / x;
-                double D = 0.0;
-                double D2 = 1.0;
-                double x3 = 0;
-                if (x <= 25)
+                double e = Math.Exp(-x);
+                double ek = 1.0;
+                for (int k = 1; k <= DebyeMaximumTerms; k++)
                 {
-                    for (int i = 1; i <= N; i++)
-                    {
-                        D2 *= Math.Exp(-x);
-                        x3 = i * x;
-                        D += D2 * (6 + x3 * (6.0 + x3 * (3 + x3))) / Math.Pow(i, 4);
-                    }
-                    return 3.0 * (6.493939402 - D) / (x * x * x);
-                }
-                else if(x > 25){
-                    return 3.0 * (6.493939402 - D) / (x * x * x);
+                    ek *= e;
+                    double kd = k;
+                    double term = ek * (((x / kd + 3.0 / (kd * kd)) * x + 6.0 / (kd * kd * kd)) * x
+                        + 6.0 / (kd * kd * kd * kd));
+                    remainder += term;
+                    if (term < 1E-18 * Debye3Limit) break;
                 }
             }
-            return double.NaN;
-
+            return 3.0 * (Debye3Limit - remainder) / x / x / x;
         }
 
         /// <summary>
@@ -176,6 +201,52 @@ namespace Numerics.Mathematics.SpecialFunctions
             }
             return Math.PI * Math.PI / (6d * x) - remainder;
         }
+
+        #region List Overloads
+
+        /// <summary>
+        /// Computes the order-3 Debye function for each value of a list.
+        /// </summary>
+        /// <param name="x">The values of x.</param>
+        /// <returns>One result per value, each equal to <see cref="Function(double)"/> at that value.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when a list is null.</exception>
+        /// <remarks>
+        /// One call evaluates the whole list, in the same way as <see cref="Tools.Expm1(IList{double})"/>; a caller
+        /// crossing a language boundary (for example from Python) pays the crossing once instead of once per value.
+        /// The scalar member is called for each value, so the results are bit for bit those of <see cref="Function(double)"/>,
+        /// and an exception it throws for a value propagates unchanged.
+        /// </remarks>
+        public static double[] Function(IList<double> x)
+        {
+            if (x == null) throw new ArgumentNullException(nameof(x));
+            var result = new double[x.Count];
+            for (int i = 0; i < x.Count; i++)
+                result[i] = Function(x[i]);
+            return result;
+        }
+
+        /// <summary>
+        /// Computes the order-1 Debye function for each value of a list.
+        /// </summary>
+        /// <param name="x">The values of x.</param>
+        /// <returns>One result per value, each equal to <see cref="FunctionOrderOne(double)"/> at that value.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when a list is null.</exception>
+        /// <remarks>
+        /// One call evaluates the whole list, in the same way as <see cref="Tools.Expm1(IList{double})"/>; a caller
+        /// crossing a language boundary (for example from Python) pays the crossing once instead of once per value.
+        /// The scalar member is called for each value, so the results are bit for bit those of <see cref="FunctionOrderOne(double)"/>,
+        /// and an exception it throws for a value propagates unchanged.
+        /// </remarks>
+        public static double[] FunctionOrderOne(IList<double> x)
+        {
+            if (x == null) throw new ArgumentNullException(nameof(x));
+            var result = new double[x.Count];
+            for (int i = 0; i < x.Count; i++)
+                result[i] = FunctionOrderOne(x[i]);
+            return result;
+        }
+
+        #endregion
 
     }
 }

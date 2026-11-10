@@ -1,0 +1,44 @@
+{
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "generator": "special_functions_oracle.py special-functions-mpmath.csv; bessel_chebyshev_coefficients.py, temme_coefficients.py and erfc_coefficients.py print the coefficient tables of Bessel.cs, Gamma.cs and Erf.cs",
+  "environment": {
+    "python": "3.14.3",
+    "mpmath": "1.4.1",
+    "numpy": "2.4.2"
+  },
+  "files": [
+    {
+      "file": "special_functions_oracle.py",
+      "sha256Utf8Lf": "89972fe75459b1106dd637d28ea25d449a7551f96738ed8bcf486590f75fd40a"
+    },
+    {
+      "file": "special-functions-mpmath.csv",
+      "rows": 9901,
+      "sha256Utf8Lf": "697b418b27b4f79460f60af44a682b2f16e4f7078955785efdb4e3fef176ac80",
+      "consumers": [
+        "Test_Numerics/Mathematics/Special Functions/Test_SpecialFunctionsOracle.cs"
+      ]
+    },
+    {
+      "file": "bessel_chebyshev_coefficients.py",
+      "sha256Utf8Lf": "f9f295a11ffbc1b402761038540dcf432029e89d476b7614f37a0fca4010bc21",
+      "consumers": [
+        "Numerics/Mathematics/Special Functions/Bessel.cs: Chebyshev Expansions region"
+      ]
+    },
+    {
+      "file": "temme_coefficients.py",
+      "sha256Utf8Lf": "5a577fc257f5d1290ce67c7e24431d470965f33c41fb9aa322f9e0ca0d0d5feb",
+      "consumers": [
+        "Numerics/Mathematics/Special Functions/Gamma.cs: TemmeCoefficients"
+      ]
+    },
+    {
+      "file": "erfc_coefficients.py",
+      "sha256Utf8Lf": "d68aea5d3d0ea9c7a642181f893081dd39528009bfb240c37d5580841fae66f7",
+      "consumers": [
+        "Numerics/Mathematics/Special Functions/Erf.cs: ScaledErfcCoefficients and ScaledErfcAsymptoticCoefficients"
+      ]
+    }
+  ]
+}

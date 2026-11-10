@@ -94,6 +94,52 @@ namespace Mathematics.SpecialFunctions
         }
 
         /// <summary>
+        /// The inverse error function keeps full relative precision near zero and near one, is odd,
+        /// and returns the infinite limits at y = ±1.
+        /// </summary>
+        /// <remarks>
+        /// Oracle: scipy 1.17 erfinv. The relative tolerance of 1E-15 is about five ulps (the measured
+        /// worst case is 3 ulps, set by the accuracy of erf itself); the
+        /// pre-fix values were 0 at y = 1E-20, off by 8E-8 relative at 1E-10 and by 2E-6 at
+        /// 0.999999999999.
+        /// </remarks>
+        [TestMethod]
+        public void Test_InverseErf_Accuracy()
+        {
+            var testY = new double[] { 1E-20, 1E-10, 0.3, 0.5, 0.9, 0.999999999999 };
+            var testValid = new double[] { 8.86226925452758E-21, 8.862269254527581E-11, 0.2724627147267544,
+                0.4769362762044699, 1.1630871536766743, 5.042031898572696 };
+
+            for (int i = 0; i < testY.Length; i++)
+            {
+                double positive = Erf.InverseErf(testY[i]);
+                Assert.AreEqual(testValid[i], positive, 1E-15 * testValid[i], $"y = {testY[i]}");
+                // Odd symmetry holds exactly
+                Assert.AreEqual(-positive, Erf.InverseErf(-testY[i]));
+            }
+
+            Assert.AreEqual(0.0, Erf.InverseErf(0.0));
+            Assert.AreEqual(double.PositiveInfinity, Erf.InverseErf(1.0));
+            Assert.AreEqual(double.NegativeInfinity, Erf.InverseErf(-1.0));
+            Assert.IsTrue(double.IsNaN(Erf.InverseErf(double.NaN)));
+        }
+
+        /// <summary>
+        /// The error function returns 2x/sqrt(pi) for tiny arguments instead of underflowing to zero.
+        /// </summary>
+        /// <remarks>
+        /// Oracle: scipy 1.17 erf(1E-200), erf(1E-9) and erf(-1E-300). The next Taylor term is below
+        /// 4E-17 relative, so the results are exact to one ulp.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Erf_TinyArgument()
+        {
+            Assert.AreEqual(1.1283791670955125E-200, Erf.Function(1E-200), 2E-16 * 1.1283791670955125E-200);
+            Assert.AreEqual(1.1283791670955127E-09, Erf.Function(1E-9), 2E-16 * 1.1283791670955127E-09);
+            Assert.AreEqual(-1.1283791670955126E-300, Erf.Function(-1E-300), 2E-16 * 1.1283791670955126E-300);
+        }
+
+        /// <summary>
         /// Test the Debye function
         /// </summary>
         [TestMethod]
@@ -212,6 +258,57 @@ namespace Mathematics.SpecialFunctions
                 testResults[i] = Factorial.BinomialCoefficient(testN[i], testK[i]);
                 Assert.AreEqual(testValid[i], testResults[i]);
             }
+        }
+
+        /// <summary>
+        /// The binomial coefficient is exact while the result fits in 64 bits and accurate beyond.
+        /// </summary>
+        /// <remarks>
+        /// Oracle: Python math.comb. C(50, 25) and C(30, 15) are below 2^53 and must be exact;
+        /// C(60, 30) and C(62, 31) must equal the correctly rounded double of the exact integer.
+        /// C(67, 33), C(100, 50) and C(1000, 500) pass through the floating-point phase, where the
+        /// 1E-14 relative tolerance allows a few dozen roundings. The old log-factorial form gave
+        /// C(50, 25) = 126410606437750.
+        /// </remarks>
+        [TestMethod]
+        public void Test_BinomialCoefficient_Exact()
+        {
+            Assert.AreEqual(126410606437752d, Factorial.BinomialCoefficient(50, 25));
+            Assert.AreEqual(155117520d, Factorial.BinomialCoefficient(30, 15));
+            Assert.AreEqual((double)118264581564861424L, Factorial.BinomialCoefficient(60, 30));
+            Assert.AreEqual((double)465428353255261088L, Factorial.BinomialCoefficient(62, 31));
+            Assert.AreEqual(1.4226520737620288E+19, Factorial.BinomialCoefficient(67, 33), 1E-14 * 1.4226520737620288E+19);
+            Assert.AreEqual(1.008913445455642E+29, Factorial.BinomialCoefficient(100, 50), 1E-14 * 1.008913445455642E+29);
+            Assert.AreEqual(2.7028824094543655E+299, Factorial.BinomialCoefficient(1000, 500), 1E-14 * 2.7028824094543655E+299);
+
+            // Symmetry, limits, overflow and invalid arguments
+            Assert.AreEqual(Factorial.BinomialCoefficient(40, 3), Factorial.BinomialCoefficient(40, 37));
+            Assert.AreEqual(1d, Factorial.BinomialCoefficient(0, 0));
+            Assert.AreEqual(1d, Factorial.BinomialCoefficient(7, 7));
+            Assert.AreEqual(double.PositiveInfinity, Factorial.BinomialCoefficient(2000, 1000));
+            Assert.AreEqual(0d, Factorial.BinomialCoefficient(5, 7));
+            Assert.AreEqual(0d, Factorial.BinomialCoefficient(5, -1));
+            Assert.AreEqual(0d, Factorial.BinomialCoefficient(-1, 0));
+        }
+
+        /// <summary>
+        /// The long overload of the factorial uses the same table as the int overload instead of
+        /// overflowing in 64-bit integer arithmetic.
+        /// </summary>
+        /// <remarks>
+        /// Oracle: Python float(math.factorial(21)) = 5.109094217170944E+19. Above 170 the result
+        /// exceeds the double range and is +∞, as for the int overload.
+        /// </remarks>
+        [TestMethod]
+        public void Test_Factorial_LongOverload()
+        {
+            Assert.AreEqual(1d, Factorial.Function(0L));
+            Assert.AreEqual(3628800d, Factorial.Function(10L));
+            Assert.AreEqual(5.109094217170944E+19, Factorial.Function(21L));
+            Assert.AreEqual(Factorial.Function(170), Factorial.Function(170L));
+            Assert.AreEqual(double.PositiveInfinity, Factorial.Function(171L));
+            Assert.AreEqual(double.PositiveInfinity, Factorial.Function(long.MaxValue));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Factorial.Function(-1L));
         }
 
         /// <summary>
@@ -338,6 +435,27 @@ namespace Mathematics.SpecialFunctions
             double validN = (3 * x) + 5;
             double actualN = Evaluate.PolynomialRev(coeffs, x, n);
             Assert.AreEqual(validN, actualN);
+        }
+
+        /// <summary>
+        /// The Chebyshev series c₀/2 + Σ cₖ Tₖ(x/2) matches the explicit polynomials T₁(s) = s, T₂(s) = 2s² - 1 and
+        /// T₃(s) = 4s³ - 3s, is exact at the ends of [-2, 2] where Tₖ = (±1)^k, and truncates to the leading terms.
+        /// </summary>
+        [TestMethod]
+        public void Test_Chebyshev()
+        {
+            var coeffs = new double[] { 2d, 3d, -1d, 0.5d };
+            double s = 0.3d;
+            double valid = 1d + 3d * s - (2d * s * s - 1d) + 0.5d * (4d * s * s * s - 3d * s);
+            Assert.AreEqual(valid, Evaluate.Chebyshev(coeffs, 2d * s), 1E-15);
+            Assert.AreEqual(3.5d, Evaluate.Chebyshev(coeffs, 2d), 0d);
+            Assert.AreEqual(-3.5d, Evaluate.Chebyshev(coeffs, -2d), 0d);
+            Assert.AreEqual(Evaluate.Chebyshev(coeffs, 2d * s, 4), Evaluate.Chebyshev(coeffs, 2d * s), 0d);
+            Assert.AreEqual(1d + 3d * s, Evaluate.Chebyshev(coeffs, 2d * s, 2), 1E-15);
+            Assert.AreEqual(1d, Evaluate.Chebyshev(coeffs, 2d * s, 1), 0d);
+            Assert.IsTrue(double.IsNaN(Evaluate.Chebyshev(coeffs, double.NaN)));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Evaluate.Chebyshev(coeffs, 0d, 0));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Evaluate.Chebyshev(coeffs, 0d, 5));
         }
 
         /// <summary>
