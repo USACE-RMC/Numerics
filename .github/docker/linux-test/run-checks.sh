@@ -30,8 +30,10 @@ tar -C "$SRC" \
     --exclude=./.git --exclude=bin --exclude=obj --exclude=TestResults --exclude=dist --exclude=build \
     --exclude=_build --exclude=generated --exclude=.venv --exclude=__pycache__ --exclude='*.egg-info' \
     --exclude=.pytest_cache --exclude=.ruff_cache --exclude=graphify-out --exclude='_bin/*.dll' \
-    -cf - . | tar -C "$WORK" -xf -
+    -cf - . | tar -C "$WORK" --no-same-owner -xf -
 cd "$WORK"
+# A CI checkout is owned by the runner's user, not root; keep git's ownership check from rejecting the copy.
+git config --global --add safe.directory "$WORK"
 # A repository with the GitHub remote, so SourceLink stamps the commit into the informational version.
 git init -q
 git config core.autocrlf input
