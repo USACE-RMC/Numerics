@@ -16,7 +16,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Returns an array of distribution parameters given the central moments of the sample.
         /// </summary>
-        /// <param name="moments">The array of sample linear moments.</param>
+        /// <param name="moments">The array of sample product moments.</param>
         double[] ParametersFromMoments(IList<double> moments);
 
         /// <summary>

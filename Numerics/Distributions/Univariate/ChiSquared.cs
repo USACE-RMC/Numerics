@@ -234,7 +234,7 @@ namespace Numerics.Distributions
             // validate parameters
             if (_parametersValid == false)
                 ValidateParameters(DegreesOfFreedom, true);
-            if (X < Minimum) return 0.0d;
+            if (X < Minimum || double.IsPositiveInfinity(X)) return 0.0d;
             double v = DegreesOfFreedom;
             // Handle x=0 edge case: PDF(0) = 0 for v>2, 0.5 for v=2, +Inf for v<2
             if (X == 0.0d)
@@ -261,10 +261,48 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the log regularized lower incomplete gamma function P(ν/2, x/2).
+        /// </remarks>
+        public override double LogCDF(double X)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(DegreesOfFreedom, true);
+            if (X <= Minimum)
+                return double.NegativeInfinity;
+            return DistributionNumerics.GammaLogCDF(DegreesOfFreedom / 2.0d, X / 2.0d);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the regularized upper incomplete gamma function Q(ν/2, x/2), which resolves
+        /// upper-tail probabilities below machine epsilon.
+        /// </remarks>
+        public override double CCDF(double X)
+        {
+            return Math.Exp(LogCCDF(X));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the log regularized upper incomplete gamma function Q(ν/2, x/2).
+        /// </remarks>
+        public override double LogCCDF(double X)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(DegreesOfFreedom, true);
+            if (X <= Minimum)
+                return 0d;
+            return DistributionNumerics.GammaLogSurvival(DegreesOfFreedom / 2.0d, X / 2.0d);
+        }
+
+        /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;

@@ -140,6 +140,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When both shapes are below 1, the density is unbounded at both ends of the support and this
+        /// property returns the midpoint 0.5, where the density has its minimum.
+        /// </remarks>
         public override double Mode
         {
             get
@@ -233,15 +237,25 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x)
         {
+            return Math.Exp(LogPDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space with the log beta function, so large shapes keep a finite density.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([Alpha, Beta], true);
-            // 
-            if (x < Minimum || x > Maximum) return 0.0d;
-            double constant = 1.0d / Mathematics.SpecialFunctions.Beta.Function(Alpha, Beta);
-            double a = Math.Pow(x, Alpha - 1d);
-            double b = Math.Pow(1d - x, Beta - 1d);
-            return constant * a * b;
+            //
+            if (x < Minimum || x > Maximum) return double.NegativeInfinity;
+            double logBeta = Mathematics.SpecialFunctions.Beta.LogFunction(Alpha, Beta);
+            // A unit shape contributes a factor of one, including at the matching endpoint.
+            double a = Alpha == 1d ? 0d : (Alpha - 1d) * Math.Log(x);
+            double b = Beta == 1d ? 0d : (Beta - 1d) * Tools.Log1p(-x);
+            return a + b - logBeta;
         }
 
         /// <inheritdoc/>
@@ -259,10 +273,31 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as 1 - I_x(α, β) at or below the mean, and above the mean as the regularized
+        /// incomplete beta function with swapped shapes at 1 - x, which resolves upper-tail
+        /// probabilities below machine epsilon without rounding a small x away in 1 - x.
+        /// </remarks>
+        public override double CCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Alpha, Beta], true);
+            //
+            if (x <= Minimum)
+                return 1d;
+            if (x >= Maximum)
+                return 0d;
+            if (x <= Alpha / (Alpha + Beta))
+                return 1d - Mathematics.SpecialFunctions.Beta.Incomplete(Alpha, Beta, x);
+            return Mathematics.SpecialFunctions.Beta.Incomplete(Beta, Alpha, 1d - x);
+        }
+
+        /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -251,6 +251,21 @@ namespace Distributions.Univariate
             Assert.ThrowsExactly<ArgumentNullException>(() => distribution.ParameterSetQuantiles(null!, Probabilities, out _));
             Assert.ThrowsExactly<ArgumentNullException>(() => distribution.ParameterSetQuantiles(new double[1, 3], null!, out _));
             Assert.ThrowsExactly<ArgumentException>(() => distribution.ParameterSetQuantiles(new double[1, 2], Probabilities, out _));
+        }
+
+        /// <summary>
+        /// Table-backed distributions, which do not support setting parameters from a vector, report that when a
+        /// row is valid; their instances are not modified.
+        /// </summary>
+        [TestMethod]
+        public void TableBackedDistributionsDoNotSupportParameterRows()
+        {
+            var empirical = new EmpiricalDistribution(new[] { 1d, 2d, 3d }, new[] { 0.1d, 0.5d, 0.9d });
+            var kernel = new KernelDensity(new[] { 1.2d, 3.4d, 2.2d, 5.6d, 4.4d });
+
+            Assert.ThrowsExactly<NotImplementedException>(() => empirical.ParameterSetQuantiles(new double[,] { { 0.0, 1.0 } }, new[] { 0.5 }, out _));
+            Assert.ThrowsExactly<NotImplementedException>(() => kernel.ParameterSetQuantiles(new double[,] { { 0.0, 1.0, 2.0 } }, new[] { 0.5 }, out _));
+            Assert.AreEqual(2d, empirical.InverseCDF(0.5d), 1E-12);
         }
     }
 }

@@ -1,4 +1,4 @@
-using Numerics.Data;
+﻿using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
 using Numerics.Mathematics.LinearAlgebra;
@@ -38,6 +38,8 @@ namespace Numerics.Distributions
         /// Construct new competing risks distribution.
         /// </summary>
         /// <param name="distributions">The competing distributions.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="distributions"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="distributions"/> contains a <see langword="null"/> element.</exception>
         public CompetingRisks(UnivariateDistributionBase[] distributions)
         {
             SetParameters(distributions);
@@ -47,6 +49,8 @@ namespace Numerics.Distributions
         /// Construct new competing risks distribution.
         /// </summary>
         /// <param name="distributions">The competing distributions.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="distributions"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="distributions"/> contains a <see langword="null"/> element.</exception>
         public CompetingRisks(IUnivariateDistribution[] distributions)
         {
             SetParameters(distributions);
@@ -65,6 +69,7 @@ namespace Numerics.Distributions
 
         private string? _cachedConfiguration;
         [NonSerialized] private DependentConfigurationCache? _dependentConfiguration;
+        [NonSerialized] private int[]? _allEventIndicators;
 
         /// <summary>Immutable configuration state whose equality implies identical canonical configuration XML,
         /// carrying the lazily published dependent-density derivative step.</summary>
@@ -167,7 +172,7 @@ namespace Numerics.Distributions
         /// <remarks>
         /// Those branches evaluate a randomized-lattice rectangle integral drawing from
         /// <see cref="MultivariateNormal.MVNUNI"/>, so their results reproduce only when the seed
-        /// is fixed. Applied when the multivariate normal is built — set it before the first
+        /// is fixed. Applied when the multivariate normal is built; set it before the first
         /// dependent evaluation.
         /// </remarks>
         public int PRNGSeed
@@ -232,9 +237,10 @@ namespace Numerics.Distributions
         {
             get
             {
+                var components = _distributions;
                 int sum = 0;
-                for (int i = 0; i < Distributions.Count; i++)
-                    sum += Distributions[i].NumberOfParameters;
+                for (int i = 0; i < components.Length; i++)
+                    sum += components[i].NumberOfParameters;
                 return sum;
             }
         }
@@ -310,9 +316,10 @@ namespace Numerics.Distributions
         {
             get
             {
+                var components = _distributions;
                 var result = new List<double>();
-                for (int i = 0; i < Distributions.Count; i++)
-                    result.AddRange(Distributions[i].GetParameters);
+                for (int i = 0; i < components.Length; i++)
+                    result.AddRange(components[i].GetParameters);
                 return result.ToArray();
             }
         }
@@ -401,13 +408,53 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Minimum
         {
-            get { return MinimumOfRandomVariables ? _distributions.Min(p => p.Minimum) : _distributions.Max(p => p.Minimum); }
+            get { return CombineSupportBounds(false); }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get { return MinimumOfRandomVariables ? _distributions.Min(p => p.Maximum) : _distributions.Max(p => p.Maximum); }
+            get { return CombineSupportBounds(true); }
+        }
+
+        /// <summary>Combines the component support bounds by the smallest or largest value, without enumerator allocation.</summary>
+        /// <param name="upper"><see langword="true"/> to combine component maxima; <see langword="false"/> to combine component minima.</param>
+        /// <returns>The smallest bound when <see cref="MinimumOfRandomVariables"/> is set; otherwise, the largest.</returns>
+        /// <exception cref="InvalidOperationException">There are no component distributions.</exception>
+        /// <remarks>The loops reproduce <see cref="Enumerable.Min{TSource}(IEnumerable{TSource}, Func{TSource, double})"/> and
+        /// <see cref="Enumerable.Max{TSource}(IEnumerable{TSource}, Func{TSource, double})"/> exactly: the smallest is not-a-number
+        /// when any bound is not-a-number, the largest ignores not-a-number bounds unless all are, and ties keep the first value.</remarks>
+        private double CombineSupportBounds(bool upper)
+        {
+            var components = _distributions;
+            // An empty array keeps the sequence exception of the LINQ aggregates.
+            if (components.Length == 0)
+                return MinimumOfRandomVariables ? components.Min(p => upper ? p.Maximum : p.Minimum) : components.Max(p => upper ? p.Maximum : p.Minimum);
+            double value = upper ? components[0].Maximum : components[0].Minimum;
+            if (MinimumOfRandomVariables)
+            {
+                if (double.IsNaN(value)) return value;
+                for (int i = 1; i < components.Length; i++)
+                {
+                    double bound = upper ? components[i].Maximum : components[i].Minimum;
+                    if (bound < value) value = bound;
+                    else if (double.IsNaN(bound)) return bound;
+                }
+                return value;
+            }
+            int k = 1;
+            while (double.IsNaN(value))
+            {
+                if (k == components.Length) return value;
+                value = upper ? components[k].Maximum : components[k].Minimum;
+                k++;
+            }
+            for (; k < components.Length; k++)
+            {
+                double bound = upper ? components[k].Maximum : components[k].Minimum;
+                if (bound > value) value = bound;
+            }
+            return value;
         }
 
         /// <inheritdoc/>
@@ -467,9 +514,12 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="distributions">The competing distributions.</param>
         /// <exception cref="ArgumentNullException"><paramref name="distributions"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="distributions"/> contains a <see langword="null"/> element.</exception>
+        /// <remarks>An empty array is accepted and leaves the distribution with invalid parameters.</remarks>
         public void SetParameters(UnivariateDistributionBase[] distributions)
         {
             if (distributions == null) throw new ArgumentNullException(nameof(Distributions));
+            ThrowIfNullComponent(distributions);
             _distributions = distributions;
             _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
@@ -483,14 +533,18 @@ namespace Numerics.Distributions
         /// <param name="distributions">The competing distributions.</param>
         /// <exception cref="ArgumentNullException"><paramref name="distributions"/> is <see langword="null"/>.</exception>
         /// <exception cref="InvalidCastException">An element does not derive from <see cref="UnivariateDistributionBase"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="distributions"/> contains a <see langword="null"/> element.</exception>
+        /// <remarks>An empty array is accepted and leaves the distribution with invalid parameters.</remarks>
         public void SetParameters(IUnivariateDistribution[] distributions)
         {
             if (distributions == null) throw new ArgumentNullException(nameof(Distributions));
-            _distributions = new UnivariateDistributionBase[distributions.Length];
+            var components = new UnivariateDistributionBase[distributions.Length];
             for (int i = 0; i < distributions.Length; i++)
             {
-                _distributions[i] = (UnivariateDistributionBase)distributions[i];
+                components[i] = (UnivariateDistributionBase)distributions[i];
             }
+            ThrowIfNullComponent(components);
+            _distributions = components;
             _parametersValid = ValidateParameters(GetParameters, false) is null;
             _momentsComputed = false;
             _empiricalCDFCreated = false;
@@ -499,28 +553,41 @@ namespace Numerics.Distributions
 
         /// <inheritdoc/>
         /// <exception cref="ArgumentException">Thrown when the flattened parameter count does not match the component distributions.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a component distribution is <see langword="null"/>.</exception>
+        /// <remarks>The vector is the concatenation of each component's <see cref="UnivariateDistributionBase.GetParameters"/>,
+        /// the same layout as <see cref="GetParameters"/>. A table-backed component such as <see cref="EmpiricalDistribution"/>
+        /// or <see cref="KernelDensity"/> contributes no entries and is left unchanged.</remarks>
         public override void SetParameters(IList<double> parameters)
         {
-            if (Distributions == null || Distributions.Count == 0)
+            if (_distributions == null || _distributions.Length == 0)
             {
                 _parametersValid = false;
                 return;
             }
-            if (parameters.Count != NumberOfParameters)
+            ThrowIfNullComponent(_distributions);
+            var counts = new int[_distributions.Length];
+            int total = 0;
+            for (int i = 0; i < _distributions.Length; i++)
+            {
+                counts[i] = _distributions[i].GetParameters.Length;
+                total += counts[i];
+            }
+            if (parameters.Count != total)
             {
                 throw new ArgumentException("The length of the parameter array is invalid.", nameof(parameters));
             }
 
             int t = 0;
-            for (int i = 0; i < Distributions.Count; i++)
+            for (int i = 0; i < _distributions.Length; i++)
             {
+                if (counts[i] == 0) continue;
                 var parms = new List<double>();
-                for (int j = t; j < t + Distributions[i].NumberOfParameters; j++)
+                for (int j = t; j < t + counts[i]; j++)
                 {
                     parms.Add(parameters[j]);
                 }
-                Distributions[i].SetParameters(parms);
-                t += Distributions[i].NumberOfParameters;
+                _distributions[i].SetParameters(parms);
+                t += counts[i];
             }
 
             _parametersValid = ValidateParameters(parameters, false) is null;
@@ -534,7 +601,7 @@ namespace Numerics.Distributions
         {
             ArgumentOutOfRangeException? error = null;
             if (_distributions == null || _distributions.Length == 0 || _distributions.Any(d => d is null))
-                error = new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least one non-null distribution.");
+                error = ComponentError();
             else if (parameters == null || parameters.Count != _distributions.Sum(d => d.GetParameters.Length))
                 error = new ArgumentOutOfRangeException(nameof(parameters), "The flattened parameter count must match the component distributions.");
             else
@@ -550,6 +617,22 @@ namespace Numerics.Distributions
             }
             if (throwException && error != null) throw error;
             return error;
+        }
+
+        /// <summary>Creates the validation error for a missing or <see langword="null"/> component distribution.</summary>
+        /// <returns>The exception reported by <see cref="ValidateParameters(IList{double}, bool)"/> for invalid components.</returns>
+        private static ArgumentOutOfRangeException ComponentError()
+        {
+            return new ArgumentOutOfRangeException(nameof(Distributions), "There must be at least one non-null distribution.");
+        }
+
+        /// <summary>Rejects a component array containing <see langword="null"/> before its parameters are flattened.</summary>
+        /// <param name="distributions">The component distributions to check.</param>
+        /// <exception cref="ArgumentOutOfRangeException">An element of <paramref name="distributions"/> is <see langword="null"/>.</exception>
+        private static void ThrowIfNullComponent(UnivariateDistributionBase[] distributions)
+        {
+            for (int i = 0; i < distributions.Length; i++)
+                if (distributions[i] is null) throw ComponentError();
         }
 
         /// <inheritdoc/>
@@ -627,13 +710,14 @@ namespace Numerics.Distributions
 
             // Sum f_i times the other factors, without dividing by possibly zero tails.
             // Computing each excluded product also avoids infinity-minus-infinity in the log sum.
+            var components = _distributions;
             double total = double.NegativeInfinity;
-            for (int i = 0; i < Distributions.Count; i++)
+            for (int i = 0; i < components.Length; i++)
             {
                 double product = 0;
-                for (int j = 0; j < Distributions.Count; j++)
-                    if (j != i) product += MinimumOfRandomVariables ? Distributions[j].LogCCDF(x) : Distributions[j].LogCDF(x);
-                double logDensity = Distributions[i].LogPDF(x);
+                for (int j = 0; j < components.Length; j++)
+                    if (j != i) product += MinimumOfRandomVariables ? components[j].LogCCDF(x) : components[j].LogCDF(x);
+                double logDensity = components[i].LogPDF(x);
                 if (double.IsNegativeInfinity(product))
                 {
                     if (double.IsPositiveInfinity(logDensity)) return IndependentEndpointLogDensity(x);
@@ -725,12 +809,18 @@ namespace Numerics.Distributions
         {
             ValidateEvaluation();
             if (Dependency != Probability.DependencyType.Independent) return Math.Log(CDF(x));
-            if (!MinimumOfRandomVariables) return Distributions.Sum(d => d.LogCDF(x));
-            double union = double.NegativeInfinity, precedingSurvival = 0;
-            foreach (var distribution in Distributions)
+            var components = _distributions;
+            if (!MinimumOfRandomVariables)
             {
-                union = DistributionNumerics.LogSum(union, precedingSurvival + distribution.LogCDF(x));
-                precedingSurvival += distribution.LogCCDF(x);
+                double sum = 0;
+                for (int i = 0; i < components.Length; i++) sum += components[i].LogCDF(x);
+                return sum;
+            }
+            double union = double.NegativeInfinity, precedingSurvival = 0;
+            for (int i = 0; i < components.Length; i++)
+            {
+                union = DistributionNumerics.LogSum(union, precedingSurvival + components[i].LogCDF(x));
+                precedingSurvival += components[i].LogCCDF(x);
             }
             return union;
         }
@@ -739,13 +829,19 @@ namespace Numerics.Distributions
         public override double LogCCDF(double x)
         {
             ValidateEvaluation();
-            if (Dependency != Probability.DependencyType.Independent) return DistributionNumerics.Log1mExp(Math.Log(CDF(x)));
-            if (MinimumOfRandomVariables) return Distributions.Sum(d => d.LogCCDF(x));
-            double union = double.NegativeInfinity, precedingCDF = 0;
-            foreach (var distribution in Distributions)
+            if (Dependency != Probability.DependencyType.Independent) return Tools.Log1mExp(Math.Log(CDF(x)));
+            var components = _distributions;
+            if (MinimumOfRandomVariables)
             {
-                union = DistributionNumerics.LogSum(union, precedingCDF + distribution.LogCCDF(x));
-                precedingCDF += distribution.LogCDF(x);
+                double sum = 0;
+                for (int i = 0; i < components.Length; i++) sum += components[i].LogCCDF(x);
+                return sum;
+            }
+            double union = double.NegativeInfinity, precedingCDF = 0;
+            for (int i = 0; i < components.Length; i++)
+            {
+                union = DistributionNumerics.LogSum(union, precedingCDF + components[i].LogCCDF(x));
+                precedingCDF += components[i].LogCDF(x);
             }
             return union;
         }
@@ -777,11 +873,9 @@ namespace Numerics.Distributions
         private double DependentCDFCore(double x)
         {
             double p = double.NaN;
-            var ind = new int[_distributions.Length];
             var cdf = new double[_distributions.Length];
             for (int i = 0; i < _distributions.Length; i++)
             {
-                ind[i] = 1;
                 cdf[i] = _distributions[i].CDF(x);
             }
 
@@ -805,7 +899,7 @@ namespace Numerics.Distributions
                 {
                     if (_mvnCreated == false)
                         CreateMultivariateNormal();
-                    p = Probability.JointProbability(cdf, ind, _mvn.Covariance);
+                    p = Probability.JointProbability(cdf, AllEventIndicators(cdf.Length), _mvn.Covariance);
                 }
                 else
                 {
@@ -814,6 +908,21 @@ namespace Numerics.Distributions
                 
             }
             return p < 0d ? 0d : p > 1d ? 1d : p;
+        }
+
+        /// <summary>Returns a shared indicator array marking every component event as occurring.</summary>
+        /// <param name="count">The number of component events.</param>
+        /// <returns>An array of <paramref name="count"/> ones, reused while the component count is unchanged.</returns>
+        /// <remarks>The joint-probability routines read the indicators without modifying them, so concurrent
+        /// evaluations may share the array; a count change publishes a new array.</remarks>
+        private int[] AllEventIndicators(int count)
+        {
+            var indicators = Volatile.Read(ref _allEventIndicators);
+            if (indicators is not null && indicators.Length == count) return indicators;
+            indicators = new int[count];
+            for (int i = 0; i < count; i++) indicators[i] = 1;
+            Volatile.Write(ref _allEventIndicators, indicators);
+            return indicators;
         }
 
         /// <inheritdoc/>
@@ -831,9 +940,9 @@ namespace Numerics.Distributions
                 ValidateParameters(GetParameters, true);
 
             // If there is only one distribution, return its inverse CDF
-            if (Distributions.Count() == 1)
+            if (_distributions.Length == 1)
             {
-                return Distributions[0].InverseCDF(probability);
+                return _distributions[0].InverseCDF(probability);
             }
 
             double x = 0;
@@ -844,7 +953,9 @@ namespace Numerics.Distributions
             else
             {
                 // use a root finder to solve the inverse CDF
-                var xVals = Distributions.Select(d => d.InverseCDF(probability));
+                var components = _distributions;
+                var xVals = new double[components.Length];
+                for (int i = 0; i < components.Length; i++) xVals[i] = components[i].InverseCDF(probability);
                 double minX = xVals.Min();
                 double maxX = xVals.Max();
                 try
@@ -1306,7 +1417,31 @@ namespace Numerics.Distributions
             return cr;
         }
 
+        /// <summary>The element that nests each component's own serialized form when the flattened parameters cannot restore it.</summary>
+        private const string ComponentsElementName = "Components";
+
+        /// <summary>Whether a component needs its own serialized element to round-trip exactly.</summary>
+        /// <param name="distribution">The component distribution.</param>
+        /// <returns><see langword="true"/> for a composite component (<see cref="Mixture"/> or <see cref="CompetingRisks"/>),
+        /// which cannot be created from its type alone, for a table-backed component whose flattened parameters are
+        /// empty, or for a component with non-default settings outside its parameters; otherwise, <see langword="false"/>.</returns>
+        private static bool RequiresComponentElement(UnivariateDistributionBase distribution)
+        {
+            return distribution is Mixture
+                || distribution is CompetingRisks
+                || distribution.GetParameters.Length != distribution.NumberOfParameters
+                || DistributionNumerics.WriteConfigurationAttributes(distribution, null);
+        }
+
         /// <inheritdoc/>
+        /// <remarks>
+        /// Components are listed by type and their flattened parameters are joined in one attribute. When any
+        /// component cannot be restored from its type and parameters alone (a <see cref="Mixture"/> or nested
+        /// <see cref="CompetingRisks"/>, an <see cref="EmpiricalDistribution"/> or <see cref="KernelDensity"/> table,
+        /// or a non-default setting such as a logarithm base), a <c>Components</c>
+        /// child element is appended holding every component's own <see cref="UnivariateDistributionBase.ToXElement"/>,
+        /// which <see cref="FromXElement(XElement)"/> then uses. Other configurations serialize exactly as before.
+        /// </remarks>
         public override XElement ToXElement()
         {
             var result = new XElement("Distribution");
@@ -1319,8 +1454,8 @@ namespace Numerics.Distributions
             result.SetAttributeValue(nameof(Distributions), String.Join("|", Distributions.Select(x => x.Type)));
             // Parameters
             var parms = GetParameters;
-            var parmStrings = new string[NumberOfParameters];
-            for (int i = 0; i < NumberOfParameters; i++)
+            var parmStrings = new string[parms.Length];
+            for (int i = 0; i < parms.Length; i++)
             {
                 parmStrings[i] = parms[i].ToString("G17", CultureInfo.InvariantCulture);
             }
@@ -1355,6 +1490,14 @@ namespace Numerics.Distributions
             }
             result.Add(corrMatrixElement);
 
+            if (Array.Exists(_distributions, RequiresComponentElement))
+            {
+                var componentsElement = new XElement(ComponentsElementName);
+                for (int i = 0; i < _distributions.Length; i++)
+                    componentsElement.Add(_distributions[i].ToXElement());
+                result.Add(componentsElement);
+            }
+
             return result;
         }
 
@@ -1371,6 +1514,9 @@ namespace Numerics.Distributions
         /// written by earlier applications are treated as an unconfigured matrix. This permits
         /// legacy import without declaring the configuration numerically ready: correlation-based
         /// evaluation still calls the strict matrix validator and fails until a valid matrix is set.
+        /// When a <c>Components</c> child element is present, each component is restored from its own nested element
+        /// and must match the listed component type; otherwise each component is created from its type and the
+        /// flattened parameters.
         /// </remarks>
         public static CompetingRisks? FromXElement(XElement xElement)
         {
@@ -1388,13 +1534,23 @@ namespace Numerics.Distributions
                 throw new ArgumentException("The serialized competing-risks distribution has no component distributions.", nameof(xElement));
 
             string[] typeTokens = distributionsAttribute.Value.Split('|');
+            var componentElements = xElement.Element(ComponentsElementName)?.Elements().ToArray();
+            if (componentElements != null && componentElements.Length != typeTokens.Length)
+                throw new ArgumentException("The serialized competing-risks components do not match the component types.", nameof(xElement));
             var distributions = new UnivariateDistributionBase[typeTokens.Length];
             for (int i = 0; i < typeTokens.Length; i++)
             {
                 if (!Enum.TryParse(typeTokens[i], out UnivariateDistributionType componentType)
                     || !Enum.IsDefined(typeof(UnivariateDistributionType), componentType))
                     throw new ArgumentException("The serialized competing-risks distribution contains an invalid component type.", nameof(xElement));
-                distributions[i] = UnivariateDistributionFactory.CreateDistribution(componentType);
+                if (componentElements == null)
+                {
+                    distributions[i] = UnivariateDistributionFactory.CreateDistribution(componentType);
+                    continue;
+                }
+                distributions[i] = UnivariateDistributionFactory.CreateDistribution(componentElements[i]);
+                if (distributions[i].Type != componentType)
+                    throw new ArgumentException("The serialized competing-risks components do not match the component types.", nameof(xElement));
             }
 
             var competingRisks = new CompetingRisks(distributions);
@@ -1445,8 +1601,10 @@ namespace Numerics.Distributions
             var parametersAttribute = xElement.Attribute("Parameters");
             if (parametersAttribute == null)
                 throw new ArgumentException("The serialized competing-risks parameters are missing.", nameof(xElement));
-            string[] parameterTokens = parametersAttribute.Value.Split('|');
-            if (parameterTokens.Length != competingRisks.NumberOfParameters)
+            // An empty attribute is the serialized form of components that contribute no flattened parameters.
+            string[] parameterTokens = parametersAttribute.Value.Length == 0 && competingRisks.GetParameters.Length == 0
+                ? [] : parametersAttribute.Value.Split('|');
+            if (parameterTokens.Length != competingRisks.GetParameters.Length)
                 throw new ArgumentException("The serialized competing-risks parameter count is invalid.", nameof(xElement));
             var parameters = new double[parameterTokens.Length];
             for (int i = 0; i < parameters.Length; i++)
@@ -1456,16 +1614,20 @@ namespace Numerics.Distributions
                     throw new ArgumentException("The serialized competing-risks parameters contain an invalid value.", nameof(xElement));
             }
 
-            int offset = 0;
-            for (int i = 0; i < distributions.Length; i++)
+            // Nested component elements are complete; their flattened parameters are informational.
+            if (componentElements == null)
             {
-                int count = distributions[i].NumberOfParameters;
-                var componentParameters = new double[count];
-                Array.Copy(parameters, offset, componentParameters, 0, count);
-                distributions[i].ValidateParameters(componentParameters, true);
-                offset += count;
+                int offset = 0;
+                for (int i = 0; i < distributions.Length; i++)
+                {
+                    int count = distributions[i].GetParameters.Length;
+                    var componentParameters = new double[count];
+                    Array.Copy(parameters, offset, componentParameters, 0, count);
+                    distributions[i].ValidateParameters(componentParameters, true);
+                    offset += count;
+                }
+                competingRisks.SetParameters(parameters);
             }
-            competingRisks.SetParameters(parameters);
             if (!competingRisks.ParametersValid)
                 throw new ArgumentException("The serialized competing-risks parameters are invalid.", nameof(xElement));
 

@@ -14,6 +14,9 @@ namespace Numerics.Distributions
     ///     <b> Authors: </b>
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
+    /// <para>
+    /// The shape κ follows the Hosking sign convention: a positive κ gives an upper bound at ξ + α/κ.
+    /// </para>
     /// </remarks>
     [Serializable]
     public class GeneralizedNormal : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, ILinearMomentEstimation, IStandardError, IBootstrappable
@@ -52,7 +55,7 @@ namespace Numerics.Distributions
             get { return _xi; }
             set
             {
-                _parametersValid = ValidateParameters([value, Alpha, Kappa], false) is null;
+                _parametersValid = ValidateParameters(value, Alpha, Kappa, false) is null;
                 _xi = value;
                 _momentsComputed = false;
             }
@@ -80,7 +83,7 @@ namespace Numerics.Distributions
             get { return _kappa; }
             set
             {
-                _parametersValid = ValidateParameters([Xi, Alpha, value], false) is null;
+                _parametersValid = ValidateParameters(Xi, Alpha, value, false) is null;
                 _kappa = value;
                 _momentsComputed = false;
             }
@@ -393,7 +396,7 @@ namespace Numerics.Distributions
             double D1 = 8.2325617 * Math.Pow(10, -2); 
             double D2 = 4.2681448 * Math.Pow(10, -3); 
             double D3 = 1.1653690 * Math.Pow(10, -4); 
-            double tau40 = 0.12260171954089095; // 30*asin(1/3)/pi - 9, the exact normal L-kurtosis limit.
+            double tau40 = 0.12260171954089095; // 15*asin(1/3)/pi - 1.5 = 30*atan(sqrt(2))/pi - 9, the exact normal L-kurtosis limit.
 
             double L1 = new GeneralizedNormal(xi, alpha, kappa).Mean;
             double L2 = alpha * NormalLScale(kappa);

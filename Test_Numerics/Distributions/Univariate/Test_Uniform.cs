@@ -258,7 +258,135 @@ namespace Distributions.Univariate
             var U = new Uniform();
             Assert.AreEqual(0, U.InverseCDF(0));
             Assert.AreEqual(1, U.InverseCDF(1));
-            Assert.AreEqual(0.3, U.InverseCDF(0.3));        
+            Assert.AreEqual(0.3, U.InverseCDF(0.3));
+        }
+
+        /// <summary>
+        /// For Min &lt; Max the PDF, CDF, quantile and mean are bit-identical to the established expressions,
+        /// which are inlined here.
+        /// </summary>
+        [TestMethod]
+        public void Test_OrdinaryParameters_BitIdentical()
+        {
+            (double min, double max)[] parameters = { (0, 1), (-3.7, 12.25), (1E-8, 2E-8), (-1E6, 1E6), (2, 2.0000001) };
+            double[] fractions = { 0, 1E-12, 0.1, 0.3333333333333333, 0.5, 0.9, 0.999999, 1 };
+            foreach (var (min, max) in parameters)
+            {
+                var U = new Uniform(min, max);
+                Assert.AreEqual((min + max) / 2.0d, U.Mean, 0d);
+                foreach (double f in fractions)
+                {
+                    double x = min + f * (max - min);
+                    Assert.AreEqual(x < min || x > max ? 0d : 1.0d / (max - min), U.PDF(x), 0d);
+                    double cdf = x <= min ? 0d : x >= max ? 1d : (x - min) / (max - min);
+                    Assert.AreEqual(cdf, U.CDF(x), 0d);
+                    double q = f == 0 ? min : f == 1 ? max : min + f * (max - min);
+                    Assert.AreEqual(q, U.InverseCDF(f), 0d);
+                }
+                Assert.AreEqual(0d, U.PDF(min - 1));
+                Assert.AreEqual(0d, U.CDF(min - 1));
+                Assert.AreEqual(1d, U.CDF(max + 1));
+            }
+        }
+
+        /// <summary>
+        /// Min = Max is a valid point mass: the CDF steps from 0 to 1 at Min and every quantile is Min.
+        /// </summary>
+        [TestMethod]
+        public void Test_PointMass()
+        {
+            var U = new Uniform(2, 2);
+            Assert.IsTrue(U.ParametersValid);
+            Assert.AreEqual(0d, U.CDF(1));
+            Assert.AreEqual(1d, U.CDF(2));
+            Assert.AreEqual(1d, U.CDF(3));
+            Assert.AreEqual(0d, U.PDF(2));
+            Assert.AreEqual(0d, U.PDF(1));
+            Assert.AreEqual(2d, U.InverseCDF(0));
+            Assert.AreEqual(2d, U.InverseCDF(0.4));
+            Assert.AreEqual(2d, U.InverseCDF(1));
+            Assert.AreEqual(2d, U.Mean);
+
+            var Z = new Uniform(0, 0);
+            Assert.AreEqual(0d, Z.InverseCDF(0.7));
+            Assert.AreEqual(0d, Z.Mean);
+        }
+
+        /// <summary>
+        /// A not-a-number argument returns not-a-number.
+        /// </summary>
+        [TestMethod]
+        public void Test_NaNArgument()
+        {
+            Assert.IsTrue(double.IsNaN(new Uniform(0, 1).PDF(double.NaN)));
+            Assert.IsTrue(double.IsNaN(new Uniform(0, 1).CDF(double.NaN)));
+            Assert.IsTrue(double.IsNaN(new Uniform(2, 2).PDF(double.NaN)));
+            Assert.IsTrue(double.IsNaN(new Uniform(2, 2).CDF(double.NaN)));
+        }
+
+        /// <summary>
+        /// Maximum likelihood gives (min, max); the method of moments gives mean ∓ √3·s.
+        /// </summary>
+        [TestMethod]
+        public void Test_Estimation()
+        {
+            var data = new[] { 2.3, 5.1, 3.3, 4.8, 2.9, 4.1 };
+            var U = new Uniform();
+            U.Estimate(data, ParameterEstimationMethod.MaximumLikelihood);
+            // scipy.stats.uniform.fit(data) = (loc=2.3, scale=2.8)
+            Assert.AreEqual(2.3, U.Min, 0d);
+            Assert.AreEqual(5.1, U.Max, 0d);
+            U.Estimate(data, ParameterEstimationMethod.MethodOfMoments);
+            // numpy: mean(data) -/+ sqrt(3)*std(data, ddof=1)
+            Assert.AreEqual(1.8408116907963217, U.Min, 1E-14);
+            Assert.AreEqual(5.659188309203678, U.Max, 1E-14);
+
+            var moments = U.MomentsFromParameters(new[] { 0.0, 12.0 });
+            Assert.AreEqual(6.0, moments[0], 1E-15);
+            Assert.AreEqual(12.0 / Math.Sqrt(12.0), moments[1], 1E-15);
+            Assert.AreEqual(0.0, moments[2]);
+            Assert.AreEqual(1.8, moments[3], 1E-15);
+            var parms = U.ParametersFromMoments(moments);
+            Assert.AreEqual(0.0, parms[0], 1E-14);
+            Assert.AreEqual(12.0, parms[1], 1E-14);
+
+            var constraints = U.GetParameterConstraints(data);
+            Assert.AreEqual(2.3, constraints.Item1[0], 0d);
+            Assert.AreEqual(5.1, constraints.Item1[1], 0d);
+            Assert.AreEqual(2.3, constraints.Item3[0], 0d);
+            Assert.AreEqual(5.1, constraints.Item2[1], 0d);
+            Assert.IsTrue(constraints.Item2[0] < 2.3 && constraints.Item3[1] > 5.1);
+
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.Estimate(new[] { 1.0 }, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.Estimate(new[] { 1.0, double.NaN }, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.Estimate(new[] { 1.0, 1.0 }, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<ArgumentNullException>(() => U.Estimate(null!, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<NotImplementedException>(() => U.Estimate(data, ParameterEstimationMethod.MethodOfLinearMoments));
+        }
+
+        /// <summary>
+        /// The parametric bootstrap re-estimates a valid distribution from a seeded sample.
+        /// </summary>
+        [TestMethod]
+        public void Test_Bootstrap()
+        {
+            var U = new Uniform(1, 4);
+            var b = (Uniform)U.Bootstrap(ParameterEstimationMethod.MaximumLikelihood, 200, 12345);
+            Assert.IsTrue(b.ParametersValid);
+            Assert.IsTrue(b.Min >= 1 && b.Min < 1.1);
+            Assert.IsTrue(b.Max <= 4 && b.Max > 3.9);
+        }
+
+        /// <summary>
+        /// The quantile function validates the parameters before returning the endpoints.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCDF_ValidatesParametersFirst()
+        {
+            var U = new Uniform(0, 1);
+            U.Min = 2;
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.InverseCDF(0));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.InverseCDF(1));
         }
     }
 }

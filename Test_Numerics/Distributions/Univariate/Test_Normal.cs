@@ -1,6 +1,7 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Mathematics.SpecialFunctions;
 
 namespace Distributions.Univariate
 {
@@ -369,6 +370,184 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.006209, N.CDF(0),  1e-04);
             Assert.AreEqual(0.30853, N.CDF(4),  1e-04);
             Assert.AreEqual(0.5, N.CDF(5));
+        }
+
+        /// <summary>
+        /// Verifies the closed-form maximum likelihood estimates: the sample mean and the population standard deviation.
+        /// </summary>
+        [TestMethod]
+        public void Test_MLE_ClosedForm()
+        {
+            var norm = new Normal();
+            // scipy.stats.norm.fit([1, 2, 3, 4, 5.5]) = (3.1, 1.5620499351813308)
+            double[] parameters = norm.MLE(new[] { 1d, 2d, 3d, 4d, 5.5d });
+            Assert.AreEqual(3.1d, parameters[0], 1E-15);
+            Assert.AreEqual(1.5620499351813308d, parameters[1], 1E-15);
+
+            norm.Estimate(new[] { 1d, 2d, 3d, 4d, 5.5d }, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(3.1d, norm.Mu, 1E-15);
+            Assert.AreEqual(1.5620499351813308d, norm.Sigma, 1E-15);
+
+            // scipy.stats.norm.fit(sample) = (12665.208333333334, 4660.423795814842)
+            norm.Estimate(sample, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(12665.208333333334d, norm.Mu, 1E-12 * 12665.208333333334d);
+            Assert.AreEqual(4660.423795814842d, norm.Sigma, 1E-12 * 4660.423795814842d);
+
+            // A large common offset does not cancel the dispersion.
+            // scipy.stats.norm.fit([1e9 + 1, 1e9 + 2, 1e9 + 3, 1e9 + 4, 1e9 + 5.5]) = (1000000003.1, 1.562049935181331)
+            parameters = norm.MLE(new[] { 1E9 + 1d, 1E9 + 2d, 1E9 + 3d, 1E9 + 4d, 1E9 + 5.5d });
+            Assert.AreEqual(1000000003.1d, parameters[0], 1E-15 * 1E9);
+            Assert.AreEqual(1.562049935181331d, parameters[1], 1E-12);
+        }
+
+        /// <summary>
+        /// Verifies that maximum likelihood estimation keeps the sample validation of the parameter constraints.
+        /// </summary>
+        [TestMethod]
+        public void Test_MLE_InvalidSamples()
+        {
+            var norm = new Normal();
+            Assert.Throws<ArgumentNullException>(() => norm.MLE(null!));
+            Assert.Throws<ArgumentOutOfRangeException>(() => norm.MLE(new[] { 1d, 2d, 3d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => norm.MLE(new[] { 2d, 2d, 2d, 2d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => norm.MLE(new[] { 1d, 2d, double.NaN, 4d }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => norm.MLE(new[] { 1d, 2d, double.PositiveInfinity, 4d }));
+        }
+
+        /// <summary>
+        /// Verifies conditional moments with infinite limits against truncated Normal moments.
+        /// </summary>
+        /// <remarks>
+        /// The moments are the conditional mean and the conditional moments about µ, which for a standard Normal equal
+        /// scipy.stats.truncnorm.moment(k, a, b) for k = 1..4.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ConditionalMoments_InfiniteLimits()
+        {
+            var standard = new Normal(0d, 1d);
+            // scipy.stats.truncnorm.moment(k, -inf, 0), k = 1..4
+            AssertMoments(new[] { -0.7978845608028654d, 1d, -1.5957691216057308d, 3d }, standard.ConditionalMoments(double.NegativeInfinity, 0d), 1E-15);
+            // scipy.stats.truncnorm.moment(k, 0, inf), k = 1..4
+            AssertMoments(new[] { 0.7978845608028654d, 1d, 1.5957691216057308d, 3d }, standard.ConditionalMoments(0d, double.PositiveInfinity), 1E-15);
+            // scipy.stats.truncnorm.moment(k, -inf, inf), k = 1..4
+            AssertMoments(new[] { 0d, 1d, 0d, 3d }, standard.ConditionalMoments(double.NegativeInfinity, double.PositiveInfinity), 1E-15);
+            // mpmath.quad(t^k exp(-t^2/2), [5, inf]) / mpmath.quad(exp(-t^2/2), [5, inf]) at 50 digits, k = 1..4
+            AssertMoments(new[] { 5.1865039671258421156d, 26.932519835629210578d, 140.03560711239773712d, 729.11055539761789619d }, standard.ConditionalMoments(5d, double.PositiveInfinity), 1E-13);
+            // Location and scale: mean 10 + 2 m1, moments about 10 scaled by 2^k, from scipy.stats.truncnorm.moment(k, -inf, 0.5)
+            // = [-0.5091604338370335, 0.7454197830814833, -1.1456109761333253, 2.1726142950148204]
+            var normal = new Normal(10d, 2d);
+            AssertMoments(new[] { 10d + 2d * -0.5091604338370335d, 4d * 0.7454197830814833d, 8d * -1.1456109761333253d, 16d * 2.1726142950148204d },
+                normal.ConditionalMoments(double.NegativeInfinity, 11d), 1E-14);
+            AssertMoments(new[] { 10d + 2d * 0.7978845608028654d, 4d, 8d * 1.5957691216057308d, 48d }, normal.ConditionalMoments(10d, double.PositiveInfinity), 1E-15);
+        }
+
+        /// <summary>
+        /// Verifies conditional moments on intervals in the upper tail, where the interval mass is differenced as survival probabilities.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalMoments_UpperTail()
+        {
+            var standard = new Normal(0d, 1d);
+            // mpmath.quad(t^k exp(-t^2/2), [a, b]) / mpmath.quad(exp(-t^2/2), [a, b]) at 50 digits, k = 1..4
+            AssertMoments(new[] { 8.1211889929797971226d, 65.967859202478959388d, 535.97037693355651102d, 4355.5936971380993874d }, standard.ConditionalMoments(8d, 9d), 1E-13);
+            AssertMoments(new[] { 3.2604542855900211539d, 10.679839942199728351d, 35.154336739497886921d, 116.31543769842735713d }, standard.ConditionalMoments(3d, 4d), 1E-13);
+            AssertMoments(new[] { 0.96355397941640390687d, 1.2408884948541009767d, 1.9873300825463330579d, 3.7377210154906842412d }, standard.ConditionalMoments(0.25d, 40d), 1E-13);
+            AssertMoments(new[] { 30.033259667433607515d, 901.99779002300608895d, 27090.000220024984343d, 813604.0043907705208d }, standard.ConditionalMoments(30d, 31d), 1E-12);
+            // Location and scale.
+            var normal = new Normal(-50d, 4d);
+            AssertMoments(new[] { -50d + 4d * 8.1211889929797971226d, 16d * 65.967859202478959388d, 64d * 535.97037693355651102d, 256d * 4355.5936971380993874d },
+                normal.ConditionalMoments(-18d, -14d), 1E-13);
+        }
+
+        /// <summary>
+        /// Verifies conditional moments on intervals in the lower tail, where the interval mass is differenced as lower-tail probabilities.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalMoments_LowerTail()
+        {
+            var standard = new Normal(0d, 1d);
+            // Mirror images of the upper-tail mpmath values: odd moments change sign.
+            AssertMoments(new[] { -8.1211889929797971226d, 65.967859202478959388d, -535.97037693355651102d, 4355.5936971380993874d }, standard.ConditionalMoments(-9d, -8d), 1E-13);
+            AssertMoments(new[] { -3.2604542855900211539d, 10.679839942199728351d, -35.154336739497886921d, 116.31543769842735713d }, standard.ConditionalMoments(-4d, -3d), 1E-13);
+            AssertMoments(new[] { -30.033259667433607515d, 901.99779002300608895d, -27090.000220024984343d, 813604.0043907705208d }, standard.ConditionalMoments(-31d, -30d), 1E-12);
+            var normal = new Normal(-50d, 4d);
+            AssertMoments(new[] { -50d - 4d * 8.1211889929797971226d, 16d * 65.967859202478959388d, -64d * 535.97037693355651102d, 256d * 4355.5936971380993874d },
+                normal.ConditionalMoments(-86d, -82d), 1E-13);
+        }
+
+        /// <summary>
+        /// Verifies the not-a-number contract for empty or reversed intervals.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalMoments_InvalidInterval()
+        {
+            var normal = new Normal(0d, 1d);
+            foreach (var moments in new[] { normal.ConditionalMoments(1d, 1d), normal.ConditionalMoments(2d, -2d) })
+                foreach (double m in moments) Assert.IsTrue(double.IsNaN(m));
+        }
+
+        /// <summary>
+        /// Verifies that finite intervals containing the mean keep the closed-form erf-based evaluation bit for bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_ConditionalMoments_FiniteLowerOrCentralIntervals_SameBits()
+        {
+            foreach (double mu in new[] { 0d, 3.7d, -120.25d })
+                foreach (double sigma in new[] { 1d, 0.35d, 42d })
+                    foreach (double alpha in new[] { -6d, -2.5d, -1d, -0.3d, 0d })
+                        foreach (double width in new[] { 0.01d, 0.5d, 2d, 7d })
+                        {
+                            double a = mu + alpha * sigma, b = a + width * sigma;
+                            if ((a - mu) / sigma > 0d || (b - mu) / sigma < 0d) continue;
+                            var expected = ErfConditionalMoments(mu, sigma, a, b);
+                            var actual = new Normal(mu, sigma).ConditionalMoments(a, b);
+                            for (int k = 0; k < 4; k++) Assert.AreEqual(expected[k], actual[k], 0d);
+                        }
+        }
+
+        /// <summary>The closed-form truncated Normal moments with erf-based probabilities, for finite limits.</summary>
+        /// <param name="mu">The mean.</param>
+        /// <param name="sigma">The standard deviation.</param>
+        /// <param name="a">The finite lower limit.</param>
+        /// <param name="b">The finite upper limit.</param>
+        /// <returns>The conditional mean and the conditional moments about the mean.</returns>
+        private static double[] ErfConditionalMoments(double mu, double sigma, double a, double b)
+        {
+            double α = (a - mu) / sigma;
+            double β = (b - mu) / sigma;
+            double Φα = 0.5 * (1 + Erf.Function(α / Math.Sqrt(2)));
+            double Φβ = 0.5 * (1 + Erf.Function(β / Math.Sqrt(2)));
+            double Z = Φβ - Φα;
+            double φα = Math.Exp(-0.5 * α * α) / Math.Sqrt(2 * Math.PI);
+            double φβ = Math.Exp(-0.5 * β * β) / Math.Sqrt(2 * Math.PI);
+            double λ = (φα - φβ) / Z;
+            double δ = (α * φα - β * φβ) / Z;
+            double τ = ((α * α + 2) * φα - (β * β + 2) * φβ) / Z;
+            double κ = (α * α * α * φα - β * β * β * φβ) / Z;
+            return new[] { mu + sigma * λ, sigma * sigma * (1 + δ), sigma * sigma * sigma * τ, sigma * sigma * sigma * sigma * (3 + κ + 3 * δ) };
+        }
+
+        /// <summary>
+        /// StandardZ keeps a finite lower end at p = 0 and returns positive infinity at p = 1, as its remarks state.
+        /// </summary>
+        /// <remarks>Reference: mpmath 1.3.0 at 40 digits, the roots of ncdf(z) = 2^-1074 (-38.467405617144346) and of ncdf(-z) = 2^-53 (8.209536151601387).</remarks>
+        [TestMethod]
+        public void Test_StandardZ_Ends()
+        {
+            Assert.AreEqual(-38.467405617144346, Normal.StandardZ(0d), 1E-12);
+            Assert.AreEqual(Normal.StandardZ(double.Epsilon), Normal.StandardZ(0d));
+            Assert.IsTrue(double.IsPositiveInfinity(Normal.StandardZ(1d)));
+            Assert.AreEqual(8.209536151601387, Normal.StandardZ(1d - Math.Pow(2d, -53)), 1E-12);
+        }
+
+        /// <summary>Asserts four moments to a relative tolerance, with the same tolerance as an absolute floor.</summary>
+        /// <param name="expected">The reference moments.</param>
+        /// <param name="actual">The computed moments.</param>
+        /// <param name="tolerance">The relative tolerance.</param>
+        private static void AssertMoments(double[] expected, double[] actual, double tolerance)
+        {
+            for (int k = 0; k < 4; k++)
+                Assert.AreEqual(expected[k], actual[k], tolerance * Math.Max(1d, Math.Abs(expected[k])));
         }
     }
 }

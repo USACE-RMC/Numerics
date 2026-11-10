@@ -1,4 +1,4 @@
-﻿// Since I use functions from the Accord Math Library, here is the required license header:
+﻿// This file uses functions from the Accord Math Library; the required license header follows:
 // Haden Smith (November 2017)
 // 
 // Accord Math Library
@@ -241,7 +241,8 @@ namespace Numerics.Distributions
                 }
                 else
                 {
-                    return double.NaN;
+                    // For shape <= 1 the density is nonincreasing on (0, inf), so the mode is the lower bound.
+                    return 0d;
                 }
             }
         }
@@ -429,13 +430,20 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The L-scale λ2 = θ Γ(κ + 1/2) / (√π Γ(κ)) is evaluated from the ratio Γ(κ) / Γ(κ + 1/2) of
+        /// <see cref="Gamma.RatioHalf(double)"/>, which is formed from ln B(κ, 1/2) for κ ≥ 1 and does not overflow,
+        /// so λ2 stays finite for large shapes (small skews), where the separate gamma functions overflow beyond
+        /// κ ≈ 171. Against mpmath the relative error of λ2 is below 1E-15 for shapes from 0.01 to 1E6. τ3 and τ4 are
+        /// the rational-function approximations of Hosking (routine LMRGAM), accurate to about 1E-6.
+        /// </remarks>
         public double[] LinearMomentsFromParameters(IList<double> parameters)
         {
             ValidateParameters(parameters, true);
             double alpha = parameters[1];
             double beta = parameters[0];
             double L1 = alpha * beta;
-            double L2 = Math.Abs(Math.Pow(Math.PI, -0.5d) * beta * Gamma.Function(alpha + 0.5d) / Gamma.Function(alpha));
+            double L2 = Math.Abs(beta / (Math.Sqrt(Math.PI) * Gamma.RatioHalf(alpha)));
             // The following approximations are accurate to 10-6. 
             double A0 = 0.32573501d;
             double A1 = 0.1686915d;
@@ -582,7 +590,7 @@ namespace Numerics.Distributions
             }
             double K_hat = (3d - s + Math.Sqrt((s - 3d) * (s - 3d) + 24d * s)) / (12d * s);
             double newK = NewtonRaphson.Solve((k) => Math.Log(k) - Gamma.Digamma(k) - s, (k) => 1d / k - Gamma.Trigamma(k), K_hat, 0.000001d, 100, true);
-            double newTheta = mean / Kappa;
+            double newTheta = mean / newK;
             SetParameters(newTheta, newK);
         }
 
@@ -631,9 +639,16 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The regularized lower incomplete gamma function P(κ, x/θ) of <see cref="Gamma.LowerIncomplete(double, double)"/>;
+        /// when x/θ underflows to zero for a positive x, the value is the exponential of <see cref="LogCDF(double)"/>.
+        /// </remarks>
         public override double CDF(double X)
         {
-            return Math.Exp(LogCDF(X));
+            if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
+            if (X <= 0) return 0;
+            double unit = X / Theta;
+            return unit == 0 ? Math.Exp(LogCDF(X)) : Gamma.LowerIncomplete(Kappa, unit);
         }
 
         /// <inheritdoc/>
@@ -642,12 +657,22 @@ namespace Numerics.Distributions
             if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
             if (X <= 0) return double.NegativeInfinity;
             double unit = X / Theta;
-            return unit == 0 ? Kappa * (Math.Log(X) - Math.Log(Theta)) - DistributionNumerics.LogGammaOnePlus(Kappa)
+            return unit == 0 ? Kappa * (Math.Log(X) - Math.Log(Theta)) - Gamma.LogGammaOnePlus(Kappa)
                 : DistributionNumerics.GammaLogCDF(Kappa, unit);
         }
 
         /// <inheritdoc/>
-        public override double CCDF(double X) => Math.Exp(LogCCDF(X));
+        /// <remarks>
+        /// The regularized upper incomplete gamma function Q(κ, x/θ) of <see cref="Gamma.UpperIncomplete(double, double)"/>;
+        /// when x/θ underflows to zero for a positive x, the value is the exponential of <see cref="LogCCDF(double)"/>.
+        /// </remarks>
+        public override double CCDF(double X)
+        {
+            if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
+            if (X <= 0) return 1;
+            double unit = X / Theta;
+            return unit == 0 ? Math.Exp(LogCCDF(X)) : Gamma.UpperIncomplete(Kappa, unit);
+        }
 
         /// <inheritdoc/>
         public override double LogCCDF(double X)
@@ -655,7 +680,7 @@ namespace Numerics.Distributions
             if (!_parametersValid) ValidateParameters(Theta, Kappa, true);
             if (X <= 0) return 0;
             double unit = X / Theta;
-            return unit == 0 ? DistributionNumerics.Log1mExp(LogCDF(X)) : DistributionNumerics.GammaLogSurvival(Kappa, unit);
+            return unit == 0 ? Tools.Log1mExp(LogCDF(X)) : DistributionNumerics.GammaLogSurvival(Kappa, unit);
         }
 
         /// <inheritdoc/>
@@ -674,11 +699,11 @@ namespace Numerics.Distributions
             // Preserve the exact exponential identity, including subnormal probabilities whose
             // unnecessary log/exp round trip loses range on .NET Framework.
             if (Kappa == 1) return -Theta * Tools.Log1p(-probability);
-            double unitQuantile = DistributionNumerics.GammaInverseCDF(Kappa, probability);
+            double unitQuantile = Gamma.InverseIncompleteRatio(Kappa, probability, false);
             // The lower-tail series has negligible higher-order terms at these unit quantiles.
             // Combine logs before multiplication when the scale can rescue an underflowed unit value.
             return unitQuantile < 1E-200
-                ? Math.Exp(Math.Log(Theta) + (Math.Log(probability) + DistributionNumerics.LogGammaOnePlus(Kappa)) / Kappa)
+                ? Math.Exp(Math.Log(Theta) + (Math.Log(probability) + Gamma.LogGammaOnePlus(Kappa)) / Kappa)
                 : unitQuantile * Theta;
         }
 
@@ -714,41 +739,44 @@ namespace Numerics.Distributions
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <returns>The named approximate frequency factor, not the actual Gamma quantile.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="skewness"/> is nonfinite or <paramref name="probability"/> is outside the closed unit interval or not-a-number.</exception>
-        /// <remarks>Large skew magnitude is capped at 9.75 before evaluating its powers. Negative
-        /// skew uses the reflected probability and sign of the corresponding positive-skew approximation.</remarks>
+        /// <remarks>
+        /// For abs(skew) at most 2 the frequency factor is the Cornish-Fisher polynomial in the skew through its sixth power,
+        /// <c>U + Σₖ Cᵏ Pₖ(U)</c> for k = 1 to 6, with <c>U</c> the standard Normal quantile. It is analytic at zero skew,
+        /// where it equals <c>U</c>, and its first four coefficients and the sixth are those of the exact skew series of the
+        /// standardized gamma quantile, <c>(U² - 1)/6</c>, <c>U(U² - 7)/144</c>, <c>-(3U⁴ + 7U² - 16)/6480</c>,
+        /// <c>U(9U⁴ + 256U² - 433)/622080</c> and <c>-U(3753U⁶ + 4353U⁴ - 289517U² - 289717)/9405849600</c>.
+        /// The fifth-order coefficient is <c>(12U⁶ - 143U⁴ - 923U² + 1472)/6531840</c>. The exact series term is
+        /// <c>(12U⁶ - 243U⁴ - 923U² + 1472)/6531840</c>, but the established coefficient is kept deliberately: against the
+        /// actual gamma quantile at 11 probabilities from 1E-6 to 1 - 1E-6, the largest error of the polynomial is 1.4E-4
+        /// (versus 1.6E-4 with the exact term) for abs(skew) up to 0.5, 1.2E-2 (versus 2.0E-2) up to 1 and 0.68 (versus 0.93)
+        /// up to 2, because the established term partly offsets the truncation after the sixth power. Its published source
+        /// has not been verified, so it is treated as an empirically tuned coefficient.
+        /// For abs(skew) below 1E-4 the Normal variate is returned at probabilities zero and one as the endpoint limit.
+        /// Large skew magnitude is capped at 9.75 before evaluating its powers. Negative
+        /// skew uses the reflected probability and sign of the corresponding positive-skew approximation.
+        /// The Cornish-Fisher coefficients and the Wilson-Hilferty constants for A, B and G are attributed to Hoshi and
+        /// Burges (1981). They are documented as implemented and have not been checked against Kirby (1972), Kite (1977),
+        /// Hoshi and Burges (1981), PeakFQ, HEC-SSP or Bulletin 17B/17C reference code.
+        /// The frequency factor is an approximation by design and does not return the support limits of the gamma
+        /// distribution at the probability endpoints. At probability one it is positive infinity for zero skew and for
+        /// abs(skew) below 1E-4, not-a-number for abs(skew) from 1E-4 through 2, where the polynomial is evaluated at an
+        /// infinite Normal variate, and for abs(skew) above 2 the Wilson-Hilferty value: positive infinity for positive skew
+        /// and the clamped bound <c>-2/C</c> (with C capped at 9.75 in magnitude) for negative skew. At probability zero the
+        /// Normal variate is finite (about -38.4674), so the polynomial and the Wilson-Hilferty form are evaluated there;
+        /// for skew above 2 the Wilson-Hilferty clamp gives <c>-2/C</c>.
+        /// </remarks>
         public static double FrequencyFactorKp(double skewness, double probability)
         {
             if (!Tools.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
             if (!(probability >= 0 && probability <= 1)) throw new ArgumentOutOfRangeException(nameof(probability));
             double C = skewness;
             double absC = Math.Abs(C);
-            // If skew is sufficiently close to zero, return standard Normal Z variate.
-            if (absC < 0.0001d) return Normal.StandardZ(probability);
+            // The series equals the standard Normal variate at zero skew; returning it directly keeps the endpoint limits.
+            // Below absolute skew 1E-4 the variate is also the limit at probabilities zero and one.
+            if (C == 0d || (absC < 1E-4 && (probability == 0d || probability == 1d))) return Normal.StandardZ(probability);
 
             // If abs(skew) is less than or equal to 2, use Cornish-Fisher transformation (Fisher and Cornish, 1960)
-            if (absC <= 2d)
-            {
-                double C2 = Math.Pow(C, 2d);
-                double C3 = Math.Pow(C, 3d);
-                double C4 = Math.Pow(C, 4d);
-                double C5 = Math.Pow(C, 5d);
-                double C6 = Math.Pow(C, 6d);
-                double U = Normal.StandardZ(probability);
-                double U2 = Math.Pow(U, 2d);
-                double U3 = Math.Pow(U, 3d);
-                double U4 = Math.Pow(U, 4d);
-                double U5 = Math.Pow(U, 5d);
-                double U6 = Math.Pow(U, 6d);
-                double U7 = Math.Pow(U, 7d);
-                double Kterm0 = U;
-                double Kterm1 = C / 2d * ((U2 - 1d) / 3d);
-                double Kterm2 = C2 / Math.Pow(2d, 4d) * ((U3 - 7d * U) / 9d);
-                double Kterm3 = C3 / Math.Pow(2d, 5d) * ((6d * U4 + 14d * U2 - 32d) / 405d);
-                double Kterm4 = C4 / Math.Pow(2d, 7d) * ((9d * U5 + 256d * U3 - 433d * U) / 4860d);
-                double Kterm5 = C5 / Math.Pow(2d, 8d) * ((12d * U6 - 143d * U4 - 923d * U2 + 1472d) / 25515d);
-                double Kterm6 = C6 / Math.Pow(2d, 10d) * ((3753d * U7 + 4353d * U5 - 289517d * U3 - 289717d * U) / 9185400d);
-                return Kterm0 + Kterm1 + Kterm2 - Kterm3 + Kterm4 + Kterm5 - Kterm6;
-            }
+            if (absC <= 2d) return CornishFisherFrequencyFactor(C, Normal.StandardZ(probability), out _);
             else
             {
                 // If abs(skew) is greater than 2, use Modified Wilson-Hilferty transformation (Kirby, 1972)
@@ -801,50 +829,53 @@ namespace Numerics.Distributions
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <returns>The partial derivative of the frequency factor with respect to skewness.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="skewness"/> is nonfinite or <paramref name="probability"/> is not finite and strictly between zero and one.</exception>
+        /// <remarks>
+        /// For abs(skew) at most 2 this is the derivative of the Cornish-Fisher polynomial of
+        /// <see cref="FrequencyFactorKp(double, double)"/>, analytic through zero skew. It uses the same deliberately tuned
+        /// fifth-order coefficient <c>-143U⁴</c> in place of the exact series term <c>-243U⁴</c>, which measured more accurate
+        /// against the actual gamma quantile (largest errors 1.4E-4, 1.2E-2 and 0.68 versus 1.6E-4, 2.0E-2 and 0.93 for abs(skew)
+        /// up to 0.5, 1 and 2). Above 2 it is a numerical derivative of the Wilson-Hilferty form. The probability must be
+        /// strictly between zero and one. The coefficients share the provenance described for
+        /// <see cref="FrequencyFactorKp(double, double)"/>: they are documented as implemented, without a verified published
+        /// source.
+        /// </remarks>
         public static double PartialKp(double skewness, double probability)
         {
             if (!Tools.IsFinite(skewness)) throw new ArgumentOutOfRangeException(nameof(skewness));
             DistributionNumerics.ValidateProbability(probability);
             double C = skewness;
             double absC = Math.Abs(C);
-            // Use the Cornish-Fisher derivative limit at zero skew.
-            if (absC < 0.0001d)
-            {
-                double z = Normal.StandardZ(probability);
-                return (z * z - 1.0d) / 6.0d;
-            }
-
             // If abs(skew) is less than or equal to 2, use Cornish-Fisher transformation (Fisher and Cornish, 1960)
             if (absC <= 2d)
             {
-                double C2 = Math.Pow(C, 2d);
-                double C3 = Math.Pow(C, 3d);
-                double C4 = Math.Pow(C, 4d);
-                double C5 = Math.Pow(C, 5d);
-                double C6 = Math.Pow(C, 6d);
-                double U = Normal.StandardZ(probability);
-                double U2 = Math.Pow(U, 2d);
-                double U3 = Math.Pow(U, 3d);
-                double U4 = Math.Pow(U, 4d);
-                double U5 = Math.Pow(U, 5d);
-                double U6 = Math.Pow(U, 6d);
-                double U7 = Math.Pow(U, 7d);
-                // Determine the first derivative of K with respect to skew
-                double dKterm0 = 0d;
-                double dKterm1 = 1d / 2d * ((U2 - 1d) / 3d);
-                double dKterm2 = 2d * (C / Math.Pow(2d, 4d)) * ((U3 - 7d * U) / 9d);
-                double dKterm3 = 3d * (C2 / Math.Pow(2d, 5d)) * ((6d * U4 + 14d * U2 - 32d) / 405d);
-                double dKterm4 = 4d * (C3 / Math.Pow(2d, 7d)) * ((9d * U5 + 256d * U3 - 433d * U) / 4860d);
-                double dKterm5 = 5d * (C4 / Math.Pow(2d, 8d)) * ((12d * U6 - 143d * U4 - 923d * U2 + 1472d) / 25515d);
-                double dKterm6 = 6d * (C5 / Math.Pow(2d, 10d)) * ((3753d * U7 + 4353d * U5 - 289517d * U3 - 289717d * U) / 9185400d);
-                // 
-                return dKterm0 + dKterm1 + dKterm2 - dKterm3 + dKterm4 + dKterm5 - dKterm6;
+                CornishFisherFrequencyFactor(C, Normal.StandardZ(probability), out double derivative);
+                return derivative;
             }
             else
             {
                 // If abs(skew) is greater than 2, use Modified Wilson-Hilferty transformation (Kirby, 1972)
                 return NumericalDerivative.Derivative((x) => FrequencyFactorKp(x, probability), skewness, 0.0001d);
             }
+        }
+
+        /// <summary>Evaluates the Cornish-Fisher frequency factor polynomial and its skew derivative.</summary>
+        /// <param name="skew">The coefficient of skewness, at most 2 in absolute value.</param>
+        /// <param name="u">The standard Normal quantile.</param>
+        /// <param name="derivative">The derivative of the frequency factor with respect to the skew.</param>
+        /// <returns>The frequency factor <c>u + Σₖ skewᵏ Pₖ(u)</c> for k = 1 to 6.</returns>
+        /// <remarks>The polynomials in <c>u</c> are those of the Cornish-Fisher transformation (Fisher and Cornish,
+        /// 1960) with their powers of two folded into the denominators, and both sums are evaluated in Horner form.</remarks>
+        private static double CornishFisherFrequencyFactor(double skew, double u, out double derivative)
+        {
+            double u2 = u * u, u4 = u2 * u2, u6 = u4 * u2;
+            double p1 = (u2 - 1d) / 6d;
+            double p2 = u * (u2 - 7d) / 144d;
+            double p3 = -(6d * u4 + 14d * u2 - 32d) / 12960d;
+            double p4 = u * (9d * u4 + 256d * u2 - 433d) / 622080d;
+            double p5 = (12d * u6 - 143d * u4 - 923d * u2 + 1472d) / 6531840d;
+            double p6 = -u * (3753d * u6 + 4353d * u4 - 289517d * u2 - 289717d) / 9405849600d;
+            derivative = p1 + skew * (2d * p2 + skew * (3d * p3 + skew * (4d * p4 + skew * (5d * p5 + skew * 6d * p6))));
+            return u + skew * (p1 + skew * (p2 + skew * (p3 + skew * (p4 + skew * (p5 + skew * p6)))));
         }
 
         /// <summary>
@@ -891,7 +922,7 @@ namespace Numerics.Distributions
                 double logScale = Math.Log(t), logShape = Math.Log(k), logCount = Math.Log(sampleSize);
                 covar[0, 0] = Math.Exp(2 * logScale - logCount + DistributionNumerics.LogSum(-logResidual, -logShape)); // Var(θ̂)
                 covar[1, 1] = Math.Exp(2 * logShape - logCount - logResidual); // Var(κ̂)
-                covar[0, 1] = -Math.Exp(logScale + logShape - logCount - logResidual); // Cov(θ̂, κ̂) — negative
+                covar[0, 1] = -Math.Exp(logScale + logShape - logCount - logResidual); // Cov(θ̂, κ̂), negative
                 covar[1, 0] = covar[0, 1];
             }
             return covar;
@@ -923,13 +954,13 @@ namespace Numerics.Distributions
                 logCoefficient = Math.Log(2) + DistributionNumerics.LogSum(0, -Math.Log(Kappa));
             else throw new NotImplementedException();
 
-            double unitQuantile = DistributionNumerics.GammaInverseCDF(Kappa, probability);
+            double unitQuantile = Gamma.InverseIncompleteRatio(Kappa, probability, false);
             double logQuantile, logDifference;
             if (unitQuantile < 1E-200)
             {
                 // The same lower-tail log quantile and derivative used by the public gradient,
                 // with kappa cancelled before forming q-kappa*dq/dkappa.
-                logQuantile = (Math.Log(probability) + DistributionNumerics.LogGammaOnePlus(Kappa)) / Kappa;
+                logQuantile = (Math.Log(probability) + Gamma.LogGammaOnePlus(Kappa)) / Kappa;
                 if (double.IsNegativeInfinity(logQuantile)) return 0;
                 logDifference = logQuantile + Math.Log(Math.Abs(1 - Gamma.Digamma(1 + Kappa) + logQuantile));
             }
@@ -954,11 +985,11 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(_theta, _kappa, true);
-            double unitQuantile = DistributionNumerics.GammaInverseCDF(Kappa, probability);
+            double unitQuantile = Gamma.InverseIncompleteRatio(Kappa, probability, false);
             double shapeDerivative;
             if (unitQuantile < 1E-200)
             {
-                double logQuantile = (Math.Log(probability) + DistributionNumerics.LogGammaOnePlus(Kappa)) / Kappa;
+                double logQuantile = (Math.Log(probability) + Gamma.LogGammaOnePlus(Kappa)) / Kappa;
                 double logarithmicDerivative = (Gamma.Digamma(1 + Kappa) - logQuantile) / Kappa;
                 shapeDerivative = Math.Exp(Math.Log(Theta) + logQuantile + Math.Log(logarithmicDerivative));
             }

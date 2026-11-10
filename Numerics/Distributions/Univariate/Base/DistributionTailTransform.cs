@@ -32,7 +32,7 @@ namespace Numerics.Distributions
             }
             double logProduct = Math.Log(Math.Abs(shape)) + logDifference - Math.Log(scale);
             bool negativeProduct = shape > 0 ? x < location : x > location;
-            double logSupport = negativeProduct ? LogSum(0, logProduct) : Log1mExp(logProduct);
+            double logSupport = negativeProduct ? LogSum(0, logProduct) : Tools.Log1mExp(logProduct);
             return -logSupport / shape;
         }
     }

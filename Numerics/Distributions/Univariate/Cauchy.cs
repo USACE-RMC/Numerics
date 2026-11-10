@@ -41,12 +41,21 @@ namespace Numerics.Distributions
             SetParameters([location, scale]);
         }
      
+        private double _x0;
         private double _gamma;
 
         /// <summary>
         /// Gets and sets the location parameter (X0).
         /// </summary>
-        public double X0 { get; set; }
+        public double X0
+        {
+            get { return _x0; }
+            set
+            {
+                _parametersValid = ValidateParameters([value, Gamma], false) is null;
+                _x0 = value;
+            }
+        }
 
         /// <summary>
         /// Gets and sets the scale parameter γ (gamma).
@@ -219,14 +228,31 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([X0, Gamma], true);
-            return 1.0d / Math.PI * Math.Atan2(x - X0, Gamma) + 0.5d;
+            double d = x - X0;
+            // Below the location, use atan(γ/|x - X0|)/π to avoid cancellation in the lower tail.
+            if (d < 0.0d)
+                return Math.Atan(Gamma / -d) / Math.PI;
+            return 1.0d / Math.PI * Math.Atan2(d, Gamma) + 0.5d;
+        }
+
+        /// <inheritdoc/>
+        public override double CCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([X0, Gamma], true);
+            double d = x - X0;
+            // Above the location, use atan(γ/(x - X0))/π to avoid cancellation in the upper tail.
+            if (d > 0.0d)
+                return Math.Atan(Gamma / d) / Math.PI;
+            return 0.5d - 1.0d / Math.PI * Math.Atan2(d, Gamma);
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -235,7 +261,12 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([X0, Gamma], true);
-            return X0 + Gamma * Math.Tan(Math.PI * (probability - 0.5d));
+            if (probability == 0.5d)
+                return X0;
+            // Evaluate the tangent on the tail probability so that extreme quantiles keep full precision.
+            if (probability < 0.5d)
+                return X0 - Gamma / Math.Tan(Math.PI * probability);
+            return X0 + Gamma / Math.Tan(Math.PI * (1.0d - probability));
         }
 
         /// <inheritdoc/>

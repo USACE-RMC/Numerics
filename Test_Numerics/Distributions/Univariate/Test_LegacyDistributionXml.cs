@@ -20,7 +20,7 @@ namespace Distributions.Univariate
     /// </para>
     /// <para>
     /// The fixture strings below were captured verbatim from the 2.1.4 writers. They pin the
-    /// factory's contract for files produced by earlier releases: well-formed payloads load with
+    /// factory's contract for files in the 2.1.4 format: well-formed payloads load with
     /// their exact values, while payloads carrying non-finite parameters, missing attributes,
     /// unknown types, or damaged correlation matrices are rejected loudly instead of loading
     /// degraded values. The 2.1.4 scalar writer could not serialize the table-bearing
@@ -69,7 +69,7 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// A 2.1.4 payload carrying NaN parameters (a failed-fit artifact the old writer emitted
+        /// A 2.1.4 payload carrying NaN parameters (a failed-fit artifact the 2.1.4 writer emitted
         /// silently) is rejected instead of loading a degraded distribution.
         /// </summary>
         [TestMethod]

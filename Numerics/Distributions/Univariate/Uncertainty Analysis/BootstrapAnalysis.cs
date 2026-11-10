@@ -36,11 +36,13 @@ namespace Numerics.Distributions
         /// <param name="sampleSize">Size of the bootstrap sample to generate.</param>
         /// <param name="replications">The number of bootstrap replications to be sampled.</param>
         /// <param name="seed">Optional. Seed for random number generator. Default = 12345.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="distribution"/> does not implement <see cref="IBootstrappable"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="sampleSize"/> is less than 10 or <paramref name="replications"/> is less than 100.</exception>
         public BootstrapAnalysis(IUnivariateDistribution distribution, ParameterEstimationMethod estimationMethod, int sampleSize, int replications = 10000, int seed = 12345)
         {
-            if (distribution as IBootstrappable == null) throw new ArgumentException("The distribution must implement IBootstrappable.", nameof(Distribution));
-            if (sampleSize < 10) throw new ArgumentOutOfRangeException(nameof(SampleSize), "The sample size must at least 10.");
-            if (replications < 100) throw new ArgumentOutOfRangeException(nameof(Replications), "The number of bootstrap replications must be at least 100.");
+            if (distribution as IBootstrappable == null) throw new ArgumentException("The distribution must implement IBootstrappable.", nameof(distribution));
+            if (sampleSize < 10) throw new ArgumentOutOfRangeException(nameof(sampleSize), "The sample size must be at least 10.");
+            if (replications < 100) throw new ArgumentOutOfRangeException(nameof(replications), "The number of bootstrap replications must be at least 100.");
 
             Distribution = (IBootstrappable)distribution;
             EstimationMethod = estimationMethod;
@@ -54,10 +56,11 @@ namespace Numerics.Distributions
         #region Members
 
         private int _retries = 20;
+        private int _completedReplications;
 
         /// <summary>
         /// The number of accumulation chunks used by the reductions over replications. Fixed, not
-        /// derived from the processor count, so the summation order — and therefore the result —
+        /// derived from the processor count, so the summation order, and therefore the result,
         /// does not vary with the machine or the thread count.
         /// </summary>
         private const int ReductionChunks = 64;
@@ -95,6 +98,41 @@ namespace Numerics.Distributions
         /// </summary>
         public int PRNGSeed { get; private set; }
 
+        /// <summary>
+        /// Gets or sets an optional receiver for the number of bootstrap replications completed so far. Default = null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Distributions()"/> and <see cref="BootstrapTQuantileCI"/> report once per replication, after its
+        /// retries finish and whether or not it succeeded, so the last value reported by a completed run is
+        /// <see cref="Replications"/>. Methods that generate distributions internally, such as <see cref="Estimate"/>
+        /// and <see cref="BCaQuantileCI"/>, report through <see cref="Distributions()"/>. The inner replications of the
+        /// studentized bootstrap and the BCa jackknife are not reported.
+        /// </para>
+        /// <para>
+        /// Replications run in parallel, so <see cref="IProgress{T}.Report(T)"/> is called concurrently from worker
+        /// threads and the counts can arrive out of order. Reporting does not change the random streams or the results.
+        /// </para>
+        /// </remarks>
+        public IProgress<int>? Progress { get; set; }
+
+        /// <summary>
+        /// Gets or sets a token that stops a bootstrap run early. Default = none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Distributions()"/> and <see cref="BootstrapTQuantileCI"/> stop starting new replications once the
+        /// token is cancelled, let the replications already running finish, and then throw
+        /// <see cref="OperationCanceledException"/>. A replication is not interrupted part way, so the studentized
+        /// bootstrap stops only after the inner replications of every running outer replication finish.
+        /// </para>
+        /// <para>
+        /// A cancelled run returns no results. A token that is never cancelled does not change the random streams or
+        /// the results.
+        /// </para>
+        /// </remarks>
+        public CancellationToken CancellationToken { get; set; }
+
         #endregion
 
         #region Methods
@@ -111,8 +149,9 @@ namespace Numerics.Distributions
             var random = new MersenneTwister(PRNGSeed);
             var seeds = random.NextIntegers(Replications);
             int failures = 0;
+            _completedReplications = 0;
 
-            Parallel.For(0, Replications, index =>
+            Parallel.For(0, Replications, CreateReplicationOptions(), index =>
             {
                 Exception? lastFailure = null;
                 for (int attempt = 0; attempt < _retries; attempt++)
@@ -136,6 +175,7 @@ namespace Numerics.Distributions
                     bootDistributions[index] = null!;
                     Interlocked.Increment(ref failures);
                 }
+                ReportReplicationCompleted();
             });
 
             FailedReplications = failures;
@@ -187,6 +227,8 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap an array of distribution parameters.
         /// </summary>
+        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null, which generates them.</param>
+        /// <returns>One row of parameters per replication; failed replications are rows of NaN.</returns>
         public double[,] Parameters(IUnivariateDistribution[]? distributions = null)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
@@ -212,6 +254,8 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap an array of distribution parameter sets.
         /// </summary>
+        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null, which generates them.</param>
+        /// <returns>One parameter set per replication; failed replications have NaN values.</returns>
         public ParameterSet[] ParameterSets(IUnivariateDistribution[]? distributions = null)
         {
             var bootDistributions = distributions != null ? distributions : Distributions();
@@ -237,6 +281,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap a list of product moments for each bootstrapped sample.
         /// </summary>
+        /// <returns>One row per replication holding the mean, standard deviation, skewness and kurtosis.</returns>
         public double[,] ProductMoments()
         {
             var bootMoments = new double[Replications, 4];
@@ -253,6 +298,7 @@ namespace Numerics.Distributions
         /// <summary>
         /// Bootstrap a list of linear moments for each bootstrapped sample.
         /// </summary>
+        /// <returns>One row per replication holding λ1, λ2, τ3 and τ4.</returns>
         public double[,] LinearMoments()
         {
             var bootMoments = new double[Replications, 4];
@@ -324,9 +370,10 @@ namespace Numerics.Distributions
         /// Bootstrap full uncertainty analysis results using the percentile method.
         /// </summary>
         /// <param name="probabilities">List of non-exceedance probabilities.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <param name="alpha">The significance level; Default = 0.1, which will result in the 90% confidence intervals.</param>
         /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
         /// <param name="recordParameterSets">Optional. Determines whether to record parameter sets. Default = true.</param>
+        /// <returns>The mode curve, mean curve, percentile confidence intervals and, optionally, the parameter sets.</returns>
         public UncertaintyAnalysisResults Estimate(IList<double> probabilities, double alpha = 0.1, IUnivariateDistribution[]? distributions = null, bool recordParameterSets = true)
         {
             var results = new UncertaintyAnalysisResults();
@@ -380,7 +427,7 @@ namespace Numerics.Distributions
         /// <param name="distributions">Optional precomputed bootstrap distributions.</param>
         /// <returns>The interpolated quantiles.</returns>
         /// <remarks>
-        /// Despite the historical method name, this overload returns one quantile for each entry in
+        /// Despite the method name, this overload returns one quantile for each entry in
         /// <paramref name="probabilities"/>. The two-argument overload instead returns mean CDF
         /// probabilities evaluated at sorted quantiles.
         /// </remarks>
@@ -503,7 +550,9 @@ namespace Numerics.Distributions
         /// </summary>
         /// <param name="minProbability">The minimum probability to compute quantiles.</param>
         /// <param name="maxProbability">The maximum probability to compute quantiles.</param>
-        /// <param name="distributions">Optional. Pass in an array of bootstrapped distributions. Default = null.</param>
+        /// <param name="distributions">The bootstrapped distributions; null entries are skipped.</param>
+        /// <returns>The smallest quantile at <paramref name="minProbability"/> and the largest quantile at <paramref name="maxProbability"/>.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when every distribution is null.</exception>
         public double[] ComputeMinMaxQuantiles(double minProbability, double maxProbability, IUnivariateDistribution[] distributions)
         {
             // The extremes merge once per partition; min and max are order-independent, so the
@@ -570,10 +619,10 @@ namespace Numerics.Distributions
         /// <returns>The lower and upper confidence limits for each probability.</returns>
         /// <remarks>
         /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
-        /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
+        /// replicates, the plotting-position form of Efron's estimator, which keeps the proportion
         /// below one when every replicate falls at or below the estimate. When every replicate exceeds
         /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
-        /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
+        /// <see cref="Normal.StandardZ(double)"/>, the z-score of <see cref="double.Epsilon"/>, about
         /// −38.5; the adjusted probability underflows to zero, so the limits collapse to the smallest
         /// replicate.
         /// </remarks>
@@ -658,19 +707,40 @@ namespace Numerics.Distributions
         /// <param name="probabilities">The non-exceedance probabilities.</param>
         /// <param name="alpha">The excluded two-sided probability.</param>
         /// <returns>The lower and upper confidence limits for each probability.</returns>
+        /// <exception cref="NotSupportedException">Thrown when <see cref="Distribution"/> does not implement
+        /// <see cref="IEstimation"/>, because the method refits it to the sample and to each jackknife sample.</exception>
         /// <remarks>
+        /// <para>
         /// The bias-correction proportion is count(θ*ᵢ ≤ θ̂) / (B + 1) over the B successful bootstrap
-        /// replicates — the plotting-position form of Efron's estimator, which keeps the proportion
+        /// replicates, the plotting-position form of Efron's estimator, which keeps the proportion
         /// below one when every replicate falls at or below the estimate. When every replicate exceeds
         /// the estimate the proportion is zero and the bias correction saturates at the finite floor of
-        /// <see cref="Normal.StandardZ(double)"/> — the z-score of <see cref="double.Epsilon"/>, about
+        /// <see cref="Normal.StandardZ(double)"/>, the z-score of <see cref="double.Epsilon"/>, about
         /// −38.5. The BCa expression stays defined; for small accelerations the adjusted probability
         /// underflows to zero and the limits collapse to the smallest replicate, while an acceleration
         /// negative enough to flip the denominator's sign (below about −0.026 at that floor) drives the
         /// adjusted probability toward one instead.
+        /// </para>
+        /// <para>
+        /// The acceleration is a = Σ dᵢ³ / (6 (Σ dᵢ²)^(3/2)) with jackknife influence values dᵢ = θ̂ - θ̂₍ᵢ₎ centered
+        /// on the full-sample estimate θ̂. This is the empirical-influence form of Davison and Hinkley (1997), used by
+        /// the R boot package (empinf with type "jack"). scipy.stats.bootstrap and Efron and Tibshirani (1993,
+        /// section 14.3) center the jackknife values on their mean instead; the two accelerations agree to O(1/n).
+        /// </para>
+        /// <para>
+        /// The method fits <see cref="Distribution"/>, the caller's object, to <paramref name="sampleData"/> in place
+        /// and sets <see cref="SampleSize"/> to the number of observations, so later calls on this instance use the
+        /// fitted parameters and that sample size.
+        /// </para>
+        /// <para>
+        /// References: Davison, A. C., and Hinkley, D. V. (1997). Bootstrap Methods and Their Application. Cambridge
+        /// University Press. Efron, B., and Tibshirani, R. J. (1993). An Introduction to the Bootstrap. Chapman and
+        /// Hall.
+        /// </para>
         /// </remarks>
         public double[,] BCaQuantileCI(IList<double> sampleData, IList<double> probabilities, double alpha = 0.1)
         {
+            RequireEstimation("BCa confidence intervals");
             var confidenceProbabilities = new[] { alpha / 2d, 1d - alpha / 2d };
             var output = new double[probabilities.Count, 2];
 
@@ -804,8 +874,11 @@ namespace Numerics.Distributions
         /// <param name="probabilities">The non-exceedance probabilities.</param>
         /// <param name="alpha">The excluded two-sided probability.</param>
         /// <returns>The lower and upper confidence limits for each probability.</returns>
+        /// <exception cref="NotSupportedException">Thrown when <see cref="Distribution"/> does not implement
+        /// <see cref="IEstimation"/>, because each replication refits the distribution.</exception>
         public double[,] BootstrapTQuantileCI(IList<double> probabilities, double alpha = 0.1)
         {
+            RequireEstimation("Bootstrap-t confidence intervals");
             var populationValues = new double[probabilities.Count];
             for (int i = 0; i < probabilities.Count; i++)
                 populationValues[i] = CubeRoot(Distribution.InverseCDF(probabilities[i]));
@@ -818,8 +891,9 @@ namespace Numerics.Distributions
             var random = new MersenneTwister(PRNGSeed);
             var seeds = random.NextIntegers(Replications);
             int failedFits = 0;
+            _completedReplications = 0;
 
-            Parallel.For(0, Replications, index =>
+            Parallel.For(0, Replications, CreateReplicationOptions(), index =>
             {
                 try
                 {
@@ -848,6 +922,7 @@ namespace Numerics.Distributions
                         studentizedValues[index, j] = double.NaN;
                     }
                 }
+                ReportReplicationCompleted();
             });
 
             if (failedFits == Replications)
@@ -931,6 +1006,25 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Creates the parallel options for an outer replication loop, carrying <see cref="CancellationToken"/>.
+        /// </summary>
+        /// <returns>The parallel options for an outer replication loop.</returns>
+        private ParallelOptions CreateReplicationOptions()
+        {
+            return new ParallelOptions { CancellationToken = CancellationToken };
+        }
+
+        /// <summary>
+        /// Counts one completed outer replication and reports the running total to <see cref="Progress"/>.
+        /// </summary>
+        private void ReportReplicationCompleted()
+        {
+            var progress = Progress;
+            if (progress == null) return;
+            progress.Report(Interlocked.Increment(ref _completedReplications));
+        }
+
+        /// <summary>
         /// Returns finite results from successful fits and enforces a minimum sample count.
         /// </summary>
         /// <param name="values">The fit results, with non-finite entries representing failed fits.</param>
@@ -956,6 +1050,17 @@ namespace Numerics.Distributions
         {
             if (value == 0d) return value;
             return value < 0d ? -Math.Pow(-value, 1d / 3d) : Math.Pow(value, 1d / 3d);
+        }
+
+        /// <summary>
+        /// Requires the analyzed distribution to support parameter estimation from a sample.
+        /// </summary>
+        /// <param name="operation">The operation name included in the exception message.</param>
+        /// <exception cref="NotSupportedException">Thrown when <see cref="Distribution"/> does not implement <see cref="IEstimation"/>.</exception>
+        private void RequireEstimation(string operation)
+        {
+            if (Distribution is not IEstimation)
+                throw new NotSupportedException(operation + " requires a distribution that implements IEstimation; " + Distribution.GetType().Name + " does not.");
         }
         #endregion
 

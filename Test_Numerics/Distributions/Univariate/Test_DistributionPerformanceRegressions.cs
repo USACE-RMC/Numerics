@@ -1,6 +1,7 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Mathematics.SpecialFunctions;
 
 namespace Distributions.Univariate
 {
@@ -46,21 +47,26 @@ namespace Distributions.Univariate
             for (int n = 2; n <= 16; n++)
             {
                 Assert.AreEqual(BitConverter.DoubleToInt64Bits(literals[n - 2]),
-                    BitConverter.DoubleToInt64Bits(DistributionNumerics.ZetaInteger(n)), $"n={n}");
+                    BitConverter.DoubleToInt64Bits(Gamma.ZetaInteger(n)), $"n={n}");
             }
             for (int n = 17; n <= 60; n++)
             {
                 double expected = 1d;
                 for (int k = 2; k <= 32; k++) expected += Math.Pow(k, -n);
                 Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected),
-                    BitConverter.DoubleToInt64Bits(DistributionNumerics.ZetaInteger(n)), $"n={n}");
+                    BitConverter.DoubleToInt64Bits(Gamma.ZetaInteger(n)), $"n={n}");
             }
-            Assert.ThrowsExactly<IndexOutOfRangeException>(() => DistributionNumerics.ZetaInteger(1));
+            Assert.ThrowsExactly<IndexOutOfRangeException>(() => Gamma.ZetaInteger(1));
         }
 
 #if NET8_0_OR_GREATER
         /// <summary>LP3 gradients solve each standardized quantile once across skew, base, tail and scale cases.</summary>
+        /// <remarks>
+        /// The test runs alone, warms up past the JIT tiering threshold, and takes the smallest of three measurements,
+        /// so that tiering on the test thread does not count as allocation.
+        /// </remarks>
         [TestMethod]
+        [DoNotParallelize]
         public void LogPearsonQuantileGradient_RepeatedCallsAvoidDuplicateInverseWork()
         {
             var cases = new[]
@@ -71,15 +77,20 @@ namespace Distributions.Univariate
                 (Distribution: new LogPearsonTypeIII(-250d, 1E-6d, 4d) { Base = Math.E }, Probability: 0.5d)
             };
             double checksum = 0d;
-            foreach (var item in cases)
-                foreach (double value in item.Distribution.QuantileGradient(item.Probability)) checksum += value;
-
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            const int repetitions = 20;
-            for (int repetition = 0; repetition < repetitions; repetition++)
+            for (int warmUp = 0; warmUp < 40; warmUp++)
                 foreach (var item in cases)
                     foreach (double value in item.Distribution.QuantileGradient(item.Probability)) checksum += value;
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            const int repetitions = 20;
+            long allocated = long.MaxValue;
+            for (int trial = 0; trial < 3; trial++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                for (int repetition = 0; repetition < repetitions; repetition++)
+                    foreach (var item in cases)
+                        foreach (double value in item.Distribution.QuantileGradient(item.Probability)) checksum += value;
+                allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
 
             Assert.IsTrue(double.IsFinite(checksum));
             TestContext.WriteLine($"Measured LP3 gradient allocation: {allocated} bytes for {repetitions * cases.Length} calls.");

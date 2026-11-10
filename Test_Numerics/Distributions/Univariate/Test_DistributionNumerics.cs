@@ -1,6 +1,8 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics;
 using Numerics.Distributions;
+using Numerics.Mathematics.SpecialFunctions;
 
 namespace Distributions.Univariate
 {
@@ -26,7 +28,7 @@ namespace Distributions.Univariate
             {
                 if (row["family"] != "Gamma" || row["quantity"] != "GradientShape" || row["status"] != "finite") continue;
                 double a = DistributionOracle.Number(row["shape"]), p = DistributionOracle.Number(row["p"]);
-                double q = DistributionNumerics.GammaInverseCDF(a, p);
+                double q = Gamma.InverseIncompleteRatio(a, p, false);
                 double actual = DistributionNumerics.GammaQuantileShapeDerivative(a, q);
                 double expected = DistributionOracle.Number(row["value"]);
                 Assert.AreEqual(expected, actual, Math.Abs(expected) * 5E-8, $"shape={a},p={p}");
@@ -69,15 +71,15 @@ namespace Distributions.Univariate
         [TestMethod]
         public void GammaInverseUsesBothTailsDirectly()
         {
-            Assert.AreEqual(46.051701859880914, DistributionNumerics.GammaInverseCDF(1, 1E-20, true), 1E-13);
-            Assert.AreEqual(1E-20, DistributionNumerics.GammaInverseCDF(1, 1E-20), 1E-35);
-            double q = DistributionNumerics.GammaInverseCDF(.001, .5);
+            Assert.AreEqual(46.051701859880914, Gamma.InverseIncompleteRatio(1, 1E-20, true), 1E-13);
+            Assert.AreEqual(1E-20, Gamma.InverseIncompleteRatio(1, 1E-20, false), 1E-35);
+            double q = Gamma.InverseIncompleteRatio(.001, .5, false);
             Assert.AreEqual(5.244206408274966E-302, q, 2E-313);
             foreach (double a in new[] { .1, .5, 2, 100, 10000, 1E8 })
             foreach (double p in new[] { 1E-10, .1, .5 })
             foreach (bool upper in new[] { false, true })
             {
-                double value = DistributionNumerics.GammaInverseCDF(a, p, upper);
+                double value = Gamma.InverseIncompleteRatio(a, p, upper);
                 double actual = upper ? DistributionNumerics.GammaLogSurvival(a, value) : DistributionNumerics.GammaLogCDF(a, value);
                 Assert.AreEqual(Math.Log(p), actual, a >= 1E8 ? 2E-11 : 2E-12, $"a={a},p={p},upper={upper}");
             }
@@ -89,8 +91,8 @@ namespace Distributions.Univariate
         {
             Assert.AreEqual(-804.6084420137538, DistributionNumerics.NormalLogCDF(-40), 2E-13);
             Assert.AreEqual(-43.62814911333212, DistributionNumerics.NormalLogSurvival(9), 2E-13);
-            Assert.AreEqual(double.NegativeInfinity, DistributionNumerics.Log1mExp(0));
-            Assert.AreEqual(0, DistributionNumerics.Log1mExp(double.NegativeInfinity));
+            Assert.AreEqual(double.NegativeInfinity, Tools.Log1mExp(0));
+            Assert.AreEqual(0, Tools.Log1mExp(double.NegativeInfinity));
             Assert.AreEqual(double.NegativeInfinity, DistributionNumerics.LogDifference(-1, -1));
             Assert.AreEqual(1, DistributionNumerics.Exprel(0));
             Assert.AreEqual(.5, DistributionNumerics.ExprelDerivative(0));

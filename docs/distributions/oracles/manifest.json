@@ -17,6 +17,16 @@
       "sha256Utf8Lf": "97d9f2dc8dc4d0dc363aee01e1cce2917546a4fabfea5ec08da3913240c32164"
     },
     {
+      "file": "gpd-survival-quantile.csv",
+      "rows": 300,
+      "sha256Utf8Lf": "830e8e9c53656cb35cdc25f54759cfb77eb873284eb717697cf368cf9ab12f3c"
+    },
+    {
+      "file": "gev-survival-quantile.csv",
+      "rows": 2196,
+      "sha256Utf8Lf": "84ff37d9721298f5d8979f09135347f5a6c310d96d8ffdebce81f3af4a335bbd"
+    },
+    {
       "file": "normal-pearson.csv",
       "rows": 50,
       "sha256Utf8Lf": "3fa790f12e66d4dc0791b462e16e7042c45ec4f2c783051ad8b67e41caafd548"

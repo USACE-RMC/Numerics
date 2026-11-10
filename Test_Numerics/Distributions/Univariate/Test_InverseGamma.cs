@@ -187,7 +187,7 @@ namespace Distributions.Univariate
             Assert.AreEqual(1.74443, IG.PDF(0.42),  1e-04);
 
             var IG2 = new InverseGamma(0.42,2.4);
-            Assert.AreEqual(double.NaN, IG2.PDF(0));
+            Assert.AreEqual(0d, IG2.PDF(0));
             Assert.AreEqual(1.48386, IG2.PDF(0.3),  1e-05);
         }
 
@@ -217,6 +217,70 @@ namespace Distributions.Univariate
 
             var IG2 = new InverseGamma(2, 2);
             Assert.AreEqual(0.81993, IG2.InverseCDF(0.3), 1e-04);
+        }
+
+        /// <summary>
+        /// Verifies the log-space density at large shapes and near zero.
+        /// Reference values from mpmath at 30 digits; scipy.stats.invgamma.pdf(x, a=α, scale=β) agrees to 1.4E-13 relative.
+        /// </summary>
+        [TestMethod()]
+        public void Test_LogPDF_LargeShapeAndNearZero()
+        {
+            var IG = new InverseGamma(1000, 200);
+            Assert.AreEqual(1.1279091074368329, IG.PDF(5), 1.1279091074368329 * 1E-12);
+            Assert.AreEqual(0.12036557131579806, IG.LogPDF(5), 1E-12);
+
+            var IG2 = new InverseGamma(1, 200);
+            Assert.AreEqual(1127.9091074368329, IG2.PDF(0.005), 1127.9091074368329 * 1E-12);
+
+            var IG3 = new InverseGamma(0.5, 2);
+            Assert.AreEqual(0d, IG3.PDF(1E-300));
+            Assert.AreEqual(-5E+299, IG3.LogPDF(1E-300), 1E+285);
+            Assert.AreEqual(double.NegativeInfinity, IG3.LogPDF(0));
+            Assert.AreEqual(double.NegativeInfinity, IG3.LogPDF(-1));
+            Assert.AreEqual(0d, IG3.PDF(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies the upper and lower tails are resolved below machine epsilon.
+        /// Reference values from scipy.stats.invgamma.sf and scipy.stats.invgamma.logsf (a=α, scale=β),
+        /// and mpmath log Q(3, 2000) for the lower tail.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CCDF_LogCDF_Tails()
+        {
+            var IG = new InverseGamma(1, 2);
+            Assert.AreEqual(4.999996666667916E-13, IG.CCDF(1E6), 4.999996666667916E-13 * 1E-12);
+            Assert.AreEqual(-28.32416896315513, IG.LogCCDF(1E6), 1E-12);
+            Assert.AreEqual(1d, IG.CCDF(0));
+            Assert.AreEqual(0d, IG.CCDF(double.PositiveInfinity));
+
+            var IG2 = new InverseGamma(2, 3);
+            Assert.AreEqual(-1985.4903422616424, IG2.LogCDF(1E-3), 1E-9);
+            Assert.AreEqual(double.NegativeInfinity, IG2.LogCDF(0));
+        }
+
+        /// <summary>
+        /// Verifies a not-a-number probability is rejected by the inverse CDF.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_NaNProbability()
+        {
+            var IG = new InverseGamma(2, 2);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => IG.InverseCDF(double.NaN));
+        }
+
+        /// <summary>
+        /// Verifies the thrown and returned validation messages are identical.
+        /// </summary>
+        [TestMethod()]
+        public void Test_ValidateParameters_Messages()
+        {
+            var IG = new InverseGamma();
+            var returned = IG.ValidateParameters([-1d, 2d], false);
+            var thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => IG.ValidateParameters([-1d, 2d], true));
+            Assert.IsNotNull(returned);
+            Assert.AreEqual(returned.Message, thrown.Message);
         }
     }
 }

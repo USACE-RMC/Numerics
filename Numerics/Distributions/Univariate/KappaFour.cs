@@ -33,6 +33,9 @@ namespace Numerics.Distributions
     /// </list>
     /// </para>
     /// <para>
+    /// The shape κ follows the Hosking sign convention: a positive κ gives an upper bound at ξ + α/κ.
+    /// </para>
+    /// <para>
     /// Finite shapes and a positive finite scale define the distribution. Moment existence and
     /// estimation restrictions are separate: an absolute moment of order r requires rκ &gt; -1,
     /// and additionally rκh &gt; -1 when h &lt; 0. Moment properties use standardized adaptive
@@ -83,6 +86,7 @@ namespace Numerics.Distributions
         private double[] u = [double.NaN, double.NaN, double.NaN, double.NaN];
         [NonSerialized] private bool _compensatedMinimumComputed;
         [NonSerialized] private double _compensatedMinimum;
+        [NonSerialized] private bool _compensatedMinimumAttempted; // the compensated endpoint was attempted for the current parameters
 
         /// <summary>
         /// Gets and sets the location parameter ξ (Xi).
@@ -96,6 +100,7 @@ namespace Numerics.Distributions
                 _xi = value;
                 _momentsComputed = false;
                 _compensatedMinimumComputed = false;
+                _compensatedMinimumAttempted = false;
             }
         }
 
@@ -111,6 +116,7 @@ namespace Numerics.Distributions
                 _alpha = value;
                 _momentsComputed = false;
                 _compensatedMinimumComputed = false;
+                _compensatedMinimumAttempted = false;
             }
         }
 
@@ -126,6 +132,7 @@ namespace Numerics.Distributions
                 _kappa = value;
                 _momentsComputed = false;
                 _compensatedMinimumComputed = false;
+                _compensatedMinimumAttempted = false;
             }
         }
 
@@ -141,6 +148,7 @@ namespace Numerics.Distributions
                 _hondo = value;
                 _momentsComputed = false;
                 _compensatedMinimumComputed = false;
+                _compensatedMinimumAttempted = false;
             }
         }
 
@@ -299,8 +307,11 @@ namespace Numerics.Distributions
             {
                 if (Hondo > 0)
                 {
-                    if (!_compensatedMinimumComputed)
+                    if (!_compensatedMinimumAttempted)
+                    {
                         _compensatedMinimumComputed = KappaFourBoundary.TryLowerEndpoint(Xi, Alpha, Kappa, Hondo, out _compensatedMinimum);
+                        _compensatedMinimumAttempted = true;
+                    }
                     if (_compensatedMinimumComputed) return _compensatedMinimum;
                 }
                 if (Hondo <= 0d && Kappa < 0d)
@@ -744,19 +755,22 @@ namespace Numerics.Distributions
                 return integrated;
             }
 
+            // ln g_r = ln r + ln Γ(1 + k) + ln Γ(r/h) - (1 + k) ln h - ln Γ(1 + k + r/h) for h > 0, and
+            // ln r + ln Γ(1 + k) + ln Γ(-k - r/h) - (1 + k) ln(-h) - ln Γ(1 - r/h) for h < 0. With ln Γ(z + 1) =
+            // ln Γ(z) + ln z the terms ln r, ln|h| and ln(r/|h|) cancel exactly, leaving
+            // ln Γ(1 + k) - k ln|h| minus or plus a log-gamma difference with increment ±k. The difference is
+            // evaluated without subtracting the large ln Γ values of an argument near r/|h|.
             var beta = new double[4];
-            double logGamma = Gamma.LogGamma(1d + kappa);
+            double logGamma = Gamma.LogGammaOnePlus(kappa);
             for (int r = 1; r <= 4; r++)
             {
                 double logG;
                 if (hondo == 0d)
                     logG = logGamma - kappa * Math.Log(r);
                 else if (hondo > 0d)
-                    logG = Math.Log(r) + logGamma + Gamma.LogGamma(r / hondo) -
-                        (1d + kappa) * Math.Log(hondo) - Gamma.LogGamma(1d + kappa + r / hondo);
+                    logG = logGamma - kappa * Math.Log(hondo) - Gamma.LogGammaDifference(1d + r / hondo, kappa);
                 else
-                    logG = Math.Log(r) + logGamma + Gamma.LogGamma(-kappa - r / hondo) -
-                        (1d + kappa) * Math.Log(-hondo) - Gamma.LogGamma(1d - r / hondo);
+                    logG = logGamma - kappa * Math.Log(-hondo) + Gamma.LogGammaDifference(-r / hondo, -kappa);
                 beta[r - 1] = -Tools.Expm1(logG) / (kappa * r);
             }
             return [beta[0], 2d * beta[1] - beta[0],
@@ -911,9 +925,10 @@ namespace Numerics.Distributions
         {
             EnsureValidParameters();
             if (double.IsNaN(x)) return double.NaN;
-            if (double.IsInfinity(x) || x < Minimum || x > Maximum) return 0d;
-            if (x == Minimum) return LowerEndpointDensity();
-            if (x == Maximum) return Kappa < 1d ? 0d : Kappa == 1d ? 1d / Alpha : double.PositiveInfinity;
+            double lower = Minimum, upper = Maximum;
+            if (double.IsInfinity(x) || x < lower || x > upper) return 0d;
+            if (x == lower) return LowerEndpointDensity();
+            if (x == upper) return Kappa < 1d ? 0d : Kappa == 1d ? 1d / Alpha : double.PositiveInfinity;
             return Math.Exp(InteriorLogDensity(x));
         }
 
@@ -946,8 +961,9 @@ namespace Numerics.Distributions
         public override double LogPDF(double x)
         {
             EnsureValidParameters();
-            if (double.IsNaN(x) || double.IsInfinity(x) || x < Minimum || x > Maximum) return double.NegativeInfinity;
-            if (x == Minimum || x == Maximum)
+            double lower = Minimum, upper = Maximum;
+            if (!Tools.IsFinite(x) || x < lower || x > upper) return double.NegativeInfinity;
+            if (x == lower || x == upper)
             {
                 double density = PDF(x);
                 return density > 0d ? Math.Log(density) : double.NegativeInfinity;
@@ -993,7 +1009,7 @@ namespace Numerics.Distributions
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d) return Minimum;
             if (probability == 1.0d) return Maximum;

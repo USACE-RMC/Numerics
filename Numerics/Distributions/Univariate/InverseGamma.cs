@@ -216,7 +216,7 @@ namespace Numerics.Distributions
             if (double.IsNaN(parameters[0]) || double.IsInfinity(parameters[0]) || parameters[0] <= 0.0d)
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Beta), "The scale parameter β (beta)) must be positive.");
+                    throw new ArgumentOutOfRangeException(nameof(Beta), "The scale parameter β (beta) must be positive.");
                 return new ArgumentOutOfRangeException(nameof(Beta), "The scale parameter β (beta) must be positive.");
             }
             if (double.IsNaN(parameters[1]) || double.IsInfinity(parameters[1]) || parameters[1] <= 0.0d)
@@ -234,8 +234,26 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([Beta, Alpha], true);
-            if (x < Minimum || x > Maximum) return 0.0d;
-            return Math.Pow(Beta, Alpha) / Gamma.Function(Alpha) * Math.Pow(x, -Alpha - 1d) * Math.Exp(-Beta / x);
+            return Math.Exp(LogPDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space through the unit-scale gamma density of y = β / x, using
+        /// log f(x) = log g(y; α) + log y - log x, so large shapes keep a finite density and
+        /// the density underflows to zero as x approaches zero.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Beta, Alpha], true);
+            if (x <= Minimum || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
+            double y = Beta / x;
+            if (double.IsPositiveInfinity(y)) return double.NegativeInfinity;
+            // When β / x underflows, exp(-β / x) is one and the power-law tail remains.
+            if (y == 0d) return Alpha * Math.Log(Beta) - Gamma.LogGamma(Alpha) - (Alpha + 1d) * Math.Log(x);
+            return DistributionNumerics.GammaLogDensity(Alpha, y) + Math.Log(y) - Math.Log(x);
         }
 
         /// <inheritdoc/>
@@ -252,10 +270,56 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the log regularized upper incomplete gamma function Q(α, β / x).
+        /// </remarks>
+        public override double LogCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Beta, Alpha], true);
+            if (x <= Minimum)
+                return double.NegativeInfinity;
+            if (x >= Maximum)
+                return 0d;
+            double y = Beta / x;
+            return y == 0d ? Tools.Log1mExp(LogCCDF(x)) : DistributionNumerics.GammaLogSurvival(Alpha, y);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the regularized lower incomplete gamma function P(α, β / x), which resolves
+        /// upper-tail probabilities below machine epsilon.
+        /// </remarks>
+        public override double CCDF(double x)
+        {
+            return Math.Exp(LogCCDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the log regularized lower incomplete gamma function P(α, β / x).
+        /// </remarks>
+        public override double LogCCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Beta, Alpha], true);
+            if (x <= Minimum)
+                return 0d;
+            if (x >= Maximum)
+                return double.NegativeInfinity;
+            double y = Beta / x;
+            // When β / x underflows, the leading series term P(α, y) = y^α / Γ(α + 1) is exact to double precision.
+            return y == 0d ? Alpha * (Math.Log(Beta) - Math.Log(x)) - Gamma.LogGammaOnePlus(Alpha)
+                : DistributionNumerics.GammaLogCDF(Alpha, y);
+        }
+
+        /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;

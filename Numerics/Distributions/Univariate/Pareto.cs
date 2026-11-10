@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Numerics.Data.Statistics;
 
 namespace Numerics.Distributions
 {
@@ -20,7 +21,7 @@ namespace Numerics.Distributions
     /// </para>
     /// </remarks>
     [Serializable]
-    public class Pareto : UnivariateDistributionBase
+    public class Pareto : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, IBootstrappable
     {
   
         /// <summary>
@@ -209,6 +210,74 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample has fewer than two observations, contains a
+        /// nonfinite or nonpositive value, or is constant.</exception>
+        /// <exception cref="NotImplementedException"><paramref name="estimationMethod"/> is not
+        /// <see cref="ParameterEstimationMethod.MaximumLikelihood"/>.</exception>
+        public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
+        {
+            DistributionNumerics.ValidateSample(sample, 2, true);
+            if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
+            {
+                SetParameters(MLE(sample));
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        /// <inheritdoc/>
+        public IUnivariateDistribution Bootstrap(ParameterEstimationMethod estimationMethod, int sampleSize, int seed = -1)
+        {
+            var newDistribution = new Pareto(Xm, Alpha);
+            var sample = newDistribution.GenerateRandomValues(sampleSize, seed);
+            newDistribution.Estimate(sample, estimationMethod);
+            if (newDistribution.ParametersValid == false)
+                throw new Exception("Bootstrapped distribution parameters are invalid.");
+            return newDistribution;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The initial values are the closed-form maximum likelihood estimates. The scale is bounded above by the
+        /// sample minimum, because every observation must lie in the support [Xm, ∞).
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample has fewer than two observations, contains a
+        /// nonfinite or nonpositive value, or is constant.</exception>
+        public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
+        {
+            var initialVals = MLE(sample);
+            var lowerVals = new double[NumberOfParameters];
+            var upperVals = new double[NumberOfParameters];
+            DistributionNumerics.PositiveParameterBounds(initialVals[0], out lowerVals[0], out _);
+            upperVals[0] = initialVals[0];
+            DistributionNumerics.PositiveParameterBounds(initialVals[1], out lowerVals[1], out upperVals[1]);
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The maximum likelihood estimates have the closed form Xm = min(x) and α = n / Σ ln(xᵢ/Xm)
+        /// (Johnson, Kotz and Balakrishnan, 1994, Continuous Univariate Distributions, Vol. 1, Ch. 20); they equal
+        /// scipy.stats.pareto.fit with the location fixed at zero.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample has fewer than two observations, contains a
+        /// nonfinite or nonpositive value, or is constant.</exception>
+        public double[] MLE(IList<double> sample)
+        {
+            DistributionNumerics.ValidateSample(sample, 2, true);
+            double scale = Statistics.Minimum(sample);
+            double sum = 0d;
+            for (int i = 0; i < sample.Count; i++)
+                sum += Math.Log(sample[i] / scale);
+            return [scale, sample.Count / sum];
+        }
+
+        /// <inheritdoc/>
         public override void SetParameters(IList<double> parameters)
         {
             Xm = parameters[0];
@@ -235,16 +304,36 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as α/x · (Xm/x)^α, so the density stays finite when Xm^α or x^(α+1) alone would overflow.
+        /// </remarks>
         public override double PDF(double x)
         {
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(new[] { Xm, Alpha }, true);
             if (x < Minimum || x > Maximum) return 0.0d;
-            return Alpha * Math.Pow(Xm, Alpha) / Math.Pow(x, Alpha + 1d);
+            return Alpha / x * Math.Pow(Xm / x, Alpha);
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as ln(α) − α·ln(x/Xm) − ln(x), which stays finite after the density underflows.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(new[] { Xm, Alpha }, true);
+            if (x < Minimum || x > Maximum) return double.NegativeInfinity;
+            return Math.Log(Alpha) - Alpha * LogScaledExcess(x) - Math.Log(x);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as −expm1(−α·ln(x/Xm)) with ln(x/Xm) = log1p((x − Xm)/Xm) near Xm, so the
+        /// probability keeps full relative precision just above the scale parameter.
+        /// </remarks>
         public override double CDF(double x)
         {
             // Validate parameters
@@ -254,7 +343,55 @@ namespace Numerics.Distributions
                 return 0d;
             if (x >= Maximum)
                 return 1d;
-            return 1d - Math.Pow(Xm / x, Alpha);
+            return -Tools.Expm1(-Alpha * LogScaledExcess(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated directly as (Xm/x)^α = exp(−α·ln(x/Xm)), so far upper-tail probabilities are not lost
+        /// to the subtraction 1 − CDF.
+        /// </remarks>
+        public override double CCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(new[] { Xm, Alpha }, true);
+            if (x <= Minimum)
+                return 1d;
+            return Math.Exp(-Alpha * LogScaledExcess(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as −α·ln(x/Xm), which stays finite after the survival probability underflows.
+        /// </remarks>
+        public override double LogCCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(new[] { Xm, Alpha }, true);
+            if (x <= Minimum)
+                return 0d;
+            return -Alpha * LogScaledExcess(x);
+        }
+
+        /// <summary>
+        /// Computes ln(x/Xm) for x at or above the scale parameter.
+        /// </summary>
+        /// <param name="x">A value at or above <see cref="Xm"/>.</param>
+        /// <returns>The natural logarithm of x/Xm.</returns>
+        /// <remarks>
+        /// Near Xm the logarithm is formed as log1p((x − Xm)/Xm), where the difference is exact, so it keeps
+        /// full relative precision; farther out the ratio is used directly, and when the ratio overflows the
+        /// difference of logarithms is used.
+        /// </remarks>
+        private double LogScaledExcess(double x)
+        {
+            double excess = (x - Xm) / Xm;
+            if (excess <= 1d)
+                return Tools.Log1p(excess);
+            double ratio = x / Xm;
+            return double.IsPositiveInfinity(ratio) ? Math.Log(x) - Math.Log(Xm) : Math.Log(ratio);
         }
 
         /// <inheritdoc/>
@@ -263,13 +400,13 @@ namespace Numerics.Distributions
             // Validate probability
             if (probability < 0.0d || probability > 1.0d)
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(new[] { Xm, Alpha }, true);
             if (probability == 0.0d)
                 return Minimum;
             if (probability == 1.0d)
                 return Maximum;
-            // Validate parameters
-            if (_parametersValid == false)
-                ValidateParameters(new[] { Xm, Alpha }, true);
             return Xm * Math.Pow(1.0d - probability, -1.0d / Alpha);
         }
 

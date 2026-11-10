@@ -120,7 +120,7 @@ namespace Numerics.Distributions
                 if (ProbabilityOfSuccess == 0d)
                     return double.PositiveInfinity;
                 if (ProbabilityOfSuccess == 1.0d)
-                    return 1.0d;
+                    return 0.0d;
                 return Math.Ceiling(-1.0d / Math.Log(1d - ProbabilityOfSuccess, 2d)) - 1d;
             }
         }
@@ -199,6 +199,8 @@ namespace Numerics.Distributions
             if (_parametersValid == false)
                 ValidateParameters([ProbabilityOfSuccess], true);
             if (k < Minimum || k > Maximum) return 0.0d;
+            // The probability mass is zero away from the integers.
+            if (k != Math.Floor(k) && !double.IsNaN(k)) return 0.0d;
             return Math.Pow(1.0d - ProbabilityOfSuccess, k) * ProbabilityOfSuccess;
         }
 
@@ -212,14 +214,14 @@ namespace Numerics.Distributions
                 return 0.0d;
             if (k >= Maximum)
                 return 1.0d;
-            return 1.0d - Math.Pow(1.0d - ProbabilityOfSuccess, k + 1d);
+            return 1.0d - Math.Pow(1.0d - ProbabilityOfSuccess, Math.Floor(k) + 1d);
         }
 
         /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;
@@ -228,6 +230,9 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters([ProbabilityOfSuccess], true);
+            // All mass is at zero failures when every trial succeeds.
+            if (ProbabilityOfSuccess == 1.0d)
+                return 0.0d;
             return Math.Ceiling(Math.Log(1.0d - probability, 1.0d - ProbabilityOfSuccess)) - 1.0d;
         }
 

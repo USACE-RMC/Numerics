@@ -292,7 +292,7 @@ namespace Distributions.Univariate
             var b2 = new BetaDistribution(9, 1);
             Assert.AreEqual(0, b2.PDF(0), 1E-4);
             Assert.AreEqual(0.035156, b2.PDF(0.5),1e-04);
-            Assert.AreEqual(8.9999, b2.PDF(1),1e-04);
+            Assert.AreEqual(9.0, b2.PDF(1),1e-04);
             Assert.AreEqual(0, b2.PDF(-1), 1E-4);
             Assert.AreEqual(0, b2.PDF(2), 1E-4);
 
@@ -337,6 +337,82 @@ namespace Distributions.Univariate
 
             var b3 = new BetaDistribution(5, 100);
             Assert.AreEqual(0,b3.InverseCDF(0));
+        }
+
+        /// <summary>
+        /// Verifies the log-space density at large shapes and at the support endpoints.
+        /// Reference values from scipy.stats.beta.pdf and scipy.stats.beta.logpdf, and mpmath at 30 digits.
+        /// </summary>
+        [TestMethod()]
+        public void Test_LogPDF_LargeShapesAndEndpoints()
+        {
+            var large = new BetaDistribution(1000, 1000);
+            Assert.AreEqual(35.678022291708641, large.PDF(0.5), 35.678022291708641 * 1E-12);
+            Assert.AreEqual(3.574534877131522, large.LogPDF(0.5), 1E-12);
+
+            var b = new BetaDistribution(2, 3);
+            Assert.AreEqual(1.764, b.PDF(0.3), 1E-14);
+            Assert.AreEqual(0.5675839575845993, b.LogPDF(0.3), 1E-14);
+            Assert.AreEqual(double.NegativeInfinity, b.LogPDF(-0.1));
+            Assert.AreEqual(double.NegativeInfinity, b.LogPDF(1.1));
+
+            Assert.AreEqual(0.7351051938957226, new BetaDistribution(0.5, 0.5).PDF(0.25), 1E-14);
+            Assert.AreEqual(double.PositiveInfinity, new BetaDistribution(0.5, 0.5).PDF(0));
+            Assert.AreEqual(1.0, new BetaDistribution(1, 1).PDF(0), 1E-14);
+            Assert.AreEqual(1.0, new BetaDistribution(1, 1).PDF(1), 1E-14);
+            Assert.AreEqual(3.0, new BetaDistribution(1, 3).PDF(0), 1E-13);
+            Assert.AreEqual(3.0, new BetaDistribution(3, 1).PDF(1), 1E-13);
+            Assert.AreEqual(0.0, new BetaDistribution(2, 2).PDF(0));
+        }
+
+        /// <summary>
+        /// Verifies the upper tail is resolved below machine epsilon.
+        /// Reference values from scipy.stats.beta.sf and scipy.stats.beta.logsf.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CCDF_UpperTail()
+        {
+            var b = new BetaDistribution(2, 3);
+            double x = 1d - 1E-12;
+            Assert.AreEqual(3.9997345452279445E-36, b.CCDF(x), 3.9997345452279445E-36 * 1E-12);
+            Assert.AreEqual(-81.50683535256094, b.LogCCDF(x), 1E-12);
+            Assert.AreEqual(0.4752, b.CCDF(0.4), 1E-14);
+            Assert.AreEqual(1d, b.CCDF(0));
+            Assert.AreEqual(0d, b.CCDF(1));
+        }
+
+        /// <summary>
+        /// Verifies the lower tail of the CCDF keeps a small x that 1 - x would round away.
+        /// Reference values from scipy.stats.beta.sf (SciPy 1.17.1).
+        /// </summary>
+        [TestMethod]
+        public void Test_CCDF_LowerTail()
+        {
+            var b = new BetaDistribution(0.3, 0.4);
+            Assert.AreEqual(0.999999, b.CCDF(4.159739860874255E-20), 1E-15);
+            Assert.AreEqual(0.9999000121244137, b.CCDF(1.93E-13), 1E-15);
+        }
+
+        /// <summary>
+        /// Verifies a not-a-number probability is rejected by the inverse CDF.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_NaNProbability()
+        {
+            var b = new BetaDistribution(2, 3);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => b.InverseCDF(double.NaN));
+        }
+
+        /// <summary>
+        /// Verifies the CDF when a shape parameter, or the sum of the shapes, lies one ulp below an integer.
+        /// Reference values from scipy.stats.beta.cdf; the first matches the closed form 1 - (1 - x)^1.5.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CDF_ShapesJustBelowIntegers()
+        {
+            Assert.AreEqual(0.025000000000000012, new BetaDistribution(0.9999999999999998, 1.5).CDF(0.01673689415961626), 1E-15);
+            Assert.AreEqual(0.6607459491435457, new BetaDistribution(0.49999999999999994, 1.4999999999999998).CDF(0.3), 1E-14);
+            Assert.AreEqual(0.16000000000000003, new BetaDistribution(1.9999999999999998, 0.9999999999999998).CDF(0.4), 1E-15);
         }
     }
 }

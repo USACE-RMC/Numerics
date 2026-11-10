@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -244,16 +244,16 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Testing skew is 1.1396.
+        /// Testing skew is 12 sqrt(6) zeta(3) / pi^3. Reference value from scipy.stats.gumbel_r.
         /// </summary>
         [TestMethod()]
         public void Test_Skewness()
         {
             var GUM = new Gumbel();
-            Assert.AreEqual(1.1396, GUM.Skewness);
+            Assert.AreEqual(1.1395470994046486, GUM.Skewness, 1E-15);
 
             var GUM2 = new Gumbel(10, 1);
-            Assert.AreEqual(1.1396, GUM2.Skewness);
+            Assert.AreEqual(1.1395470994046486, GUM2.Skewness, 1E-15);
         }
 
         /// <summary>

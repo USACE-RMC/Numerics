@@ -368,5 +368,33 @@ namespace Distributions.Univariate
             Assert.IsNull(dist.ValidateParameters(new[] { -1.5, 0.3 }, false));
         }
 
+        /// <summary>
+        /// The log density equals the expression evaluated with Math.Log(Base), Math.Log(Math.Log(Base)) and
+        /// Math.Log(Tools.Sqrt2PI) on every call, bit for bit, for the default base, after the base changes, and on a clone.
+        /// </summary>
+        [TestMethod()]
+        public void Test_LogPDF_CachedBaseLogarithms()
+        {
+            var LN = new LogNormal(1.5, 0.3);
+            var bases = new[] { 10d, Math.E, 2d, 1.0000001, 1E300, 10d };
+            foreach (double b in bases)
+            {
+                if (b != LN.Base) LN.Base = b;
+                foreach (var dist in new[] { LN, (LogNormal)LN.Clone() })
+                {
+                    foreach (double x in new[] { double.Epsilon, 1E-300, 1E-3, 0.5, 1d, 31.6, 1E4, 1E300 })
+                    {
+                        double logX = Math.Log(x), logBase = Math.Log(dist.Base);
+                        double z = DistributionNumerics.Standardize(logX / logBase, dist.Mu, dist.Sigma);
+                        double expected = -0.5d * z * z - Math.Log(dist.Sigma) - Math.Log(Numerics.Tools.Sqrt2PI) - Math.Log(logBase) - logX;
+                        Assert.AreEqual(expected, dist.LogPDF(x), 0.0, $"base {b:R}, x {x:R}");
+                    }
+                }
+            }
+            LN.Mu = -2;
+            LN.Sigma = 1.2;
+            Assert.AreEqual(new LogNormal(-2, 1.2).LogPDF(0.7), LN.LogPDF(0.7), 0.0);
+        }
+
     }
 }

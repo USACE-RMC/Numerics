@@ -37,7 +37,7 @@ namespace Numerics.Distributions
         /// Constructs an Inverse Chi-Squared distribution with given degrees of freedom.
         /// </summary>
         /// <param name="degreesOfFreedom">The degrees of freedom for the distribution.</param>
-        /// <param name="scale">The scale parameter σ (sigma).</param>
+        /// <param name="scale">The scale parameter τ² of the scaled inverse chi-squared distribution (the <see cref="Sigma"/> property).</param>
         public InverseChiSquared(int degreesOfFreedom, double scale)
         {
             SetParameters([degreesOfFreedom, scale]);
@@ -60,8 +60,12 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Gets and sets the scale parameter σ (sigma).
+        /// Gets and sets the scale parameter τ², stored in the property named Sigma.
         /// </summary>
+        /// <remarks>
+        /// This value is the scale parameter τ² of the scaled inverse chi-squared distribution, which is the
+        /// inverse-gamma distribution with shape ν/2 and scale ν·τ²/2. The mean is ν·τ²/(ν - 2) for ν &gt; 2.
+        /// </remarks>
         public double Sigma
         {
             get { return _sigma; }
@@ -73,8 +77,11 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Gets the precision, or inverse variance 1/σ^2 = τ^2
+        /// Gets the value 1/σ², where σ is <see cref="Sigma"/>.
         /// </summary>
+        /// <remarks>
+        /// Because <see cref="Sigma"/> is the scale τ², this value equals 1/τ⁴, not the reciprocal of the scale.
+        /// </remarks>
         public double Precision
         {
             get { return 1d / (Sigma * Sigma); }
@@ -246,17 +253,29 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double x)
         {
+            return Math.Exp(LogPDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space through the unit-scale gamma density of y = ν·σ / (2x), using
+        /// log f(x) = log g(y; ν/2) + log y - log x, so large degrees of freedom keep a finite density
+        /// and the density is zero at x = 0.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
             // validate parameters
             if (_parametersValid == false)
                 ValidateParameters([DegreesOfFreedom, Sigma], true);
-            if (x < Minimum) return 0.0d;
+            if (x <= Minimum || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
             double v = DegreesOfFreedom;
             double t2 = Sigma;
-            double a = Math.Pow(t2 * v / 2d, v / 2d);
-            double b = Gamma.Function(v / 2d);
-            double c = Math.Exp(-v * t2 / (2d * x));
-            double d = Math.Pow(x, 1d + v / 2d);
-            return a / b * (c / d);
+            double scale = v * t2 / 2d;
+            double y = scale / x;
+            if (double.IsPositiveInfinity(y)) return double.NegativeInfinity;
+            // When the scaled variate underflows, exp(-y) is one and the power-law tail remains.
+            if (y == 0d) return v / 2d * Math.Log(scale) - Gamma.LogGamma(v / 2d) - (v / 2d + 1d) * Math.Log(x);
+            return DistributionNumerics.GammaLogDensity(v / 2d, y) + Math.Log(y) - Math.Log(x);
         }
 
         /// <inheritdoc/>
@@ -273,10 +292,59 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the log regularized upper incomplete gamma function Q(ν/2, ν·σ / (2x)).
+        /// </remarks>
+        public override double LogCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([DegreesOfFreedom, Sigma], true);
+            if (x <= Minimum)
+                return double.NegativeInfinity;
+            if (x >= Maximum)
+                return 0d;
+            double v = DegreesOfFreedom;
+            double y = v * Sigma / (2.0d * x);
+            return y == 0d ? Tools.Log1mExp(LogCCDF(x)) : DistributionNumerics.GammaLogSurvival(v / 2.0d, y);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the regularized lower incomplete gamma function P(ν/2, ν·σ / (2x)), which resolves
+        /// upper-tail probabilities below machine epsilon.
+        /// </remarks>
+        public override double CCDF(double x)
+        {
+            return Math.Exp(LogCCDF(x));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as the log regularized lower incomplete gamma function P(ν/2, ν·σ / (2x)).
+        /// </remarks>
+        public override double LogCCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([DegreesOfFreedom, Sigma], true);
+            if (x <= Minimum)
+                return 0d;
+            if (x >= Maximum)
+                return double.NegativeInfinity;
+            double v = DegreesOfFreedom;
+            double scale = v * Sigma / 2.0d;
+            double y = v * Sigma / (2.0d * x);
+            // When the scaled variate underflows, the leading series term P(a, y) = y^a / Γ(a + 1) is exact to double precision.
+            return y == 0d ? v / 2.0d * (Math.Log(scale) - Math.Log(x)) - Gamma.LogGammaOnePlus(v / 2.0d)
+                : DistributionNumerics.GammaLogCDF(v / 2.0d, y);
+        }
+
+        /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d)
                 return Minimum;

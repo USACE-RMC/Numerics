@@ -155,7 +155,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Skewness
         {
-            get { return 1.1396d; }
+            get { return 1.1395470994046486d; } // 12 * sqrt(6) * zeta(3) / pi^3
         }
 
         /// <inheritdoc/>
@@ -515,7 +515,7 @@ namespace Numerics.Distributions
             if (!_parametersValid) ValidateParameters(Xi, Alpha, true);
             double z = DistributionNumerics.Standardize(x, Xi, Alpha);
             double exponential = Math.Exp(-z);
-            return exponential == 0 ? -z : DistributionNumerics.Log1mExp(-exponential);
+            return exponential == 0 ? -z : Tools.Log1mExp(-exponential);
         }
 
         /// <inheritdoc/>

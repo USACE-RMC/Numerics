@@ -207,7 +207,7 @@ namespace Numerics.Distributions
         {
             double logCoordinate = Math.Log(coordinate);
             double logtail = power * logCoordinate - Math.Log(2);
-            double logother = DistributionNumerics.Log1mExp(logtail);
+            double logother = Tools.Log1mExp(logtail);
             double logroot = .5 * (Math.Log(power / 2d) + (power - 1) * logCoordinate);
             double[] lower = WeightedScores(logtail, logother, k, h, logroot);
             double[] upper = WeightedScores(logother, logtail, k, h, logroot);

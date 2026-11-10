@@ -264,5 +264,51 @@ namespace Distributions.Univariate
                 Assert.AreEqual(x, dist2.InverseCDF(dist2.CDF(x)), 1E-3, $"Roundtrip failed for x={x}");
             }
         }
+
+        /// <summary>
+        /// Verifies the log-space density at large degrees of freedom and at zero.
+        /// The density is the scaled inverse chi-squared with τ² = σ, i.e. inverse gamma with shape ν/2 and scale ν·σ/2.
+        /// Reference values from mpmath at 30 digits and scipy.stats.invgamma.pdf(x, a=ν/2, scale=ν·σ/2).
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_LargeDoFAndZero()
+        {
+            var IX = new InverseChiSquared(400, 1);
+            Assert.AreEqual(5.6395455371841644, IX.PDF(1), 5.6395455371841644 * 1E-12);
+            Assert.AreEqual(1.7298034837498983, IX.LogPDF(1), 1E-12);
+
+            var IX2 = new InverseChiSquared(10, 2);
+            Assert.AreEqual(0.4655267677511873, IX2.PDF(1.5), 1E-14);
+
+            var IX3 = new InverseChiSquared(10, 1);
+            Assert.AreEqual(0d, IX3.PDF(0));
+            Assert.AreEqual(double.NegativeInfinity, IX3.LogPDF(0));
+            Assert.AreEqual(0d, IX3.PDF(-1));
+            Assert.AreEqual(0d, IX3.PDF(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies the upper and lower tails are resolved below machine epsilon.
+        /// Reference values from scipy.stats.invgamma.sf(x, a=ν/2, scale=ν·σ/2) and mpmath log Q(2, 200).
+        /// </summary>
+        [TestMethod]
+        public void Test_CCDF_LogCDF_Tails()
+        {
+            var IX = new InverseChiSquared(4, 1);
+            Assert.AreEqual(1.9999973333353387E-12, IX.CCDF(1E6), 1.9999973333353387E-12 * 1E-12);
+            Assert.AreEqual(-194.6966950919409, IX.LogCDF(0.01), 1E-11);
+            Assert.AreEqual(1d, IX.CCDF(0));
+            Assert.AreEqual(0d, IX.CCDF(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies a not-a-number probability is rejected by the inverse CDF.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCDF_NaNProbability()
+        {
+            var IX = new InverseChiSquared(10, 1);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => IX.InverseCDF(double.NaN));
+        }
     }
 }

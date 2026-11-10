@@ -190,6 +190,23 @@ namespace Distributions.Univariate
             Assert.AreEqual(dist.Kurtosis, mom[3], 1E-2);
         }
 
+        /// <summary>
+        /// The location and shape setters set the same validity state as SetParameters.
+        /// </summary>
+        [TestMethod()]
+        public void Test_ParameterSetters_Validity()
+        {
+            var GNO = new GeneralizedNormal(100, 10, 0.1);
+            GNO.Xi = double.NaN;
+            Assert.IsFalse(GNO.ParametersValid);
+            GNO.Xi = 100;
+            Assert.IsTrue(GNO.ParametersValid);
+            GNO.Kappa = double.NegativeInfinity;
+            Assert.IsFalse(GNO.ParametersValid);
+            GNO.Kappa = -0.2;
+            Assert.IsTrue(GNO.ParametersValid);
+            Assert.AreEqual(new GeneralizedNormal(100, 10, -0.2).CDF(105), GNO.CDF(105), 0.0);
+        }
 
     }
 }

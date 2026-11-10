@@ -278,5 +278,46 @@ namespace Distributions.Univariate
             Assert.IsFalse(double.IsNaN(pdf1000), "PDF should not be NaN for large DoF.");
             Assert.IsFalse(double.IsInfinity(pdf1000), "PDF should not be Infinity for large DoF.");
         }
+
+        /// <summary>
+        /// Verifies the density at the support boundaries.
+        /// Reference values from scipy.stats.chi2.pdf at 0 and +Infinity.
+        /// </summary>
+        [TestMethod()]
+        public void Test_PDF_SupportBoundaries()
+        {
+            Assert.AreEqual(double.PositiveInfinity, new ChiSquared(1).PDF(0));
+            Assert.AreEqual(0.5, new ChiSquared(2).PDF(0));
+            Assert.AreEqual(0d, new ChiSquared(3).PDF(0));
+            foreach (int v in new[] { 1, 2, 3, 10 })
+                Assert.AreEqual(0d, new ChiSquared(v).PDF(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies the tails are resolved below machine epsilon.
+        /// Reference values from scipy.stats.chi2.sf, scipy.stats.chi2.logsf and scipy.stats.chi2.logcdf.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CCDF_LogCDF_Tails()
+        {
+            var x = new ChiSquared(10);
+            Assert.AreEqual(1.6139305336977317E-37, x.CCDF(200), 1.6139305336977317E-37 * 1E-12);
+            Assert.AreEqual(-84.71697591169848, x.LogCCDF(200), 1E-12);
+            Assert.AreEqual(0.8911780189141513, x.CCDF(5), 1E-14);
+            Assert.AreEqual(-2.2180419329269676, x.LogCDF(5), 1E-13);
+            Assert.AreEqual(-42.792420704678904, x.LogCDF(1E-3), 1E-12);
+            Assert.AreEqual(1d, x.CCDF(0));
+            Assert.AreEqual(0d, x.CCDF(double.PositiveInfinity));
+        }
+
+        /// <summary>
+        /// Verifies a not-a-number probability is rejected by the inverse CDF.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_NaNProbability()
+        {
+            var x = new ChiSquared(10);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => x.InverseCDF(double.NaN));
+        }
     }
 }

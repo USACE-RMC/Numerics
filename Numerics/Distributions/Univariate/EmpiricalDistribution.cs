@@ -1,13 +1,14 @@
 ﻿using System;
+using System.Threading;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Xml.Linq;
 using Numerics.Data;
 using Numerics.Data.Statistics;
 using Numerics.Mathematics;
-using Numerics.Mathematics.Optimization;
 
 namespace Numerics.Distributions
 {
@@ -93,7 +94,7 @@ namespace Numerics.Distributions
             _xValues = orderedPairedData.Select(v => v.X).ToArray();
 
             // Probability values can be in ascending or descending order. 
-            // If the sort order is "None", then we cannot use smart search.
+            // If the sort order is "None", then smart search cannot be used.
 
             // Check if the probability values are actually in ascending order
             if (opd.OrderY == SortOrder.None)
@@ -123,6 +124,7 @@ namespace Numerics.Distributions
             }
             _parametersValid = ValidateData(opd, _pValues, false) is null;
             _momentsComputed = false;
+            Volatile.Write(ref _modeCache, null);
         }
 
         /// <summary>
@@ -138,6 +140,7 @@ namespace Numerics.Distributions
             opd = new OrderedPairedData(_xValues, _pValues, false, SortOrder.Ascending, true, SortOrder.Ascending);
             _parametersValid = ValidateData(opd, _pValues, false) is null;
             _momentsComputed = false;
+            Volatile.Write(ref _modeCache, null);
         }
 
         /// <summary>
@@ -163,12 +166,16 @@ namespace Numerics.Distributions
             opd = new OrderedPairedData(_xValues, _pValues, strictX, xOrder, strictProbabilities, probabilityOrder) { UseSmartSearch = useSmartSearch };
             _parametersValid = ValidateData(opd, _pValues, false) is null;
             _momentsComputed = false;
+            Volatile.Write(ref _modeCache, null);
         }
 
         private double[] _xValues = null!;
         private double[] _pValues = null!;
         private OrderedPairedData opd = null!;
         private bool _momentsComputed = false;
+
+        /// <summary>The cached mode of the current data as a boxed double, or null; published as one reference.</summary>
+        private object? _modeCache;
         private double u1, u2, u3, u4;
 
         /// <summary>
@@ -220,13 +227,13 @@ namespace Numerics.Distributions
         /// The extrapolation policy applied to out-of-range lookups, defined in X space:
         /// Below extends beyond the smallest table X value and Above beyond the largest,
         /// matching the <see cref="Minimum"/>/<see cref="Maximum"/> semantics regardless of the
-        /// stored probability orientation. Default = None, which reproduces the historical
-        /// endpoint hold exactly.
+        /// stored probability orientation. Default = None, which holds the endpoint
+        /// value exactly.
         /// </summary>
         /// <remarks>
         /// <para>
         /// Extension is linear in the configured transform spaces on the table's boundary
-        /// segments. <see cref="CDF(double)"/> output is always clamped to [0, 1] — a probability
+        /// segments. <see cref="CDF(double)"/> output is always clamped to [0, 1]: a probability
         /// axis under a None transform extends linearly and can leave the unit interval, while
         /// the normal-Z transform back-transforms into (0, 1) by itself.
         /// <see cref="InverseCDF(double)"/> stays monotone and total over the extended tails:
@@ -263,6 +270,9 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>The display strings list the interior ordinates only: the first and last X and probability
+        /// values, which bound the table, are omitted. Use <see cref="XValues"/> and <see cref="ProbabilityValues"/>
+        /// for the complete table.</remarks>
         public override string[,] ParametersToString
         {
             get
@@ -319,7 +329,8 @@ namespace Numerics.Distributions
             u2 = mom[1];
             u3 = mom[2];
             u4 = mom[3];
-            _momentsComputed = true;
+            // The flag is published after the values, so a reader that sees it also sees them.
+            Volatile.Write(ref _momentsComputed, true);
         }
 
         /// <inheritdoc/>
@@ -327,7 +338,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) ComputeMoments();
+                if (!Volatile.Read(ref _momentsComputed)) ComputeMoments();
                 return u1;
             }
         }
@@ -339,14 +350,157 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// When the paired data hold point masses (repeated x values whose probabilities differ), the mode is the x of the
+        /// largest atom, the largest probability step across a run of equal x values; a sample with ties has an atom at
+        /// each tied value. Otherwise it is the midpoint of the highest bin of the
+        /// density grid: the bins are the intervals between consecutive distinct x values, and a bin's density is its
+        /// probability divided by its width, |Δp| / |Δx|, from the stored probabilities. Ties go to the first atom or bin,
+        /// and a distribution with a single distinct x value returns that value.
+        /// </para>
+        /// <para>
+        /// |Δp| / |Δx| is the bin average of <see cref="PDF(double)"/> under every interpolation transform. Under the
+        /// Logarithmic and NormalZ transforms the density varies inside a bin, so the mode is the bin midpoint, not the
+        /// argmax of <see cref="PDF(double)"/>. The scan costs one pass over the data and its result is cached, as the
+        /// moments are.
+        /// </para>
+        /// </remarks>
         public override double Mode
         {
             get
             {
-                var brent = new BrentSearch(PDF, InverseCDF(0.001), InverseCDF(0.999));
-                brent.Maximize();
-                return brent.BestParameterSet.Values[0];
+                if (_parametersValid == false) ValidateData(opd, _pValues, true);
+                if (Volatile.Read(ref _modeCache) is double cached) return cached;
+                double[] x = _xValues, p = _pValues;
+                if (!TryHighestBinVectorized(x, p, out double mode)) mode = HighestAtomOrBin(x, p);
+                Volatile.Write(ref _modeCache, (object)mode);
+                return mode;
             }
+        }
+
+        /// <summary>
+        /// Returns the x of the largest atom when the data hold repeated x values, and otherwise the midpoint of the
+        /// first bin with the largest density |Δp| / |Δx|; see <see cref="Mode"/>.
+        /// </summary>
+        /// <param name="x">The ordinates, at least two.</param>
+        /// <param name="p">The probabilities, as many as the ordinates.</param>
+        /// <returns>The mode.</returns>
+        private static double HighestAtomOrBin(double[] x, double[] p)
+        {
+            double mode = x[0], best = double.NegativeInfinity, atom = 0d;
+            bool hasAtom = false;
+            // Probabilities lie in [0, 1]. A bin whose mass is below best · width · (1 - 1E-12) has a rounded density
+            // mass / width below best, so it is skipped without the division; the product is trusted only in the
+            // normal floating-point range.
+            const double SkipFactor = 1d - 1E-12, SmallestNormal = 2.2250738585072014E-308;
+            for (int i = 0; i + 1 < x.Length; i++)
+            {
+                double a = x[i], b = x[i + 1];
+                if (b == a)
+                {
+                    // A run of equal x values is one point mass: its mass is the probability step across the run.
+                    int end = i + 1;
+                    while (end + 1 < x.Length && x[end + 1] == a) end++;
+                    double runMass = Math.Abs(p[end] - p[i]);
+                    if (runMass > atom)
+                    {
+                        atom = runMass;
+                        mode = a;
+                        hasAtom = true;
+                    }
+                    i = end - 1;
+                    continue;
+                }
+                if (hasAtom) continue;
+                double width = Math.Abs(b - a);
+                double mass = Math.Abs(p[i + 1] - p[i]);
+                double threshold = best * width * SkipFactor;
+                if (mass < threshold && threshold >= SmallestNormal) continue;
+                double density = mass / width;
+                if (density > best)
+                {
+                    best = density;
+                    mode = 0.5d * (a + b);
+                }
+            }
+            return mode;
+        }
+
+        /// <summary>The lane offsets 0, 1, …, Vector&lt;double&gt;.Count − 1 of the vectorized bin scan.</summary>
+        private static readonly Vector<double> LaneOffsets = CreateLaneOffsets();
+
+        /// <summary>Creates <see cref="LaneOffsets"/>.</summary>
+        /// <returns>The vector whose lane i holds i.</returns>
+        private static Vector<double> CreateLaneOffsets()
+        {
+            var offsets = new double[Vector<double>.Count];
+            for (int i = 0; i < offsets.Length; i++) offsets[i] = i;
+            return new Vector<double>(offsets);
+        }
+
+        /// <summary>
+        /// Finds the midpoint of the first bin with the largest density |Δp| / |Δx| with vector arithmetic, when the data
+        /// hold no repeated x values.
+        /// </summary>
+        /// <param name="x">The ordinates, at least two.</param>
+        /// <param name="p">The probabilities, as many as the ordinates.</param>
+        /// <param name="mode">The bin midpoint, or NaN when the method returns false.</param>
+        /// <returns>False when vector arithmetic is not accelerated, the data are short, or two consecutive x values are
+        /// equal (an atom, which <see cref="HighestAtomOrBin"/> handles); true otherwise.</returns>
+        /// <remarks>
+        /// Each lane keeps the largest density of its bins and the index of the first bin that reached it, using the same
+        /// strict comparison as the scalar scan; the lanes are then merged by largest density and, among equal densities,
+        /// smallest index. Vector division is correctly rounded, so the result equals that of
+        /// <see cref="HighestAtomOrBin"/> bit for bit.
+        /// </remarks>
+        private static bool TryHighestBinVectorized(double[] x, double[] p, out double mode)
+        {
+            mode = double.NaN;
+            int w = Vector<double>.Count;
+            int bins = Math.Min(x.Length, p.Length) - 1;
+            if (!Vector.IsHardwareAccelerated || w < 2 || bins < 4 * w) return false;
+            var best = new Vector<double>(double.NegativeInfinity);
+            var bestIndex = Vector<double>.Zero;
+            var index = LaneOffsets;
+            var stride = new Vector<double>(w);
+            int i = 0;
+            for (; i + w <= bins; i += w)
+            {
+                var a = new Vector<double>(x, i);
+                var b = new Vector<double>(x, i + 1);
+                if (Vector.EqualsAny(a, b)) return false;
+                var density = Vector.Abs(new Vector<double>(p, i + 1) - new Vector<double>(p, i)) / Vector.Abs(b - a);
+                var greater = Vector.GreaterThan(density, best);
+                best = Vector.ConditionalSelect(greater, density, best);
+                bestIndex = Vector.ConditionalSelect(greater, index, bestIndex);
+                index += stride;
+            }
+            double top = double.NegativeInfinity;
+            int at = -1;
+            for (int lane = 0; lane < w; lane++)
+            {
+                double value = best[lane];
+                int laneIndex = (int)bestIndex[lane];
+                if (value > top || (value == top && value > double.NegativeInfinity && laneIndex < at))
+                {
+                    top = value;
+                    at = laneIndex;
+                }
+            }
+            for (; i < bins; i++)
+            {
+                double a = x[i], b = x[i + 1];
+                if (b == a) return false;
+                double density = Math.Abs(p[i + 1] - p[i]) / Math.Abs(b - a);
+                if (density > top)
+                {
+                    top = density;
+                    at = i;
+                }
+            }
+            mode = at < 0 ? x[0] : 0.5d * (x[at] + x[at + 1]);
+            return true;
         }
 
         /// <inheritdoc/>
@@ -354,7 +508,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) ComputeMoments();
+                if (!Volatile.Read(ref _momentsComputed)) ComputeMoments();
                 return u2;
             }
         }
@@ -364,7 +518,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) ComputeMoments();
+                if (!Volatile.Read(ref _momentsComputed)) ComputeMoments();
                 return u3;
             }
         }
@@ -374,7 +528,7 @@ namespace Numerics.Distributions
         {
             get
             {
-                if (!_momentsComputed) ComputeMoments();
+                if (!Volatile.Read(ref _momentsComputed)) ComputeMoments();
                 return u4;
             }
         }
@@ -382,13 +536,15 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double Minimum
         {
-            get { return XValues.First(); }
+            // An empty table keeps the sequence exception of Enumerable.First.
+            get { return _xValues.Length > 0 ? _xValues[0] : _xValues.First(); }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get { return XValues.Last(); }
+            // An empty table keeps the sequence exception of Enumerable.Last.
+            get { return _xValues.Length > 0 ? _xValues[_xValues.Length - 1] : _xValues.Last(); }
         }
 
         /// <inheritdoc/>
@@ -427,6 +583,7 @@ namespace Numerics.Distributions
             opd = new OrderedPairedData(xValues, pValues, false, SortOrder.Ascending, true, SortOrder.Ascending);
             _parametersValid = ValidateData(opd, pValues, false) is null;
             _momentsComputed = false;
+            Volatile.Write(ref _modeCache, null);
         }
 
         /// <summary>
@@ -451,6 +608,7 @@ namespace Numerics.Distributions
             opd = new OrderedPairedData(xValues, pValues, false, XOrder, true, probabilityOrder);
             _parametersValid = ValidateData(opd, pValues, false) is null;
             _momentsComputed = false;
+            Volatile.Write(ref _modeCache, null);
         }
 
         /// <summary>
@@ -572,11 +730,15 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="probability"/> is not-a-number or outside [0, 1].</exception>
+        /// <exception cref="InvalidOperationException">The probability values have <see cref="SortOrder.None"/>, so the
+        /// table cannot be inverted; the interpolation failure is the inner exception. <see cref="Median"/>,
+        /// <see cref="Mode"/>, and the moment properties evaluate this method and report the same exception.</exception>
         public override double InverseCDF(double probability)
         {
             if (_parametersValid == false) ValidateData(opd, _pValues, true);
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");
 
             double min = Minimum;
@@ -595,14 +757,25 @@ namespace Numerics.Distributions
                 probability = 1 - 1E-16;
             }
             double x = 0;
-            if (opd.OrderY == SortOrder.Ascending || opd.OrderY == SortOrder.None)
+            if (opd.OrderY == SortOrder.None)
+            {
+                try
+                {
+                    x = opd.GetXFromY(probability, XTransform, ProbabilityTransform, Extrapolation);
+                }
+                catch (Exception exception) when (exception.GetType() == typeof(Exception))
+                {
+                    throw new InvalidOperationException("The empirical inverse CDF requires ascending or descending probability values; this table has no probability order.", exception);
+                }
+            }
+            else if (opd.OrderY == SortOrder.Ascending)
             {
                 x = opd.GetXFromY(probability, XTransform, ProbabilityTransform, Extrapolation);
             }
             else
             {
                 // If descending then it is a survival function. The lookup runs on the stored
-                // (exceedance) value axis, where the small stored values sit at large X — so the
+                // (exceedance) value axis, where the small stored values sit at large X, so the
                 // X-space policy maps to the lookup axis with its sides swapped.
                 var mapped = ExtrapolationSides.None;
                 if ((Extrapolation & ExtrapolationSides.Below) != 0) mapped |= ExtrapolationSides.Above;
@@ -612,6 +785,45 @@ namespace Numerics.Distributions
             // Clamp only the sides whose extension is disabled, in X space.
             if (x < min && (Extrapolation & ExtrapolationSides.Below) == 0) return min;
             if (x > max && (Extrapolation & ExtrapolationSides.Above) == 0) return max;
+            return x;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// When the probability values are descending, the table holds survival (exceedance)
+        /// probabilities, and a survival probability q in (0, 0.5) is looked up in that table at q
+        /// itself, with the same transforms, extrapolation sides and X-space clamping as
+        /// <see cref="InverseCDF(double)"/>. The base form would look up 1 − (1 − q), which loses the
+        /// low-order digits of a small q (a relative error near 1.1E-16 / q) and maps every q below
+        /// about 1E-16 to the far-tail floor of <see cref="InverseCDF(double)"/>, so the stored tail
+        /// below that floor could not be reached.
+        /// </para>
+        /// <para>
+        /// For q = 0, for q of at least 0.5 (where 1 − q and 1 − (1 − q) are exact, so the lookup
+        /// value is q either way), and for ascending or unordered probability tables, the result is
+        /// <see cref="InverseCDF(double)"/> at 1 − q, bit for bit.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="probability"/> is not-a-number or outside [0, 1].</exception>
+        /// <exception cref="InvalidOperationException">The probability values have <see cref="SortOrder.None"/>, so the
+        /// table cannot be inverted.</exception>
+        public override double InverseCCDF(double probability)
+        {
+            if (_parametersValid == false) ValidateData(opd, _pValues, true);
+            if (!(probability >= 0.0d && probability <= 1.0d))
+                throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");
+            if (opd.OrderY != SortOrder.Descending || probability == 0.0d || probability >= 0.5d)
+                return InverseCDF(1.0d - probability);
+
+            // The lookup runs on the stored survival axis with the X-space sides swapped, exactly
+            // as the descending branch of InverseCDF does.
+            var mapped = ExtrapolationSides.None;
+            if ((Extrapolation & ExtrapolationSides.Below) != 0) mapped |= ExtrapolationSides.Above;
+            if ((Extrapolation & ExtrapolationSides.Above) != 0) mapped |= ExtrapolationSides.Below;
+            double x = opd.GetXFromY(probability, XTransform, ProbabilityTransform, mapped);
+            if (x < Minimum && (Extrapolation & ExtrapolationSides.Below) == 0) return Minimum;
+            if (x > Maximum && (Extrapolation & ExtrapolationSides.Above) == 0) return Maximum;
             return x;
         }
 
@@ -964,7 +1176,7 @@ namespace Numerics.Distributions
                 || !Enum.IsDefined(typeof(SortOrder), order))
                 throw new ArgumentException("The serialized empirical distribution has an invalid probability order.", nameof(xElement));
 
-            // Optional strictness (conditional presence): absent reads as the historical default.
+            // Optional strictness (conditional presence): absent reads as the default.
             bool strictX = ReadOptionalBoolean(xElement, nameof(StrictXValues), false);
             bool strictProbabilities = ReadOptionalBoolean(xElement, nameof(StrictProbabilities), true);
             var distribution = !strictX && strictProbabilities
@@ -1046,7 +1258,7 @@ namespace Numerics.Distributions
             double dx = rangeResult / fftPoints;
 
             // Sample both PDFs on a uniform grid
-            // For FFT convolution, we need both PDFs on the same spacing
+            // FFT convolution needs both PDFs on the same spacing
             var pdf1 = new double[fftPoints];
             var pdf2 = new double[fftPoints];
 

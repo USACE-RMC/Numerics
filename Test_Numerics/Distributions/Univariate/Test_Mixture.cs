@@ -614,7 +614,7 @@ namespace Distributions.Univariate
         {
             var mixture = new Mixture(new[] { 0.4d, 0.6d }, new UnivariateDistributionBase[] { new Normal(10, 2), new Normal(20, 3) });
             mixture.CreateEmpiricalCDF();
-            // 1 - 1E-17 rounds to exactly 1.0, which takes the container's own support guard —
+            // 1 - 1E-17 rounds to exactly 1.0, which takes the container's own support guard,
             // so the far-tail hold is probed at the guard floor and the last double below one.
             double low = mixture.InverseCDF(1E-17);
             double high = mixture.InverseCDF(1d - 1E-16);
@@ -631,6 +631,95 @@ namespace Distributions.Univariate
             var single = new Mixture(new[] { 1d }, new UnivariateDistributionBase[] { child });
             Assert.AreEqual(child.CDF(400d), single.CDF(400d), 1E-12);
             Assert.IsLessThan(1d, single.CDF(400d));
+        }
+
+        /// <summary>
+        /// The mode of a bimodal mixture is the global maximum of the density, not a local one.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_Mode_Bimodal()
+        {
+            // Oracle: maximum of 0.3*norm.pdf(x, 0, 1) + 0.7*norm.pdf(x, 5, 1) on a 2,000,001-point grid over [-10, 15],
+            // refined with scipy.optimize.minimize_scalar (bounded, xatol=1e-14).
+            var mix = new Mixture(new[] { 0.3, 0.7 }, new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(5, 1) });
+            Assert.AreEqual(4.999992014010468, mix.Mode, 1E-6);
+            Assert.AreEqual(0.279260042305762, mix.PDF(mix.Mode), 1E-12);
+
+            // Oracle as above for 0.45*norm.pdf(x, 0, 1) + 0.55*norm.pdf(x, 10, 1) over [-10, 20].
+            mix = new Mixture(new[] { 0.45, 0.55 }, new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(10, 1) });
+            Assert.AreEqual(9.999999999983922, mix.Mode, 1E-6);
+            Assert.AreEqual(0.219418254220788, mix.PDF(mix.Mode), 1E-12);
+        }
+
+        /// <summary>
+        /// Unimodal mixtures keep the density search result to within the search tolerance, and the density at the
+        /// mode is never lower than at the single-search result.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_Mode_Unimodal()
+        {
+            // The equal-weight mixture of Normal(0, 1) and Normal(1, 1) is symmetric about 0.5 and unimodal
+            // (the separation is less than two standard deviations).
+            var symmetric = new Mixture(new[] { 0.5, 0.5 }, new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(1, 1) });
+            // Oracle: grid maximum refined with scipy.optimize.minimize_scalar for 0.6*norm.pdf(x) + 0.4*norm.pdf(x, 1.5).
+            var skewed = new Mixture(new[] { 0.6, 0.4 }, new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(1.5, 1) });
+            var cases = new[] { (symmetric, 0.5), (skewed, 0.4451514553437149) };
+            foreach (var (mix, expected) in cases)
+            {
+                var single = new Numerics.Mathematics.Optimization.BrentSearch(mix.PDF, mix.InverseCDF(0.001), mix.InverseCDF(0.999));
+                single.Maximize();
+                double singleMode = single.BestParameterSet.Values[0];
+                double mode = mix.Mode;
+                Assert.AreEqual(expected, mode, 1E-6);
+                Assert.AreEqual(singleMode, mode, 1E-6);
+                Assert.IsGreaterThanOrEqualTo(mix.PDF(singleMode), mix.PDF(mode));
+            }
+        }
+
+        /// <summary>
+        /// The mode of a zero-inflated mixture is the maximum of the continuous density above zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_Mode_ZeroInflated()
+        {
+            var mix = new Mixture(new[] { 0.3, 0.7 }, new UnivariateDistributionBase[] { new Normal(5, 1), new Normal(12, 2) })
+            {
+                IsZeroInflated = true,
+                ZeroWeight = 0.2
+            };
+            var single = new Numerics.Mathematics.Optimization.BrentSearch(mix.PDF, mix.InverseCDF(0.001), mix.InverseCDF(0.999));
+            single.Maximize();
+            double mode = mix.Mode;
+            // Oracle: grid maximum on (0, 30] of 0.24*norm.pdf(x, 5, 1)/norm.sf(0, 5, 1) + 0.56*norm.pdf(x, 12, 2)/norm.sf(0, 12, 2),
+            // refined with scipy.optimize.minimize_scalar; density 0.11170383862479911.
+            Assert.AreEqual(11.99999999947729, mode, 1E-6);
+            Assert.AreEqual(0.11170383862479911, mix.PDF(mode), 1E-12);
+            Assert.IsGreaterThanOrEqualTo(mix.PDF(single.BestParameterSet.Values[0]), mix.PDF(mode));
+        }
+
+        /// <summary>
+        /// The parameter bounds align with <see cref="Mixture.GetParameters"/> with and without zero inflation.
+        /// </summary>
+        [TestMethod]
+        public void Test_Mixture_ParameterBoundsAlignWithParameters()
+        {
+            var mix = new Mixture(new[] { 0.4, 0.6 }, new UnivariateDistributionBase[] { new Normal(10, 2), new Normal(20, 3) });
+            var minimum = new[] { 0d, 0d, double.NegativeInfinity, 0d, double.NegativeInfinity, 0d };
+            var maximum = new[] { 1d, 1d, double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity };
+            CollectionAssert.AreEqual(minimum, mix.MinimumOfParameters);
+            CollectionAssert.AreEqual(maximum, mix.MaximumOfParameters);
+
+            mix.IsZeroInflated = true;
+            mix.ZeroWeight = 0.1;
+            Assert.HasCount(mix.NumberOfParameters, mix.GetParameters);
+            CollectionAssert.AreEqual(minimum, mix.MinimumOfParameters);
+            CollectionAssert.AreEqual(maximum, mix.MaximumOfParameters);
+            var parameters = mix.GetParameters;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                Assert.IsGreaterThanOrEqualTo(mix.MinimumOfParameters[i], parameters[i]);
+                Assert.IsLessThanOrEqualTo(mix.MaximumOfParameters[i], parameters[i]);
+            }
         }
 
         /// <summary>

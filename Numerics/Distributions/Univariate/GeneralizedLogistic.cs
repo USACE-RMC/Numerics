@@ -16,7 +16,16 @@ namespace Numerics.Distributions
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
     /// <para>
-    /// <see href = "https://en.wikipedia.org/wiki/Generalized_logistic_distribution" />
+    /// This is the three-parameter generalized logistic distribution of Hosking, not the Type I to IV
+    /// generalized logistic families. The shape κ follows the Hosking sign convention: a positive κ gives
+    /// an upper bound at ξ + α/κ.
+    /// </para>
+    /// <para>
+    /// <b> References: </b>
+    /// </para>
+    /// <para>
+    /// Hosking, J.R.M. and Wallis, J.R. (1997). Regional Frequency Analysis: An Approach Based on L-Moments.
+    /// Cambridge University Press.
     /// </para>
     /// </remarks>
     [Serializable]
@@ -54,7 +63,7 @@ namespace Numerics.Distributions
             get { return _xi; }
             set
             {
-                _parametersValid = ValidateParameters([value, Alpha, Kappa], false) is null;
+                _parametersValid = ValidateParameters(value, Alpha, Kappa, false) is null;
                 _xi = value;
             }
         }
@@ -80,7 +89,7 @@ namespace Numerics.Distributions
             get { return _kappa; }
             set
             {
-                _parametersValid = ValidateParameters([Xi, Alpha, value], false) is null;
+                _parametersValid = ValidateParameters(Xi, Alpha, value, false) is null;
                 _kappa = value;
             }
         }

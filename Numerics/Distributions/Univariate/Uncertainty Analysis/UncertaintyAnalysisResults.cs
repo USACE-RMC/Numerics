@@ -29,15 +29,26 @@ namespace Numerics.Distributions
     {
         /// <summary>
         /// The number of accumulation chunks used by the reduction over sampled distributions.
-        /// Fixed, not derived from the processor count, so the summation order — and therefore the
-        /// mean curve — does not vary with the machine or the thread count.
+        /// Fixed, not derived from the processor count, so the summation order, and therefore the
+        /// mean curve, does not vary with the machine or the thread count.
         /// </summary>
         private const int ReductionChunks = 64;
 
         /// <summary>
         /// Construct an instance of the UncertaintyAnalysisResults class.
         /// </summary>
-        public UncertaintyAnalysisResults() { }
+        /// <remarks>
+        /// <see cref="AIC"/>, <see cref="BIC"/>, <see cref="DIC"/>, <see cref="RMSE"/> and <see cref="ERL"/> start
+        /// as <see cref="double.NaN"/>, meaning not computed, as in the constructor that processes an ensemble.
+        /// </remarks>
+        public UncertaintyAnalysisResults()
+        {
+            AIC = double.NaN;
+            BIC = double.NaN;
+            DIC = double.NaN;
+            RMSE = double.NaN;
+            ERL = double.NaN;
+        }
 
         /// <summary>
         /// Constructs a new instance with computed uncertainty metrics.
@@ -155,6 +166,7 @@ namespace Numerics.Distributions
         /// Returns the class from a byte array. 
         /// </summary>
         /// <param name="bytes">Byte array.</param>
+        /// <returns>The deserialized results, or null when the bytes are neither valid JSON nor a readable legacy blob.</returns>
         public static UncertaintyAnalysisResults? FromByteArray(byte[] bytes)
         {
             try
@@ -173,16 +185,17 @@ namespace Numerics.Distributions
             }
             catch (Exception)
             {
-                // An error can occur because we're trying to deserialize a blob written with binary formatter,
-                //as a blob of json bytes. If that happens, fall back to the old.
+                // A blob written with the binary formatter fails to deserialize as a blob of JSON bytes.
+                // If that happens, fall back to the legacy reader.
                 return FromByteArrayLegacy(bytes);
             }
         }
 
-         /// <summary>
+        /// <summary>
         /// Returns the class from a byte array using the legacy BinaryFormatter.
         /// </summary>
         /// <param name="bytes">Byte array.</param>
+        /// <returns>The deserialized results, or null when the bytes cannot be read.</returns>
         private static UncertaintyAnalysisResults? FromByteArrayLegacy(byte[] bytes)
         {
             try
@@ -194,19 +207,16 @@ namespace Numerics.Distributions
                     memStream.Write(bytes, 0, bytes.Length);
                     memStream.Seek(0, SeekOrigin.Begin);
                     var obj = binForm.Deserialize(memStream);
-                    #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
+                    #pragma warning restore SYSLIB0011
                     return (UncertaintyAnalysisResults)obj;
                 }
-
-
             }
             catch (Exception)
             {
-                // An error can occur because of differences in versions. 
-                // If there is an error, just catch it and force the user to rerun the
-                // uncertainty analysis. 
+                // A blob from an incompatible version, or a runtime without BinaryFormatter support, cannot be
+                // read. Returning null signals the caller to rerun the uncertainty analysis.
+                return null;
             }
-            return null;
         }
 
         /// <summary>
@@ -480,7 +490,7 @@ namespace Numerics.Distributions
             double sum = 0d;
             for (int j = 0; j < weights.Length; j++)
             {
-                if (double.IsNaN(weights[j]) || double.IsInfinity(weights[j]) || weights[j] < 0d)
+                if (!Tools.IsFinite(weights[j]) || weights[j] < 0d)
                     throw new ArgumentOutOfRangeException(nameof(weights), "Each weight must be finite and non-negative.");
                 if (sampledDistributions[j] is null) continue;
                 if (weights[j] > 0d) anyPositive = true;
@@ -516,7 +526,9 @@ namespace Numerics.Distributions
         /// With <paramref name="weights"/> null every operation is that of the unweighted mean: each chunk adds the
         /// CDFs and the total is divided by the count of non-null distributions. With weights, each chunk adds
         /// w_j F_j(x) and its weight total, and the sum is divided by the total weight; distributions with zero
-        /// weight are skipped.
+        /// weight are skipped. The quantiles are interpolated on a logarithmic scale only when every knot,
+        /// including the first, is positive and the knots span more than one decade, the same rule as
+        /// <see cref="BootstrapAnalysis.ExpectedProbabilities(IList{double}, IList{double}, IUnivariateDistribution[])"/>.
         /// </remarks>
         private static double[] ComputeMeanCurve(UnivariateDistributionBase[] sampledDistributions, double[]? weights, double[] probabilities, double minProbability, double maxProbability)
         {
@@ -628,11 +640,12 @@ namespace Numerics.Distributions
                 expected[i] = weights == null ? total / validDistributions : total / totalWeight;
             }
 
-            // Build monotonic interpolation points
+            // Build monotonic interpolation points. The range that decides the log transform
+            // includes the first point, which is always an interpolation knot.
             var yVals = new List<double> { quantiles[0] };
             var xVals = new List<double> { expected[0] };
-            double minY = double.MaxValue;
-            double maxY = double.MinValue;
+            double minY = quantiles[0];
+            double maxY = quantiles[0];
 
             for (int i = 1; i < bins; i++)
             {

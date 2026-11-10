@@ -237,13 +237,13 @@ namespace Numerics.Distributions
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d) return Minimum;
             if (probability == 1.0d) return Maximum;
             // Validate parameters
             if (_parametersValid == false)
-                ValidateParameters([probability], true);
+                ValidateParameters([Probability], true);
             if (probability > Complement)
                 return 1.0d;
             return 0.0d;

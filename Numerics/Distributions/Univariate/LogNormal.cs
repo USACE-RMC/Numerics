@@ -18,6 +18,10 @@ namespace Numerics.Distributions
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
     /// <para>
+    /// Mu and Sigma are the mean and standard deviation of the base-<see cref="Base"/> logarithm of the variable
+    /// (base 10 by default).
+    /// </para>
+    /// <para>
     /// <b> References: </b>
     /// <list type="bullet">
     /// <item><description>
@@ -51,6 +55,8 @@ namespace Numerics.Distributions
         private double _mu;
         private double _sigma;
         private double _base = 10d;
+        private double _logBase = Math.Log(10d); // Math.Log(Base)
+        private double _logLogBase = Math.Log(Math.Log(10d)); // Math.Log(Math.Log(Base))
 
         /// <summary>
         /// Gets and sets the location parameter µ (Mu).
@@ -91,6 +97,8 @@ namespace Numerics.Distributions
                 if (!(value > 1d) || double.IsInfinity(value))
                     throw new ArgumentOutOfRangeException(nameof(Base), "The logarithm base must be finite and greater than one.");
                 _base = value;
+                _logBase = Math.Log(value);
+                _logLogBase = Math.Log(_logBase);
             }
         }
 
@@ -99,7 +107,7 @@ namespace Numerics.Distributions
         /// </summary>
         private double K
         {
-            get { return 1d / Math.Log(Base); }
+            get { return 1d / _logBase; }
         }
 
         /// <inheritdoc/>
@@ -509,9 +517,9 @@ namespace Numerics.Distributions
         {
             if (!_parametersValid) ValidateParameters(Mu, Sigma, true);
             if (x <= 0d || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
-            double logX = Math.Log(x), logBase = Math.Log(Base);
+            double logX = Math.Log(x), logBase = _logBase;
             double z = DistributionNumerics.Standardize(logX / logBase, Mu, Sigma);
-            return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI) - Math.Log(logBase) - logX;
+            return -0.5d * z * z - Math.Log(Sigma) - Tools.LogSqrt2PI - _logLogBase - logX;
         }
 
         /// <inheritdoc/>

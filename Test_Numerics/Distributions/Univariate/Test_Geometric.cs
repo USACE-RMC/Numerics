@@ -209,7 +209,9 @@ namespace Distributions.Univariate
 
             var G2 = new Geometric(0.3);
             Assert.AreEqual(0.3, G2.PDF(0));
-            Assert.AreEqual(0.122989, G2.PDF(2.5), 1e-05);
+            Assert.AreEqual(0d, G2.PDF(2.5));
+            Assert.AreEqual(0.1029, G2.PDF(3), 1e-12);
+            Assert.IsTrue(double.IsNaN(G2.PDF(double.NaN)));
         }
 
         /// <summary>
@@ -242,6 +244,43 @@ namespace Distributions.Univariate
             var G2 = new Geometric(0.3);
             Assert.AreEqual(1, G2.InverseCDF(0.5),  1e-04);
             Assert.AreEqual(6,G2.InverseCDF(0.9));
+        }
+
+        /// <summary>
+        /// CDF is a step function of the number of failures. Reference values from scipy.stats.geom.cdf with loc = -1.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CDF_NonIntegerArgument()
+        {
+            var G = new Geometric(0.5);
+            Assert.AreEqual(0.5, G.CDF(0.5), 1e-15);
+            Assert.AreEqual(G.CDF(1), G.CDF(1.999));
+
+            var G2 = new Geometric(0.3);
+            Assert.AreEqual(0.657, G2.CDF(2.7), 1e-15);
+        }
+
+        /// <summary>
+        /// With p = 1 every trial succeeds, so all mass is at zero failures (closed form).
+        /// </summary>
+        [TestMethod()]
+        public void Test_ProbabilityOne()
+        {
+            var G = new Geometric(1.0);
+            Assert.AreEqual(0, G.Median);
+            Assert.AreEqual(0, G.InverseCDF(0.3));
+            Assert.AreEqual(0, G.InverseCDF(0.9));
+            Assert.AreEqual(1, G.CDF(0));
+        }
+
+        /// <summary>
+        /// InverseCDF rejects a NaN probability.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_NaNProbabilityThrows()
+        {
+            var G = new Geometric(0.3);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => G.InverseCDF(double.NaN));
         }
     }
 }

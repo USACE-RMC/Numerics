@@ -2,12 +2,12 @@ using Numerics.Distributions;
 
 namespace Distributions
 {
-    /// <summary>Pins approved constraint envelopes and initialization for nonpositive observations.</summary>
+    /// <summary>Pins the constraint envelopes and initialization for nonpositive observations.</summary>
     [TestClass]
     public class Test_NonpositiveConstraintRegressions
     {
         // Original d80bfa8 fixtures, with Gamma initialization and log-location bounds repinned to 202095a.
-        /// <summary>Checks approved literal initialization and rounded bounds without changing estimation data.</summary>
+        /// <summary>Checks literal initialization and rounded bounds without changing estimation data.</summary>
         [TestMethod]
         [DataRow("GammaDistribution", 0d)]
         [DataRow("GammaDistribution", -1d)]

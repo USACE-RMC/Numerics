@@ -266,6 +266,29 @@ namespace Numerics.Distributions
         public abstract double InverseCDF(double probability);
 
         /// <summary>
+        /// The inverse of the complementary cumulative distribution function (the survival or
+        /// exceedance quantile): the value x at which CCDF(x) = <paramref name="probability"/>.
+        /// </summary>
+        /// <param name="probability">The survival (exceedance) probability q, between 0 and 1.</param>
+        /// <returns>The value exceeded with probability q, the same quantile as InverseCDF(1 − q).</returns>
+        /// <remarks>
+        /// <para>
+        /// The base implementation returns <see cref="InverseCDF(double)"/> at 1 − q, so its result is
+        /// bitwise that of the existing quantile. Forming 1 − q rounds away the low-order digits of a
+        /// small q, and every q below about 1.1E-16 rounds to the upper support limit. Distributions
+        /// with a closed-form survival quantile override this member to evaluate it from q directly
+        /// (for example <see cref="GeneralizedPareto.InverseCCDF(double)"/>).
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the probability is not between 0 and 1.</exception>
+        public virtual double InverseCCDF(double probability)
+        {
+            if (!(probability >= 0.0d && probability <= 1.0d))
+                throw new ArgumentOutOfRangeException(nameof(probability), "Probability must be between 0 and 1.");
+            return InverseCDF(1.0d - probability);
+        }
+
+        /// <summary>
         /// The PDF evaluated over a list of x values.
         /// </summary>
         /// <param name="xValues">List of x values.</param>
@@ -375,6 +398,26 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// The inverse CCDF (survival quantile) evaluated over a list of survival probabilities.
+        /// </summary>
+        /// <param name="probabilities">The survival (exceedance) probabilities, each between 0 and 1.</param>
+        /// <returns>One quantile per probability, each equal to <see cref="InverseCCDF(double)"/> at that probability.</returns>
+        /// <remarks>
+        /// One call evaluates the whole list, so a caller crossing a language boundary (for example
+        /// from Python) pays the crossing once instead of once per value.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="probabilities"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a probability is not between 0 and 1.</exception>
+        public double[] InverseCCDF(IList<double> probabilities)
+        {
+            if (probabilities == null) throw new ArgumentNullException(nameof(probabilities));
+            var result = new double[probabilities.Count];
+            for (int i = 0; i < probabilities.Count; i++)
+                result[i] = InverseCCDF(probabilities[i]);
+            return result;
+        }
+
+        /// <summary>
         /// The Inverse CDF evaluated over a list of probabilities under each of many parameter sets of this distribution's family.
         /// </summary>
         /// <param name="parameterSets">The parameter sets, one row per set and one column per parameter, in the order of <see cref="GetParameters"/>.</param>
@@ -386,11 +429,15 @@ namespace Numerics.Distributions
         /// </returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="parameterSets"/> or <paramref name="probabilities"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when the number of columns differs from <see cref="NumberOfParameters"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown by <see cref="InverseCDF(double)"/> when a probability is outside [0, 1] and a row is valid.</exception>
+        /// <exception cref="NotImplementedException">Thrown by distributions that do not support <see cref="SetParameters(IList{double})"/>,
+        /// such as <see cref="EmpiricalDistribution"/> and <see cref="KernelDensity"/>, when a row is valid.</exception>
         /// <remarks>
         /// <para>
         /// Each row is evaluated on one private <see cref="Clone"/> of this distribution, so this instance is never
         /// modified and settings that are not parameters (for example, the logarithm base of a log-Pearson Type III)
-        /// carry over to every row. A row is valid when <c>ValidateParameters(row, false)</c> returns null; a valid
+        /// carry over to every row. A wrapper distribution that holds another distribution must therefore clone it
+        /// deeply; a clone that shares the wrapped instance lets the rows modify the original. A row is valid when <c>ValidateParameters(row, false)</c> returns null; a valid
         /// row is applied with <c>SetParameters(row)</c> and evaluated with <see cref="InverseCDF(double)"/> at each
         /// probability. The arithmetic is therefore exactly that of the per-row loop
         /// <c>ValidateParameters</c> → <c>SetParameters</c> → <c>InverseCDF</c> on a clone, and the results are
@@ -517,8 +564,8 @@ namespace Numerics.Distributions
         /// resulting mean to avoid cancellation between large raw first and second moments.
         /// </para>
         /// <para>
-        /// The first and last bins carry the whole of their tails — ΔF₀ is CDF(upper bound of bin 0), taken
-        /// from −∞, and the final ΔF is 1 − CDF(lower bound of the last bin) — so despite the 1E-8 stratification
+        /// The first and last bins carry the whole of their tails: ΔF₀ is CDF(upper bound of bin 0), taken
+        /// from −∞, and the final ΔF is 1 − CDF(lower bound of the last bin). So despite the 1E-8 stratification
         /// endpoints the total probability sums to one and the effective range is <b>not</b> truncated. Cost
         /// and accuracy are both fixed by <paramref name="steps"/> and there is no convergence check.
         /// </para>
@@ -538,14 +585,21 @@ namespace Numerics.Distributions
             double reference = a / 2 + b / 2;
             double scale = Math.Max(Math.Abs(a - reference), Math.Abs(b - reference));
             // Preserve the existing bins and probability masses, including endpoint tail representatives.
-            dFx[0] = CDF(bins[0].UpperBound);
+            // A bin whose lower bound is bitwise the previous upper bound reuses that CDF value.
+            double previousUpper = bins[0].UpperBound;
+            double previousCDF = CDF(previousUpper);
+            dFx[0] = previousCDF;
             coordinates[0] = DistributionNumerics.Standardize(bins[0].UpperBound, reference, scale);
             for (int i = 1; i < steps - 1; i++)
             {
-                dFx[i] = CDF(bins[i].UpperBound) - CDF(bins[i].LowerBound);
+                double upperCDF = CDF(bins[i].UpperBound);
+                dFx[i] = upperCDF - (SameBits(bins[i].LowerBound, previousUpper) ? previousCDF : CDF(bins[i].LowerBound));
+                previousUpper = bins[i].UpperBound;
+                previousCDF = upperCDF;
                 coordinates[i] = DistributionNumerics.Standardize(bins[i].Midpoint, reference, scale);
             }
-            dFx[steps - 1] = 1 - CDF(bins.Last().LowerBound);
+            double lastLower = bins.Last().LowerBound;
+            dFx[steps - 1] = 1 - (steps > 1 && SameBits(lastLower, previousUpper) ? previousCDF : CDF(lastLower));
             coordinates[steps - 1] = DistributionNumerics.Standardize(bins.Last().LowerBound, reference, scale);
             double offset = 0;
             for (int i = 0; i < steps; i++) offset += coordinates[i] * dFx[i];
@@ -560,14 +614,28 @@ namespace Numerics.Distributions
             return [reference + scale * offset, scale * Math.Sqrt(second), third / second / Math.Sqrt(second), fourth / second / second];
         }
 
+        /// <summary>Tests whether two bin edges are the same floating-point value bit for bit.</summary>
+        /// <param name="a">The first edge.</param>
+        /// <param name="b">The second edge.</param>
+        /// <returns><see langword="true"/> when the raw bits are equal, so a CDF value at one edge is exactly the value at the other.</returns>
+        private static bool SameBits(double a, double b) => BitConverter.DoubleToInt64Bits(a) == BitConverter.DoubleToInt64Bits(b);
+
         /// <summary>
-        /// Returns the conditional moments of the distribution.
+        /// Returns the conditional mean and the second to fourth conditional moments about the unconditional mean,
+        /// given that X lies in [a, b].
         /// </summary>
         /// <param name="a">The lower integration limit, a.</param>
         /// <param name="b">The upper integration limit, b.</param>
-        /// <summary>
-        /// Returns conditional central moments (up to 4th order) between [a, b].
-        /// </summary>
+        /// <returns>
+        /// A 4-element array: m1 = E[X | a &lt;= X &lt;= b], then mk = E[(X - μ)^k | a &lt;= X &lt;= b] for k = 2, 3, 4,
+        /// where μ is the unconditional <see cref="Mean"/>. All four are NaN when a &gt;= b or the interval has no
+        /// probability mass.
+        /// </returns>
+        /// <remarks>
+        /// m2 to m4 are centred about the unconditional mean μ, not about the conditional mean m1, so they are not
+        /// the central moments of the truncated distribution. The truncated variance, for example, is
+        /// m2 - (m1 - μ)^2. The expectation uses a 300-bin midpoint rule with the CDF mass of each bin.
+        /// </remarks>
         public virtual double[] ConditionalMoments(double a, double b)
         {
             if (a >= b)
@@ -583,10 +651,15 @@ namespace Numerics.Distributions
 
             // Midpoint integration
             double sum1 = 0.0, sum2 = 0.0, sum3 = 0.0, sum4 = 0.0;
+            // A bin whose lower bound is bitwise the previous upper bound reuses that CDF value.
+            double previousUpper = double.NaN, previousCDF = double.NaN;
 
             for (int i = 0; i < steps; i++)
             {
-                double dF = CDF(bins[i].UpperBound) - CDF(bins[i].LowerBound);
+                double upperCDF = CDF(bins[i].UpperBound);
+                double dF = upperCDF - (i > 0 && SameBits(bins[i].LowerBound, previousUpper) ? previousCDF : CDF(bins[i].LowerBound));
+                previousUpper = bins[i].UpperBound;
+                previousCDF = upperCDF;
                 double xMid = bins[i].Midpoint;
 
                 double delta = xMid - mean;
@@ -727,7 +800,7 @@ namespace Numerics.Distributions
         /// Create a PDF table for graphing purposes.
         /// </summary>
         /// <param name="XValues">Array of stratified X values.</param>
-        /// <returns>A 2-column array of X and probability density.</returns>
+        /// <returns>A 2-column array of X and probability density, one row per bin, with the ranges concatenated in order.</returns>
         public double[,] CreatePDFGraph(List<StratificationBin>[] XValues)
         {
             var totalBinCount = default(int);
@@ -743,7 +816,6 @@ namespace Numerics.Distributions
                     graph[binCounter, 1] = PDF(XValues[i][j].Midpoint);
                     binCounter += 1;
                 }
-                binCounter += 1;
             }
             return graph;
         }
@@ -785,7 +857,7 @@ namespace Numerics.Distributions
         /// Create a CDF table for graphing purposes.
         /// </summary>
         /// <param name="XValues">Array of stratified X values.</param>
-        /// <returns>A 2-column array of X and non-exceedance probability.</returns>
+        /// <returns>A 2-column array of X and non-exceedance probability, one row per bin, with the ranges concatenated in order.</returns>
         public double[,] CreateCDFGraph(List<StratificationBin>[] XValues)
         {
             var totalBinCount = default(int);
@@ -801,7 +873,6 @@ namespace Numerics.Distributions
                     graph[binCounter, 1] = CDF(XValues[i][j].Midpoint);
                     binCounter += 1;
                 }
-                binCounter += 1;
             }
             return graph;
         }
@@ -889,8 +960,17 @@ namespace Numerics.Distributions
         public abstract UnivariateDistributionBase Clone();
 
         /// <summary>
-        /// Returns the distribution as XElement (XML). 
+        /// Returns the distribution as XElement (XML).
         /// </summary>
+        /// <returns>An element holding the type, each flattened parameter, and any non-default settings outside the parameters.</returns>
+        /// <remarks>
+        /// Settings that change evaluated values but are not parameters are written as optional attributes only when
+        /// they differ from the family default: the logarithm <c>Base</c> of <see cref="LogNormal"/> and
+        /// <see cref="LogPearsonTypeIII"/>, and the natural-log coordinates <c>Mu</c> and <c>Sigma</c> of an
+        /// <see cref="LnNormal"/> whose physical-moment surface is inactive. Default-configured distributions
+        /// therefore serialize exactly as elements written without these attributes, and
+        /// <see cref="UnivariateDistributionFactory.CreateDistribution(XElement)"/> restores both forms.
+        /// </remarks>
         public virtual XElement ToXElement()
         {
             var result = new XElement("Distribution");
@@ -901,6 +981,7 @@ namespace Numerics.Distributions
             {
                 result.SetAttributeValue(names[i], parms[i].ToString("G17", CultureInfo.InvariantCulture));
             }
+            DistributionNumerics.WriteConfigurationAttributes(this, result);
             return result;
         }
 

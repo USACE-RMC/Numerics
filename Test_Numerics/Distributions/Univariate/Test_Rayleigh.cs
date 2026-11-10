@@ -244,5 +244,117 @@ namespace Distributions.Univariate
             // MoM: sigma = mean / sqrt(pi/2) = 3.0
             Assert.AreEqual(sigma, R.Mean / Math.Sqrt(Math.PI / 2.0), 1E-10);
         }
+
+        /// <summary>
+        /// Ordinary values match scipy.stats.rayleigh to near machine precision.
+        /// </summary>
+        [TestMethod()]
+        public void Test_OrdinaryValues_Scipy()
+        {
+            var R = new Rayleigh(2);
+            // scipy.stats.rayleigh.pdf/cdf/logpdf(x, scale=2)
+            Assert.AreEqual(0.12115415430954302, R.PDF(0.5), 0.12115415430954302 * 1E-14);
+            Assert.AreEqual(0.030766765523655912, R.CDF(0.5), 0.030766765523655912 * 1E-14);
+            Assert.AreEqual(-2.1106915416798357, R.LogPDF(0.5), 2.1106915416798357 * 1E-14);
+            Assert.AreEqual(0.3032653298563167, R.PDF(2.0), 0.3032653298563167 * 1E-14);
+            Assert.AreEqual(0.3934693402873666, R.CDF(2.0), 0.3934693402873666 * 1E-14);
+            Assert.AreEqual(-1.1931471805599454, R.LogPDF(2.0), 1.1931471805599454 * 1E-14);
+            Assert.AreEqual(0.00233517133666736, R.PDF(7.3), 0.00233517133666736 * 1E-14);
+            Assert.AreEqual(0.9987204540621001, R.CDF(7.3), 0.9987204540621001 * 1E-14);
+            Assert.AreEqual(-6.059670012965546, R.LogPDF(7.3), 6.059670012965546 * 1E-14);
+            // scipy.stats.rayleigh.ppf(p, scale=2)
+            Assert.AreEqual(0.2835536753914707, R.InverseCDF(0.01), 0.2835536753914707 * 1E-14);
+            Assert.AreEqual(2.0215353051895795, R.InverseCDF(0.4), 2.0215353051895795 * 1E-14);
+            Assert.AreEqual(6.069708517540585, R.InverseCDF(0.99), 6.069708517540585 * 1E-14);
+        }
+
+        /// <summary>
+        /// Small arguments, small probabilities and far tails keep full precision.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Tails()
+        {
+            var R = new Rayleigh(1);
+            // scipy.stats.rayleigh.cdf(1e-10)
+            Assert.AreEqual(5.0000000000000005E-21, R.CDF(1E-10), 5E-21 * 1E-14);
+            // scipy.stats.rayleigh.ppf(1e-20)
+            Assert.AreEqual(1.414213562373095E-10, R.InverseCDF(1E-20), 1.414213562373095E-10 * 1E-14);
+            // scipy.stats.rayleigh.logpdf(50)
+            Assert.AreEqual(-1246.0879769945718, R.LogPDF(50), 1246.0879769945718 * 1E-15);
+            // scipy.stats.rayleigh.logsf(50)
+            Assert.AreEqual(-1250d, R.LogCCDF(50), 0d);
+            // scipy.stats.rayleigh.sf(30)
+            Assert.AreEqual(3.693883068487256E-196, R.CCDF(30), 3.693883068487256E-196 * 1E-13);
+            Assert.AreEqual(1d, R.CCDF(0));
+            Assert.AreEqual(0d, R.LogCCDF(-1));
+            Assert.AreEqual(double.NegativeInfinity, R.LogPDF(0));
+            Assert.AreEqual(double.NegativeInfinity, R.LogPDF(-1));
+            Assert.AreEqual(0d, R.PDF(double.PositiveInfinity));
+            Assert.AreEqual(double.NegativeInfinity, R.LogPDF(double.PositiveInfinity));
+            Assert.AreEqual(1d, R.CDF(double.PositiveInfinity));
+            Assert.AreEqual(0d, R.CCDF(double.PositiveInfinity));
+            Assert.IsTrue(double.IsNaN(R.PDF(double.NaN)));
+            Assert.IsTrue(double.IsNaN(R.CDF(double.NaN)));
+        }
+
+        /// <summary>
+        /// A huge scale does not overflow through σ².
+        /// </summary>
+        [TestMethod()]
+        public void Test_HugeScale()
+        {
+            var R = new Rayleigh(1E200);
+            // scipy.stats.rayleigh.pdf(1e200, scale=1e200)
+            Assert.AreEqual(6.0653065971263344E-201, R.PDF(1E200), 6.0653065971263344E-201 * 1E-14);
+            // scipy.stats.rayleigh.cdf(1e200, scale=1e200)
+            Assert.AreEqual(0.3934693402873666, R.CDF(1E200), 0.3934693402873666 * 1E-14);
+        }
+
+        /// <summary>
+        /// Maximum likelihood applies the Γ(n)√n/Γ(n + 1/2) bias correction to the closed-form estimator.
+        /// </summary>
+        [TestMethod()]
+        public void Test_MLE_BiasCorrected()
+        {
+            var data = new[] { 1.2, 0.4, 2.5, 3.1, 0.9, 1.7, 2.2 };
+            var R = new Rayleigh();
+            R.Estimate(data, ParameterEstimationMethod.MaximumLikelihood);
+            // sqrt(sum(x^2)/(2n)) = scipy.stats.rayleigh.fit(data, floc=0)[1] = 1.3627702877384937, times
+            // exp(gammaln(7) + 0.5*log(7) - gammaln(7.5)) from scipy.special
+            Assert.AreEqual(1.3873031101602713, R.Sigma, 1.3873031101602713 * 1E-13);
+
+            R.Estimate(data, ParameterEstimationMethod.MethodOfMoments);
+            // numpy.mean(data) / sqrt(pi/2)
+            Assert.AreEqual(1.3678021042334836, R.Sigma, 1.3678021042334836 * 1E-14);
+        }
+
+        /// <summary>
+        /// Invalid samples throw instead of producing a silent or negative scale.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Estimate_InvalidSample()
+        {
+            var R = new Rayleigh();
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => R.Estimate(new double[0], ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => R.Estimate(new[] { -1.0, -2.0, -1.5 }, ParameterEstimationMethod.MethodOfMoments));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => R.Estimate(new[] { 0.0, 0.0 }, ParameterEstimationMethod.MethodOfMoments));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => R.Estimate(new[] { 1.0, double.NaN }, ParameterEstimationMethod.MethodOfMoments));
+            Assert.ThrowsExactly<ArgumentNullException>(() => R.Estimate(null!, ParameterEstimationMethod.MethodOfMoments));
+            // A single positive observation determines the scale.
+            R.Estimate(new[] { 2.0 }, ParameterEstimationMethod.MethodOfMoments);
+            Assert.AreEqual(2.0 / Math.Sqrt(Math.PI / 2.0), R.Sigma, 1E-15);
+        }
+
+        /// <summary>
+        /// The parametric bootstrap re-estimates a valid distribution from a seeded sample.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Bootstrap()
+        {
+            var R = new Rayleigh(3);
+            var b = (Rayleigh)R.Bootstrap(ParameterEstimationMethod.MaximumLikelihood, 500, 12345);
+            Assert.IsTrue(b.ParametersValid);
+            Assert.AreEqual(3d, b.Sigma, 0.3);
+        }
     }
 }

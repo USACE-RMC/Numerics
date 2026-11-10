@@ -53,7 +53,7 @@ namespace Distributions.Univariate
 
         /// <summary>
         /// Test the motivating case: zero-inflation atoms of defective risk curves convolve
-        /// exactly — the joint zero atom is the product of the input zero masses, a point mass
+        /// exactly: the joint zero atom is the product of the input zero masses, a point mass
         /// the continuous-PDF pipeline cannot represent.
         /// </summary>
         [TestMethod]

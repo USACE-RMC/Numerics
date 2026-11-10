@@ -84,7 +84,8 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// This test compares the quantile confidence intervals obtained by the 'Bootstrap-t' or 'Student' method for the Normal distribution with the "true" Noncentral-t intervals. 
+        /// This test compares the quantile confidence intervals obtained by the 'Bootstrap-t' or 'Student' method for the Normal distribution
+        /// with Monte Carlo confidence intervals from <see cref="Normal.MonteCarloConfidenceIntervals"/> (10,000 simulated samples of size 100).
         /// </summary>
         [TestMethod]
         public void Test_BootstrapTCI()
@@ -94,9 +95,9 @@ namespace Distributions.Univariate
             var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100);
             var CIs = boot.BootstrapTQuantileCI(probabilities);
 
-            /* Since bootstrap methods rely on random number generation, results will not be 
-            *  exactly the same as those produced by other samplers. Therefore, these 
-            *  comparisons aim to verify whether the results are within 1% of 'boot' results. 
+            /* Since both the bootstrap and the Monte Carlo reference rely on random number generation,
+            *  the intervals are not identical. These comparisons verify that the bootstrap-t limits are
+            *  within 1% of the Monte Carlo confidence intervals of the same Normal distribution.
             */
 
             var trueCIs = dist.MonteCarloConfidenceIntervals(100, 10000, probabilities, new double[] { 0.05, 0.95 });
@@ -110,7 +111,9 @@ namespace Distributions.Univariate
 
 
         /// <summary>
-        /// This test compares the quantile confidence intervals obtained by the 'BCa' method for the Normal distribution with the "true" Noncentral-t intervals. 
+        /// This test compares the quantile confidence intervals obtained by the 'BCa' method for the Normal distribution with Monte Carlo
+        /// confidence intervals from <see cref="Normal.MonteCarloConfidenceIntervals"/> (10,000 simulated samples of size 100).
+        /// BCaQuantileCI fits the distribution to the sample in place, so the reference intervals use the fitted parameters.
         /// </summary>
         [TestMethod]
         public void Test_BCaCI()
@@ -121,9 +124,9 @@ namespace Distributions.Univariate
             var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100);
             var CIs = boot.BCaQuantileCI(sampleData, probabilities);
 
-            /* Since bootstrap methods rely on random number generation, results will not be 
-            *  exactly the same as those produced by other samplers. Therefore, these 
-            *  comparisons aim to verify whether the results are within 1% of 'boot' results. 
+            /* Since both the bootstrap and the Monte Carlo reference rely on random number generation,
+            *  the intervals are not identical. These comparisons verify that the BCa limits are
+            *  within 1% of the Monte Carlo confidence intervals of the fitted Normal distribution.
             */
 
             var trueCIs = dist.MonteCarloConfidenceIntervals(100, 10000, probabilities, new double[] { 0.05, 0.95 });
@@ -133,6 +136,32 @@ namespace Distributions.Univariate
                 Assert.AreEqual(trueCIs[i, 1], CIs[i, 1], 0.01 * trueCIs[i, 1]);
             }
 
+        }
+
+        /// <summary>
+        /// BCa and bootstrap-t intervals refit the distribution, so distributions that are bootstrappable but do not
+        /// implement IEstimation are rejected before any replication runs.
+        /// </summary>
+        [TestMethod]
+        public void Test_BCaAndBootstrapT_RequireEstimation()
+        {
+            var sample = new double[] { 2.1, 3.4, 2.8, 4.0, 3.1, 2.5, 3.7, 2.9, 3.3, 2.2, 3.9, 3.0 };
+            var probabilities = new double[] { 0.1, 0.5, 0.9 };
+            var distributions = new IUnivariateDistribution[] { new EmpiricalDistribution(sample), new KernelDensity(sample) };
+            foreach (var distribution in distributions)
+            {
+                int reports = 0;
+                var boot = new BootstrapAnalysis(distribution, ParameterEstimationMethod.MaximumLikelihood, 12, 100)
+                {
+                    Progress = new SynchronousProgress(_ => Interlocked.Increment(ref reports))
+                };
+                var bca = Assert.ThrowsExactly<NotSupportedException>(() => boot.BCaQuantileCI(sample, probabilities));
+                StringAssert.Contains(bca.Message, "requires a distribution that implements IEstimation");
+                var bootT = Assert.ThrowsExactly<NotSupportedException>(() => boot.BootstrapTQuantileCI(probabilities));
+                StringAssert.Contains(bootT.Message, "requires a distribution that implements IEstimation");
+                Assert.AreEqual(0, reports);
+                Assert.AreEqual(12, boot.SampleSize);
+            }
         }
 
         /// <summary>
@@ -295,7 +324,7 @@ namespace Distributions.Univariate
         /// <summary>
         /// Pins the bias-correction proportion count(θ* ≤ θ̂) / (B + 1). With the estimate at the
         /// bootstrap median of nine replicates the proportion is 5/10, the bias correction is zero,
-        /// and the bias-corrected limits equal the unadjusted percentile limits — any shift of the
+        /// and the bias-corrected limits equal the unadjusted percentile limits; any shift of the
         /// count numerator breaks this identity.
         /// </summary>
         [TestMethod]
@@ -373,7 +402,7 @@ namespace Distributions.Univariate
 
         /// <summary>
         /// Test that summary probabilities average only the successful fits, and that a
-        /// replication set with no successful fit is rejected loudly — as a single error for
+        /// replication set with no successful fit is rejected loudly: as a single error for
         /// the all-null expected-probability path and as an aggregate of the per-set failures
         /// for the distribution builder.
         /// </summary>
@@ -459,8 +488,8 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Test that Quantiles dimensions its output by the supplied distributions array — not by
-        /// the replication count — with orientation [replication, ordinate], writes a NaN row for
+        /// Test that Quantiles dimensions its output by the supplied distributions array (not by
+        /// the replication count), with orientation [replication, ordinate], writes a NaN row for
         /// each null entry, and fills every non-null entry's row with that distribution's own
         /// InverseCDF at the requested probabilities.
         /// </summary>
@@ -487,8 +516,8 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Test that Probabilities dimensions its output by the supplied distributions array — not
-        /// by the replication count — with orientation [replication, ordinate], writes a NaN row
+        /// Test that Probabilities dimensions its output by the supplied distributions array (not
+        /// by the replication count), with orientation [replication, ordinate], writes a NaN row
         /// for each null entry, and fills every non-null entry's row with that distribution's own
         /// CDF at the requested quantiles.
         /// </summary>
@@ -512,6 +541,92 @@ namespace Distributions.Univariate
                 Assert.AreEqual(fits[0].CDF(quantiles[j]), result[0, j], 0d);
                 Assert.AreEqual(fits[2].CDF(quantiles[j]), result[2, j], 0d);
             }
+        }
+
+    
+        /// <summary>
+        /// Progress receives one report per replication, ending at the replication count, and a
+        /// progress receiver and an uncancelled token leave the results unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_Progress_ReportsEveryReplicationWithoutChangingResults()
+        {
+            var probabilities = new double[] { 0.5, 0.9, 0.99 };
+            var dist = new Normal(3.122599, 0.5573654);
+            var plain = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 500).Estimate(probabilities);
+
+            var reports = new System.Collections.Concurrent.ConcurrentBag<int>();
+            var hooked = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 500)
+            {
+                Progress = new SynchronousProgress(reports.Add),
+                CancellationToken = new CancellationTokenSource().Token
+            };
+            var observed = hooked.Estimate(probabilities);
+
+            Assert.HasCount(500, reports);
+            Assert.AreEqual(500, reports.Max());
+            CollectionAssert.AreEquivalent(Enumerable.Range(1, 500).ToArray(), reports.ToArray());
+            CollectionAssert.AreEqual(plain.MeanCurve, observed.MeanCurve);
+            CollectionAssert.AreEqual(plain.ModeCurve, observed.ModeCurve);
+            for (int i = 0; i < probabilities.Length; i++)
+            {
+                Assert.AreEqual(plain.ConfidenceIntervals[i, 0], observed.ConfidenceIntervals[i, 0], 0d);
+                Assert.AreEqual(plain.ConfidenceIntervals[i, 1], observed.ConfidenceIntervals[i, 1], 0d);
+            }
+        }
+
+        /// <summary>
+        /// The studentized bootstrap reports its outer replications and returns the same limits with a receiver attached.
+        /// </summary>
+        [TestMethod]
+        public void Test_Progress_BootstrapTReportsOuterReplications()
+        {
+            var probabilities = new double[] { 0.5, 0.9 };
+            var dist = new Normal(3.122599, 0.5573654);
+            var plain = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 20, 100).BootstrapTQuantileCI(probabilities);
+
+            int count = 0;
+            var hooked = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 20, 100)
+            {
+                Progress = new SynchronousProgress(_ => Interlocked.Increment(ref count))
+            };
+            var observed = hooked.BootstrapTQuantileCI(probabilities);
+
+            Assert.AreEqual(100, count);
+            for (int i = 0; i < probabilities.Length; i++)
+            {
+                Assert.AreEqual(plain[i, 0], observed[i, 0], 0d);
+                Assert.AreEqual(plain[i, 1], observed[i, 1], 0d);
+            }
+        }
+
+        /// <summary>
+        /// A cancelled token stops the replication loops with an <see cref="OperationCanceledException"/>.
+        /// </summary>
+        [TestMethod]
+        public void Test_CancellationToken_StopsReplications()
+        {
+            var dist = new Normal(3.122599, 0.5573654);
+            using var source = new CancellationTokenSource();
+            source.Cancel();
+            var boot = new BootstrapAnalysis(dist, ParameterEstimationMethod.MethodOfMoments, 100, 500)
+            {
+                CancellationToken = source.Token
+            };
+            Assert.ThrowsExactly<OperationCanceledException>(() => boot.Distributions());
+            Assert.ThrowsExactly<OperationCanceledException>(() => boot.BootstrapTQuantileCI(new double[] { 0.5 }));
+        }
+
+        /// <summary>
+        /// Reports progress on the calling thread, unlike <see cref="Progress{T}"/>, which posts to a synchronization context.
+        /// </summary>
+        private sealed class SynchronousProgress : IProgress<int>
+        {
+            private readonly Action<int> _handler;
+
+            public SynchronousProgress(Action<int> handler) { _handler = handler; }
+
+            public void Report(int value) { _handler(value); }
         }
 
     }

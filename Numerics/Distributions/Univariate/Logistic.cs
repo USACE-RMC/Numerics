@@ -22,7 +22,7 @@ namespace Numerics.Distributions
     /// </para>
     /// </remarks>
     [Serializable]
-    public sealed class Logistic : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, IMomentEstimation, IStandardError, IBootstrappable
+    public sealed class Logistic : UnivariateDistributionBase, IEstimation, IMaximumLikelihoodEstimation, IMomentEstimation, ILinearMomentEstimation, IStandardError, IBootstrappable
     {
       
         /// <summary>
@@ -227,6 +227,10 @@ namespace Numerics.Distributions
             {
                 SetParameters(ParametersFromMoments(Statistics.ProductMoments(sample)));
             }
+            else if (estimationMethod == ParameterEstimationMethod.MethodOfLinearMoments)
+            {
+                SetParameters(ParametersFromLinearMoments(Statistics.LinearMoments(sample)));
+            }
             else if (estimationMethod == ParameterEstimationMethod.MaximumLikelihood)
             {
                 SetParameters(MLE(sample));
@@ -303,6 +307,27 @@ namespace Numerics.Distributions
             var m3 = dist.Skewness;
             var m4 = dist.Kurtosis;
             return [m1, m2, m3, m4];
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>The logistic L-moments are λ1 = ξ and λ2 = α (Hosking and Wallis, 1997).</remarks>
+        public double[] ParametersFromLinearMoments(IList<double> moments)
+        {
+            double xi = moments[0];
+            double alpha = moments[1];
+            return [xi, alpha];
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Returns {λ1, λ2, τ3, τ4} = {ξ, α, 0, 1/6} (Hosking and Wallis, 1997).</remarks>
+        public double[] LinearMomentsFromParameters(IList<double> parameters)
+        {
+            ValidateParameters(parameters, true);
+            double L1 = parameters[0];
+            double L2 = parameters[1];
+            double T3 = 0d;
+            double T4 = 1d / 6d;
+            return [L1, L2, T3, T4];
         }
 
         /// <inheritdoc/>

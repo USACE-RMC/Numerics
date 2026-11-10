@@ -456,7 +456,7 @@ namespace Numerics.Distributions
         {
             if (!_parametersValid) ValidateParameters([Xi, Alpha], true);
             if (X <= Xi) return double.NegativeInfinity;
-            return DistributionNumerics.Log1mExp(-DistributionNumerics.Standardize(X, Xi, Alpha));
+            return Tools.Log1mExp(-DistributionNumerics.Standardize(X, Xi, Alpha));
         }
 
         /// <inheritdoc/>
