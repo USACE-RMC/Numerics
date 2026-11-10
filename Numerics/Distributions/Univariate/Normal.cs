@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Numerics.Data.Statistics;
-using Numerics.Mathematics.Optimization;
 using Numerics.Mathematics.SpecialFunctions;
 using Numerics.Sampling;
 
@@ -87,6 +86,9 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the scale parameter σ (sigma).
         /// </summary>
+        /// <remarks>
+        /// Values in [0, 1E-16) are raised to 1E-16; negative values are stored as given and fail validation.
+        /// </remarks>
         public double Sigma
         {
             get { return _sigma; }
@@ -400,26 +402,23 @@ namespace Numerics.Distributions
             return Tuple.Create(new[] { location, scale }, new[] { -locationBound, Math.Min(Tools.DoubleMachineEpsilon, scale / 10d) }, new[] { locationBound, scaleBound });
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Returns the maximum likelihood estimates of the Normal parameters.
+        /// </summary>
+        /// <param name="sample">The sample of data, with at least four finite observations.</param>
+        /// <returns>The estimated parameters <c>[µ, σ]</c>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is invalid, insufficient, or constant.</exception>
+        /// <exception cref="ArgumentException">The sample moments are nonfinite or have no positive dispersion.</exception>
+        /// <remarks>
+        /// The likelihood is maximized in closed form by the sample mean and the population standard deviation, which uses
+        /// the divisor n and is therefore a biased estimator of σ. The sample is validated by the same contract as
+        /// <see cref="GetParameterConstraints(IList{double})"/>.
+        /// </remarks>
         public double[] MLE(IList<double> sample)
         {
-            // Set constraints
-            var tuple = GetParameterConstraints(sample);
-            var Initials = tuple.Item1;
-            var Lowers = tuple.Item2;
-            var Uppers = tuple.Item3;
-
-            // Solve using Nelder-Mead (Downhill Simplex)
-            double logLH(double[] x)
-            {
-                var N = new Normal();
-                N.SetParameters(x);
-                return N.LogLikelihood(sample);
-            }
-            var solver = new NelderMead(logLH, NumberOfParameters, Initials, Lowers, Uppers);
-            solver.ReportFailure = true;
-            solver.Maximize();
-            return solver.BestParameterSet.Values;
+            GetParameterConstraints(sample);
+            return [Statistics.Mean(sample), Statistics.PopulationStandardDeviation(sample)];
         }
 
         /// <inheritdoc/>
@@ -655,10 +654,43 @@ namespace Numerics.Distributions
         /// Returns the CDF for a standard Normal distribution, where mean of 0 and standard deviation of 1.
         /// </summary>
         /// <param name="Z">The Z variate of a standard Normal.</param>
+        /// <returns>Φ(Z), or NaN when Z is NaN.</returns>
+        /// <remarks>
+        /// The lower tail Φ(-|Z|) = exp(-Z²/2) erfcx(|Z|/√2) / 2 is evaluated with the scaled complementary error
+        /// function of <see cref="Erf.Erfc(double)"/> (the Chebyshev expansion of Schonfelder, 1978, and for
+        /// |Z| &gt;= 3√2 a polynomial in 2/Z²), and exp(-Z²/2) is formed from Z itself with the splitting of
+        /// Cody (1969), so neither Z² nor the scaling by √2 rounds inside the exponential. Measured against mpmath,
+        /// the relative error of the lower tail is at most about 6E-16 (root mean square 2E-16) down to Z = -37.5,
+        /// where the result becomes subnormal; Φ(Z) is zero below about -38.6. For Z &gt; 0, Φ(Z) = 1 - Φ(-Z), and
+        /// below |Z| = 2^-27 the Taylor series 1/2 - |Z| / sqrt(2π) gives Φ(0) = 1/2 exactly.
+        /// </remarks>
         public static double StandardCDF(double Z)
         {
-            return MultivariateNormal.MVNPHI(Z);
+            if (double.IsNaN(Z)) return double.NaN;
+            double az = Math.Abs(Z);
+            double tail;
+            if (az < Erf.TaylorLimit)
+                tail = 0.5d - az / Tools.Sqrt2PI;
+            else if (az >= StandardCDFUnderflow)
+                tail = 0d;
+            else if (az < StandardCDFAsymptotic)
+                tail = 0.5d * Erf.ExpNegativeScaledSquare(az, 0.5d) * Erf.ScaledErfc(az / Tools.Sqrt2);
+            else
+                // erfcx(|Z|/√2) / 2 = g(2/Z²) / (|Z| sqrt(2π)), so the scaling by √2 never rounds
+                tail = Erf.ExpNegativeScaledSquare(az, 0.5d) * Erf.ScaledErfcAsymptotic(2d / (az * az)) / (az * Tools.Sqrt2PI);
+            return Z > 0d ? 1d - tail : tail;
         }
+
+        /// <summary>
+        /// The magnitude above which the standard Normal lower tail underflows to zero: exp(-Z²/2) is below the
+        /// smallest subnormal double.
+        /// </summary>
+        private const double StandardCDFUnderflow = 38.7d;
+
+        /// <summary>
+        /// The magnitude 3√2 from which the lower tail uses the asymptotic polynomial of <see cref="Erf.Erfc(double)"/>.
+        /// </summary>
+        private const double StandardCDFAsymptotic = Erf.ScaledErfcSplit * Tools.Sqrt2;
 
         /// <summary>
         /// Returns the CDF for a standard Normal distribution, where mean of 0 and standard deviation of 1.
@@ -679,6 +711,15 @@ namespace Numerics.Distributions
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <returns>The standard Normal variate, or NaN when the probability is NaN.</returns>
         /// <exception cref="ArgumentOutOfRangeException">The probability is less than zero or greater than one.</exception>
+        /// <remarks>
+        /// The two ends are deliberately asymmetric. A probability of 0 is replaced by the smallest positive double,
+        /// <see cref="double.Epsilon"/> (2^-1074), so <c>StandardZ(0)</c> returns the finite lower end of about
+        /// -38.4674 (the standard Normal quantile of 2^-1074) rather than negative infinity; callers that map 0 onto
+        /// the Normal scale, such as probability-scale interpolation, rely on that finite value. A probability of 1
+        /// is replaced by <c>1 - double.Epsilon</c>, which rounds to exactly 1, so <c>StandardZ(1)</c> returns
+        /// positive infinity. The largest finite upper value, at the largest double below 1 (1 - 2^-53), is about
+        /// 8.2095.
+        /// </remarks>
         public static double StandardZ(double probability)
         {
             // Validate probability
@@ -915,7 +956,21 @@ namespace Numerics.Distributions
             return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Returns the conditional mean and the conditional central moments about the unconditional mean on the interval [a, b].
+        /// </summary>
+        /// <param name="a">The lower limit of the conditioning interval; may be negative infinity.</param>
+        /// <param name="b">The upper limit of the conditioning interval; may be positive infinity.</param>
+        /// <returns>
+        /// <c>[E[X | a ≤ X ≤ b], E[(X-µ)² | a ≤ X ≤ b], E[(X-µ)³ | a ≤ X ≤ b], E[(X-µ)⁴ | a ≤ X ≤ b]]</c>, or not-a-number
+        /// values when <paramref name="a"/> is not below <paramref name="b"/>.
+        /// </returns>
+        /// <remarks>
+        /// Closed-form truncated Normal moments in the standardized limits α = (a-µ)/σ and β = (b-µ)/σ, with boundary terms
+        /// αᵏφ(α) and βᵏφ(β) taken as zero at infinite limits. When α is positive the interval mass is evaluated as
+        /// Φ(-α) - Φ(-β), and when β is negative as Φ(β) - Φ(α) from the lower-tail probabilities, so intervals that lie
+        /// entirely in one tail do not lose the mass to cancellation.
+        /// </remarks>
         public override double[] ConditionalMoments(double a, double b)
         {
             if (a >= b)
@@ -929,20 +984,39 @@ namespace Numerics.Distributions
             double α = (a - mu) / sigma;
             double β = (b - mu) / sigma;
 
-            // CDF of standard normal
-            double Φα = 0.5 * (1 + Erf.Function(α / Math.Sqrt(2)));
-            double Φβ = 0.5 * (1 + Erf.Function(β / Math.Sqrt(2)));
-            double Z = Φβ - Φα;             // normalization
+            // Normalization. An interval entirely above or below the mean is differenced in tail probabilities,
+            // which keeps the mass free of cancellation against one.
+            double Z;
+            if (α > 0)
+            {
+                Z = StandardCDF(-α) - StandardCDF(-β);
+            }
+            else if (β < 0)
+            {
+                Z = StandardCDF(β) - StandardCDF(α);
+            }
+            else
+            {
+                // CDF of standard normal
+                double Φα = 0.5 * (1 + Erf.Function(α / Math.Sqrt(2)));
+                double Φβ = 0.5 * (1 + Erf.Function(β / Math.Sqrt(2)));
+                Z = Φβ - Φα;             // normalization
+            }
 
             // PDF of standard normal
             double φα = Math.Exp(-0.5 * α * α) / Math.Sqrt(2 * Math.PI);
             double φβ = Math.Exp(-0.5 * β * β) / Math.Sqrt(2 * Math.PI);
 
+            // Boundary terms limit^k φ(limit); they vanish at an infinite limit.
+            double α1 = double.IsInfinity(α) ? 0 : α * φα, β1 = double.IsInfinity(β) ? 0 : β * φβ;
+            double α2 = double.IsInfinity(α) ? 0 : (α * α + 2) * φα, β2 = double.IsInfinity(β) ? 0 : (β * β + 2) * φβ;
+            double α3 = double.IsInfinity(α) ? 0 : α * α * α * φα, β3 = double.IsInfinity(β) ? 0 : β * β * β * φβ;
+
             // auxiliary ratios
             double λ = (φα - φβ) / Z;               // E[Z]
-            double δ = (α * φα - β * φβ) / Z;           // E[Z²]−1
-            double τ = ((α * α + 2) * φα - (β * β + 2) * φβ) / Z;    // E[Z³]
-            double κ = (α * α * α * φα - β * β * β * φβ) / Z;           // for E[Z⁴]
+            double δ = (α1 - β1) / Z;           // E[Z²]−1
+            double τ = (α2 - β2) / Z;    // E[Z³]
+            double κ = (α3 - β3) / Z;           // for E[Z⁴]
 
             // now build the moments
             double m1 = mu + sigma * λ;

@@ -224,7 +224,7 @@ namespace Functions
         }
 
         /// <summary>
-        /// The extrapolation default (None) must reproduce the historical endpoint hold exactly,
+        /// The extrapolation default (None) must reproduce the endpoint hold exactly,
         /// in every transform space, for both lookup directions. This is the bit-identity gate for
         /// the tabular function's extrapolation property.
         /// </summary>

@@ -463,8 +463,8 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// The extrapolation default (None) must reproduce the historical endpoint hold exactly —
-        /// including the far-tail inverse guards — so every existing model is bit-identical. This
+        /// The extrapolation default (None) must reproduce the endpoint hold exactly,
+        /// including the far-tail inverse guards, so a model without extrapolation is bit-identical. This
         /// is the bit-identity gate for the distribution's extrapolation property.
         /// </summary>
         [TestMethod]
@@ -598,9 +598,9 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// The far-tail inverse guards stay total under extrapolation — probabilities at or
+        /// The far-tail inverse guards stay total under extrapolation (probabilities at or
         /// beyond the 1e-16 floors evaluate the extended lookup at the floor instead of holding
-        /// the endpoint — and the inverse stays monotone across both boundaries.
+        /// the endpoint), and the inverse stays monotone across both boundaries.
         /// </summary>
         [TestMethod]
         public void Test_Empirical_Extrapolation_InverseMonotoneAndGuards()
@@ -659,6 +659,332 @@ namespace Distributions.Univariate
             var invalid = dist.ToXElement();
             invalid.SetAttributeValue(nameof(EmpiricalDistribution.Extrapolation), "Sideways");
             Assert.Throws<ArgumentException>(() => EmpiricalDistribution.FromXElement(invalid));
+        }
+
+        /// <summary>
+        /// A survival table (strictly descending probabilities) keeps its orientation through
+        /// Clone and XML: CDF = 1 − S and InverseCDF reads the exceedance axis on every copy.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_SurvivalTable_CloneAndSerialization()
+        {
+            var dist = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.5d, 0.1d, 0.01d }, SortOrder.Ascending, SortOrder.Descending);
+            Assert.IsTrue(dist.ParametersValid);
+
+            var clone = (EmpiricalDistribution)dist.Clone();
+            var restored = EmpiricalDistribution.FromXElement(dist.ToXElement());
+            foreach (var copy in new[] { clone, restored })
+            {
+                Assert.AreEqual(SortOrder.Descending, copy.ProbabilityOrder);
+                Assert.IsTrue(copy.StrictProbabilities);
+                Assert.IsFalse(copy.StrictXValues);
+                Assert.IsTrue(copy.ParametersValid);
+                Assert.AreEqual(1d - 0.1d, copy.CDF(200d), 0d);
+                Assert.AreEqual(dist.CDF(250d), copy.CDF(250d), 0d);
+                Assert.AreEqual(200d, copy.InverseCDF(1d - 0.1d), 1E-10);
+                Assert.AreEqual(dist.InverseCDF(0.7d), copy.InverseCDF(0.7d), 0d);
+            }
+        }
+
+        /// <summary>
+        /// A tied-probability (non-strict) table and a strict-X table built from ordered paired
+        /// data keep their strictness through Clone and XML. The XML writes strictness only when
+        /// it departs from the default, so a default distribution serializes exactly as before.
+        /// </summary>
+        [TestMethod]
+        public void Test_Empirical_Strictness_CloneAndSerialization()
+        {
+            // Default: no strictness attributes; the serialized form is unchanged.
+            var standard = new EmpiricalDistribution(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d });
+            var standardXml = standard.ToXElement();
+            Assert.IsNull(standardXml.Attribute(nameof(EmpiricalDistribution.StrictXValues)));
+            Assert.IsNull(standardXml.Attribute(nameof(EmpiricalDistribution.StrictProbabilities)));
+            Assert.AreEqual(
+                "<Distribution Type=\"Empirical\" XTransform=\"None\" ProbabilityTransform=\"NormalZ\" XValues=\"100|200|300\" ProbabilityValues=\"0.10000000000000001|0.5|0.90000000000000002\" ProbabilityOrder=\"Ascending\" />",
+                standardXml.ToString());
+
+            // Tied probabilities: valid only with non-strict probabilities.
+            var tied = new EmpiricalDistribution(new OrderedPairedData(new[] { 100d, 200d, 300d, 400d }, new[] { 0.1d, 0.5d, 0.5d, 0.9d }, false, SortOrder.Ascending, false, SortOrder.Ascending));
+            Assert.IsTrue(tied.ParametersValid);
+            Assert.IsFalse(tied.StrictProbabilities);
+            var tiedClone = (EmpiricalDistribution)tied.Clone();
+            Assert.IsFalse(tiedClone.StrictProbabilities);
+            Assert.IsTrue(tiedClone.ParametersValid);
+            Assert.AreEqual(tied.CDF(350d), tiedClone.CDF(350d), 0d);
+            var tiedXml = tied.ToXElement();
+            Assert.AreEqual(bool.FalseString, tiedXml.Attribute(nameof(EmpiricalDistribution.StrictProbabilities))?.Value);
+            Assert.IsNull(tiedXml.Attribute(nameof(EmpiricalDistribution.StrictXValues)));
+            var tiedRestored = EmpiricalDistribution.FromXElement(tiedXml);
+            Assert.IsFalse(tiedRestored.StrictProbabilities);
+            Assert.IsTrue(tiedRestored.ParametersValid);
+            Assert.AreEqual(tied.CDF(350d), tiedRestored.CDF(350d), 0d);
+            Assert.AreEqual(tiedXml.ToString(), tiedRestored.ToXElement().ToString());
+
+            // Strict X values round-trip as well.
+            var strictX = new EmpiricalDistribution(new OrderedPairedData(new[] { 100d, 200d, 300d }, new[] { 0.1d, 0.5d, 0.9d }, true, SortOrder.Ascending, true, SortOrder.Ascending));
+            Assert.IsTrue(strictX.StrictXValues);
+            Assert.IsTrue(((EmpiricalDistribution)strictX.Clone()).StrictXValues);
+            var strictXml = strictX.ToXElement();
+            Assert.AreEqual(bool.TrueString, strictXml.Attribute(nameof(EmpiricalDistribution.StrictXValues))?.Value);
+            Assert.IsTrue(EmpiricalDistribution.FromXElement(strictXml).StrictXValues);
+
+            // An unparseable strictness value is rejected.
+            tiedXml.SetAttributeValue(nameof(EmpiricalDistribution.StrictProbabilities), "sometimes");
+            Assert.Throws<ArgumentException>(() => EmpiricalDistribution.FromXElement(tiedXml));
+        }
+
+        /// <summary>
+        /// A not-a-number probability is rejected like any probability outside [0, 1], while the endpoints keep
+        /// returning the table bounds.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCDF_NaNProbabilityThrows()
+        {
+            var empirical = new EmpiricalDistribution(new[] { 1d, 2d, 3d }, new[] { 0.1d, 0.5d, 0.9d });
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => empirical.InverseCDF(double.NaN));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => empirical.InverseCDF(-0.1d));
+            Assert.AreEqual(1d, empirical.InverseCDF(0d), 0d);
+            Assert.AreEqual(3d, empirical.InverseCDF(1d), 0d);
+            Assert.AreEqual(2d, empirical.InverseCDF(0.5d), 1E-12);
+        }
+
+        /// <summary>
+        /// A table whose probabilities have no sort order cannot be inverted: the inverse CDF, median, and moments
+        /// report an invalid operation carrying the interpolation failure, while the CDF still interpolates.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnorderedProbabilities_InverseThrowsInvalidOperation()
+        {
+            var empirical = new EmpiricalDistribution(new[] { 1d, 2d, 3d }, new[] { 0.1d, 0.9d, 0.4d }, SortOrder.Ascending, SortOrder.None);
+
+            var inverse = Assert.ThrowsExactly<InvalidOperationException>(() => empirical.InverseCDF(0.5d));
+            Assert.IsNotNull(inverse.InnerException);
+            Assert.AreEqual(typeof(Exception), inverse.InnerException!.GetType());
+            Assert.ThrowsExactly<InvalidOperationException>(() => empirical.Median);
+            Assert.ThrowsExactly<InvalidOperationException>(() => empirical.Mean);
+            Assert.AreEqual(0.9d, empirical.CDF(2d), 1E-12);
+        }
+
+        /// <summary>
+        /// Minimum and Maximum equal the first and last entries of the public X-value collection bit for bit,
+        /// including signed zeros and single-ordinate tables, and an empty table keeps the sequence exception.
+        /// </summary>
+        [TestMethod]
+        public void Test_MinimumMaximum_MatchXValueEndpoints()
+        {
+            var tables = new[]
+            {
+                new EmpiricalDistribution(new[] { -0d, 2d, 4d, 8d }, new[] { 0.05d, 0.4d, 0.8d, 0.99d }),
+                new EmpiricalDistribution(new[] { -3d, -1d, 0d }, new[] { 0.2d, 0.6d, 0.7d }),
+                new EmpiricalDistribution(new[] { 1d, 2d, 3d }, new[] { 0.9d, 0.5d, 0.1d }, SortOrder.Ascending, SortOrder.Descending),
+                new EmpiricalDistribution(new[] { 5d }, new[] { 0.5d })
+            };
+            foreach (var table in tables)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(table.XValues.First()), BitConverter.DoubleToInt64Bits(table.Minimum));
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(table.XValues.Last()), BitConverter.DoubleToInt64Bits(table.Maximum));
+            }
+            var empty = new EmpiricalDistribution(new double[0], new double[0]);
+            Assert.ThrowsExactly<InvalidOperationException>(() => empty.Minimum);
+            Assert.ThrowsExactly<InvalidOperationException>(() => empty.Maximum);
+        }
+
+        /// <summary>
+        /// The descending survival table used by the survival-quantile tests: x = 1..8 with exceedance
+        /// probabilities from 0.5 down to 1E-18, interpolated linearly in normal-Z space.
+        /// </summary>
+        private static readonly double[] SurvivalX = { 1d, 2d, 3d, 4d, 5d, 6d, 7d, 8d };
+
+        /// <summary>
+        /// The exceedance probabilities of <see cref="SurvivalX"/>.
+        /// </summary>
+        private static readonly double[] SurvivalP = { 0.5, 0.1, 1E-2, 1E-4, 1E-6, 1E-9, 1E-13, 1E-18 };
+
+        /// <summary>
+        /// Survival probability at x by independent linear interpolation of the standard normal Z of the table.
+        /// </summary>
+        /// <param name="x">A value inside the table range.</param>
+        /// <returns>The interpolated exceedance probability.</returns>
+        private static double TableSurvival(double x)
+        {
+            int k = Math.Min((int)Math.Floor(x) - 1, SurvivalX.Length - 2);
+            double z0 = Normal.StandardZ(SurvivalP[k]), z1 = Normal.StandardZ(SurvivalP[k + 1]);
+            return Normal.StandardCDF(z0 + (x - SurvivalX[k]) * (z1 - z0));
+        }
+
+        /// <summary>
+        /// A descending (survival) table is read at q directly: the survival quantile at q = 1E-8, 1E-12, 1E-15 and
+        /// 1E-17 round-trips through the table to q within 1E-12 relative, while InverseCDF(1 - q) loses up to
+        /// 8E-4 relative at 1E-15 and returns the table maximum at 1E-17, below its far-tail floor.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCCDF_SurvivalTableRoundTrip()
+        {
+            var emp = new EmpiricalDistribution(SurvivalX, SurvivalP, SortOrder.Ascending, SortOrder.Descending);
+            foreach (double q in new[] { 1E-8, 1E-12, 1E-15, 1E-17 })
+            {
+                double x = emp.InverseCCDF(q);
+                Assert.IsLessThan(8d, x);
+                Assert.AreEqual(q, TableSurvival(x), 1E-12 * q, $"q {q}");
+            }
+            Assert.AreEqual(1E-15, TableSurvival(emp.InverseCDF(1d - 1E-15)), 1E-3 * 1E-15);
+            Assert.AreNotEqual(1E-15, TableSurvival(emp.InverseCDF(1d - 1E-15)), 1E-6 * 1E-15);
+            Assert.AreEqual(8d, emp.InverseCDF(1d - 1E-17), 0d);
+            // Table knots are returned exactly, and the survival quantile decreases with q.
+            Assert.AreEqual(6d, emp.InverseCCDF(1E-9), 1E-13);
+            Assert.AreEqual(7d, emp.InverseCCDF(1E-13), 1E-13);
+            Assert.IsGreaterThan(emp.InverseCCDF(1E-12), emp.InverseCCDF(1E-13));
+        }
+
+        /// <summary>
+        /// Below the smallest stored exceedance probability the survival quantile holds the table maximum, or, with
+        /// upper extrapolation, extends the last normal-Z segment; the result equals the independent extension.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCCDF_SurvivalTableTailAndExtrapolation()
+        {
+            var held = new EmpiricalDistribution(SurvivalX, SurvivalP, SortOrder.Ascending, SortOrder.Descending);
+            Assert.AreEqual(8d, held.InverseCCDF(1E-20), 0d);
+            var extended = new EmpiricalDistribution(SurvivalX, SurvivalP, SortOrder.Ascending, SortOrder.Descending)
+            {
+                Extrapolation = ExtrapolationSides.Above
+            };
+            double z7 = Normal.StandardZ(1E-13), z8 = Normal.StandardZ(1E-18);
+            double expected = 7d + (Normal.StandardZ(1E-20) - z7) / (z8 - z7);
+            Assert.AreEqual(expected, extended.InverseCCDF(1E-20), 1E-12);
+            Assert.IsGreaterThan(8d, extended.InverseCCDF(1E-20));
+        }
+
+        /// <summary>
+        /// Where the base form loses nothing the result is InverseCDF(1 - q) bit for bit: q = 0, q of at least 0.5,
+        /// and ascending tables. Invalid probabilities and an unordered table throw.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCCDF_BaseCasesAndInvalidInputs()
+        {
+            var survival = new EmpiricalDistribution(SurvivalX, SurvivalP, SortOrder.Ascending, SortOrder.Descending);
+            foreach (double q in new[] { 0d, 0.5, 0.75, 1d - 1E-17, 1d })
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(survival.InverseCDF(1d - q)), BitConverter.DoubleToInt64Bits(survival.InverseCCDF(q)));
+            var ascending = new EmpiricalDistribution(SurvivalX, new[] { 0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99, 0.999 }, SortOrder.Ascending, SortOrder.Ascending);
+            foreach (double q in new[] { 0d, 1E-17, 1E-6, 0.2, 0.5, 0.9, 1d })
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(ascending.InverseCDF(1d - q)), BitConverter.DoubleToInt64Bits(ascending.InverseCCDF(q)));
+            foreach (double bad in new[] { -0.1, 1.1, double.NaN })
+                Assert.AreEqual("probability", Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => survival.InverseCCDF(bad)).ParamName);
+            var unordered = new EmpiricalDistribution(new[] { 1d, 2d, 3d }, new[] { 0.1d, 0.9d, 0.4d }, SortOrder.Ascending, SortOrder.None);
+            Assert.ThrowsExactly<InvalidOperationException>(() => unordered.InverseCCDF(0.3));
+        }
+
+        /// <summary>
+        /// Mode is the midpoint of the highest bin of the density grid: for x = {0, 1, 2, 4} and probabilities
+        /// {0, 0.2, 0.7, 1} the bin densities are 0.2, 0.5 and 0.15, so the mode is 1.5. Ties go to the first bin.
+        /// </summary>
+        [TestMethod]
+        public void Test_ModeIsHighestBin()
+        {
+            Assert.AreEqual(1.5, new EmpiricalDistribution(new[] { 0d, 1d, 2d, 4d }, new[] { 0d, 0.2, 0.7, 1d }).Mode, 1E-15);
+            Assert.AreEqual(0.5, new EmpiricalDistribution(new[] { 0d, 1d, 2d }, new[] { 0d, 0.5, 1d }).Mode, 1E-15);
+            // A tie between the first two bins (densities 0.4, 0.4 and 0.1) goes to the first.
+            Assert.AreEqual(0.5, new EmpiricalDistribution(new[] { 0d, 1d, 2d, 3d }, new[] { 0d, 0.4, 0.8, 0.9 }).Mode, 1E-15);
+        }
+
+        /// <summary>
+        /// With the NormalZ probability transform a table that reaches p = 1 has a segment whose end is infinite in z
+        /// (StandardZ(1) is +∞): the CDF at the node next to it is the node's probability rather than NaN, and inside the
+        /// segment it is the limit 1. StandardZ(0) is finite, so a table that starts at p = 0 was already finite; its
+        /// nodes are checked too. Both x transforms behave the same.
+        /// </summary>
+        [TestMethod]
+        public void Test_NormalZNodeNextToCertainProbability()
+        {
+            foreach (var xTransform in new[] { Transform.None, Transform.Logarithmic })
+            {
+                var upper = new EmpiricalDistribution(new[] { 0d, 1d, 2d, 4d }, new[] { 0d, 0.2, 0.7, 1d }) { XTransform = xTransform, ProbabilityTransform = Transform.NormalZ };
+                Assert.AreEqual(0.2, upper.CDF(1d), 1E-15);
+                Assert.AreEqual(0.7, upper.CDF(2d), 1E-15);
+                Assert.AreEqual(1d, upper.CDF(3d), 0d);
+                Assert.AreEqual(1d, upper.CDF(4d), 0d);
+                Assert.AreEqual(2d, upper.InverseCDF(0.7), 1E-12);
+
+                var lower = new EmpiricalDistribution(new[] { 0d, 1d, 2d, 4d }, new[] { 0d, 0.3, 0.8, 0.9 }) { XTransform = xTransform, ProbabilityTransform = Transform.NormalZ };
+                Assert.AreEqual(0d, lower.CDF(0d), 0d);
+                Assert.AreEqual(0.3, lower.CDF(1d), 1E-15);
+                Assert.AreEqual(0.8, lower.CDF(2d), 1E-15);
+                Assert.AreEqual(1d, lower.InverseCDF(0.3), 1E-12);
+            }
+        }
+
+        /// <summary>
+        /// A point mass is the mode: x = {0, 1, 1, 2} with probabilities {0, 0.2, 0.7, 1} has an atom of 0.5 at 1, and a
+        /// sample with ties has its atoms at the tied values, the largest at the most repeated one.
+        /// </summary>
+        [TestMethod]
+        public void Test_ModeIsLargestAtom()
+        {
+            Assert.AreEqual(1d, new EmpiricalDistribution(new[] { 0d, 1d, 1d, 2d }, new[] { 0d, 0.2, 0.7, 1d }).Mode, 0d);
+            Assert.AreEqual(2d, new EmpiricalDistribution(new[] { 1d, 2d, 2d, 2d, 3d, 4d, 4d }).Mode, 0d);
+        }
+
+        /// <summary>
+        /// Under the NormalZ probability transform and the Logarithmic x transform the density varies inside a bin, and
+        /// Mode still returns the midpoint of the bin with the highest average density, |Δp|/|Δx|: for x = {1, 2, 3, 5}
+        /// and probabilities {0.1, 0.3, 0.8, 0.9} that is the bin [2, 3], so 2.5.
+        /// </summary>
+        [TestMethod]
+        public void Test_ModeIsBinMidpointUnderTransforms()
+        {
+            foreach (var x in new[] { Transform.None, Transform.Logarithmic })
+            {
+                foreach (var p in new[] { Transform.None, Transform.NormalZ, Transform.Logarithmic })
+                {
+                    var distribution = new EmpiricalDistribution(new[] { 1d, 2d, 3d, 5d }, new[] { 0.1, 0.3, 0.8, 0.9 }) { XTransform = x, ProbabilityTransform = p };
+                    Assert.AreEqual(2.5, distribution.Mode, 0d, $"{x}, {p}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Long tables take a vectorized scan of the bins; it returns the same bin as a direct scan. The expected values
+        /// are exact by construction, with integer ordinates and probabilities that are multiples of 1/512: on an
+        /// equally spaced table every bin has the same density and the first bin wins; a single heavier bin anywhere
+        /// wins, including the last bins, which fall past the last full vector; equal heavier bins go to the first; and
+        /// a repeated x value anywhere makes the largest atom the mode.
+        /// </summary>
+        [TestMethod]
+        public void Test_ModeOnLongTables()
+        {
+            const int n = 259;
+            double[] Grid() { var x = new double[n]; for (int i = 0; i < n; i++) x[i] = i; return x; }
+            double[] Linear() { var p = new double[n]; for (int i = 0; i < n; i++) p[i] = i / 512d; return p; }
+
+            // The ordinates and probabilities i / 512 are exact, so every bin has density 1/512 exactly: the first bin.
+            Assert.AreEqual(0.5, new EmpiricalDistribution(Grid(), Linear()).Mode, 0d);
+
+            // One bin twice as wide holds the same mass: every other bin is denser, still the first bin wins.
+            var wide = Grid();
+            for (int i = 101; i < n; i++) wide[i] += 1d;
+            Assert.AreEqual(0.5, new EmpiricalDistribution(wide, Linear()).Mode, 0d);
+
+            foreach (int heavy in new[] { 0, 1, 2, 3, 4, 5, 7, 8, 9, 57, 120, n - 4, n - 3, n - 2 })
+            {
+                // Narrowing bin [heavy, heavy + 1] to half its width doubles its density.
+                var x = Grid();
+                for (int i = heavy + 1; i < n; i++) x[i] -= 0.5;
+                Assert.AreEqual(heavy + 0.25, new EmpiricalDistribution(x, Linear()).Mode, 0d, $"heavy bin {heavy}");
+            }
+
+            // Two equally narrowed bins: the first one wins.
+            var twin = Grid();
+            for (int i = 31; i < n; i++) twin[i] -= 0.5;
+            for (int i = 150; i < n; i++) twin[i] -= 0.5;
+            Assert.AreEqual(30.25, new EmpiricalDistribution(twin, Linear()).Mode, 0d);
+
+            foreach (int tie in new[] { 1, 64, n - 1 })
+            {
+                // A repeated x value is a point mass, the mode wherever it sits.
+                var x = Grid();
+                x[tie] = x[tie - 1];
+                Assert.AreEqual(x[tie], new EmpiricalDistribution(x, Linear()).Mode, 0d, $"tie at {tie}");
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net481;net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net481;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -39,6 +39,10 @@
     <EmbeddedResource Include="..\docs\distributions\oracles\generalized-fisher.csv" Link="Distributions\Univariate\Fixtures\generalized-fisher.csv" />
     <EmbeddedResource Include="..\docs\distributions\oracles\generalized-adjacent-boundaries.csv" Link="Distributions\Univariate\Fixtures\generalized-adjacent-boundaries.csv" />
     <EmbeddedResource Include="..\docs\distributions\oracles\normal-pearson.csv" Link="Distributions\Univariate\Fixtures\normal-pearson.csv" />
+    <EmbeddedResource Include="..\docs\distributions\oracles\gpd-survival-quantile.csv" Link="Distributions\Univariate\Fixtures\gpd-survival-quantile.csv" />
+    <EmbeddedResource Include="..\docs\distributions\oracles\gev-survival-quantile.csv" Link="Distributions\Univariate\Fixtures\gev-survival-quantile.csv" />
+    <EmbeddedResource Include="..\docs\mathematics\oracles\special-functions\special-functions-mpmath.csv" Link="Mathematics\Special Functions\Fixtures\special-functions-mpmath.csv" />
+    <EmbeddedResource Include="Data\Time Series\Fixtures\*.csv;Data\Time Series\Fixtures\*.dly;Data\Time Series\Fixtures\*.json" />
   </ItemGroup>
 
 </Project>

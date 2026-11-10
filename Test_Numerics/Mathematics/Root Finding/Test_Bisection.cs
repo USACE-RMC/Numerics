@@ -135,5 +135,32 @@ namespace Mathematics.RootFinding
             });
         }
 
+        /// <summary>
+        /// The search covers the whole bracket regardless of the first guess. Halving that started at
+        /// the first guess would return 2.5 for a guess of 2.5 for x^2 - 4 on [0, 3].
+        /// </summary>
+        [TestMethod()]
+        public void Test_FirstGuessDoesNotLimitTheSearch()
+        {
+            Func<double, double> f = x => x * x - 4d;
+            Assert.AreEqual(2d, Bisection.Solve(f, 2.5, 0, 3), 1E-8);
+            Assert.AreEqual(2d, Bisection.Solve(f, 0.5, 0, 3), 1E-8);
+            Assert.AreEqual(0.1, Bisection.Solve(x => x - 0.1, 0.5, 0, 1), 1E-8);
+            // Decreasing function: f(lowerBound) > 0.
+            Assert.AreEqual(2d, Bisection.Solve(x => 4d - x * x, 0.1, 0, 3), 1E-8);
+        }
+
+        /// <summary>
+        /// NaN function values are rejected instead of being treated as a sign.
+        /// </summary>
+        [TestMethod()]
+        public void Test_NaNFunctionValues()
+        {
+            Assert.ThrowsExactly<ArgumentException>(() => Bisection.Solve(x => double.NaN, 0.5, 0, 1));
+            // The bounds bracket a sign change, but the function is NaN on (0.25, 0.75).
+            Func<double, double> f = x => x > 0.25 && x < 0.75 ? double.NaN : x - 0.6;
+            Assert.ThrowsExactly<ArgumentException>(() => Bisection.Solve(f, 0.5, 0, 1));
+            Assert.IsTrue(double.IsNaN(Bisection.Solve(f, 0.5, 0, 1, reportFailure: false)));
+        }
     }
 }

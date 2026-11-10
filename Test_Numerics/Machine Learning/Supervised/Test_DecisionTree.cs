@@ -66,7 +66,7 @@ namespace MachineLearning
 
         /// <summary>
         /// Testing the Decision Tree (DT) regression method. This test is mainly meant for demonstration.
-        /// I compare the DT regression against linear regression, and show the DT has worse performance against the observed data.
+        /// Compares the DT regression against linear regression, and shows the DT has worse performance against the observed data.
         /// Use a Random Forest to get better performance.
         /// <para>
         /// <see href="https://otexts.com/fpp3/least-squares.html"/>
@@ -117,7 +117,7 @@ namespace MachineLearning
         /// Regression growth counts DISTINCT responses, not sample rows, when testing node purity,
         /// applying scikit-learn's rule that a node is never split once it is pure. On this
         /// twelve-point, two-value fixture the tree therefore stops at the root split with two pure
-        /// leaves — three nodes in total — rather than chaining zero-gain splits of pure nodes down
+        /// leaves (three nodes in total) rather than chaining zero-gain splits of pure nodes down
         /// to one observation per leaf.
         /// </remarks>
         [TestMethod]

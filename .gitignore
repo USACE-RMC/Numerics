@@ -374,3 +374,7 @@ MigrationBackup/
 # Local developer guidance and settings. These files are for developer machines only.
 /.claude/
 /.agents/
+
+# Internal working notes (review reports, impact ledgers, draft release notes). Not part of the repository.
+/docs/reviews/
+/docs/release-notes/

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace Numerics.Distributions.Copulas
@@ -56,7 +57,7 @@ namespace Numerics.Distributions.Copulas
         /// Creates a bivariate copula from its serialized representation.
         /// </summary>
         /// <param name="xElement">The element to deserialize, as written by
-        /// <see cref="BivariateCopula.ToXElement"/>.</param>
+        /// <see cref="BivariateCopula.ToXElement()"/>.</param>
         /// <returns>A validated bivariate copula. Marginal distributions are not part of the
         /// serialized form and are left unattached.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
@@ -95,6 +96,48 @@ namespace Numerics.Distributions.Copulas
                     throw new ArgumentException("The serialized parameters do not define a valid copula.", nameof(xElement));
             }
             return copula;
+        }
+
+        /// <summary>
+        /// Creates a bivariate copula from its serialized representation, optionally restoring its
+        /// marginal distributions.
+        /// </summary>
+        /// <param name="xElement">The element to deserialize, as written by
+        /// <see cref="BivariateCopula.ToXElement(bool)"/>.</param>
+        /// <param name="includeMarginals">True to restore the marginal distributions stored in the
+        /// "MarginalDistributionX" and "MarginalDistributionY" child elements.</param>
+        /// <returns>A validated bivariate copula. A marginal is attached only when
+        /// <paramref name="includeMarginals"/> is true and its child element is present.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the type, parameter or marginal data is missing or malformed.</exception>
+        /// <exception cref="NotSupportedException">Thrown when a marginal type requires a user-provided implementation.</exception>
+        /// <remarks>
+        /// Each marginal is rebuilt through <see cref="UnivariateDistributionFactory.CreateDistribution(XElement)"/>.
+        /// </remarks>
+        public static BivariateCopula CreateCopula(XElement xElement, bool includeMarginals)
+        {
+            var copula = CreateCopula(xElement);
+            if (!includeMarginals) return copula;
+            copula.MarginalDistributionX = ReadMarginal(xElement, nameof(BivariateCopula.MarginalDistributionX));
+            copula.MarginalDistributionY = ReadMarginal(xElement, nameof(BivariateCopula.MarginalDistributionY));
+            return copula;
+        }
+
+        /// <summary>
+        /// Reads one serialized marginal distribution.
+        /// </summary>
+        /// <param name="xElement">The copula element.</param>
+        /// <param name="name">The name of the child element that holds the marginal.</param>
+        /// <returns>The marginal distribution, or null when the child element is absent.</returns>
+        /// <exception cref="ArgumentException">Thrown when the child element holds no distribution.</exception>
+        private static UnivariateDistributionBase? ReadMarginal(XElement xElement, string name)
+        {
+            var container = xElement.Element(name);
+            if (container == null) return null;
+            var payload = container.Elements().FirstOrDefault();
+            if (payload == null)
+                throw new ArgumentException("The serialized marginal distribution " + name + " is empty.", nameof(xElement));
+            return UnivariateDistributionFactory.CreateDistribution(payload);
         }
 
     }

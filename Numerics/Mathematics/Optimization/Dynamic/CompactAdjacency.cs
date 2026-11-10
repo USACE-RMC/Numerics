@@ -17,8 +17,8 @@ namespace Numerics.Mathematics.Optimization
     /// <para>
     /// <b> Description: </b>
     /// The build is a stable two-pass counting sort, so each node's slots appear in the edges'
-    /// original sequence order — exactly the order per-node <c>List&lt;Edge&gt;</c> grouping
-    /// produces — which keeps relaxation order, and therefore every tie outcome, identical to
+    /// original sequence order (exactly the order per-node <c>List&lt;Edge&gt;</c> grouping
+    /// produces), which keeps relaxation order, and therefore every tie outcome, identical to
     /// the list-based traversal. <see cref="SourcePosition"/> maps a slot back to its edge's
     /// position in the original sequence so a caller can overlay per-solve weights positionally
     /// without rebuilding; it is null when the view was built from caller-supplied per-node
@@ -39,8 +39,8 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>The slot's edge end node (<see cref="Edge.ToIndex"/>).</summary>
         internal readonly int[] ToNode;
 
-        /// <summary>The slot's edge weight.</summary>
-        internal readonly float[] Weight;
+        /// <summary>The slot's edge weight, widened exactly from the edge's single-precision weight.</summary>
+        internal readonly double[] Weight;
 
         /// <summary>The slot's edge index (<see cref="Edge.Index"/>).</summary>
         internal readonly int[] EdgeIndex;
@@ -62,7 +62,7 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="edgeIndex">The per-slot edge indices.</param>
         /// <param name="sourcePosition">The per-slot original edge positions, or null when unavailable.</param>
         private CompactAdjacency(int nodeCount, int[] rowStart, int[] fromNode, int[] toNode,
-            float[] weight, int[] edgeIndex, int[]? sourcePosition)
+            double[] weight, int[] edgeIndex, int[]? sourcePosition)
         {
             NodeCount = nodeCount;
             RowStart = rowStart;
@@ -107,7 +107,7 @@ namespace Numerics.Mathematics.Optimization
             var cursor = new int[nodeCount];
             var fromNode = new int[edgeCount];
             var toNode = new int[edgeCount];
-            var weight = new float[edgeCount];
+            var weight = new double[edgeCount];
             var edgeIndex = new int[edgeCount];
             var sourcePosition = new int[edgeCount];
 
@@ -132,7 +132,7 @@ namespace Numerics.Mathematics.Optimization
         /// list's order. The lists are authoritative when supplied (the documented solver
         /// precedence), so their contents are read as-is; only out-of-range node indices carried
         /// by the listed edges throw. An edge placed in the wrong per-node bucket is not
-        /// detected and silently corrupts routing — bucket consistency is the caller's
+        /// detected and silently corrupts routing: bucket consistency is the caller's
         /// responsibility.
         /// </summary>
         /// <param name="edgesToNodes">The incoming edges for each node; a null entry means the node has none.</param>
@@ -153,7 +153,7 @@ namespace Numerics.Mathematics.Optimization
 
             var fromNode = new int[edgeCount];
             var toNode = new int[edgeCount];
-            var weight = new float[edgeCount];
+            var weight = new double[edgeCount];
             var edgeIndex = new int[edgeCount];
 
             for (int n = 0; n < nodeCount; n++)
@@ -181,6 +181,19 @@ namespace Numerics.Mathematics.Optimization
             }
 
             return new CompactAdjacency(nodeCount, rowStart, fromNode, toNode, weight, edgeIndex, null);
+        }
+
+        /// <summary>
+        /// Writes positional per-solve weights into slot order, widened exactly to double precision.
+        /// </summary>
+        /// <param name="positionalWeights">The weights, one per edge of the original sequence.</param>
+        /// <param name="slotWeights">Receives the weight of each slot; its length is the edge count.</param>
+        /// <remarks>Requires an adjacency built from an edge sequence, which records each slot's source position.</remarks>
+        internal void OverlayWeights(float[] positionalWeights, double[] slotWeights)
+        {
+            int[] sourcePosition = SourcePosition!;
+            for (int k = 0; k < slotWeights.Length; k++)
+                slotWeights[k] = positionalWeights[sourcePosition[k]];
         }
     }
 }

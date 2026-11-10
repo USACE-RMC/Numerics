@@ -207,5 +207,18 @@ namespace Mathematics.Optimization
             Assert.AreEqual(1d, solver.BestParameterSet.Values[0], 1E-6);
             Assert.AreEqual(0d, solver.BestParameterSet.Values[1], 1E-6);
         }
+
+        /// <summary>
+        /// Maximize with a supplied gradient climbs to the maximum; the gradient is negated
+        /// with the objective.
+        /// </summary>
+        [TestMethod]
+        public void Test_MaximizeWithGradient()
+        {
+            var solver = new GradientDescent(x => -(x[0] - 1) * (x[0] - 1), 1, new[] { 0d }, new[] { -5d }, new[] { 5d }, 0.1, x => new[] { -2 * (x[0] - 1) });
+            solver.Maximize();
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            Assert.AreEqual(1d, solver.BestParameterSet.Values[0], 1E-3);
+        }
     }
 }

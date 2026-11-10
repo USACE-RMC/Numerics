@@ -437,5 +437,152 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity, negativeSkew.LogPDF(1.0));
         }
 
+        /// <summary>
+        /// The support endpoints and the log density, log CDF and log CCDF equal the expressions evaluated with
+        /// Math.Log(Base), Math.Log(Math.Log(Base)) and Math.Exp(Xi * Math.Log(Base)) on every call, bit for bit,
+        /// including the endpoints, after every parameter setter, a base change, SetParameters and Clone.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CachedBaseLogarithms()
+        {
+            var dist = new LogPearsonTypeIII(1.2, 0.3, 0.5);
+            var steps = new System.Action[]
+            {
+                () => { },
+                () => dist.Gamma = -0.8,
+                () => dist.Mu = 2.1,
+                () => dist.Sigma = 0.05,
+                () => dist.Base = Math.E,
+                () => dist.Gamma = 0d,
+                () => dist.SetParameters(0.4, 0.2, 3.5),
+                () => dist.Base = 2d,
+                () => dist.SetParameters(new[] { 3d, 0.4, -2.5 }),
+                () => dist.Base = 10d,
+            };
+            foreach (var step in steps)
+            {
+                step();
+                foreach (var d in new[] { dist, (LogPearsonTypeIII)dist.Clone() })
+                {
+                    double logBase = Math.Log(d.Base);
+                    double boundary = d.Gamma == 0d ? double.NaN : Math.Exp(d.Xi * logBase);
+                    double minimum = d.Gamma > 0d ? Math.Exp(d.Xi * Math.Log(d.Base)) : 0d;
+                    double maximum = d.Gamma < 0d ? Math.Exp(d.Xi * Math.Log(d.Base)) : double.PositiveInfinity;
+                    Assert.AreEqual(minimum, d.Minimum, 0.0);
+                    Assert.AreEqual(maximum, d.Maximum, 0.0);
+                    var grid = new System.Collections.Generic.List<double> { 0d, 1E-300, 0.5, 1d, 3d, 15d, 100d, 1E4, 1E300, double.PositiveInfinity };
+                    if (!double.IsNaN(boundary)) { grid.Add(boundary); grid.Add(boundary * (1 + 1E-12)); grid.Add(boundary * (1 - 1E-12)); }
+                    foreach (double x in grid)
+                    {
+                        double expected;
+                        if (x < minimum || x > maximum || double.IsPositiveInfinity(x)) expected = double.NegativeInfinity;
+                        else if (x == 0d)
+                        {
+                            double rate = -1d / (d.Beta * logBase);
+                            expected = d.Gamma >= 0d || rate > 1d ? double.NegativeInfinity : rate < 1d || d.Alpha > 1d ? double.PositiveInfinity
+                                : d.Alpha == 1d ? -d.Xi * logBase : double.NegativeInfinity;
+                        }
+                        else
+                        {
+                            double logX = Math.Log(x);
+                            double transformed = (d.Gamma > 0d && x == boundary) || (d.Gamma < 0d && x == boundary) ? d.Xi : logX / logBase;
+                            expected = PearsonTypeIII.LogPDF(d.Mu, d.Sigma, d.Gamma, transformed) - Math.Log(logBase) - logX;
+                        }
+                        Assert.AreEqual(expected, d.LogPDF(x), 0.0, $"LogPDF x {x:R}");
+                        double expectedCdf = x <= minimum ? double.NegativeInfinity : x >= maximum ? 0d : PearsonTypeIII.LogTail(d.Mu, d.Sigma, d.Gamma, Math.Log(x, d.Base), false);
+                        Assert.AreEqual(expectedCdf, d.LogCDF(x), 0.0, $"LogCDF x {x:R}");
+                        double expectedCcdf = x <= minimum ? 0d : x >= maximum ? double.NegativeInfinity : PearsonTypeIII.LogTail(d.Mu, d.Sigma, d.Gamma, Math.Log(x, d.Base), true);
+                        Assert.AreEqual(expectedCcdf, d.LogCCDF(x), 0.0, $"LogCCDF x {x:R}");
+                    }
+                }
+            }
+        }
+
+
+        /// <summary>
+        /// The L-scale and the L-moment scale estimate use the exact gamma ratio for every shape, so they stay accurate
+        /// across alpha = 4/skew^2 = 100 and finite beyond alpha = 171 (skews at or below 0.1527).
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.3.0 at 50 significant digits:
+        /// L2 = sigma Gamma(alpha + 1/2) / (sqrt(pi alpha) Gamma(alpha)) with sigma = 0.3, and the scale
+        /// sigma = L2 sqrt(pi alpha) Gamma(alpha) / Gamma(alpha + 1/2) at the fitted skew with L2 = 0.17. The tolerance
+        /// is 3E-15 relative.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(2.0, 0.15)]
+        [DataRow(0.5, 0.16793992090970278)]
+        [DataRow(0.2, 0.16904543702776925)]
+        [DataRow(0.19, 0.1690660404626627)]
+        [DataRow(0.1527, 0.16913358854788108)]
+        [DataRow(0.15, 0.16913790831003775)]
+        [DataRow(-0.1, 0.16920399056827415)]
+        [DataRow(0.01, 0.16925634613741877)]
+        [DataRow(0.002, 0.1692568539072188)]
+        public void Test_LinearMomentsFromParameters_ExactGammaRatio(double skew, double expectedL2)
+        {
+            double[] lmom = new LogPearsonTypeIII().LinearMomentsFromParameters(new[] { 3d, 0.3, skew });
+            Assert.AreEqual(expectedL2, lmom[1], 3E-15 * expectedL2);
+        }
+
+        /// <summary>
+        /// The L-moment scale estimate uses the exact gamma ratio at the fitted skew.
+        /// </summary>
+        /// <remarks>Reference values as for <see cref="Test_LinearMomentsFromParameters_ExactGammaRatio"/>.</remarks>
+        [TestMethod]
+        [DataRow(0.05, 0.30663370214036545, 0.3022037834482887)]
+        [DataRow(0.03, 0.1841192827432352, 0.30163652985276324)]
+        [DataRow(0.0249, 0.1528394551987608, 0.3015371952184198)]
+        [DataRow(0.01, 0.0613966415922153, 0.3013526514107132)]
+        [DataRow(-0.005, -0.030699430945504754, 0.3013260290932623)]
+        [DataRow(0.001, 0.006139957284868968, 0.30131750963471404)]
+        public void Test_ParametersFromLinearMoments_ExactGammaRatio(double t3, double expectedSkew, double expectedSigma)
+        {
+            double[] p = new LogPearsonTypeIII().ParametersFromLinearMoments(new[] { 3d, 0.17, t3 });
+            Assert.AreEqual(3d, p[0], 0d);
+            Assert.AreEqual(expectedSkew, p[2], 1E-15 * Math.Abs(expectedSkew));
+            Assert.AreEqual(expectedSigma, p[1], 3E-15 * expectedSigma);
+        }
+
+        /// <summary>
+        /// The base-log L-moment members are those of Pearson type III.
+        /// </summary>
+        [TestMethod]
+        public void Test_LinearMoments_DelegateToPearsonTypeIII()
+        {
+            foreach (double skew in new[] { -2.5, -0.4, 0d, 1E-9, 0.3, 1.7 })
+            {
+                var parameters = new[] { 3d, 0.25, skew };
+                CollectionAssert.AreEqual(new PearsonTypeIII().LinearMomentsFromParameters(parameters), new LogPearsonTypeIII().LinearMomentsFromParameters(parameters));
+            }
+            foreach (double t3 in new[] { -0.6, -0.1, 0d, 0.05, 0.5 })
+            {
+                var moments = new[] { 3d, 0.15, t3, 0.15 };
+                CollectionAssert.AreEqual(new PearsonTypeIII().ParametersFromLinearMoments(moments), new LogPearsonTypeIII().ParametersFromLinearMoments(moments));
+            }
+        }
+
+        /// <summary>
+        /// The real-space skewness and kurtosis use the cancellation-free form below
+        /// sigma·ln(10)·(1 + |skew|) = 0.15, where the closed form is in error by up to 1.7E-9 relative.
+        /// </summary>
+        /// <remarks>
+        /// Columns: sigma, skew, skewness and kurtosis of LogPearsonTypeIII(3, sigma, skew) in base 10, from the raw moments
+        /// E[10^(rX)] = exp(r ln10 µ + α[-ln(1 - u) - u]), u = r ln10 sigma skew / 2, with mpmath 1.3.0 at 60 digits.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(0.00178, 2.0, 2.0248465835835114, 9.200633577802794)]
+        [DataRow(0.00178, -2.0, -1.9756574439817294, 8.807028992529881)]
+        [DataRow(0.0237, 1.5, 1.785720434623108, 8.318876023644016)]
+        [DataRow(0.01, 0.5, 0.5744908860077079, 3.5347293989594415)]
+        [DataRow(0.03, -0.3, -0.0928908070637434, 2.9640568957578286)]
+        [DataRow(0.05, 0.1, 0.45409947825904245, 3.3829676148063212)]
+        [DataRow(0.004, 0.0, 0.027632388480010317, 3.0013574514431385)]
+        public void Test_SkewnessKurtosis_SmallLogScale(double sigma, double skew, double skewness, double kurtosis)
+        {
+            var d = new LogPearsonTypeIII(3d, sigma, skew);
+            Assert.AreEqual(skewness, d.Skewness, 1E-14 * Math.Abs(skewness));
+            Assert.AreEqual(kurtosis, d.Kurtosis, 1E-14 * kurtosis);
+        }
     }
 }

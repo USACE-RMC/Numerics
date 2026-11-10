@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
 
 namespace Mathematics.Optimization
@@ -317,6 +318,65 @@ namespace Mathematics.Optimization
             bool match1 = Math.Abs(x - validX) < 1E-4 && Math.Abs(y - validY) < 1E-4;
             bool match2 = Math.Abs(x - validY) < 1E-4 && Math.Abs(y - validX) < 1E-4;
             Assert.IsTrue(match1 || match2);
+        }
+
+        /// <summary>
+        /// A seeded run is reproducible bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the exact search path; see <see cref="OptimizerFingerprint"/>. A different
+        /// fingerprint means different results.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SeededRunFingerprint()
+        {
+            var solver = new ParticleSwarm(OptimizerFingerprint.Rosenbrock, 4, new[] { -5d, -5d, -5d, -5d }, new[] { 5d, 5d, 5d, 5d }) { MaxIterations = 100, ReportFailure = false };
+            solver.Minimize();
+            Assert.AreEqual("x=3FF13FAB4E7227EB,3FF28A272A36964E,3FF58779459F1C49,3FFCFEEC6B57E706|f=3FC3967AE6041C3B|it=100|fe=3000|st=MaximumIterationsReached|trace=3000:511E57EF29D554AC", OptimizerFingerprint.Of(solver));
+        }
+
+        /// <summary>
+        /// With Polish on, the best point is refined by Nelder-Mead and is no worse than without it.
+        /// </summary>
+        [TestMethod]
+        public void Test_Polish()
+        {
+            var lower = new[] { -5d, -5d, -5d };
+            var upper = new[] { 5d, 5d, 5d };
+            var plain = new ParticleSwarm(OptimizerFingerprint.Rosenbrock, 3, lower, upper) { ComputeHessian = false, ReportFailure = false };
+            plain.Minimize();
+            var polished = new ParticleSwarm(OptimizerFingerprint.Rosenbrock, 3, lower, upper) { Polish = true, ComputeHessian = false, ReportFailure = false };
+            polished.Minimize();
+            Assert.IsLessThanOrEqualTo(plain.BestParameterSet.Fitness, polished.BestParameterSet.Fitness);
+            Assert.IsGreaterThan(plain.FunctionEvaluations, polished.FunctionEvaluations);
+        }
+
+        /// <summary>
+        /// Parallel evaluation gives the same result for any number of threads, converges, stops exactly at
+        /// the evaluation budget, and surfaces an objective exception unwrapped.
+        /// </summary>
+        [TestMethod]
+        public void Test_UseParallel()
+        {
+            var lower = new[] { -5d, -5d, -5d, -5d };
+            var upper = new[] { 5d, 5d, 5d, 5d };
+            string first = null;
+            foreach (int threads in new[] { 1, 2, -1 })
+            {
+                var solver = new ParticleSwarm(OptimizerFingerprint.Rosenbrock, 4, lower, upper) { UseParallel = true, MaxDegreeOfParallelism = threads, ComputeHessian = false, ReportFailure = false };
+                solver.Minimize();
+                string fp = OptimizerFingerprint.Of(solver);
+                if (first == null) first = fp; else Assert.AreEqual(first, fp);
+                Assert.IsLessThan(1E-2, solver.BestParameterSet.Fitness);
+            }
+
+            var budget = new ParticleSwarm(OptimizerFingerprint.Rosenbrock, 4, lower, upper) { UseParallel = true, MaxFunctionEvaluations = 500 };
+            budget.Minimize();
+            Assert.AreEqual(OptimizationStatus.MaximumFunctionEvaluationsReached, budget.Status);
+            Assert.AreEqual(500, budget.FunctionEvaluations);
+
+            var failing = new ParticleSwarm(x => x[0] > 4.0 ? throw new InvalidOperationException("bad point") : OptimizerFingerprint.Rosenbrock(x), 4, lower, upper) { UseParallel = true };
+            Assert.ThrowsExactly<InvalidOperationException>(() => failing.Minimize());
         }
     }
 }

@@ -114,10 +114,12 @@ namespace Numerics.Sampling
         private int _numParams;
         private int _failedCount;
         private int _failedJackknifeReplicates;
+        private int _completedReplicates;
+        private int _failedAttempts;
 
         /// <summary>
         /// The number of accumulation chunks used by the jackknife reduction. Fixed, not derived from
-        /// the processor count, so the summation order — and therefore the acceleration constant —
+        /// the processor count, so the summation order, and therefore the acceleration constant,
         /// does not vary with the machine or the thread count.
         /// </summary>
         private const int JackknifeChunks = 64;
@@ -191,7 +193,73 @@ namespace Numerics.Sampling
         /// <summary>
         /// The maximum number of retries for a failed bootstrap replicate. Default = 20.
         /// </summary>
+        /// <remarks>
+        /// Each outer replicate draws from its own <see cref="MersenneTwister"/>, seeded from
+        /// <see cref="PRNGSeed"/>. A retry continues that generator's stream after the failed attempt rather
+        /// than reseeding it, so the first attempt is unaffected by the retry policy and a retried replicate
+        /// cannot restart on another replicate's seed.
+        /// </remarks>
         public int MaxRetries { get; set; } = 20;
+
+        /// <summary>
+        /// Gets or sets an optional receiver for the number of outer replicates completed so far. Default = null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Run"/>, <see cref="RunDoubleBootstrap"/>, <see cref="RunWithStudentizedBootstrap"/> and
+        /// <see cref="RunPivotalBootstrap"/> report once per outer replicate, after its retries finish and
+        /// whether or not it succeeded, so the last value reported by a completed run is
+        /// <see cref="Replicates"/>. Inner replicates and the BCa jackknife are not reported.
+        /// </para>
+        /// <para>
+        /// When <see cref="UseParallel"/> is true, replicates run in parallel, so <see cref="IProgress{T}.Report(T)"/>
+        /// is called concurrently from worker threads and the counts can arrive out of order. Reporting does not
+        /// change the random streams or the results.
+        /// </para>
+        /// </remarks>
+        public IProgress<int>? Progress { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the outer replicates run in parallel. Default = true.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// When true, <see cref="Run"/>, <see cref="RunDoubleBootstrap"/>, <see cref="RunWithStudentizedBootstrap"/> and
+        /// <see cref="RunPivotalBootstrap"/> run their outer replicates with <see cref="Parallel.For(int, int, ParallelOptions, Action{int})"/>,
+        /// so the delegates are called concurrently and must be thread safe. When false, the replicates run one after
+        /// another, in index order, on the calling thread. Set it to false for delegates that are not thread safe or
+        /// that gain nothing from threads (for example callbacks into an interpreter with a global lock).
+        /// </para>
+        /// <para>
+        /// Each replicate draws from its own generator seeded from <see cref="PRNGSeed"/> and writes only its own
+        /// results, so serial and parallel runs give bit-identical results. Cancellation is checked before each
+        /// replicate. An exception that escapes a replicate (for example from <see cref="Progress"/>) is thrown in an
+        /// <see cref="AggregateException"/> in both modes.
+        /// </para>
+        /// <para>
+        /// The leave-one-out jackknife of the BCa intervals follows the same setting: when false, its replicates run in
+        /// index order on the calling thread. Its moments are summed over fixed chunks and merged in chunk order in both
+        /// modes, so the acceleration constants are bit-identical.
+        /// </para>
+        /// </remarks>
+        public bool UseParallel { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a token that stops a bootstrap run early. Default = none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The four run methods stop starting new outer replicates once the token is cancelled, let the
+        /// replicates already running finish, and then throw <see cref="OperationCanceledException"/>.
+        /// A replicate is not interrupted part way, so a double or studentized bootstrap stops only after
+        /// the inner replicates of every running outer replicate finish.
+        /// </para>
+        /// <para>
+        /// A cancelled run leaves no usable results: run the bootstrap again before requesting confidence
+        /// intervals. A token that is never cancelled does not change the random streams or the results.
+        /// </para>
+        /// </remarks>
+        public CancellationToken CancellationToken { get; set; }
 
         /// <summary>
         /// The number of inner bootstrap replicates for Bootstrap-t standard error estimation. Default = 300.
@@ -292,6 +360,25 @@ namespace Numerics.Sampling
         public int FailedReplicates => _failedCount;
 
         /// <summary>
+        /// Gets the number of resample, fit or statistic attempts that threw an exception in the most recent run.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each run method counts every attempt that threw: an outer replicate attempt that is then retried
+        /// (up to <see cref="MaxRetries"/> per replicate), and an inner replicate of
+        /// <see cref="RunDoubleBootstrap"/> or <see cref="RunWithStudentizedBootstrap"/> that is skipped.
+        /// Attempts rejected for non-finite values without an exception are not counted, and neither are
+        /// failures of the BCa jackknife, which <see cref="FailedJackknifeReplicates"/> reports.
+        /// </para>
+        /// <para>
+        /// A replicate counted in <see cref="FailedReplicates"/> contributes one attempt per retry that threw,
+        /// so this count is at least as large as the number of failed replicates whose every attempt threw.
+        /// It is reset when a run starts.
+        /// </para>
+        /// </remarks>
+        public int FailedAttempts => _failedAttempts;
+
+        /// <summary>
         /// Gets the number of leave-one-out jackknife replicates that failed while computing the BCa
         /// acceleration constants on the most recent <see cref="GetConfidenceIntervals(BootstrapCIMethod, double)"/>
         /// call that requested <see cref="BootstrapCIMethod.BCa"/>.
@@ -316,10 +403,14 @@ namespace Numerics.Sampling
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown when a required regular-bootstrap delegate has not been set.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <see cref="Replicates"/> or <see cref="MaxRetries"/> is not positive.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <see cref="CancellationToken"/> is cancelled.</exception>
+        /// <exception cref="AggregateException">Thrown when a replicate throws outside the retry loop, for example from <see cref="Progress"/>.</exception>
         public void Run()
         {
             ValidateCoreDelegates();
             ValidateReplicationSettings();
+            _completedReplicates = 0;
+            _failedAttempts = 0;
             var resample = ResampleFunction!;
             var fit = FitFunction!;
             var statistic = StatisticFunction!;
@@ -329,14 +420,16 @@ namespace Numerics.Sampling
             var prng = new MersenneTwister(PRNGSeed);
             var seeds = prng.NextIntegers(Replicates);
 
-            Parallel.For(0, Replicates, idx =>
+            ForEachReplicate(idx =>
             {
+                // One generator per replicate. A retry continues its stream rather than reseeding, so a
+                // retried replicate cannot restart on another replicate's seed.
+                var rng = new MersenneTwister(seeds[idx]);
                 bool succeeded = false;
                 for (int retry = 0; retry < MaxRetries; retry++)
                 {
                     try
                     {
-                        var rng = new MersenneTwister(seeds[idx] + 10 * retry);
                         var sample = resample(_originalData, _originalParameters, rng);
                         var fitResult = fit(sample);
                         if (!HasExpectedFiniteParameterValues(fitResult, _numParams))
@@ -351,13 +444,16 @@ namespace Numerics.Sampling
                     }
                     catch (Exception)
                     {
-                        // Retry failed regular bootstrap replicates.
+                        // Count the failed attempt and retry the replicate.
+                        Interlocked.Increment(ref _failedAttempts);
                     }
                     if (succeeded) break;
                 }
 
                 if (!succeeded)
                     MarkFailed(idx);
+
+                ReportReplicateCompleted();
             });
 
             _runType = BootstrapRunType.Regular;
@@ -369,10 +465,14 @@ namespace Numerics.Sampling
         /// <param name="innerReplicates">Number of inner bootstrap replicates. Default = 300.</param>
         /// <exception cref="InvalidOperationException">Thrown when a required regular-bootstrap delegate has not been set.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when replicate counts are not positive.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <see cref="CancellationToken"/> is cancelled.</exception>
+        /// <exception cref="AggregateException">Thrown when a replicate throws outside the retry loop, for example from <see cref="Progress"/>.</exception>
         public void RunDoubleBootstrap(int innerReplicates = 300)
         {
             ValidateCoreDelegates();
             ValidateReplicationSettings();
+            _completedReplicates = 0;
+            _failedAttempts = 0;
             if (innerReplicates < 1)
                 throw new ArgumentOutOfRangeException(nameof(innerReplicates), "The number of inner replicates must be positive.");
 
@@ -385,14 +485,16 @@ namespace Numerics.Sampling
             var prng = new MersenneTwister(PRNGSeed);
             var seeds = prng.NextIntegers(Replicates);
 
-            Parallel.For(0, Replicates, idx =>
+            ForEachReplicate(idx =>
             {
+                // One generator per replicate. A retry continues its stream rather than reseeding, so a
+                // retried replicate cannot restart on another replicate's seed.
+                var rng = new MersenneTwister(seeds[idx]);
                 bool succeeded = false;
                 for (int retry = 0; retry < MaxRetries; retry++)
                 {
                     try
                     {
-                        var rng = new MersenneTwister(seeds[idx] + 10 * retry);
 
                         var outerSample = resample(_originalData, _originalParameters, rng);
                         var outerFit = fit(outerSample);
@@ -423,7 +525,8 @@ namespace Numerics.Sampling
                             }
                             catch (Exception)
                             {
-                                // Skip failed inner replicate.
+                                // Count the failed inner replicate and skip it.
+                                Interlocked.Increment(ref _failedAttempts);
                             }
                         }
 
@@ -451,13 +554,16 @@ namespace Numerics.Sampling
                     }
                     catch (Exception)
                     {
-                        // Retry failed outer replicate.
+                        // Count the failed attempt and retry the outer replicate.
+                        Interlocked.Increment(ref _failedAttempts);
                     }
                     if (succeeded) break;
                 }
 
                 if (!succeeded)
                     MarkFailed(idx);
+
+                ReportReplicateCompleted();
             });
 
             _runType = BootstrapRunType.DoubleBootstrap;
@@ -468,10 +574,14 @@ namespace Numerics.Sampling
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown when a required regular-bootstrap delegate has not been set.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when replicate counts are not positive.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <see cref="CancellationToken"/> is cancelled.</exception>
+        /// <exception cref="AggregateException">Thrown when a replicate throws outside the retry loop, for example from <see cref="Progress"/>.</exception>
         public void RunWithStudentizedBootstrap()
         {
             ValidateCoreDelegates();
             ValidateReplicationSettings();
+            _completedReplicates = 0;
+            _failedAttempts = 0;
             if (InnerReplicates < 1)
                 throw new ArgumentOutOfRangeException(nameof(InnerReplicates), "The number of inner replicates must be positive.");
 
@@ -479,6 +589,8 @@ namespace Numerics.Sampling
             var fitFunc = FitFunction!;
             var statistic = StatisticFunction!;
             ResetPivotalState();
+            // The result arrays are replaced below, so no earlier run stays queryable if this run stops early.
+            _runType = BootstrapRunType.None;
 
             var originalStats = statistic(_originalParameters);
             ValidateStatistics(originalStats);
@@ -502,14 +614,16 @@ namespace Numerics.Sampling
             var prng = new MersenneTwister(PRNGSeed);
             var seeds = prng.NextIntegers(Replicates);
 
-            Parallel.For(0, Replicates, idx =>
+            ForEachReplicate(idx =>
             {
+                // One generator per replicate. A retry continues its stream rather than reseeding, so a
+                // retried replicate cannot restart on another replicate's seed.
+                var rng = new MersenneTwister(seeds[idx]);
                 bool succeeded = false;
                 for (int retry = 0; retry < MaxRetries; retry++)
                 {
                     try
                     {
-                        var rng = new MersenneTwister(seeds[idx] + 10 * retry);
                         var sample = resample(_originalData, _originalParameters, rng);
                         var outerFit = fitFunc(sample);
                         if (!HasExpectedFiniteParameterValues(outerFit, _numParams))
@@ -549,6 +663,7 @@ namespace Numerics.Sampling
                             }
                             catch (Exception)
                             {
+                                Interlocked.Increment(ref _failedAttempts);
                                 for (int j = 0; j < _numStats; j++)
                                     innerTransformed[k, j] = double.NaN;
                             }
@@ -570,7 +685,8 @@ namespace Numerics.Sampling
                     }
                     catch (Exception)
                     {
-                        // Retry failed outer replicate.
+                        // Count the failed attempt and retry the outer replicate.
+                        Interlocked.Increment(ref _failedAttempts);
                     }
                     if (succeeded) break;
                 }
@@ -584,6 +700,8 @@ namespace Numerics.Sampling
                         studentizedValues[idx, j] = double.NaN;
                     }
                 }
+
+                ReportReplicateCompleted();
             });
 
             _runType = BootstrapRunType.Studentized;
@@ -601,10 +719,16 @@ namespace Numerics.Sampling
         /// <see cref="OriginalCovariance"/> has not been supplied.
         /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <see cref="Replicates"/> or <see cref="MaxRetries"/> is not positive.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <see cref="CancellationToken"/> is cancelled.</exception>
+        /// <exception cref="AggregateException">Thrown when a replicate throws outside the retry loop, for example from <see cref="Progress"/>.</exception>
         public void RunPivotalBootstrap()
         {
             ValidatePivotalDelegates();
             ValidateReplicationSettings();
+            _completedReplicates = 0;
+            _failedAttempts = 0;
+            // No earlier run stays queryable if this run stops early.
+            _runType = BootstrapRunType.None;
 
             var parentFit = CreateOriginalFit();
             var resample = ResampleFunction!;
@@ -616,14 +740,16 @@ namespace Numerics.Sampling
             var rawFits = new BootstrapFit?[Replicates];
             int failed = 0;
 
-            Parallel.For(0, Replicates, index =>
+            ForEachReplicate(index =>
             {
+                // One generator per replicate. A retry continues its stream rather than reseeding, so a
+                // retried replicate cannot restart on another replicate's seed.
+                var rng = new MersenneTwister(seeds[index]);
                 bool succeeded = false;
                 for (int retry = 0; retry < MaxRetries; retry++)
                 {
                     try
                     {
-                        var rng = new MersenneTwister(seeds[index] + 10 * retry);
                         TData sample = resample(_originalData, parentFit.Parameters, rng);
                         BootstrapFit rawFit = fit(sample);
                         if (!IsValidFit(rawFit, parentFit.ParameterCount))
@@ -634,7 +760,8 @@ namespace Numerics.Sampling
                     }
                     catch (Exception)
                     {
-                        // Retry failed pivotal bootstrap resamples or covariance-aware fits.
+                        // Count the failed resample or covariance-aware fit and retry it.
+                        Interlocked.Increment(ref _failedAttempts);
                     }
 
                     if (succeeded)
@@ -643,6 +770,8 @@ namespace Numerics.Sampling
 
                 if (!succeeded)
                     Interlocked.Increment(ref failed);
+
+                ReportReplicateCompleted();
             });
 
             stopwatch.Stop();
@@ -1223,7 +1352,9 @@ namespace Numerics.Sampling
         /// <remarks>
         /// The jackknife second and third moments are accumulated over a fixed number of chunks and merged
         /// serially in chunk order, so the acceleration constants are reproducible run to run rather than
-        /// dependent on the thread scheduler.
+        /// dependent on the thread scheduler. The chunks run in parallel when <see cref="UseParallel"/> is true and
+        /// in chunk order on the calling thread otherwise, with the same results. The chunk count is fixed rather than
+        /// derived from the processor count, which is what makes the merged sums reproducible.
         /// </remarks>
         private double[] ComputeAccelerationConstants(double[] populationEstimates)
         {
@@ -1250,7 +1381,7 @@ namespace Numerics.Sampling
                 chunkThirdMoments[c] = new double[_numStats];
             }
 
-            Parallel.For(0, chunks, c =>
+            void AccumulateChunk(int c)
             {
                 var secondMoments = chunkSecondMoments[c];
                 var thirdMoments = chunkThirdMoments[c];
@@ -1290,7 +1421,17 @@ namespace Numerics.Sampling
                 chunkValid[c] = valid;
                 chunkFailed[c] = failed;
                 chunkFirstFailure[c] = firstFailure;
-            });
+            }
+
+            if (UseParallel)
+            {
+                Parallel.For(0, chunks, AccumulateChunk);
+            }
+            else
+            {
+                for (int c = 0; c < chunks; c++)
+                    AccumulateChunk(c);
+            }
 
             int validCount = 0;
             int failedCount = 0;
@@ -1368,6 +1509,60 @@ namespace Numerics.Sampling
                 throw new InvalidOperationException("FitWithCovarianceFunction must be set before running the pivotal bootstrap.");
             if (_originalCovariance == null)
                 throw new InvalidOperationException("OriginalCovariance must be set before running the pivotal bootstrap.");
+        }
+
+        /// <summary>
+        /// Creates the parallel options shared by the outer replicate loops, carrying <see cref="CancellationToken"/>.
+        /// </summary>
+        /// <returns>The parallel options for an outer replicate loop.</returns>
+        private ParallelOptions CreateReplicateOptions()
+        {
+            return new ParallelOptions { CancellationToken = CancellationToken };
+        }
+
+        /// <summary>
+        /// Runs an outer replicate loop, in parallel or in index order as <see cref="UseParallel"/> selects.
+        /// </summary>
+        /// <param name="body">The replicate body, called once for each index from 0 to <see cref="Replicates"/> - 1.</param>
+        /// <exception cref="OperationCanceledException">Thrown when <see cref="CancellationToken"/> is cancelled.</exception>
+        /// <exception cref="AggregateException">Thrown when a replicate body throws, wrapping that exception.</exception>
+        /// <remarks>
+        /// The loop does not use the machine-learning range helper, which chooses serial or parallel execution from an
+        /// arithmetic work estimate and takes no cancellation token: a replicate's cost is that of the caller's fit and
+        /// statistic, <see cref="UseParallel"/> selects the mode explicitly, and <see cref="CancellationToken"/> must be
+        /// observed. Each replicate writes only its own slot, so either schedule gives the same results.
+        /// </remarks>
+        private void ForEachReplicate(Action<int> body)
+        {
+            var options = CreateReplicateOptions();
+            if (UseParallel)
+            {
+                Parallel.For(0, Replicates, options, body);
+                return;
+            }
+            for (int index = 0; index < Replicates; index++)
+            {
+                options.CancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    body(index);
+                }
+                catch (Exception exception)
+                {
+                    // Match Parallel.For, which wraps an exception thrown by a body.
+                    throw new AggregateException(exception);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Counts one completed outer replicate and reports the running total to <see cref="Progress"/>.
+        /// </summary>
+        private void ReportReplicateCompleted()
+        {
+            var progress = Progress;
+            if (progress == null) return;
+            progress.Report(Interlocked.Increment(ref _completedReplicates));
         }
 
         /// <summary>

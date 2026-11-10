@@ -13,9 +13,9 @@ namespace Numerics.Mathematics.Optimization
     /// </para>
     /// <para>
     /// <b> Description: </b>
-    /// This class contains methods for finding the minimum or maximum of a function using Brent's method.
-    /// Brent's method is a hybrid root-finding algorithm that combines the bisection method, secant method, and inverse
-    /// quadratic interpolation.
+    /// This class contains methods for finding the minimum or maximum of a function of one variable on a bounded interval
+    /// using Brent's method, which combines golden-section search with successive parabolic interpolation. The search is a
+    /// port of the bounded minimizer of SciPy, scipy.optimize.minimize_scalar(method='bounded').
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -23,7 +23,13 @@ namespace Numerics.Mathematics.Optimization
     /// <para>
     /// <list type="bullet">
     /// <item><description>
-    /// "Numerical Recipes, Routines and Examples in Basic", J.C. Sprott, Cambridge University Press, 1991
+    /// Brent, R. P. (1973). Algorithms for Minimization without Derivatives. Prentice-Hall.
+    /// </description></item>
+    /// <item><description>
+    /// Forsythe, G. E., Malcolm, M. A., and Moler, C. B. (1977). Computer Methods for Mathematical Computations. Prentice-Hall.
+    /// </description></item>
+    /// <item><description>
+    /// Virtanen, P., et al. (2020). SciPy 1.0: fundamental algorithms for scientific computing in Python. Nature Methods, 17, 261-272.
     /// </description></item>
     /// <item><description>
     /// <see href="https://en.wikipedia.org/wiki/Brent%27s_method"/>
@@ -40,6 +46,12 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="objectiveFunction">The objective function to evaluate.</param>
         /// <param name="lowerBound">The lower bound (inclusive) of the interval containing the optimal point.</param>
         /// <param name="upperBound">The upper bound (inclusive) of the interval containing the optimal point.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the upper bound is less than the lower bound.</exception>
+        /// <remarks>
+        /// The constructor sets <see cref="Optimizer.AbsoluteTolerance"/> to 3 * (1E-3 * <see cref="Tools.DoubleMachineEpsilon"/>),
+        /// about 3.3E-19, so the absolute term of the step tolerance, <see cref="Optimizer.AbsoluteTolerance"/> / 3, is
+        /// about 1.1E-19: a guard against seeking relative accuracy at a minimum that is exactly zero.
+        /// </remarks>
         public BrentSearch(Func<double, double> objectiveFunction, double lowerBound, double upperBound) : base((x) => objectiveFunction(x[0]), 1)
         {
             // validate inputs
@@ -49,6 +61,7 @@ namespace Numerics.Mathematics.Optimization
             }
             LowerBound = lowerBound;
             UpperBound = upperBound;
+            AbsoluteTolerance = 3d * (Tools.DoubleMachineEpsilon * 1E-3);
         }
 
         /// <summary>
@@ -62,96 +75,129 @@ namespace Numerics.Mathematics.Optimization
         public double UpperBound { get; private set; }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// The search is a port of the bounded Brent minimizer of SciPy (<c>_minimize_scalar_bounded</c> in
+        /// scipy/optimize/_optimize.py, used by <c>scipy.optimize.minimize_scalar(method='bounded')</c> and
+        /// <c>scipy.optimize.fminbound</c>), after Forsythe, Malcolm and Moler (1977) and Brent (1973). It starts at the
+        /// golden-section point a + (3 - sqrt(5)) / 2 * (b - a) and combines parabolic interpolation with golden-section
+        /// steps, never evaluating closer than tol1 to the best point or the bounds.
+        /// </para>
+        /// <para>
+        /// The tolerances map onto SciPy as follows: tol1 = <see cref="Optimizer.RelativeTolerance"/> * |x| +
+        /// <see cref="Optimizer.AbsoluteTolerance"/> / 3, where SciPy uses tol1 = sqrt(2.2E-16) * |x| + xatol / 3. The
+        /// search stops with <see cref="OptimizationStatus.Success"/> when |x - m| &lt;= 2 * tol1 - (b - a) / 2, with m the
+        /// midpoint of the current interval [a, b]. SciPy's maxiter counts function evaluations and maps onto
+        /// <see cref="Optimizer.MaxFunctionEvaluations"/>; <see cref="Optimizer.MaxIterations"/> bounds the evaluations after the
+        /// first. The defaults, <see cref="Optimizer.RelativeTolerance"/> = 1E-8 and the absolute tolerance set by the
+        /// constructor, give tol1 = 1E-8 * |x| + 1.1E-19. With
+        /// <see cref="Optimizer.RelativeTolerance"/> = Math.Sqrt(2.2E-16), <see cref="Optimizer.AbsoluteTolerance"/> =
+        /// 1E-5 and <see cref="Optimizer.MaxFunctionEvaluations"/> = 500, the evaluated points and the minimizer are bitwise equal
+        /// to SciPy's default settings. A NaN objective value is ranked as positive infinity, as everywhere in
+        /// <see cref="Optimizer"/>.
+        /// </para>
+        /// </remarks>
         protected override void Optimize()
-        { 
-            // Define variables
+        {
             bool cancel = false;
-            double ax = LowerBound, bx = 0.5 * (UpperBound + LowerBound), cx = UpperBound;
-            // Golder ratio and a small number which protects against trying to achieve 
-            // fractional accuracy for a minimum that happens to be exactly zero.
-            double CGOLD = 0.381966d;
-            double ZEPS = Tools.DoubleMachineEpsilon * 1.0e-3;
-            double a, b, d = 0.0, etemp, fu, fv, fw, fx;
-            double p, q, r, tol1, tol2, u, v, w, x, xm;
-            double e = 0.0;
+            double relativeTolerance = RelativeTolerance;
+            double absoluteTolerance = AbsoluteTolerance;
+            double goldenMean = 0.5 * (3.0 - Math.Sqrt(5.0));
+            double a = LowerBound, b = UpperBound;
+            // fulc, nfc and xf are the third best, second best and best points so far, with values ffulc, fnfc and fx.
+            double fulc = a + goldenMean * (b - a);
+            double nfc = fulc, xf = fulc;
+            double rat = 0.0, e = 0.0;
+            double x = xf;
+            // One trial buffer for the search: Evaluate copies any point it keeps.
+            var point = new double[] { x };
+            double fx = Evaluate(point, ref cancel);
+            if (cancel) return;
+            double ffulc = fx, fnfc = fx;
+            double xm = 0.5 * (a + b);
+            double tol1 = relativeTolerance * Math.Abs(xf) + absoluteTolerance / 3.0;
+            double tol2 = 2.0 * tol1;
 
-            a = (ax < cx ? ax : cx);
-            b = (ax > cx ? ax : cx);
-            x = w = v = bx;
-            fw = fv = fx = Evaluate(new double[] { x }, ref cancel);
-            for (int i = 1; i <= MaxIterations; i++)
+            while (Math.Abs(xf - xm) > (tol2 - 0.5 * (b - a)))
             {
-                xm = 0.5 * (a + b);
-                tol2 = 2.0 * (tol1 = RelativeTolerance * Math.Abs(x) + ZEPS);
-                // Test for done here
-                if (Math.Abs(x - xm) <= tol2 - 0.5d * (b - a))
-                {
-                    UpdateStatus(OptimizationStatus.Success);
-                    return;
-                }
-                // Construct a trial parabolic fit
+                bool golden = true;
+                // Check for a parabolic fit.
                 if (Math.Abs(e) > tol1)
                 {
-                    r = (x - w) * (fx - fv);
-                    q = (x - v) * (fx - fw);
-                    p = (x - v) * q - (x - w) * r;
+                    golden = false;
+                    double r = (xf - nfc) * (fx - ffulc);
+                    double q = (xf - fulc) * (fx - fnfc);
+                    double p = (xf - fulc) * q - (xf - nfc) * r;
                     q = 2.0 * (q - r);
                     if (q > 0.0) p = -p;
                     q = Math.Abs(q);
-                    etemp = e;
-                    e = d;
-                    if (Math.Abs(p) >= Math.Abs(0.5 * q * etemp) || p <= q * (a - x) || p >= q * (b - x))
-                        d = CGOLD * (e = (x >= xm ? a - x : b - x));
-                    // The above conditions determine the acceptability of the parabolic fit. 
-                    // here we take the golden section step into the larger of the two segments. 
+                    r = e;
+                    e = rat;
+
+                    // Check for acceptability of the parabola.
+                    if (Math.Abs(p) < Math.Abs(0.5 * q * r) && p > q * (a - xf) && p < q * (b - xf))
+                    {
+                        rat = (p + 0.0) / q;
+                        x = xf + rat;
+                        if ((x - a) < tol2 || (b - x) < tol2)
+                        {
+                            // A step of tol1 toward the midpoint, upward when x is at the midpoint.
+                            rat = Tools.Sign(tol1, xm - xf);
+                        }
+                    }
                     else
                     {
-                        d = p / q;
-                        u = x + d;
-                        if (u - a < tol2 || b - u < tol2)
-                            d = Tools.Sign(tol1, xm - x);
+                        golden = true;
                     }
                 }
-                else
+
+                if (golden)
                 {
-                    d = CGOLD * (e = (x >= xm ? a - x : b - x));
+                    // Golden-section step into the larger of the two segments.
+                    e = xf >= xm ? a - xf : b - xf;
+                    rat = goldenMean * e;
                 }
 
-                u = (Math.Abs(d) >= tol1 ? x + d : x + Tools.Sign(tol1, d));
-                fu = Evaluate(new double[] { u }, ref cancel);
-                if (cancel == true) return;
-                // This is the one function evaluation per iteration.
+                // The step is at least tol1 long, and upward when rat is zero.
+                x = xf + Tools.Sign(Math.Max(Math.Abs(rat), tol1), rat);
+                point[0] = x;
+                double fu = Evaluate(point, ref cancel);
+                Iterations += 1;
+                if (cancel) return;
+
                 if (fu <= fx)
                 {
-                    if (u >= x) a = x; else b = x;
-                    v = w;
-                    w = x;
-                    x = u;
-                    fv = fw;
-                    fw = fx;
-                    fx = fu;
+                    if (x >= xf) a = xf; else b = xf;
+                    fulc = nfc; ffulc = fnfc;
+                    nfc = xf; fnfc = fx;
+                    xf = x; fx = fu;
                 }
                 else
                 {
-                    if (u < x) a = u; else b = u;
-                    if (fu <= fw || w == x)
+                    if (x < xf) a = x; else b = x;
+                    if (fu <= fnfc || nfc == xf)
                     {
-                        v = w;
-                        w = u;
-                        fv = fw;
-                        fw = fu;
+                        fulc = nfc; ffulc = fnfc;
+                        nfc = x; fnfc = fu;
                     }
-                    else if (fu <= fv || v == x || v == w)
+                    else if (fu <= ffulc || fulc == xf || fulc == nfc)
                     {
-                        v = u;
-                        fv = fu;
+                        fulc = x; ffulc = fu;
                     }
                 }
-                // Done with housekeeping. Back for another iteration
+
+                xm = 0.5 * (a + b);
+                tol1 = relativeTolerance * Math.Abs(xf) + absoluteTolerance / 3.0;
+                tol2 = 2.0 * tol1;
+
+                if (Iterations >= MaxIterations)
+                {
+                    UpdateStatus(OptimizationStatus.MaximumIterationsReached);
+                    return;
+                }
             }
 
-            // If we made it to here, the maximum iterations were reached.
-            UpdateStatus(OptimizationStatus.MaximumIterationsReached);
+            UpdateStatus(OptimizationStatus.Success);
         }
 
         /// <summary>

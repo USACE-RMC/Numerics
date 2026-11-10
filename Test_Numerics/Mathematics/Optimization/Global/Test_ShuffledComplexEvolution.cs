@@ -321,5 +321,46 @@ namespace Mathematics.Optimization
             Assert.IsTrue(match1 || match2);
         }
 
+
+        /// <summary>
+        /// Stored points keep their own coordinates, and the sub-complex follows Duan et al. (1994):
+        /// q distinct parents and unconditional replacement. On the 4-D Rosenbrock function every
+        /// seed reaches the exact minimum.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the seeded run; see <see cref="OptimizerFingerprint"/>.
+        /// </remarks>
+        [TestMethod]
+        public void Test_StoredPointsAndDuanSubComplex()
+        {
+            var lower = new[] { -5d, -5d, -5d, -5d };
+            var upper = new[] { 5d, 5d, 5d, 5d };
+            foreach (int seed in new[] { 1, 2, 3, 4, 5 })
+            {
+                var solver = new ShuffledComplexEvolution(OptimizerFingerprint.Rosenbrock, 4, lower, upper) { PRNGSeed = seed, ComputeHessian = false };
+                solver.Minimize();
+                Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+                Assert.AreEqual(0d, solver.BestParameterSet.Fitness, 0d);
+            }
+            var pinned = new ShuffledComplexEvolution(OptimizerFingerprint.Rosenbrock, 4, lower, upper) { ComputeHessian = false };
+            pinned.Minimize();
+            Assert.AreEqual("x=3FF0000000000000,3FF0000000000000,3FF0000000000000,3FF0000000000000|f=0000000000000000|it=71|fe=8943|st=Success|trace=8943:AC77D6F0A74720B7", OptimizerFingerprint.Of(pinned));
+        }
+
+        /// <summary>
+        /// With Polish on, the best point is refined by Nelder-Mead and is no worse than without it.
+        /// </summary>
+        [TestMethod]
+        public void Test_Polish()
+        {
+            var lower = new[] { -5d, -5d, -5d };
+            var upper = new[] { 5d, 5d, 5d };
+            var plain = new ShuffledComplexEvolution(OptimizerFingerprint.Rosenbrock, 3, lower, upper) { ComputeHessian = false, ReportFailure = false };
+            plain.Minimize();
+            var polished = new ShuffledComplexEvolution(OptimizerFingerprint.Rosenbrock, 3, lower, upper) { Polish = true, ComputeHessian = false, ReportFailure = false };
+            polished.Minimize();
+            Assert.IsLessThanOrEqualTo(plain.BestParameterSet.Fitness, polished.BestParameterSet.Fitness);
+            Assert.IsGreaterThan(plain.FunctionEvaluations, polished.FunctionEvaluations);
+        }
     }
 }

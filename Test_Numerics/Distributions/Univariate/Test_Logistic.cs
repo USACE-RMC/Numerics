@@ -315,5 +315,37 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity, LO.InverseCDF(1));
             Assert.AreEqual(3.3054, LO.InverseCDF(0.3),  1e-04);
         }
+
+        /// <summary>
+        /// Linear moments of the logistic distribution: λ1 = ξ, λ2 = α, τ3 = 0, τ4 = 1/6 (closed form, Hosking and Wallis,
+        /// 1997), cross-checked against the sample L-moments of a large sample, and the method-of-linear-moments fit.
+        /// </summary>
+        [TestMethod()]
+        public void Test_LinearMoments()
+        {
+            var LO = new Logistic(5, 2);
+            Assert.IsInstanceOfType(LO, typeof(ILinearMomentEstimation));
+            var lmom = LO.LinearMomentsFromParameters(LO.GetParameters);
+            Assert.AreEqual(5d, lmom[0], 0.0);
+            Assert.AreEqual(2d, lmom[1], 0.0);
+            Assert.AreEqual(0d, lmom[2], 0.0);
+            Assert.AreEqual(1d / 6d, lmom[3], 0.0);
+            var parameters = LO.ParametersFromLinearMoments(lmom);
+            Assert.AreEqual(5d, parameters[0], 0.0);
+            Assert.AreEqual(2d, parameters[1], 0.0);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => LO.LinearMomentsFromParameters(new[] { 5d, -1d }));
+
+            var sample = LO.GenerateRandomValues(200000, 12345);
+            var sampleMoments = Numerics.Data.Statistics.Statistics.LinearMoments(sample);
+            Assert.AreEqual(lmom[0], sampleMoments[0], 0.02);
+            Assert.AreEqual(lmom[1], sampleMoments[1], 0.02);
+            Assert.AreEqual(lmom[2], sampleMoments[2], 0.01);
+            Assert.AreEqual(lmom[3], sampleMoments[3], 0.01);
+
+            var fit = new Logistic();
+            fit.Estimate(sample, ParameterEstimationMethod.MethodOfLinearMoments);
+            Assert.AreEqual(sampleMoments[0], fit.Xi, 0.0);
+            Assert.AreEqual(sampleMoments[1], fit.Alpha, 0.0);
+        }
     }
 }

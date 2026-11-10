@@ -1,6 +1,7 @@
 ﻿
 using Numerics.Distributions;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Numerics.Data
@@ -112,6 +113,30 @@ namespace Numerics.Data
         /// The sort order of the x1-values, either ascending or descending. Default = Ascending. 
         /// </summary>
         public SortOrder SortOrder { get; private set; } = SortOrder.Ascending;
+
+        /// <summary>
+        /// Given pairs of x1 and x2 values, returns an interpolated y-value for each pair.
+        /// </summary>
+        /// <param name="x1">The x1-values to interpolate.</param>
+        /// <param name="x2">The x2-values to interpolate, one per x1-value.</param>
+        /// <returns>One value per pair, each equal to <see cref="Interpolate(double, double)"/> at (x1[i], x2[i]).</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="x1"/> or <paramref name="x2"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="x1"/> and <paramref name="x2"/> differ in length.</exception>
+        /// <remarks>
+        /// The pairs are evaluated in order through the scalar method, so the searches see the same sequence of
+        /// points and every value has the same bits as the scalar call.
+        /// </remarks>
+        public double[] Interpolate(IList<double> x1, IList<double> x2)
+        {
+            if (x1 == null) throw new ArgumentNullException(nameof(x1));
+            if (x2 == null) throw new ArgumentNullException(nameof(x2));
+            if (x1.Count != x2.Count)
+                throw new ArgumentException("The x1 and x2 values must have the same length.", nameof(x2));
+            var result = new double[x1.Count];
+            for (int i = 0; i < x1.Count; i++)
+                result[i] = Interpolate(x1[i], x2[i]);
+            return result;
+        }
 
         /// <summary>
         /// Given a value x1 and x2, returns an interpolated value for y. 

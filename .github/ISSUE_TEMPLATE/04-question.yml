@@ -49,7 +49,7 @@ body:
     attributes:
       label: Operating system and .NET details
       description: Add any OS, target framework, SDK, runtime, or IDE version details that may matter.
-      placeholder: "Example: Windows 11, net8.0, .NET 10 SDK, Rider or Visual Studio"
+      placeholder: "Example: Windows 11, net10.0, .NET 10 SDK, Rider or Visual Studio"
     validations:
       required: false
 

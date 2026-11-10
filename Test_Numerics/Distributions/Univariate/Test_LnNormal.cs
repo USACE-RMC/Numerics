@@ -312,5 +312,25 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity,LN.InverseCDF(1));
             Assert.AreEqual(7.07106, LN.InverseCDF(0.5),1e-04);
         }
+
+        /// <summary>
+        /// The log density equals the expression written with Math.Log(Tools.Sqrt2PI) bit for bit.
+        /// </summary>
+        [TestMethod()]
+        public void Test_LogPDF_LogSqrt2PIConstant()
+        {
+            Assert.AreEqual(Numerics.Tools.LogSqrt2PI, Math.Log(Numerics.Tools.Sqrt2PI), 0.0);
+            foreach (var LN in new[] { new LnNormal(), new LnNormal(1, 0.1), new LnNormal(1E-3, 5E-3), new LnNormal(1E6, 3E6) })
+            {
+                foreach (double x in new[] { double.Epsilon, 1E-300, 1E-3, 0.5, 1d, 7d, 100d, 1E6, 1E300 })
+                {
+                    double logX = Math.Log(x);
+                    double z = DistributionNumerics.Standardize(logX, LN.Mu, LN.Sigma);
+                    double expected = -0.5d * z * z - Math.Log(LN.Sigma) - Math.Log(Numerics.Tools.Sqrt2PI) - logX;
+                    Assert.AreEqual(expected, LN.LogPDF(x), 0.0, $"x {x:R}");
+                }
+                Assert.AreEqual(double.NegativeInfinity, LN.LogPDF(0d));
+            }
+        }
     }
 }

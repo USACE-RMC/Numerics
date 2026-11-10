@@ -2,7 +2,7 @@ using Numerics.Distributions;
 
 namespace Distributions
 {
-    /// <summary>Pins approved prior envelopes and initial values for the legacy constraint fixtures.</summary>
+    /// <summary>Pins the prior envelopes and initial values for the legacy constraint fixtures.</summary>
     [TestClass]
     public class Test_LegacyParameterConstraints
     {
@@ -110,12 +110,15 @@ namespace Distributions
             CollectionAssert.AreEqual(new double[] { 10d, 100d }, result.Item3, "upper");
         }
 
+        // The GEV initial values are the linear-moment estimates (PELGEV from LMOMENTS 3.04 with one Newton
+        // refinement), within 5E-12 relative of the exact estimates from rational PWMs (mpmath 1.3.0); the bounds are
+        // unchanged from the original fixtures.
         /// <summary>Checks initialization and bounds against the literal baseline fixture.</summary>
         [TestMethod]
         public void GeneralizedExtremeValue_ordinary_PreservesBaselineConstraints()
         {
             var result = new GeneralizedExtremeValue().GetParameterConstraints(new double[] { 10d, 12d, 14d, 16d });
-            AssertArray(new double[] { 11.964905241795506d, 2.944098222941484d, 0.2846308210256667d }, result.Item1, "initial");
+            AssertArray(new double[] { 11.963744125430548d, 2.942782920513078d, 0.28377552616995644d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -1000d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 1000d, 100d, 10d }, result.Item3, "upper");
         }
@@ -125,7 +128,7 @@ namespace Distributions
         public void GeneralizedExtremeValue_skewed_PreservesBaselineConstraints()
         {
             var result = new GeneralizedExtremeValue().GetParameterConstraints(new double[] { 1d, 2d, 4d, 8d, 16d, 32d });
-            AssertArray(new double[] { 3.5251212632019016d, 5.1182032350575986d, -0.44798569084540746d }, result.Item1, "initial");
+            AssertArray(new double[] { 3.5248291855455953d, 5.11627815525424d, -0.44816548336505657d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 100d, 10d }, result.Item3, "upper");
         }
@@ -135,7 +138,7 @@ namespace Distributions
         public void GeneralizedExtremeValue_nearUnity_PreservesBaselineConstraints()
         {
             var result = new GeneralizedExtremeValue().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
-            AssertArray(new double[] { 1.0019824526208967d, 0.0014720491114694771d, 0.28463082102423143d }, result.Item1, "initial");
+            AssertArray(new double[] { 1.0019818720627143d, 0.001471391460255277d, 0.2837755261685256d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 0.1d, 10d }, result.Item3, "upper");
         }
@@ -145,7 +148,7 @@ namespace Distributions
         public void GeneralizedExtremeValue_negative_PreservesBaselineConstraints()
         {
             var result = new GeneralizedExtremeValue().GetParameterConstraints(new double[] { -16d, -14d, -12d, -10d });
-            AssertArray(new double[] { -14.035094758204492d, 2.9440982229414914d, 0.28463082102566944d }, result.Item1, "initial");
+            AssertArray(new double[] { -14.036255874569449d, 2.9427829205130873d, 0.2837755261699604d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -1000d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 1000d, 100d, 10d }, result.Item3, "upper");
         }
@@ -155,7 +158,7 @@ namespace Distributions
         public void GeneralizedExtremeValue_zeroMean_PreservesBaselineConstraints()
         {
             var result = new GeneralizedExtremeValue().GetParameterConstraints(new double[] { -3d, -1d, 1d, 3d });
-            AssertArray(new double[] { -1.035094758204496d, 2.9440982229414825d, 0.284630821025665d }, result.Item1, "initial");
+            AssertArray(new double[] { -1.0362558745694532d, 2.9427829205130775d, 0.28377552616995566d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 100d, 10d }, result.Item3, "upper");
         }
@@ -165,7 +168,7 @@ namespace Distributions
         public void GeneralizedExtremeValue_subUnity_PreservesBaselineConstraints()
         {
             var result = new GeneralizedExtremeValue().GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
-            AssertArray(new double[] { 0.1832069588359371d, 0.18598234830157992d, -0.31866881623469623d }, result.Item1, "initial");
+            AssertArray(new double[] { 0.18326195061442468d, 0.18621153855094805d, -0.31791430791094155d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -10d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 10d, 10d, 10d }, result.Item3, "upper");
         }
@@ -255,7 +258,7 @@ namespace Distributions
         public void GeneralizedNormal_nearUnity_PreservesBaselineConstraints()
         {
             var result = new GeneralizedNormal().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
-            AssertArray(new double[] { 1.0025d, 0.001477372521655275d, -1.6360140442372994e-12d }, result.Item1, "initial");
+            AssertArray(new double[] { 1.0025d, 0.0014770171277361855d, -1.6360140442372994e-12d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 0.1d, 10d }, result.Item3, "upper");
         }
@@ -265,7 +268,7 @@ namespace Distributions
         public void GeneralizedNormal_negative_PreservesBaselineConstraints()
         {
             var result = new GeneralizedNormal().GetParameterConstraints(new double[] { -16d, -14d, -12d, -10d });
-            AssertArray(new double[] { -13d, 3.1009900000000026d, 4.5444834562147206e-15d }, result.Item1, "initial");
+            AssertArray(new double[] { -13d, 2.9661643478260893d, 4.5444834562147206e-15d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -1000d, 1.11022302462516e-16d, -10d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 1000d, 100d, 10d }, result.Item3, "upper");
         }
@@ -405,7 +408,7 @@ namespace Distributions
         public void KappaFour_ordinary_PreservesBaselineConstraints()
         {
             var result = new KappaFour().GetParameterConstraints(new double[] { 10d, 12d, 14d, 16d });
-            AssertArray(new double[] { 8.000006666483934d, 9.999987917531367d, 0.9999994001012955d, 0.9999991500014682d }, result.Item1, "initial");
+            AssertArray(new double[] { 8.000006666497029d, 9.999987917506024d, 0.9999994000998467d, 0.9999991499998567d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d, -2d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 100d, 10d, 2d }, result.Item3, "upper");
         }
@@ -415,7 +418,7 @@ namespace Distributions
         public void KappaFour_skewed_PreservesBaselineConstraints()
         {
             var result = new KappaFour().GetParameterConstraints(new double[] { 1d, 2d, 4d, 8d, 16d, 32d });
-            AssertArray(new double[] { -41.20730147684273d, 41.160111238748186d, 0.2828390688884041d, 0d }, result.Item1, "initial");
+            AssertArray(new double[] { -41.20730147742402d, 41.160111239315036d, 0.2828390688935059d, 0d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -1000d, 1.11022302462516e-16d, -10d, -2d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 1000d, 1000d, 10d, 2d }, result.Item3, "upper");
         }
@@ -425,7 +428,7 @@ namespace Distributions
         public void KappaFour_nearUnity_PreservesBaselineConstraints()
         {
             var result = new KappaFour().GetParameterConstraints(new double[] { 1.001d, 1.002d, 1.003d, 1.004d });
-            AssertArray(new double[] { 1.0000000033331053d, 0.004999993959029831d, 0.9999994001312362d, 0.9999991500350589d }, result.Item1, "initial");
+            AssertArray(new double[] { 1.0000000033331342d, 0.004999993958973595d, 0.9999994001247929d, 0.9999991500279837d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d, -2d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 0.1d, 10d, 2d }, result.Item3, "upper");
         }
@@ -435,7 +438,7 @@ namespace Distributions
         public void KappaFour_negative_PreservesBaselineConstraints()
         {
             var result = new KappaFour().GetParameterConstraints(new double[] { -16d, -14d, -12d, -10d });
-            AssertArray(new double[] { -17.99999333350232d, 9.999987917504608d, 0.9999994000997355d, 0.9999991499997695d }, result.Item1, "initial");
+            AssertArray(new double[] { -17.999993333503568d, 9.999987917507234d, 0.9999994000999217d, 0.9999991499999291d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -1000d, 1.11022302462516e-16d, -10d, -2d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 1000d, 100d, 10d, 2d }, result.Item3, "upper");
         }
@@ -445,7 +448,7 @@ namespace Distributions
         public void KappaFour_zeroMean_PreservesBaselineConstraints()
         {
             var result = new KappaFour().GetParameterConstraints(new double[] { -3d, -1d, 1d, 3d });
-            AssertArray(new double[] { -4.999993333505345d, 9.999987917511882d, 0.9999994001003065d, 0.9999991500001029d }, result.Item1, "initial");
+            AssertArray(new double[] { -4.999993333503353d, 9.999987917506807d, 0.999999400099896d, 0.9999991499999025d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -100d, 1.11022302462516e-16d, -10d, -2d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 100d, 100d, 10d, 2d }, result.Item3, "upper");
         }
@@ -455,7 +458,7 @@ namespace Distributions
         public void KappaFour_subUnity_PreservesBaselineConstraints()
         {
             var result = new KappaFour().GetParameterConstraints(new double[] { 0.1d, 0.2d, 0.4d, 0.8d });
-            AssertArray(new double[] { -0.739635718854716d, 1.0608365097007928d, 0.36224410221013503d, 0d }, result.Item1, "initial");
+            AssertArray(new double[] { -0.7396357188524665d, 1.0608365096980328d, 0.3622441022089546d, 0d }, result.Item1, "initial");
             CollectionAssert.AreEqual(new double[] { -10d, 1.11022302462516e-16d, -10d, -2d }, result.Item2, "lower");
             CollectionAssert.AreEqual(new double[] { 10d, 100d, 10d, 2d }, result.Item3, "upper");
         }

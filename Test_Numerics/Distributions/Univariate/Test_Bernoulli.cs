@@ -341,5 +341,27 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.0, b5.Skewness, 1E-10);
             Assert.AreEqual(1.0, b5.Kurtosis, 1E-10);
         }
+
+        /// <summary>
+        /// InverseCDF rejects a NaN probability.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_NaNProbabilityThrows()
+        {
+            var b = new Bernoulli(0.3);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => b.InverseCDF(double.NaN));
+        }
+
+        /// <summary>
+        /// InverseCDF validates the distribution parameter rather than the probability argument.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_InvalidParameterThrows()
+        {
+            var b = new Bernoulli(0.3);
+            b.Probability = 2.0;
+            var ex = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => b.InverseCDF(0.5));
+            Assert.AreEqual(nameof(Bernoulli.Probability), ex.ParamName);
+        }
     }
 }

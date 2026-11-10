@@ -44,7 +44,7 @@ The Mersenne Twister (MT19937) maintains an internal state vector of $N = 624$ 3
 \mathbf{x}_{k+N} = \mathbf{x}_{k+M} \oplus \left(\mathbf{x}_k^{\text{upper}} \mid \mathbf{x}_{k+1}^{\text{lower}}\right) \cdot A
 ```
 
-where $M = 397$, $\oplus$ is bitwise XOR, and $A$ is a carefully chosen matrix that ensures the period equals $2^{19937} - 1$ — a Mersenne prime, hence the name. The state holds $624 \times 32 = 19{,}968$ bits, so the generator cycles through $2^{19937} - 1$ values before repeating (a number with 6,002 digits).
+where $M = 397$, $\oplus$ is bitwise XOR, and $A$ is a carefully chosen matrix that ensures the period equals $2^{19937} - 1$, a Mersenne prime, hence the name. The state holds $624 \times 32 = 19{,}968$ bits, so the generator cycles through $2^{19937} - 1$ values before repeating (a number with 6,002 digits).
 
 When a random number is requested, the raw state word is **tempered** through a sequence of XOR and shift operations to improve the output's equidistribution properties. The generator is 623-dimensionally equidistributed, meaning that consecutive 623-tuples of 32-bit outputs are uniformly distributed in $[0, 2^{32})^{623}$.
 
@@ -106,7 +106,7 @@ Console.WriteLine($"\nPoint at index 100: ({pointAt100[0]:F4}, {pointAt100[1]:F4
 
 ### How It Works
 
-A Sobol sequence is constructed using **direction numbers** — carefully chosen integers that control how each dimension fills the unit interval. The implementation uses the Joe-Kuo direction numbers, supporting up to 21,201 dimensions with 52-bit precision.
+A Sobol sequence is constructed using **direction numbers**: carefully chosen integers that control how each dimension fills the unit interval. The implementation uses the Joe-Kuo direction numbers, supporting up to 21,201 dimensions with 52-bit precision.
 
 Each point in the sequence is generated using **Gray code** indexing. To advance from index $n$ to $n+1$, only a single XOR operation is needed per dimension:
 
@@ -122,10 +122,10 @@ The key property is **low discrepancy**: the star discrepancy $D_N^*$ of $N$ Sob
 D_N^* = O\left(\frac{(\log N)^d}{N}\right)
 ```
 
-By the Koksma-Hlawka inequality, the integration error using quasi-Monte Carlo is bounded by $D_N^* \cdot V(f)$ where $V(f)$ is the variation of the integrand. Compare this to Monte Carlo's $O(1/\sqrt{N})$ rate — for smooth functions, Sobol sequences converge much faster.
+By the Koksma-Hlawka inequality, the integration error using quasi-Monte Carlo is bounded by $D_N^* \cdot V(f)$ where $V(f)$ is the variation of the integrand. Compare this to Monte Carlo's $O(1/\sqrt{N})$ rate: for smooth functions, Sobol sequences converge much faster.
 
 **Properties:**
-- Low discrepancy — points fill space more evenly than pseudo-random
+- Low discrepancy: points fill space more evenly than pseudo-random
 - Deterministic sequence (same points every time)
 - Up to 21,201 dimensions (Joe-Kuo direction numbers)
 - Integration error $O((\log N)^d / N)$ vs. Monte Carlo's $O(1/\sqrt{N})$
@@ -245,6 +245,30 @@ with equality only when $f$ is constant within each stratum. In practice, LHS of
 - Sensitivity analysis
 - Calibration with expensive models
 - Risk assessment studies
+
+### Seeds and generators
+
+The `seed` argument of `Random` and `Median` defaults to `-1`, and any seed of zero or below seeds the
+generator from the clock, so the sample changes on every call. Pass a positive seed for a reproducible
+sample, or pass a generator through the overloads that take a `System.Random`. These have no clock
+fallback: the sample is a deterministic function of the generator's state, and a `MersenneTwister`
+seeded with a positive seed reproduces the seeded overload exactly. Each call advances the generator by
+one `Next()` per column, so one generator can supply several independent designs in sequence.
+
+```cs
+using Numerics.Sampling;
+
+// Identical to LatinHypercube.Random(100, 3, 12345)
+double[,] design = LatinHypercube.Random(100, 3, new MersenneTwister(12345));
+
+// One generator, two independent and reproducible designs
+var rng = new MersenneTwister(2024);
+double[,] first = LatinHypercube.Random(100, 3, rng);
+double[,] second = LatinHypercube.Median(100, 3, rng);
+
+Console.WriteLine($"{design[0, 0]:F6} {first[0, 0]:F6} {second[0, 0]:F6}");
+Console.WriteLine(design[0, 0] == LatinHypercube.Random(100, 3, 12345)[0, 0]);   // True
+```
 
 ## Practical Examples
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
@@ -243,7 +243,7 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Checking Mode function with different scales.
+        /// Checking Mode function with different scales. For shape at or below 1 the mode is 0, the lower bound of the support.
         /// </summary>
         [TestMethod()]
         public void Test_Mode()
@@ -252,7 +252,10 @@ namespace Distributions.Univariate
             Assert.AreEqual(10, G.Mode);
 
             var G2 = new GammaDistribution(10, 1);
-            Assert.AreEqual(double.NaN, G2.Mode);
+            Assert.AreEqual(0d, G2.Mode);
+
+            var G3 = new GammaDistribution(10, 0.5);
+            Assert.AreEqual(0d, G3.Mode);
         }
 
         /// <summary>
@@ -339,6 +342,48 @@ namespace Distributions.Univariate
             double trueL = 16.89937d;
             Assert.IsLessThan( 0.2d, (alpha - trueA) / trueA );
             Assert.IsLessThan(0.01d, (lambda - trueL) / trueL);
+        }
+
+        /// <summary>
+        /// The Newton-Raphson fit sets the scale to the sample mean over the fitted shape and agrees with the
+        /// general maximum likelihood fit.
+        /// </summary>
+        /// <remarks>
+        /// The gamma likelihood equations give scale = mean / shape at the maximum, so the Newton-Raphson solution
+        /// and the Nelder-Mead maximum likelihood solution must agree.
+        /// </remarks>
+        [TestMethod()]
+        public void Test_MLE_NR_ScaleIsMeanOverFittedShape()
+        {
+            var sample = new GammaDistribution(2d, 4d).GenerateRandomValues(300, 12345);
+            double mean = 0d;
+            for (int i = 0; i < sample.Length; i++) mean += sample[i];
+            mean /= sample.Length;
+
+            var nr = new GammaDistribution(2d, 4d);
+            nr.MLE_NR(sample);
+            Assert.AreEqual(mean / nr.Kappa, nr.Theta, 1E-12 * nr.Theta);
+
+            // The fitted shape solves the profile likelihood equation ln(k) - digamma(k) = ln(mean) - mean(ln x).
+            double lnsum = 0d;
+            for (int i = 0; i < sample.Length; i++) lnsum += Math.Log(sample[i]);
+            double s = Math.Log(mean) - lnsum / sample.Length;
+            Assert.AreEqual(s, Math.Log(nr.Kappa) - Numerics.Mathematics.SpecialFunctions.Gamma.Digamma(nr.Kappa), 1E-10);
+
+            // The general maximum likelihood fit (Nelder-Mead) reaches the same optimum, within its own
+            // convergence tolerance, and never a higher likelihood.
+            var mle = new GammaDistribution();
+            mle.Estimate(sample, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(mle.Kappa, nr.Kappa, 1E-3 * mle.Kappa);
+            Assert.AreEqual(mle.Theta, nr.Theta, 1E-3 * mle.Theta);
+            Assert.IsGreaterThanOrEqualTo(mle.LogLikelihood(sample) - 1E-9, nr.LogLikelihood(sample));
+            Assert.AreEqual(mle.LogLikelihood(sample), nr.LogLikelihood(sample), 1E-5);
+
+            // The fit must not depend on the shape held before the call.
+            var other = new GammaDistribution(10d, 0.5d);
+            other.MLE_NR(sample);
+            Assert.AreEqual(nr.Theta, other.Theta, 1E-12 * nr.Theta);
+            Assert.AreEqual(nr.Kappa, other.Kappa, 1E-12 * nr.Kappa);
         }
 
         /// <summary>
@@ -440,8 +485,13 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Verifies the frequency-factor skew derivative at and around zero skew.
+        /// Verifies the frequency-factor skew derivative at and around zero skew, where it is the smooth derivative of the
+        /// Cornish-Fisher series with no switch.
         /// </summary>
+        /// <remarks>
+        /// Reference values are the derivative and value of the exact order-6 skew series of the standardized gamma quantile,
+        /// derived with SymPy 1.14 and evaluated with mpmath 1.3.0 at 60 digits.
+        /// </remarks>
         [TestMethod]
         public void Test_PartialKp_ZeroSkewLimitAndContinuity()
         {
@@ -450,15 +500,99 @@ namespace Distributions.Univariate
             double expected = (z * z - 1.0d) / 6.0d;
 
             Assert.AreEqual(expected, GammaDistribution.PartialKp(0.0d, probability), 1E-15);
-            Assert.AreEqual(expected, GammaDistribution.PartialKp(9.9E-5, probability), 1E-15);
-            Assert.AreEqual(expected, GammaDistribution.PartialKp(-9.9E-5, probability), 1E-15);
-            Assert.AreEqual(expected, GammaDistribution.PartialKp(1.01E-4, probability), 1E-4);
-            Assert.AreEqual(expected, GammaDistribution.PartialKp(-1.01E-4, probability), 1E-4);
+            Assert.AreEqual(0.10705296165768363, GammaDistribution.PartialKp(9.9E-5, probability), 1E-15);
+            Assert.AreEqual(0.10707184335968709, GammaDistribution.PartialKp(-9.9E-5, probability), 1E-15);
+            Assert.AreEqual(0.10705277093275638, GammaDistribution.PartialKp(1.01E-4, probability), 1E-15);
+            Assert.AreEqual(0.10707203408328514, GammaDistribution.PartialKp(-1.01E-4, probability), 1E-15);
+            Assert.AreEqual(1.281562164255128, GammaDistribution.FrequencyFactorKp(9.9E-5, probability), 1E-15);
+            Assert.AreEqual(1.2815623783608607, GammaDistribution.FrequencyFactorKp(1.01E-4, probability), 1E-15);
+            Assert.AreEqual(1.2815409658994292, GammaDistribution.FrequencyFactorKp(-9.9E-5, probability), 1E-15);
+            Assert.AreEqual(1.2815407517555517, GammaDistribution.FrequencyFactorKp(-1.01E-4, probability), 1E-15);
 
             const double h = 1E-3;
             double finiteDifference = (GammaDistribution.FrequencyFactorKp(h, probability) -
                                        GammaDistribution.FrequencyFactorKp(-h, probability)) / (2.0d * h);
             Assert.AreEqual(expected, finiteDifference, 1E-4);
+        }
+
+        /// <summary>
+        /// Near zero skew the frequency factor and its derivative agree with the exact standardized Pearson III quantile and
+        /// its skew derivative, with no switch at small skew.
+        /// </summary>
+        /// <remarks>
+        /// Columns: skew, probability, the exact standardized quantile and its skew derivative, computed with mpmath 1.3.0 at
+        /// 60 digits by Newton iteration on the quadrature of the gamma density and by implicit differentiation. At these
+        /// skews the fifth- and higher-order terms of the polynomial contribute below 1E-15. Returning the Normal variate here
+        /// instead would be in error by up to 3.6E-4 at the 1E-6 quantile.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(9.9e-05, 1e-06, -4.753067995664727, 3.5990718404725808)]
+        [DataRow(0.000101, 1e-06, -4.753060797523106, 3.599069780999969)]
+        [DataRow(-9.9e-05, 0.99, 2.326275077531289, 0.7353208179293219)]
+        [DataRow(0.0003, 1e-06, -4.752344603028048, 3.598864832474004)]
+        [DataRow(-0.0003, 0.99, 2.3261272770106918, 0.7353311276274129)]
+        [DataRow(0.0003, 0.5, -4.9999999933333326e-05, -0.166666666)]
+        [DataRow(-0.0003, 0.01, -2.326568466452883, 0.735300340244945)]
+        public void Test_FrequencyFactorKp_ExactQuantileNearZeroSkew(double skew, double probability, double quantile, double derivative)
+        {
+            Assert.AreEqual(quantile, GammaDistribution.FrequencyFactorKp(skew, probability), 2E-15 * (1d + Math.Abs(quantile)));
+            Assert.AreEqual(derivative, GammaDistribution.PartialKp(skew, probability), 2E-15 * (1d + Math.Abs(derivative)));
+        }
+
+        /// <summary>
+        /// At the probability endpoints the frequency factor is the Normal variate at and near zero skew: positive infinity
+        /// at probability one and <see cref="Normal.StandardZ(double)"/> of zero at probability zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_FrequencyFactorKp_EndpointsNearZeroSkew()
+        {
+            foreach (double c in new[] { 0d, 1E-12, -1E-12, 5E-5, -5E-5, 9.99E-5, -9.99E-5 })
+            {
+                Assert.AreEqual(double.PositiveInfinity, GammaDistribution.FrequencyFactorKp(c, 1d), $"skew {c}");
+                Assert.AreEqual(Normal.StandardZ(0d), GammaDistribution.FrequencyFactorKp(c, 0d), 0d, $"skew {c}");
+            }
+        }
+
+        /// <summary>
+        /// The frequency factor is continuous through zero skew: it returns the Normal variate at zero, and the first-order
+        /// term (U² - 1)C/6 at small skew, with no switch.
+        /// </summary>
+        [TestMethod]
+        public void Test_FrequencyFactorKp_SmoothThroughZeroSkew()
+        {
+            foreach (double p in new[] { 1E-6, 0.01, 0.5, 0.99 })
+            {
+                double z = Normal.StandardZ(p);
+                Assert.AreEqual(z, GammaDistribution.FrequencyFactorKp(0d, p), 0d);
+                foreach (double c in new[] { 1E-12, -1E-12, 1E-8, -1E-8 })
+                    Assert.AreEqual(z + c * (z * z - 1d) / 6d, GammaDistribution.FrequencyFactorKp(c, p), 1E-15 * (1d + Math.Abs(z)));
+            }
+        }
+
+        /// <summary>
+        /// The L-scale stays finite and accurate for large shapes, where Γ(κ) and Γ(κ + 1/2) overflow separately
+        /// beyond κ ≈ 171 (skews at or below 0.1527).
+        /// </summary>
+        /// <remarks>
+        /// Reference values λ2 = θ Γ(κ + 1/2) / (√π Γ(κ)) with θ = 2, computed with Python mpmath 1.3.0 at 50
+        /// significant digits from loggamma. The tolerance is 2E-15 relative.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(0.5, 0.6366197723675814)]
+        [DataRow(10d, 3.5239410400390625)]
+        [DataRow(171d, 14.744690070861031)]
+        [DataRow(171.5, 14.766262369935228)]
+        [DataRow(172d, 14.787803199723196)]
+        [DataRow(1000d, 35.67802229170864)]
+        [DataRow(1E6, 1128.3790260481255)]
+        public void Test_LinearMomentsFromParameters_LargeShape(double shape, double expectedL2)
+        {
+            var gamma = new GammaDistribution(2d, shape);
+            double[] lmom = gamma.LinearMomentsFromParameters(new[] { 2d, shape });
+            Assert.AreEqual(2d * shape, lmom[0], 1E-15 * 2d * shape);
+            Assert.AreEqual(expectedL2, lmom[1], 2E-15 * expectedL2);
+            Assert.IsTrue(lmom[2] > 0d && lmom[2] < 1d);
+            Assert.IsTrue(lmom[3] > 0d && lmom[3] < 1d);
         }
     }
 }

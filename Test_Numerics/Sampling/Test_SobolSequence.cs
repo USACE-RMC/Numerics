@@ -100,7 +100,7 @@ namespace Sampling
 
         /// <summary>
         /// SkipTo on a scrambled sequence reproduces the sequential emissions under the class's
-        /// historical indexing, pinned as-is: the index positions the next emission, so SkipTo(0)
+        /// established indexing, pinned as-is: the index positions the next emission, so SkipTo(0)
         /// returns the first emitted point and SkipTo(i) for i &gt;= 1 returns the i-th emitted
         /// point (SkipTo(0) and SkipTo(1) coincide). The unrandomized sequence shares the contract.
         /// </summary>

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Sampling.MCMC;
 
 namespace Sampling.MCMC
@@ -185,6 +186,44 @@ namespace Sampling.MCMC
             Assert.AreEqual(3885.53, results.ParameterResults[1].SummaryStatistics.LowerCI, 0.05 * 3885.53);
             Assert.AreEqual(4612.71, results.ParameterResults[1].SummaryStatistics.Median, 0.05 * 4612.71);
             Assert.AreEqual(5595.40, results.ParameterResults[1].SummaryStatistics.UpperCI, 0.05 * 5595.40);
+        }
+
+
+        /// <summary>
+        /// The first sampling transition already uses the final smoothed step size exp(log eps-bar) of
+        /// Hoffman and Gelman (2014), Algorithm 6, as every later one does; the last warmup transition
+        /// still uses the un-smoothed dual-averaging step.
+        /// </summary>
+        [TestMethod]
+        public void Test_NUTS_FirstSamplingTransition_UsesSmoothedStepSize()
+        {
+            const int warmup = 60;
+            NUTS sampler = null!;
+            double lastWarmupStep = double.NaN, firstSamplingStep = double.NaN;
+            Vector Gradient(IList<double> x)
+            {
+                int transition = sampler.SampleCount[0];
+                if (transition == warmup) lastWarmupStep = sampler.StepSizes[0];
+                if (transition == warmup + 1) firstSamplingStep = sampler.StepSizes[0];
+                return new Vector(new[] { -x[0] / 4d, -x[1] });
+            }
+
+            var priors = new List<IUnivariateDistribution> { new Uniform(-50d, 50d), new Uniform(-50d, 50d) };
+            sampler = new NUTS(priors, x => -0.5 * (x[0] * x[0] / 4d + x[1] * x[1]), gradientFunction: Gradient)
+            {
+                NumberOfChains = 1,
+                ParallelizeChains = false,
+                ThinningInterval = 1,
+                WarmupIterations = warmup,
+                Iterations = 150,
+                OutputLength = 100,
+                PRNGSeed = 12345
+            };
+            sampler.Sample();
+
+            double smoothed = sampler.StepSizes[0];
+            Assert.AreEqual(smoothed, firstSamplingStep, 0d, "The first sampling transition must use the smoothed step size.");
+            Assert.AreNotEqual(smoothed, lastWarmupStep, "The last warmup transition uses the un-smoothed step size.");
         }
 
     }

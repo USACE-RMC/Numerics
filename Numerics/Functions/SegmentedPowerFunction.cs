@@ -31,7 +31,7 @@ namespace Numerics.Functions
     /// The residual is Gaussian in log₁₀ space: with a
     /// confidence level u, Q(h) is multiplied by 10^(z) where z ~ N(0, σ) evaluated at u. The
     /// numeric <see cref="InverseFunction(double)"/> uses monotone bracketing with Brent's
-    /// method — the addition-mode sum is strictly increasing above h₁ for positive
+    /// method: the addition-mode sum is strictly increasing above h₁ for positive
     /// exponents.
     /// </para>
     /// <para>
@@ -343,7 +343,7 @@ namespace Numerics.Functions
         /// Serializes the function's configuration to an XElement: the segment count, the
         /// parameter vector, the deterministic flag, and the upper support bound.
         /// <see cref="Minimum"/> derives from h₁ and <see cref="ConfidenceLevel"/> is runtime
-        /// sampling state — neither is serialized.
+        /// sampling state; neither is serialized.
         /// </summary>
         /// <returns>An XElement representation of the segmented power function.</returns>
         public XElement ToXElement()

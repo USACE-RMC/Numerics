@@ -59,15 +59,8 @@ namespace Numerics.Mathematics.LinearAlgebra
             int rows = initialArray.GetLength(0);
             int cols = initialArray.GetLength(1);
             _matrix = new double[rows, cols];
-
-            // Deep copy - compatible with .NET Framework 4.8.1 and later
-            for (int i = 0; i < rows; i++)
-            {
-                for (int j = 0; j < cols; j++)
-                {
-                    _matrix[i, j] = initialArray[i, j];
-                }
-            }
+            // Deep copy of the contiguous row-major storage.
+            Buffer.BlockCopy(initialArray, 0, _matrix, 0, rows * cols * sizeof(double));
         }
 
         /// <summary>
@@ -77,8 +70,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         public Matrix(double[] initialArray)
         {
             _matrix = new double[initialArray.Length, 1];
-            for (int i = 0; i < _matrix.Length; i++)
-                _matrix[i, 0] = initialArray[i];
+            Buffer.BlockCopy(initialArray, 0, _matrix, 0, initialArray.Length * sizeof(double));
         }
 
         /// <summary>
@@ -194,6 +186,11 @@ namespace Numerics.Mathematics.LinearAlgebra
         private double[,] _matrix = new double[0, 0];
 
         /// <summary>
+        /// Below this number of result columns the products use plain scalar loops.
+        /// </summary>
+        private const int VectorizedWidth = 8;
+
+        /// <summary>
         /// Gets the number of rows.
         /// </summary>
         public int NumberOfRows
@@ -228,15 +225,23 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <summary>
         /// Evaluates whether this matrix is symmetric.
         /// </summary>
+        /// <remarks>
+        /// Each pair must satisfy |A[i,j] - A[j,i]| &lt;= 1E-12 * max |A[k,l]|, so the test is invariant to the
+        /// scale of the matrix. A pair involving NaN is not symmetric.
+        /// </remarks>
         public bool IsSymmetric
         {
             get
             {
                 if (!IsSquare) return false;
-                const double epsilon = 1e-12;
+                double scale = 0d;
+                for (int i = 0; i < NumberOfRows; i++)
+                    for (int j = 0; j < NumberOfColumns; j++)
+                        scale = Math.Max(scale, Math.Abs(_matrix[i, j]));
+                double tolerance = 1e-12 * scale;
                 for (int i = 0; i < NumberOfRows; i++)
                     for (int j = i + 1; j < NumberOfColumns; j++)
-                        if (Math.Abs(this[i, j] - this[j, i]) > epsilon)
+                        if (!(Math.Abs(this[i, j] - this[j, i]) <= tolerance))
                             return false;
                 return true;
             }
@@ -261,7 +266,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         public Matrix Clone()
         {
-            return new Matrix(ToArray());
+            return new Matrix(_matrix);
         }
 
         /// <summary>
@@ -394,13 +399,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         public Matrix Transpose()
         {
-            var t = new Matrix(NumberOfColumns, NumberOfRows);
-            for (int i = 0; i < NumberOfRows; i++)
-            {
-                for (int j = 0; j < NumberOfColumns; j++)
-                    t[j, i] = this[i, j];
-            }
-            return t;
+            return Transpose(this);
         }
 
         /// <summary>
@@ -478,13 +477,27 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Returns the transposed matrix.
         /// </summary>
         /// <param name="A">The matrix to transpose.</param>
+        /// <returns>The transpose of A.</returns>
+        /// <remarks>
+        /// The copy proceeds in square tiles so that both the source rows and the destination rows stay in cache.
+        /// </remarks>
         public static Matrix Transpose(Matrix A)
         {
-            var t = new Matrix(A.NumberOfColumns, A.NumberOfRows);
-            for (int i = 0; i < A.NumberOfRows; i++)
+            int rows = A.NumberOfRows, cols = A.NumberOfColumns;
+            var t = new Matrix(cols, rows);
+            var a = A._matrix;
+            var b = t._matrix;
+            const int tile = 32;
+            for (int i0 = 0; i0 < rows; i0 += tile)
             {
-                for (int j = 0; j < A.NumberOfColumns; j++)
-                    t[j, i] = A[i, j];
+                int i1 = Math.Min(rows, i0 + tile);
+                for (int j0 = 0; j0 < cols; j0 += tile)
+                {
+                    int j1 = Math.Min(cols, j0 + tile);
+                    for (int i = i0; i < i1; i++)
+                        for (int j = j0; j < j1; j++)
+                            b[j, i] = a[i, j];
+                }
             }
             return t;
         }
@@ -580,21 +593,97 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Multiply by another matrix.
         /// </summary>
         /// <param name="matrix">The right-side matrix.</param>
+        /// <returns>The product of this matrix and the right-side matrix.</returns>
+        /// <exception cref="ArgumentException">Thrown when the number of columns of this matrix differs from the number of
+        /// rows of the right-side matrix.</exception>
+        /// <remarks>
+        /// Each entry is accumulated from 0 over k in increasing order, C[i, j] = ((0 + A[i, 0]B[0, j]) + A[i, 1]B[1, j]) + ....
+        /// For wider results each row of C is built as a sum of scaled rows of B, vectorized across j, which performs the
+        /// same additions in the same order for every entry, so the result is identical to the plain triple loop.
+        /// </remarks>
         public Matrix Multiply(Matrix matrix)
         {
             if (NumberOfColumns != matrix.NumberOfRows)
                 throw new ArgumentException("The number of rows in the right-hand matrix must be equal to the number of columns in this matrix.");
 
-            var result = new Matrix(NumberOfRows, matrix.NumberOfColumns);
-            for (int i = 0; i < NumberOfRows; i++)
+            int rows = NumberOfRows, inner = NumberOfColumns, cols = matrix.NumberOfColumns;
+            var result = new Matrix(rows, cols);
+            var right = matrix._matrix;
+            if (cols < VectorizedWidth)
             {
-                for (int j = 0; j < matrix.NumberOfColumns; j++)
+                for (int i = 0; i < rows; i++)
                 {
-                    double sum = 0.0d;
-                    for (int k = 0; k < NumberOfColumns; k++)
-                        sum += this[i, k] * matrix[k, j];
-                    result[i, j] = sum;
+                    for (int j = 0; j < cols; j++)
+                    {
+                        double sum = 0.0d;
+                        for (int k = 0; k < inner; k++)
+                            sum += _matrix[i, k] * right[k, j];
+                        result._matrix[i, j] = sum;
+                    }
                 }
+                return result;
+            }
+            var b = new double[inner * cols];
+            Buffer.BlockCopy(right, 0, b, 0, b.Length * sizeof(double));
+            var row = new double[cols];
+            var c = result._matrix;
+            for (int i = 0; i < rows; i++)
+            {
+                System.Array.Clear(row, 0, cols);
+                for (int k = 0; k < inner; k++)
+                    CrossProductKernel.Axpy(_matrix[i, k], b, k * cols, row, 0, cols);
+                Buffer.BlockCopy(row, 0, c, i * cols * sizeof(double), cols * sizeof(double));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Multiply the transpose of this matrix by another matrix, Aᵀ·B, without forming the transpose.
+        /// </summary>
+        /// <param name="matrix">The right-side matrix, with the same number of rows as this matrix.</param>
+        /// <returns>The product Aᵀ·B.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="matrix"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the numbers of rows differ.</exception>
+        /// <remarks>
+        /// <para>
+        /// For a different right-hand matrix, each entry is accumulated from 0 over the rows k in increasing order, as in
+        /// <see cref="Multiply(Matrix)"/>, so the result is identical to <c>Transpose().Multiply(matrix)</c>.
+        /// </para>
+        /// <para>
+        /// When <paramref name="matrix"/> is this matrix, the Gram matrix AᵀA is accumulated by a SIMD rank-8 update over
+        /// fixed blocks of rows, in parallel for large matrices, and mirrored from its upper triangle. The result is
+        /// exactly symmetric and reproducible on a given machine. Its entries agree with the row-by-row sum to rounding
+        /// (a few units in the last place), and because the SIMD register width sets the order of the partial sums, the
+        /// last digits can differ between processor architectures.
+        /// </para>
+        /// </remarks>
+        public Matrix TransposeMultiply(Matrix matrix)
+        {
+            if (matrix == null) throw new ArgumentNullException(nameof(matrix));
+            if (NumberOfRows != matrix.NumberOfRows)
+                throw new ArgumentException("The number of rows in the right-hand matrix must be equal to the number of rows in this matrix.");
+
+            int inner = NumberOfRows, rows = NumberOfColumns, cols = matrix.NumberOfColumns;
+            var result = new Matrix(rows, cols);
+            var c = result._matrix;
+            if (ReferenceEquals(matrix, this))
+            {
+                var gram = new double[rows * rows];
+                CrossProductKernel.RowMajorGram(_matrix, new double[rows], new double[rows], gram);
+                Buffer.BlockCopy(gram, 0, c, 0, gram.Length * sizeof(double));
+                return result;
+            }
+            var a = new double[inner * rows];
+            Buffer.BlockCopy(_matrix, 0, a, 0, a.Length * sizeof(double));
+            var b = new double[inner * cols];
+            Buffer.BlockCopy(matrix._matrix, 0, b, 0, b.Length * sizeof(double));
+            var row = new double[cols];
+            for (int i = 0; i < rows; i++)
+            {
+                System.Array.Clear(row, 0, cols);
+                for (int k = 0; k < inner; k++)
+                    CrossProductKernel.Axpy(a[k * rows + i], b, k * cols, row, 0, cols);
+                Buffer.BlockCopy(row, 0, c, i * cols * sizeof(double), cols * sizeof(double));
             }
             return result;
         }

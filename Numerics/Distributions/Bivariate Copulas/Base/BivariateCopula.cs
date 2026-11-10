@@ -109,7 +109,13 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         /// <param name="u">The reduced variate between 0 and 1.</param>
         /// <param name="v">The reduced variate between 0 and 1.</param>
-        public double LogPDF(double u, double v)
+        /// <returns>The log density; negative infinity where the density is zero, infinite or NaN.</returns>
+        /// <remarks>
+        /// The base implementation takes the log of <see cref="PDF(double, double)"/>. Families whose density
+        /// underflows or overflows in direct form override it with a log-space evaluation, which the
+        /// likelihood methods use.
+        /// </remarks>
+        public virtual double LogPDF(double u, double v)
         {
             double f = PDF(u, v);
             if (double.IsNaN(f) || double.IsInfinity(f) || f <= 0d)
@@ -130,11 +136,11 @@ namespace Numerics.Distributions.Copulas
         /// <remarks>
         /// Both arguments follow the copula convention of non-exceedance probabilities.
         /// The base implementation approximates the partial derivative with a central finite
-        /// difference over <see cref="CDF"/> using ε = 1E-6, clamping u ± ε to [0, 1] and dividing
+        /// difference over <see cref="CDF(double, double)"/> using ε = 1E-6, clamping u ± ε to [0, 1] and dividing
         /// by the realized step width. Every copula shipped with the library overrides this method
         /// with its exact analytic conditional; the finite-difference fallback exists so an external
-        /// subclass that only implements <see cref="CDF"/> still gets a correct approximation.
-        /// <see cref="InverseConditionalCDF"/> inverts this function in v.
+        /// subclass that only implements <see cref="CDF(double, double)"/> still gets a correct approximation.
+        /// <see cref="InverseConditionalCDF(double, double)"/> inverts this function in v.
         /// </remarks>
         public virtual double ConditionalCDF(double u, double v)
         {
@@ -145,7 +151,7 @@ namespace Numerics.Distributions.Copulas
 
         /// <summary>
         /// Returns the inverse of the forward conditional CDF with respect to v: the value v
-        /// such that h(v|u) = t, where h is <see cref="ConditionalCDF"/>.
+        /// such that h(v|u) = t, where h is <see cref="ConditionalCDF(double, double)"/>.
         /// </summary>
         /// <param name="u">The conditioning variate, a non-exceedance probability between 0 and 1.</param>
         /// <param name="t">The conditional non-exceedance probability between 0 and 1.</param>
@@ -164,6 +170,103 @@ namespace Numerics.Distributions.Copulas
         public virtual double InverseConditionalCDF(double u, double t)
         {
             return InverseCDF(u, t)[1];
+        }
+
+        /// <summary>
+        /// The PDF evaluated over paired lists of reduced variates.
+        /// </summary>
+        /// <param name="u">The first reduced variates, each between 0 and 1.</param>
+        /// <param name="v">The second reduced variates, each between 0 and 1, one per entry of <paramref name="u"/>.</param>
+        /// <returns>One density per pair, each equal to <see cref="PDF(double, double)"/> at that pair.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="u"/> or <paramref name="v"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the lists differ in length.</exception>
+        /// <remarks>
+        /// One call evaluates every pair, in the same way as the list forms of the univariate distributions
+        /// (<see cref="UnivariateDistributionBase.PDF(IList{double})"/>); a caller crossing a language boundary (for
+        /// example from Python) pays the crossing once instead of once per pair.
+        /// </remarks>
+        public double[] PDF(IList<double> u, IList<double> v)
+        {
+            ValidatePairs(u, v);
+            var result = new double[u.Count];
+            for (int i = 0; i < u.Count; i++)
+                result[i] = PDF(u[i], v[i]);
+            return result;
+        }
+
+        /// <summary>
+        /// The CDF evaluated over paired lists of reduced variates.
+        /// </summary>
+        /// <param name="u">The first reduced variates, each between 0 and 1.</param>
+        /// <param name="v">The second reduced variates, each between 0 and 1, one per entry of <paramref name="u"/>.</param>
+        /// <returns>One joint non-exceedance probability per pair, each equal to <see cref="CDF(double, double)"/> at that pair.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="u"/> or <paramref name="v"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the lists differ in length.</exception>
+        /// <remarks>
+        /// One call evaluates every pair, in the same way as <see cref="PDF(IList{double}, IList{double})"/>.
+        /// </remarks>
+        public double[] CDF(IList<double> u, IList<double> v)
+        {
+            ValidatePairs(u, v);
+            var result = new double[u.Count];
+            for (int i = 0; i < u.Count; i++)
+                result[i] = CDF(u[i], v[i]);
+            return result;
+        }
+
+        /// <summary>
+        /// The forward conditional CDF (h-function) evaluated over paired lists of variates.
+        /// </summary>
+        /// <param name="u">The conditioning variates, each a non-exceedance probability between 0 and 1.</param>
+        /// <param name="v">The dependent variates, each a non-exceedance probability between 0 and 1, one per entry of <paramref name="u"/>.</param>
+        /// <returns>One conditional non-exceedance probability per pair, each equal to <see cref="ConditionalCDF(double, double)"/> at that pair.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="u"/> or <paramref name="v"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the lists differ in length.</exception>
+        /// <remarks>
+        /// One call evaluates every pair, in the same way as <see cref="PDF(IList{double}, IList{double})"/>.
+        /// </remarks>
+        public double[] ConditionalCDF(IList<double> u, IList<double> v)
+        {
+            ValidatePairs(u, v);
+            var result = new double[u.Count];
+            for (int i = 0; i < u.Count; i++)
+                result[i] = ConditionalCDF(u[i], v[i]);
+            return result;
+        }
+
+        /// <summary>
+        /// The inverse of the forward conditional CDF evaluated over paired lists of variates.
+        /// </summary>
+        /// <param name="u">The conditioning variates, each a non-exceedance probability between 0 and 1.</param>
+        /// <param name="t">The conditional non-exceedance probabilities, each between 0 and 1, one per entry of <paramref name="u"/>.</param>
+        /// <returns>One dependent variate per pair, each equal to <see cref="InverseConditionalCDF(double, double)"/> at that pair.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="u"/> or <paramref name="t"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the lists differ in length.</exception>
+        /// <remarks>
+        /// One call evaluates every pair, in the same way as <see cref="PDF(IList{double}, IList{double})"/>: the
+        /// conditional simulation of many events in one call.
+        /// </remarks>
+        public double[] InverseConditionalCDF(IList<double> u, IList<double> t)
+        {
+            ValidatePairs(u, t);
+            var result = new double[u.Count];
+            for (int i = 0; i < u.Count; i++)
+                result[i] = InverseConditionalCDF(u[i], t[i]);
+            return result;
+        }
+
+        /// <summary>
+        /// Checks that two lists of variates pair up.
+        /// </summary>
+        /// <param name="u">The first list.</param>
+        /// <param name="v">The second list.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="u"/> or <paramref name="v"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the lists differ in length.</exception>
+        private static void ValidatePairs(IList<double> u, IList<double> v)
+        {
+            if (u == null) throw new ArgumentNullException(nameof(u));
+            if (v == null) throw new ArgumentNullException(nameof(v));
+            if (u.Count != v.Count) throw new ArgumentException("The lists of variates must have the same length.", nameof(v));
         }
 
         /// <inheritdoc/>
@@ -190,7 +293,7 @@ namespace Numerics.Distributions.Copulas
         /// </summary>
         /// <remarks>
         /// Marginals are deep-copied through <see cref="CloneMarginal"/> because
-        /// distributions memoize internal state lazily — clones sharing marginal
+        /// distributions memoize internal state lazily; clones sharing marginal
         /// references are not safe to use concurrently (e.g., one clone per thread in
         /// Monte Carlo frameworks or parallel likelihood evaluation).
         /// </remarks>
@@ -202,7 +305,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="marginal">The marginal distribution, or null when unattached.</param>
         /// <returns>An independent copy of the marginal; null when unattached. A marginal
         /// implementation outside <see cref="UnivariateDistributionBase"/> (which carries the
-        /// clone support) is returned by reference, preserving the previous behavior.</returns>
+        /// clone support) is returned by reference.</returns>
         protected static IUnivariateDistribution? CloneMarginal(IUnivariateDistribution? marginal)
         {
             if (marginal is UnivariateDistributionBase cloneable)
@@ -235,7 +338,36 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         public double[,] GenerateRandomValues(int sampleSize, int seed = -1)
         {
-            var rand = LatinHypercube.Random(sampleSize, 2, seed);
+            return TransformDesign(LatinHypercube.Random(sampleSize, 2, seed));
+        }
+
+        /// <summary>
+        /// Generates a random sample from the copula, drawing the Latin hypercube design from a supplied generator.
+        /// </summary>
+        /// <param name="sampleSize">The number of samples to generate.</param>
+        /// <param name="random">The master generator passed to <see cref="LatinHypercube.Random(int, int, Random)"/>.</param>
+        /// <returns>A <paramref name="sampleSize"/> by 2 array of samples, in the units of the marginal distributions
+        /// when both are attached and as non-exceedance probabilities otherwise.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="random"/> is null.</exception>
+        /// <remarks>
+        /// The sample is a deterministic function of the generator state, with no clock fallback. Passing
+        /// <c>new MersenneTwister(seed)</c> with a positive seed reproduces
+        /// <see cref="GenerateRandomValues(int, int)"/> with that seed exactly.
+        /// </remarks>
+        public double[,] GenerateRandomValues(int sampleSize, Random random)
+        {
+            return TransformDesign(LatinHypercube.Random(sampleSize, 2, random));
+        }
+
+        /// <summary>
+        /// Maps a two-column uniform design to copula samples by conditional inversion, then through the
+        /// marginal distributions when both are attached.
+        /// </summary>
+        /// <param name="rand">The uniform design, one row per sample.</param>
+        /// <returns>The sample, one row per design row.</returns>
+        private double[,] TransformDesign(double[,] rand)
+        {
+            int sampleSize = rand.GetLength(0);
             var sample = new double[sampleSize, 2];
             for (int i = 0; i < sampleSize; i++)
             {
@@ -318,11 +450,12 @@ namespace Numerics.Distributions.Copulas
         /// order. A zero-parameter copula writes an empty "Parameters" attribute.
         /// </returns>
         /// <remarks>
-        /// Marginal distributions are deliberately not serialized: consumers own their
-        /// marginals and attach them separately, so the element captures the dependence
-        /// structure alone. Serializing the type by name (never by numeric value) keeps the
-        /// payload valid as long as <see cref="CopulaType"/> members are only ever appended.
-        /// <see cref="CopulaFactory.CreateCopula(XElement)"/> reconstructs the copula.
+        /// Marginal distributions are not serialized by this overload: the element captures the
+        /// dependence structure alone, for consumers that own their marginals and attach them
+        /// separately. <see cref="ToXElement(bool)"/> includes them. Serializing the type by name
+        /// (never by numeric value) keeps the payload valid as long as <see cref="CopulaType"/>
+        /// members are only ever appended. <see cref="CopulaFactory.CreateCopula(XElement)"/>
+        /// reconstructs the copula.
         /// </remarks>
         public virtual XElement ToXElement()
         {
@@ -334,6 +467,48 @@ namespace Numerics.Distributions.Copulas
                 values[i] = parameters[i].ToString("G17", CultureInfo.InvariantCulture);
             result.SetAttributeValue("Parameters", string.Join("|", values));
             return result;
+        }
+
+        /// <summary>
+        /// Returns an XElement of the copula's type and parameters, optionally with its attached
+        /// marginal distributions.
+        /// </summary>
+        /// <param name="includeMarginals">True to append each attached marginal distribution.</param>
+        /// <returns>
+        /// The element written by <see cref="ToXElement()"/>. When <paramref name="includeMarginals"/>
+        /// is true, each attached marginal is appended as a child element named
+        /// "MarginalDistributionX" or "MarginalDistributionY" that holds the element written by
+        /// <see cref="UnivariateDistributionBase.ToXElement"/>; an unattached marginal is omitted.
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="includeMarginals"/> is true and an
+        /// attached marginal does not derive from <see cref="UnivariateDistributionBase"/>, which carries the
+        /// serialization support.</exception>
+        /// <remarks>
+        /// <see cref="CopulaFactory.CreateCopula(XElement, bool)"/> reconstructs the copula and its marginals.
+        /// </remarks>
+        public XElement ToXElement(bool includeMarginals)
+        {
+            var result = ToXElement();
+            if (!includeMarginals) return result;
+            AppendMarginal(result, nameof(MarginalDistributionX), MarginalDistributionX);
+            AppendMarginal(result, nameof(MarginalDistributionY), MarginalDistributionY);
+            return result;
+        }
+
+        /// <summary>
+        /// Appends an attached marginal distribution to a serialized copula.
+        /// </summary>
+        /// <param name="element">The copula element.</param>
+        /// <param name="name">The name of the child element.</param>
+        /// <param name="marginal">The marginal distribution, or null when unattached.</param>
+        /// <exception cref="ArgumentException">Thrown when the marginal does not derive from
+        /// <see cref="UnivariateDistributionBase"/>.</exception>
+        private static void AppendMarginal(XElement element, string name, IUnivariateDistribution? marginal)
+        {
+            if (marginal == null) return;
+            if (marginal is not UnivariateDistributionBase serializable)
+                throw new ArgumentException("The marginal distribution " + name + " does not derive from UnivariateDistributionBase and cannot be serialized.", "includeMarginals");
+            element.Add(new XElement(name, serializable.ToXElement()));
         }
 
         #endregion

@@ -414,6 +414,149 @@ namespace Distributions.Univariate
             Assert.AreEqual(double.PositiveInfinity, negativeSkew.LogPDF(negativeSkew.Xi));
         }
 
+
+        /// <summary>
+        /// The L-scale and the L-moment scale estimate use the exact gamma ratio for every shape, so they stay accurate
+        /// across alpha = 4/skew^2 = 100 and finite beyond alpha = 171 (skews at or below 0.1527).
+        /// </summary>
+        /// <remarks>
+        /// Reference values computed with Python mpmath 1.3.0 at 50 significant digits:
+        /// L2 = sigma Gamma(alpha + 1/2) / (sqrt(pi alpha) Gamma(alpha)) with sigma = 0.3, and the scale
+        /// sigma = L2 sqrt(pi alpha) Gamma(alpha) / Gamma(alpha + 1/2) at the fitted skew with L2 = 0.17. The tolerance
+        /// is 3E-15 relative.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(2.0, 0.15)]
+        [DataRow(0.5, 0.16793992090970278)]
+        [DataRow(0.2, 0.16904543702776925)]
+        [DataRow(0.19, 0.1690660404626627)]
+        [DataRow(0.1527, 0.16913358854788108)]
+        [DataRow(0.15, 0.16913790831003775)]
+        [DataRow(-0.1, 0.16920399056827415)]
+        [DataRow(0.01, 0.16925634613741877)]
+        [DataRow(0.002, 0.1692568539072188)]
+        public void Test_LinearMomentsFromParameters_ExactGammaRatio(double skew, double expectedL2)
+        {
+            double[] lmom = new PearsonTypeIII().LinearMomentsFromParameters(new[] { 3d, 0.3, skew });
+            Assert.AreEqual(expectedL2, lmom[1], 3E-15 * expectedL2);
+        }
+
+        /// <summary>
+        /// The L-moment scale estimate uses the exact gamma ratio at the fitted skew.
+        /// </summary>
+        /// <remarks>Reference values as for <see cref="Test_LinearMomentsFromParameters_ExactGammaRatio"/>.</remarks>
+        [TestMethod]
+        [DataRow(0.05, 0.30663370214036545, 0.3022037834482887)]
+        [DataRow(0.03, 0.1841192827432352, 0.30163652985276324)]
+        [DataRow(0.0249, 0.1528394551987608, 0.3015371952184198)]
+        [DataRow(0.01, 0.0613966415922153, 0.3013526514107132)]
+        [DataRow(-0.005, -0.030699430945504754, 0.3013260290932623)]
+        [DataRow(0.001, 0.006139957284868968, 0.30131750963471404)]
+        public void Test_ParametersFromLinearMoments_ExactGammaRatio(double t3, double expectedSkew, double expectedSigma)
+        {
+            double[] p = new PearsonTypeIII().ParametersFromLinearMoments(new[] { 3d, 0.17, t3 });
+            Assert.AreEqual(3d, p[0], 0d);
+            Assert.AreEqual(expectedSkew, p[2], 1E-15 * Math.Abs(expectedSkew));
+            Assert.AreEqual(expectedSigma, p[1], 3E-15 * expectedSigma);
+        }
+
+        /// <summary>
+        /// The log tails and log density carry the rounding residual of the centered unit gamma coordinate below absolute
+        /// skew 0.1, so they keep near full accuracy where the uncentered coordinate is in error by up to 1.5E-13.
+        /// </summary>
+        /// <remarks>
+        /// Columns: skew, x (the 1E-6, 0.5 and 0.99 quantiles of P3(0, 1, skew)), ln F(x), ln(1 - F(x)) and ln f(x),
+        /// computed with mpmath 1.3.0 at 60 digits by quadrature of the gamma density (tails) and closed form (density).
+        /// </remarks>
+        [TestMethod]
+        [DataRow(0.05, -4.574785358853457, -13.815510557964272, -1.0000005000003347e-06, -12.135095893353434)]
+        [DataRow(0.05, -0.008333024620929786, -0.6931471805599453, -0.6931471805599453, -0.9188169936914243)]
+        [DataRow(0.05, 2.363047431519595, -0.010050335853501454, -4.60517018598809, -3.663076425606502)]
+        [DataRow(-0.05, -4.934638161479374, -13.815510557964272, -1.0000005000003353e-06, -12.293655407637814)]
+        [DataRow(-0.05, 0.008333024620929786, -0.6931471805599453, -0.6931471805599453, -0.9188169936914243)]
+        [DataRow(-0.05, 2.289520092650801, -0.010050335853501456, -4.60517018598809, -3.5855121536914183)]
+        [DataRow(0.03, -4.6459194427364725, -13.815510557964274, -1.0000005000003344e-06, -12.168163508231066)]
+        [DataRow(0.03, -0.004999933327857031, -0.6931471805599453, -0.6931471805599453, -0.9188947816838093)]
+        [DataRow(0.03, 2.3483838020219627, -0.010050335853501452, -4.60517018598809, -3.64793842524562)]
+        [DataRow(-0.03, -4.8618559211873125, -13.815510557964274, -1.000000500000333e-06, -12.263256188295664)]
+        [DataRow(-0.03, 0.004999933327857031, -0.6931471805599453, -0.6931471805599453, -0.9188947816838093)]
+        [DataRow(-0.03, 2.304265772351977, -0.010050335853501445, -4.605170185988091, -3.6014072902489267)]
+        public void Test_LogTailsAndDensity_CenteredBelowSkew0_1(double skew, double x, double logCdf, double logCcdf, double logPdf)
+        {
+            var d = new PearsonTypeIII(0d, 1d, skew);
+            Assert.AreEqual(logCdf, d.LogCDF(x), 1E-14);
+            Assert.AreEqual(logCcdf, d.LogCCDF(x), 1E-14 * Math.Abs(logCcdf) + 1E-20);
+            Assert.AreEqual(logPdf, d.LogPDF(x), 1E-14);
+        }
+
+        /// <summary>
+        /// The maximum-likelihood skew information uses its Bernoulli series through B36 below skew²/4 = 0.15 and the
+        /// trigamma form above it.
+        /// </summary>
+        /// <remarks>
+        /// The reference is 1/T with T = a³[ψ'(a) - 1/(a-1) + 1/(2(a-1)²)], a = 4/skew², from mpmath 1.3.0 at 50 digits;
+        /// the covariance of the skew at sample size one is 1/T. The tolerance is 1E-13 relative; the trigamma form alone is
+        /// in error by up to 3E-13 for skew²/4 between 0.05 and 0.15.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(0.3, 5.604637825817938)]
+        [DataRow(0.5, 4.948232207631228)]
+        [DataRow(0.7, 4.0697304381664265)]
+        [DataRow(0.77, 3.7300037226093092)]
+        [DataRow(0.78, 3.680673250778186)]
+        [DataRow(1.0, 2.584704719215949)]
+        public void Test_ParameterCovariance_SkewInformation(double skew, double inverseInformation)
+        {
+            var c = new PearsonTypeIII(0d, 1d, skew).ParameterCovariance(1, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(inverseInformation, c[2, 2], 1E-13 * inverseInformation);
+        }
+
+        /// <summary>
+        /// Within absolute skew 0.03 and |skew|(1 + |z|) at most 0.2 the quantile and its skew derivative come from the
+        /// order-8 skew series, which removes the cancellation of the gamma quantile against its shape.
+        /// </summary>
+        /// <remarks>
+        /// Columns: skew, probability, the standardized quantile and its skew derivative, from mpmath 1.3.0 at 60 digits by
+        /// Newton iteration on the quadrature of the gamma density and by implicit differentiation of the tail. On this range
+        /// the gamma path alone is in error by up to 2.7E-13 in the quantile and 3.4E-8 relative in the derivative.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(1e-12, 1e-06, -4.7534243088193, 3.599173776617046)]
+        [DataRow(1e-06, 0.01, -2.326347138725077, 0.7353157898213117)]
+        [DataRow(-0.0001, 0.99, 2.3262743422104455, 0.735320869231516)]
+        [DataRow(0.000999, 1e-06, -4.74982924823925, 3.5981444512326153)]
+        [DataRow(0.001001, 1e-06, -4.7498220519524095, 3.5981423889685757)]
+        [DataRow(-0.002, 0.5, 0.0003333333135802397, -0.166666637037019)]
+        [DataRow(0.005, 0.999999, 4.77143301522681, 3.604302348820344)]
+        [DataRow(-0.01, 1e-06, -4.789467268116546, 3.6093924042486107)]
+        [DataRow(0.02, 0.01, -2.311631433034089, 0.7363215141260572)]
+        [DataRow(-0.0299, 0.99, 2.304339452999121, 0.7368040603980558)]
+        [DataRow(-0.016, 1e-30, -11.814324379694858, 22.048097400863778)]
+        public void Test_Quantile_SkewSeries(double skew, double probability, double quantile, double derivative)
+        {
+            var d = new PearsonTypeIII(0d, 1d, skew);
+            Assert.AreEqual(quantile, d.InverseCDF(probability), 4E-16 * (1d + Math.Abs(quantile)));
+            Assert.AreEqual(derivative, d.QuantileGradient(probability)[2], 1E-13 * Math.Abs(derivative));
+            var shifted = new PearsonTypeIII(3d, 0.3, skew);
+            Assert.AreEqual(3d + 0.3 * quantile, shifted.InverseCDF(probability), 1E-15 * (1d + Math.Abs(3d + 0.3 * quantile)));
+            Assert.AreEqual(0.3 * derivative, shifted.QuantileGradient(probability)[2], 1E-13 * Math.Abs(0.3 * derivative));
+        }
+
+        /// <summary>
+        /// Just outside the skew-series region the gamma path takes over, continuous with the series to about 1E-14 in the
+        /// quantile and 3E-12 relative in the skew derivative.
+        /// </summary>
+        /// <remarks>Reference values as for <see cref="Test_Quantile_SkewSeries"/>.</remarks>
+        [TestMethod]
+        [DataRow(0.0301, 0.5, -0.005016599325540457, -0.16665995455652624)]
+        [DataRow(0.03, 1e-10, -6.1653599779701125, 6.486885714447091)]
+        [DataRow(0.05, 1e-06, -4.574785358853457, 3.5457194876203704)]
+        public void Test_Quantile_GammaPathBeyondSkewSeries(double skew, double probability, double quantile, double derivative)
+        {
+            var d = new PearsonTypeIII(0d, 1d, skew);
+            Assert.AreEqual(quantile, d.InverseCDF(probability), 1E-14 * (1d + Math.Abs(quantile)));
+            Assert.AreEqual(derivative, d.QuantileGradient(probability)[2], 5E-12 * Math.Abs(derivative));
+        }
     }
 
 

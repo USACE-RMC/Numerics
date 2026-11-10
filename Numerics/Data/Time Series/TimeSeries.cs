@@ -46,6 +46,12 @@ namespace Numerics.Data
         /// <param name="timeInterval">The time interval for the series.</param>
         /// <param name="startDate">The start date/time of the series.</param>
         /// <param name="endDate">The end date/time of the series.</param>
+        /// <exception cref="ArgumentException">Thrown when the time interval is irregular or the start date is after the end date.</exception>
+        /// <remarks>
+        /// The dates step from the start date with <see cref="AddTimeInterval(DateTime, TimeInterval)"/> and stop at the
+        /// last date on or before <paramref name="endDate"/>, so no ordinate falls after the end date. When the end date is
+        /// one of the stepped dates, it is the last ordinate.
+        /// </remarks>
         public TimeSeries(TimeInterval timeInterval, DateTime startDate, DateTime endDate)
         {
             if (timeInterval == TimeInterval.Irregular)
@@ -58,7 +64,9 @@ namespace Numerics.Data
             Add(new SeriesOrdinate<DateTime, double>(startDate, double.NaN));
             while (_seriesOrdinates.Last().Index < endDate)
             {
-                Add(new SeriesOrdinate<DateTime, double>(AddTimeInterval(_seriesOrdinates.Last().Index, _timeInterval), double.NaN));
+                DateTime next = AddTimeInterval(_seriesOrdinates.Last().Index, _timeInterval);
+                if (next > endDate) break;
+                Add(new SeriesOrdinate<DateTime, double>(next, double.NaN));
             }
         }
 
@@ -69,6 +77,12 @@ namespace Numerics.Data
         /// <param name="startDate">The start date/time of the series.</param>
         /// <param name="endDate">The end date/time of the series.</param>
         /// <param name="fixedValue">A fixed value to be assigned to each ordinate.</param>
+        /// <exception cref="ArgumentException">Thrown when the time interval is irregular or the start date is after the end date.</exception>
+        /// <remarks>
+        /// The dates step from the start date with <see cref="AddTimeInterval(DateTime, TimeInterval)"/> and stop at the
+        /// last date on or before <paramref name="endDate"/>, so no ordinate falls after the end date. When the end date is
+        /// one of the stepped dates, it is the last ordinate.
+        /// </remarks>
         public TimeSeries(TimeInterval timeInterval, DateTime startDate, DateTime endDate, double fixedValue)
         {
             if (timeInterval == TimeInterval.Irregular)
@@ -81,7 +95,9 @@ namespace Numerics.Data
             Add(new SeriesOrdinate<DateTime, double>(startDate, fixedValue));
             while (_seriesOrdinates.Last().Index < endDate)
             {
-                Add(new SeriesOrdinate<DateTime, double>(AddTimeInterval(_seriesOrdinates.Last().Index, _timeInterval), fixedValue));
+                DateTime next = AddTimeInterval(_seriesOrdinates.Last().Index, _timeInterval);
+                if (next > endDate) break;
+                Add(new SeriesOrdinate<DateTime, double>(next, fixedValue));
             }
         }
 
@@ -102,6 +118,39 @@ namespace Numerics.Data
             for (int i = 1; i < data.Count; i++)
             {
                 Add(new SeriesOrdinate<DateTime, double>(AddTimeInterval(this[i - 1].Index, _timeInterval), data[i]));
+            }
+        }
+
+        /// <summary>
+        /// Constructs a time-series from ordinate dates given as ticks and their values.
+        /// </summary>
+        /// <param name="timeInterval">The time interval for the series. Any interval is accepted, including irregular.</param>
+        /// <param name="ticks">The <see cref="DateTime.Ticks"/> of each ordinate date, in collection order.</param>
+        /// <param name="values">The value of each ordinate.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="ticks"/> or <paramref name="values"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="ticks"/> and <paramref name="values"/> differ in length.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a tick count is outside the range of <see cref="DateTime"/>.</exception>
+        /// <remarks>
+        /// The inverse of <see cref="IndexTicksToArray"/> and <see cref="Series{TIndex, TValue}.ValuesToArray"/>, for interop
+        /// callers (for example a Python binding) that pass two arrays in one call. The dates have
+        /// <see cref="DateTimeKind.Unspecified"/> kind, the ordinates are kept in the given order without sorting or a
+        /// regularity check, and every value is stored as given, so a NaN keeps its bit pattern.
+        /// </remarks>
+        public TimeSeries(TimeInterval timeInterval, IList<long> ticks, IList<double> values)
+        {
+            if (ticks == null) throw new ArgumentNullException(nameof(ticks));
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (ticks.Count != values.Count)
+                throw new ArgumentException("The ticks and values must have the same length.", nameof(values));
+
+            _timeInterval = timeInterval;
+            _seriesOrdinates.Capacity = ticks.Count;
+            for (int i = 0; i < ticks.Count; i++)
+            {
+                long tick = ticks[i];
+                if (tick < DateTime.MinValue.Ticks || tick > DateTime.MaxValue.Ticks)
+                    throw new ArgumentOutOfRangeException(nameof(ticks), $"The tick count at index {i} is outside the range of DateTime.");
+                _seriesOrdinates.Add(new SeriesOrdinate<DateTime, double>(new DateTime(tick), values[i]));
             }
         }
 
@@ -500,7 +549,36 @@ namespace Numerics.Data
         /// <param name="lag">The lag between elements to subtract (default is 1).</param>
         /// <param name="differences">The order of differences (default is 1).</param>
         /// <returns>A time series of differences.</returns>
+        /// <exception cref="ArgumentException">Thrown when the series is not longer than the lag at each order.</exception>
+        /// <remarks>
+        /// Each difference is labelled with the date of its earlier ordinate: for one difference, x[t + lag] - x[t] is
+        /// stored at the date of x[t], so the result starts at the first date and is <c>lag * differences</c> ordinates
+        /// shorter. The dates are the series' own, so a series with gaps or an irregular interval keeps its real dates.
+        /// To label each difference with its later date instead, as pandas <c>Series.diff</c> does, use
+        /// <see cref="Difference(int, int, bool)"/>.
+        /// </remarks>
         public TimeSeries Difference(int lag = 1, int differences = 1)
+        {
+            return Difference(lag, differences, false);
+        }
+
+        /// <summary>
+        /// Returns a time-series of the successive differences, labelled with the earlier or the later ordinate's date.
+        /// </summary>
+        /// <param name="lag">The lag between elements to subtract.</param>
+        /// <param name="differences">The order of differences.</param>
+        /// <param name="labelAtLaterDate">
+        /// If true, each difference is labelled with the date of its later ordinate, as pandas <c>Series.diff</c>; if
+        /// false, with the date of its earlier ordinate, as <see cref="Difference(int, int)"/>.
+        /// </param>
+        /// <returns>A time series of differences.</returns>
+        /// <exception cref="ArgumentException">Thrown when the series is not longer than the lag at each order.</exception>
+        /// <remarks>
+        /// The values are the same for both labels. With the later label, x[t] - x[t - lag] is stored at the date of
+        /// x[t], so the result starts at the ordinate <c>lag * differences</c> and ends at the last date; this matches
+        /// pandas <c>s.diff(lag)</c> (applied <c>differences</c> times) after <c>dropna()</c>.
+        /// </remarks>
+        public TimeSeries Difference(int lag, int differences, bool labelAtLaterDate)
         {
             double[] result = ValuesToArray();
             for (int d = 0; d < differences; d++)
@@ -516,8 +594,12 @@ namespace Numerics.Data
                 }
                 result = temp;
             }
-            // Adjust the start date if needed, depending on how TimeSeries is defined.
-            var timeSeries = new TimeSeries(TimeInterval, StartDate, result);
+            // Label each difference with the date of its earlier ordinate, or of its later one when asked.
+            int offset = labelAtLaterDate ? Count - result.Length : 0;
+            var timeSeries = new TimeSeries(TimeInterval);
+            timeSeries._seriesOrdinates.Capacity = result.Length;
+            for (int i = 0; i < result.Length; i++)
+                timeSeries._seriesOrdinates.Add(new SeriesOrdinate<DateTime, double>(_seriesOrdinates[i + offset].Index, result[i]));
             return timeSeries;
         }
 
@@ -565,14 +647,19 @@ namespace Numerics.Data
         /// Interpolate missing data. Data will only be interpolated if the number of consecutive missing value is less than the specified limit.
         /// </summary>
         /// <param name="maxNumberOfMissing">The maximum number of consecutive missing values.</param>
+        /// <remarks>
+        /// The series is sorted by time first. Interpolation is linear in time, with the time differences taken exactly in
+        /// ticks. A gap that runs to the end of the series within the limit is extrapolated from
+        /// the two preceding ordinates.
+        /// </remarks>
         public void InterpolateMissingData(int maxNumberOfMissing)
         {
             SuppressCollectionChanged = true;
             SortByTime();
-            double x;
-            //double y;
-            double x1;
-            double x2;
+            // Times are kept in ticks; their differences are exact in a long and are converted to double only as differences.
+            long x;
+            long x1;
+            long x2;
             double y1;
             double y2;
             int upper;
@@ -582,31 +669,31 @@ namespace Numerics.Data
                 // Find missing value
                 if (double.IsNaN(this[i].Value))
                 {
-                    // ok we found one
-                    x = this[i].Index.ToOADate();
-                    x1 = this[i - 1].Index.ToOADate();
+                    // match found
+                    x = this[i].Index.Ticks;
+                    x1 = this[i - 1].Index.Ticks;
                     y1 = this[i - 1].Value;
                     upper = i + maxNumberOfMissing;
                     // Find the next non-missing value
                     for (int j = i; j <= Math.Min(Count - 1, upper); j++)
                     {
-                        // ok we found one
+                        // match found
                         // the interpolation case
                         if (!double.IsNaN(this[j].Value))
                         {
-                            x2 = this[j].Index.ToOADate();
+                            x2 = this[j].Index.Ticks;
                             y2 = this[j].Value;
-                            this[i].Value = y1 + (x - x1) / (x2 - x1) * (y2 - y1);
+                            this[i].Value = y1 + (double)(x - x1) / (double)(x2 - x1) * (y2 - y1);
                             break;
                         }
                         // the extrapolation case
                         if (j == Count - 1 && i >= 2)
                         {
-                            x1 = this[i - 2].Index.ToOADate();
-                            x2 = this[i - 1].Index.ToOADate();
+                            x1 = this[i - 2].Index.Ticks;
+                            x2 = this[i - 1].Index.Ticks;
                             y1 = this[i - 2].Value;
                             y2 = this[i - 1].Value;
-                            this[i].Value = y1 - (x1 - x) * (y2 - y1) / (x2 - x1);
+                            this[i].Value = y1 - (double)(x1 - x) * (y2 - y1) / (double)(x2 - x1);
                         }
                     }
                 }
@@ -620,15 +707,17 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="maxNumberOfMissing">The maximum number of consecutive missing values.</param>
         /// <param name="indexes">List of integer index values (0 based) for each ordinate in the time series to apply the calculation to.</param>
-
+        /// <remarks>
+        /// Uses the same interpolation as <see cref="InterpolateMissingData(int)"/>, at the listed indexes only.
+        /// </remarks>
         public void InterpolateMissingData(int maxNumberOfMissing, IList<int> indexes)
         {
             SuppressCollectionChanged = true;
             SortByTime();
-            double x;
-            //double y;
-            double x1;
-            double x2;
+            // Times are kept in ticks; their differences are exact in a long and are converted to double only as differences.
+            long x;
+            long x1;
+            long x2;
             double y1;
             double y2;
             int upper;
@@ -638,32 +727,32 @@ namespace Numerics.Data
                 // Find missing value
                 if(indexes[i] >= 1 && indexes[i] < Count && double.IsNaN(this[indexes[i]].Value))
                 {
-                    // ok we found one
+                    // match found
                     int idx = indexes[i];
-                    x = this[idx].Index.ToOADate();
-                    x1 = this[idx - 1].Index.ToOADate();
+                    x = this[idx].Index.Ticks;
+                    x1 = this[idx - 1].Index.Ticks;
                     y1 = this[idx - 1].Value;
                     upper = idx + maxNumberOfMissing;
                     // Find the next non-missing value
                     for (int j = idx; j <= Math.Min(Count - 1, upper); j++)
                     {
-                        // ok we found one
+                        // match found
                         // the interpolation case
                         if (!double.IsNaN(this[j].Value))
                         {
-                            x2 = this[j].Index.ToOADate();
+                            x2 = this[j].Index.Ticks;
                             y2 = this[j].Value;
-                            this[idx].Value = y1 + (x - x1) / (x2 - x1) * (y2 - y1);
+                            this[idx].Value = y1 + (double)(x - x1) / (double)(x2 - x1) * (y2 - y1);
                             break;
                         }
                         // the extrapolation case
                         if (j == Count - 1 && idx >= 2)
                         {
-                            x1 = this[idx - 2].Index.ToOADate();
-                            x2 = this[idx - 1].Index.ToOADate();
+                            x1 = this[idx - 2].Index.Ticks;
+                            x2 = this[idx - 1].Index.Ticks;
                             y1 = this[idx - 2].Value;
                             y2 = this[idx - 1].Value;
-                            this[idx].Value = y1 - (x1 - x) * (y2 - y1) / (x2 - x1);
+                            this[idx].Value = y1 - (double)(x1 - x) * (y2 - y1) / (double)(x2 - x1);
                         }
                     }
                 }
@@ -857,6 +946,61 @@ namespace Numerics.Data
         }
 
         /// <summary>
+        /// Returns a sequence of dates that counts each time interval from the start date.
+        /// </summary>
+        /// <param name="startDate">The first date of the sequence.</param>
+        /// <param name="count">The number of dates to return, including the start date.</param>
+        /// <param name="timeInterval">The time interval between consecutive dates.</param>
+        /// <returns>An array of <paramref name="count"/> dates; the first is <paramref name="startDate"/>.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="timeInterval"/> is irregular.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="count"/> is negative.</exception>
+        /// <remarks>
+        /// <para>
+        /// Month, quarter and year dates are counted from the start date, as pandas <c>DateOffset(months=k)</c> applied to
+        /// the start, so the day of month is kept where the month has it: from January 31, 2020 the monthly dates are
+        /// January 31, February 29, March 31, April 30. Fixed intervals (one minute through seven days) step with
+        /// <see cref="AddTimeInterval(DateTime, TimeInterval)"/>.
+        /// </para>
+        /// <para>
+        /// This is an opt-in alternative to the default stepping. The series constructors, <see cref="ShiftAllDates"/>,
+        /// <see cref="FillMissingDates"/> and the resampling methods chain <see cref="AddTimeInterval(DateTime, TimeInterval)"/>
+        /// from the previous date, so a monthly series from January 31 runs January 31, February 29, March 29. The two
+        /// sequences agree for every start on day 28 or earlier. To build a series on these dates, pass their ticks and the
+        /// values to <see cref="TimeSeries(TimeInterval, IList{long}, IList{double})"/>.
+        /// </para>
+        /// </remarks>
+        public static DateTime[] AnchoredDates(DateTime startDate, int count, TimeInterval timeInterval)
+        {
+            if (timeInterval == TimeInterval.Irregular)
+                throw new ArgumentException("The time interval cannot be irregular.", nameof(timeInterval));
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count), "The count must be non-negative.");
+
+            var dates = new DateTime[count];
+            if (count == 0) return dates;
+            dates[0] = startDate;
+            for (int k = 1; k < count; k++)
+            {
+                switch (timeInterval)
+                {
+                    case TimeInterval.OneMonth:
+                        dates[k] = startDate.AddMonths(k);
+                        break;
+                    case TimeInterval.OneQuarter:
+                        dates[k] = startDate.AddMonths(3 * k);
+                        break;
+                    case TimeInterval.OneYear:
+                        dates[k] = startDate.AddYears(k);
+                        break;
+                    default:
+                        dates[k] = AddTimeInterval(dates[k - 1], timeInterval);
+                        break;
+                }
+            }
+            return dates;
+        }
+
+        /// <summary>
         /// Converts the time interval to hours.
         /// </summary>
         /// <returns>The time interval in hours.</returns>
@@ -998,7 +1142,7 @@ namespace Numerics.Data
         /// <param name="minValidCount">
         /// Optional. The minimum number of non-missing (non-NaN) values that must be present in a window for the sum to be computed; otherwise the output is NaN.
         /// Defaults to <paramref name="period"/> (strict propagation: any NaN in the window produces NaN). Pass a smaller value to sum only the observed entries within each window,
-        /// matching the semantics of pandas <c>min_periods</c> and bottleneck <c>min_count</c>. Note that no scaling is applied — the sum is over observed values only.
+        /// matching the semantics of pandas <c>min_periods</c> and bottleneck <c>min_count</c>. Note that no scaling is applied: the sum is over observed values only.
         /// </param>
         public TimeSeries MovingSum(int period, int? minValidCount = null)
         {
@@ -1236,7 +1380,25 @@ namespace Numerics.Data
         /// </summary>
         /// <param name="timeInterval">The new time interval.</param>
         /// <param name="average">Optional. Determines if values should be averaged (true) or cumulated (false) for larger time steps. Default = true.</param>
-        /// <returns>A new TimeSeries object with the new interval.</returns>
+        /// <returns>A new TimeSeries object with the new interval, or null when either interval has no fixed length in hours.</returns>
+        /// <remarks>
+        /// <para>
+        /// Only the fixed intervals from one minute through seven days are supported; for <see cref="TimeInterval.OneMonth"/>,
+        /// <see cref="TimeInterval.OneQuarter"/>, <see cref="TimeInterval.OneYear"/> or <see cref="TimeInterval.Irregular"/>
+        /// on either side the method returns null. The conversion works on position: the series is assumed to be regular,
+        /// sorted and without gaps.
+        /// </para>
+        /// <para>
+        /// For a larger time step, each block holds the ratio of the intervals (rounded down) of consecutive ordinates,
+        /// counted from the first ordinate rather than aligned to the calendar. A missing value makes its block NaN. The
+        /// last block can be partial, and its mean is taken over the steps it has. Every block holds at least one
+        /// ordinate, so the output has ceil(Count / ratio) ordinates (for example 72 hourly values give 3 daily values).
+        /// </para>
+        /// <para>
+        /// For a smaller time step, averaging interpolates linearly between the ordinates; cumulating divides each value
+        /// evenly among the shorter steps it covers.
+        /// </para>
+        /// </remarks>
         public TimeSeries? ConvertTimeInterval(TimeInterval timeInterval, bool average = true)
         {
             var TS = TimeSeries.TimeIntervalInHours(TimeInterval); // The time step in hours
@@ -1280,7 +1442,7 @@ namespace Numerics.Data
                 // Calculate block average
                 int t = 0;
                 var timeSeries = new TimeSeries(timeInterval);
-                for (int i = 0; i < N; i++)
+                for (int i = 0; i < N && t < Count; i++)
                 {
                     double avg = 0;
                     for (int j = t; j < Math.Min(t + blockDuration, Count); j++)
@@ -1323,7 +1485,7 @@ namespace Numerics.Data
                 // Calculate block sum
                 int t = 0;
                 var timeSeries = new TimeSeries(timeInterval);
-                for (int i = 0; i < N; i++)
+                for (int i = 0; i < N && t < Count; i++)
                 {
                     double sum = 0;
                     for (int j = t; j < Math.Min(t + blockDuration, Count); j++)
@@ -1335,6 +1497,132 @@ namespace Numerics.Data
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Aggregates the series into calendar-aligned blocks of a time interval.
+        /// </summary>
+        /// <param name="timeInterval">The interval of the result. Cannot be <see cref="TimeInterval.Irregular"/>.</param>
+        /// <param name="blockFunction">Optional. The block function: minimum, maximum, average or sum. Default = average.</param>
+        /// <param name="minValidCount">Optional. The fewest non-missing values a block needs; a block with fewer is NaN. Default = 1.</param>
+        /// <returns>A regular series of the requested interval, one ordinate per block from the first block to the last.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="timeInterval"/> is irregular.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="minValidCount"/> is less than 1.</exception>
+        /// <remarks>
+        /// <para>
+        /// Unlike <see cref="ConvertTimeInterval(TimeInterval, bool)"/>, this method works on calendar time, so it suits
+        /// irregular series and series with gaps (for example 15-minute readings to hourly means). Each ordinate is a
+        /// value at its time, and a block holds the ordinates with start &lt;= time &lt; start + interval. Blocks are
+        /// labeled by their start:
+        /// </para>
+        /// <list type="bullet">
+        /// <item>minute and hour intervals are aligned to midnight (for example 00:00, 06:00, 12:00 and 18:00 for six hours);</item>
+        /// <item>one day starts at midnight, and seven days start at midnight of the first ordinate's date;</item>
+        /// <item>month, quarter and year start on the first day of the month, of January, April, July and October, and of January.</item>
+        /// </list>
+        /// <para>
+        /// Missing values (NaN) are skipped. A block with fewer than <paramref name="minValidCount"/> values, including an
+        /// empty block between ordinates, is NaN, which matches pandas <c>resample</c> with <c>min_count</c>. The sum and
+        /// average add values in time order. The series itself is not modified.
+        /// </para>
+        /// </remarks>
+        public TimeSeries AggregateByInterval(TimeInterval timeInterval, BlockFunctionType blockFunction = BlockFunctionType.Average, int minValidCount = 1)
+        {
+            if (timeInterval == TimeInterval.Irregular)
+                throw new ArgumentException("The time interval cannot be irregular.", nameof(timeInterval));
+            if (minValidCount < 1)
+                throw new ArgumentOutOfRangeException(nameof(minValidCount), "The minimum valid count must be at least 1.");
+
+            var result = new TimeSeries(timeInterval);
+            int n = Count;
+            if (n == 0) return result;
+
+            // Flat copies in time order, without changing the series; equal times keep collection order.
+            var ticks = new long[n];
+            var values = new double[n];
+            bool sorted = true;
+            DateTimeKind kind = _seriesOrdinates[0].Index.Kind;
+            for (int i = 0; i < n; i++)
+            {
+                ticks[i] = _seriesOrdinates[i].Index.Ticks;
+                values[i] = _seriesOrdinates[i].Value;
+                if (i > 0 && ticks[i] < ticks[i - 1]) sorted = false;
+            }
+            if (!sorted)
+            {
+                var order = new int[n];
+                for (int i = 0; i < n; i++) order[i] = i;
+                var keys = (long[])ticks.Clone();
+                Array.Sort(order, (a, b) => keys[a] != keys[b] ? keys[a].CompareTo(keys[b]) : a.CompareTo(b));
+                var sortedValues = new double[n];
+                for (int i = 0; i < n; i++)
+                {
+                    ticks[i] = keys[order[i]];
+                    sortedValues[i] = values[order[i]];
+                }
+                values = sortedValues;
+                kind = _seriesOrdinates[order[0]].Index.Kind;
+            }
+
+            DateTime first = new DateTime(ticks[0], kind);
+            DateTime blockStart = IntervalStart(first, timeInterval, first);
+            DateTime blockEnd = AddTimeInterval(blockStart, timeInterval);
+            var ordinates = result._seriesOrdinates;
+            int k = 0;
+            while (k < n)
+            {
+                long end = blockEnd.Ticks;
+                double sum = 0d, min = 0d, max = 0d;
+                int valid = 0;
+                for (; k < n && ticks[k] < end; k++)
+                {
+                    double v = values[k];
+                    if (double.IsNaN(v)) continue;
+                    valid++;
+                    sum += v;
+                    if (valid == 1 || v < min) min = v;
+                    if (valid == 1 || v > max) max = v;
+                }
+
+                double value = double.NaN;
+                if (valid >= minValidCount)
+                {
+                    if (blockFunction == BlockFunctionType.Minimum) value = min;
+                    else if (blockFunction == BlockFunctionType.Maximum) value = max;
+                    else if (blockFunction == BlockFunctionType.Sum) value = sum;
+                    else if (blockFunction == BlockFunctionType.Average) value = sum / valid;
+                }
+                ordinates.Add(new SeriesOrdinate<DateTime, double>(blockStart, value));
+                blockStart = blockEnd;
+                blockEnd = AddTimeInterval(blockStart, timeInterval);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the start of the calendar-aligned block of a time interval that contains a time.
+        /// </summary>
+        /// <param name="time">The time.</param>
+        /// <param name="timeInterval">The block interval.</param>
+        /// <param name="origin">The first time of the series; seven-day blocks start at midnight of its date.</param>
+        private static DateTime IntervalStart(DateTime time, TimeInterval timeInterval, DateTime origin)
+        {
+            switch (timeInterval)
+            {
+                case TimeInterval.OneMonth:
+                    return new DateTime(time.Year, time.Month, 1, 0, 0, 0, time.Kind);
+                case TimeInterval.OneQuarter:
+                    return new DateTime(time.Year, 3 * ((time.Month - 1) / 3) + 1, 1, 0, 0, 0, time.Kind);
+                case TimeInterval.OneYear:
+                    return new DateTime(time.Year, 1, 1, 0, 0, 0, time.Kind);
+                case TimeInterval.SevenDay:
+                    long weeks = (time.Date.Ticks - origin.Date.Ticks) / TimeSpan.TicksPerDay / 7;
+                    return origin.Date.AddDays(7 * weeks);
+                default:
+                    // Minute, hour and day intervals divide a day, so flooring the ticks aligns blocks to midnight.
+                    long length = (long)Math.Round(TimeIntervalInHours(timeInterval) * TimeSpan.TicksPerHour);
+                    return new DateTime(time.Ticks - time.Ticks % length, time.Kind);
+            }
         }
 
         #region Summary Statistics
@@ -1594,91 +1882,33 @@ namespace Numerics.Data
         }
 
         /// <summary>
-        /// Returns an annual (irregular) block series.  
+        /// Returns an annual (irregular) block series.
         /// </summary>
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
         /// <param name="period">Optional. The time period to perform smoothing over. If time interval is 1-hour, and period = 12, the smoothing will be computed over a moving 12 hour block. Default = 1.</param>
+        /// <remarks>
+        /// Each block holds the ordinates of one calendar year in collection order. Minimum and maximum report
+        /// the first ordinate that attains the extreme; sum and average report the date of the last ordinate in
+        /// the block. A block whose result is NaN (for example a sum over a missing value) is omitted.
+        /// </remarks>
         public TimeSeries CalendarYearSeries(BlockFunctionType blockFunction = BlockFunctionType.Maximum, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             var result = new TimeSeries(TimeInterval.Irregular);
+            GetBlockSource(smoothingFunction, period, false, out var dates, out var values);
+            if (dates.Length == 0) return result;
 
-            // First, perform smoothing function
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.Difference)
-            {
-                smoothedSeries = Difference(period);
-            }
+            var keys = new int[dates.Length];
+            for (int i = 0; i < dates.Length; i++)
+                keys[i] = dates[i].Year;
+            var buckets = new BlockBuckets(keys);
 
-            // Then, perform block function
-            for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
+            for (int i = buckets.MinKey; i <= buckets.MaxKey; i++)
             {
-                var blockData = smoothedSeries.Where(x => x.Index.Year == i).ToList();
-                var ordinate = new SeriesOrdinate<DateTime, double>() { Value = double.NaN };
-
-                if (blockFunction == BlockFunctionType.Minimum)
-                {
-                    double min = double.MaxValue;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        if (blockData[j].Value < min)
-                        {
-                            min = blockData[j].Value;
-                            ordinate.Index = blockData[j].Index;
-                            ordinate.Value = blockData[j].Value;
-                        }
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Maximum)
-                {
-                    double max = double.MinValue;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        if (blockData[j].Value > max)
-                        {
-                            max = blockData[j].Value;
-                            ordinate.Index = blockData[j].Index;
-                            ordinate.Value = blockData[j].Value;
-                        }
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Sum)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        sum += blockData[j].Value;
-                    }
-                    if (blockData.Count > 0)
-                    {
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum;
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Average)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        sum += blockData[j].Value;
-                    }
-                    if (blockData.Count > 0)
-                    {
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum / blockData.Count;
-                    }
-                }
-
-                if (!double.IsNaN(ordinate.Value))
-                    result.Add(ordinate);
+                var reducer = new BlockReducer(blockFunction);
+                buckets.Accumulate(i, dates, values, ref reducer);
+                if (reducer.TryGetResult(out var date, out double value))
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, value));
             }
             return result;
         }
@@ -1690,6 +1920,19 @@ namespace Numerics.Data
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
         /// <param name="period">Optional. The time period to perform smoothing over. If time interval is 1-hour, and period = 12, the smoothing will be computed over a moving 12 hour block. Default = 1.</param>
+        /// <remarks>
+        /// <para>
+        /// A custom year is labeled by the calendar year in which it ends; for example, with a start month of 10 the
+        /// 2021 water year runs from October 2020 through September 2021. Within a block the ordinates are taken in
+        /// time order (in collection order when the start month is 1). Minimum and maximum report the first ordinate
+        /// that attains the extreme; sum and average report the date of the last ordinate in the block. A block whose
+        /// result is NaN is omitted.
+        /// </para>
+        /// <para>
+        /// The reported date is the date of the selected ordinate; the day of month is never clamped (for example, with a
+        /// start month of 10, a maximum on 30 November 2021 is reported on 30 November 2021).
+        /// </para>
+        /// </remarks>
         public TimeSeries CustomYearSeries(int startMonth = 10, BlockFunctionType blockFunction = BlockFunctionType.Maximum, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             if (startMonth < 1 || startMonth > 12)
@@ -1699,101 +1942,46 @@ namespace Numerics.Data
 
             var result = new TimeSeries(TimeInterval.Irregular);
 
-            // First, perform smoothing function
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.Difference)
-            {
-                smoothedSeries = Difference(period);
-            }
-
-            // Then, shift the dates
+            // The year is blocked on the dates shifted so the custom year starts in January. Shifting
+            // sorts the series by time first, so the blocks are taken in time order.
             int shift = startMonth != 1 ? 12 - startMonth + 1 : 0;
-            smoothedSeries = startMonth != 1 ? smoothedSeries.ShiftDatesByMonth(shift) : smoothedSeries;
+            GetBlockSource(smoothingFunction, period, startMonth != 1, out var dates, out var values);
+            if (dates.Length == 0) return result;
 
-            // Then, perform block function
-            for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
+            var keys = new int[dates.Length];
+            for (int i = 0; i < dates.Length; i++)
             {
-                var blockData = smoothedSeries.Where(x => x.Index.Year == i).ToList();
-                var ordinate = new SeriesOrdinate<DateTime, double>() { Value = double.NaN };
-
-                if (blockFunction == BlockFunctionType.Minimum)
-                {
-                    double min = double.MaxValue;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        if (blockData[j].Value < min)
-                        {
-                            min = blockData[j].Value;
-                            ordinate.Index = blockData[j].Index;
-                            ordinate.Value = blockData[j].Value;
-                        }
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Maximum)
-                {
-                    double max = double.MinValue;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        if (blockData[j].Value > max)
-                        {
-                            max = blockData[j].Value;
-                            ordinate.Index = blockData[j].Index;
-                            ordinate.Value = blockData[j].Value;
-                        }
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Sum)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        sum += blockData[j].Value;
-                    }
-                    if (blockData.Count > 0)
-                    {
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum;
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Average)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        sum += blockData[j].Value;
-                    }
-                    if (blockData.Count > 0)
-                    {
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum / blockData.Count;
-                    }
-                }
-
-                if (!double.IsNaN(ordinate.Value))
-                    result.Add(ordinate);
+                keys[i] = shift != 0 ? dates[i].AddMonths(shift).Year : dates[i].Year;
+                // A negative zero is reported as positive zero, so the block values do not depend on the sign of zero.
+                if (shift != 0 && values[i] == 0d) values[i] = 0d;
             }
+            var buckets = new BlockBuckets(keys);
 
-            // Finally, shift the dates back
-            result = startMonth != 1 ? result.ShiftDatesByMonth(-shift) : result;
+            for (int i = buckets.MinKey; i <= buckets.MaxKey; i++)
+            {
+                var reducer = new BlockReducer(blockFunction);
+                buckets.Accumulate(i, dates, values, ref reducer);
+                if (reducer.TryGetResult(out var date, out double value))
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, value));
+            }
             return result;
         }
 
         /// <summary>
-        /// Returns a custom annual (irregular) block series based on a customized window. 
+        /// Returns a custom annual (irregular) block series based on a customized window.
         /// </summary>
         /// <param name="startMonth">The month when the custom year begins.</param>
         /// <param name="endMonth">The month when the custom year ends.</param>
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
         /// <param name="period">Optional. The time period to perform smoothing over. If time interval is 1-hour, and period = 12, the smoothing will be computed over a moving 12 hour block. Default = 1.</param>
+        /// <remarks>
+        /// A window is labeled by the calendar year in which it ends. When the start month is later than the end month
+        /// the window spans two calendar years, and the months after the end month of the last year of record fall in
+        /// a window that is not reported. Within a window the ordinates are taken month by month, in collection order
+        /// within each month. Minimum and maximum report the first ordinate that attains the extreme; sum and average
+        /// report the date of the last ordinate in the window. A window whose result is NaN is omitted.
+        /// </remarks>
         public TimeSeries CustomYearSeries(int startMonth, int endMonth, BlockFunctionType blockFunction = BlockFunctionType.Maximum, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             if (startMonth < 1 || startMonth > 12)
@@ -1806,107 +1994,30 @@ namespace Numerics.Data
             }
 
             var result = new TimeSeries(TimeInterval.Irregular);
+            GetBlockSource(smoothingFunction, period, false, out var dates, out var values);
+            if (dates.Length == 0) return result;
 
-            // First, perform smoothing function
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            var buckets = MonthBuckets(dates, out int startYear, out int endYear);
+            for (int i = startYear; i <= endYear; i++)
             {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.Difference)
-            {
-                smoothedSeries = Difference(period);
-            }
-
-            // Then, perform block function
-            for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
-            {
-
-                var blockData = new List<SeriesOrdinate<DateTime, double>>();
-                var ordinate = new SeriesOrdinate<DateTime, double>() { Value = double.NaN };
-
+                var reducer = new BlockReducer(blockFunction);
                 if (startMonth <= endMonth)
                 {
                     // Months are within a single calendar year
                     for (int j = startMonth; j <= endMonth; j++)
-                    {
-                        blockData.AddRange(smoothedSeries.Where(x => x.Index.Year == i && x.Index.Month == j).ToList());
-                    }
+                        buckets.Accumulate(MonthKey(i, j), dates, values, ref reducer);
                 }
                 else
                 {
-                    // Months overlap two calendar years
-                    // First get the previous year's months
+                    // Months overlap two calendar years: the previous year's months, then the current year's
                     for (int j = startMonth; j <= 12; j++)
-                    {
-                        blockData.AddRange(smoothedSeries.Where(x => x.Index.Year == i - 1 && x.Index.Month == j).ToList());
-                    }
-                    // Then the current year's months
+                        buckets.Accumulate(MonthKey(i - 1, j), dates, values, ref reducer);
                     for (int j = 1; j <= endMonth; j++)
-                    {
-                        blockData.AddRange(smoothedSeries.Where(x => x.Index.Year == i && x.Index.Month == j).ToList());
-                    }
+                        buckets.Accumulate(MonthKey(i, j), dates, values, ref reducer);
                 }
 
-                if (blockFunction == BlockFunctionType.Minimum)
-                {
-                    double min = double.MaxValue;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        if (blockData[j].Value < min)
-                        {
-                            min = blockData[j].Value;
-                            ordinate.Index = blockData[j].Index;
-                            ordinate.Value = blockData[j].Value;
-                        }
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Maximum)
-                {
-                    double max = double.MinValue;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        if (blockData[j].Value > max)
-                        {
-                            max = blockData[j].Value;
-                            ordinate.Index = blockData[j].Index;
-                            ordinate.Value = blockData[j].Value;
-                        }
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Sum)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        sum += blockData[j].Value;
-                    }
-                    if (blockData.Count > 0)
-                    {
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum;
-                    }
-                }
-                else if (blockFunction == BlockFunctionType.Average)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < blockData.Count; j++)
-                    {
-                        sum += blockData[j].Value;
-                    }
-                    if (blockData.Count > 0)
-                    {
-                        ordinate.Index = blockData.Last().Index;
-                        ordinate.Value = sum / blockData.Count;
-                    }
-                }
-
-                if (!double.IsNaN(ordinate.Value))
-                    result.Add(ordinate);
+                if (reducer.TryGetResult(out var date, out double value))
+                    result.Add(new SeriesOrdinate<DateTime, double>(date, value));
             }
             return result;
         }
@@ -1917,91 +2028,27 @@ namespace Numerics.Data
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
         /// <param name="period">Optional. The time period to perform smoothing over. If time interval is 1-hour, and period = 12, the smoothing will be computed over a moving 12 hour block. Default = 1.</param>
+        /// <remarks>
+        /// Each block holds the ordinates of one calendar month in collection order. Minimum and maximum report the
+        /// first ordinate that attains the extreme; sum and average report the date of the last ordinate in the block.
+        /// A block whose result is NaN is omitted.
+        /// </remarks>
         public TimeSeries MonthlySeries(BlockFunctionType blockFunction = BlockFunctionType.Maximum, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             var result = new TimeSeries(TimeInterval.Irregular);
+            GetBlockSource(smoothingFunction, period, false, out var dates, out var values);
+            if (dates.Length == 0) return result;
 
-            // Create smoothed series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            var buckets = MonthBuckets(dates, out int startYear, out int endYear);
+            for (int i = startYear; i <= endYear; i++)
             {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
-            {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
-            }
-            else if (smoothingFunction == SmoothingFunctionType.Difference)
-            {
-                smoothedSeries = Difference(period);
-            }
-
-            for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
-            {
-
                 for (int k = 1; k <= 12; k++)
                 {
-                    var blockData = smoothedSeries.Where(x => x.Index.Year == i && x.Index.Month == k).ToList();
-                    var ordinate = new SeriesOrdinate<DateTime, double>() { Value = double.NaN };
-
-                    if (blockFunction == BlockFunctionType.Minimum)
-                    {
-                        double min = double.MaxValue;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            if (blockData[j].Value < min)
-                            {
-                                min = blockData[j].Value;
-                                ordinate.Index = blockData[j].Index;
-                                ordinate.Value = blockData[j].Value;
-                            }
-                        }
-                    }
-                    else if (blockFunction == BlockFunctionType.Maximum)
-                    {
-                        double max = double.MinValue;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            if (blockData[j].Value > max)
-                            {
-                                max = blockData[j].Value;
-                                ordinate.Index = blockData[j].Index;
-                                ordinate.Value = blockData[j].Value;
-                            }
-                        }
-                    }
-                    else if (blockFunction == BlockFunctionType.Sum)
-                    {
-                        double sum = 0;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            sum += blockData[j].Value;
-                        }
-                        if (blockData.Count > 0)
-                        {
-                            ordinate.Index = blockData.Last().Index;
-                            ordinate.Value = sum;
-                        }
-                    }
-                    else if (blockFunction == BlockFunctionType.Average)
-                    {
-                        double sum = 0;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            sum += blockData[j].Value;
-                        }
-                        if (blockData.Count > 0)
-                        {
-                            ordinate.Index = blockData.Last().Index;
-                            ordinate.Value = sum / blockData.Count;
-                        }
-                    }
-
-                    if (!double.IsNaN(ordinate.Value))
-                        result.Add(ordinate);
+                    var reducer = new BlockReducer(blockFunction);
+                    buckets.Accumulate(MonthKey(i, k), dates, values, ref reducer);
+                    if (reducer.TryGetResult(out var date, out double value))
+                        result.Add(new SeriesOrdinate<DateTime, double>(date, value));
                 }
-
-
             }
             return result;
         }
@@ -2012,101 +2059,270 @@ namespace Numerics.Data
         /// <param name="blockFunction">Optional. The block function type; e.g. min, max, sum, or average. Default = Maximum.</param>
         /// <param name="smoothingFunction">Optional. The smoothing function type. Default = None.</param>
         /// <param name="period">Optional. The time period to perform smoothing over. If time interval is 1-hour, and period = 12, the smoothing will be computed over a moving 12 hour block. Default = 1.</param>
+        /// <remarks>
+        /// Each block holds the ordinates of one calendar quarter, month by month, in collection order within each
+        /// month. Minimum and maximum report the first ordinate that attains the extreme; sum and average report the
+        /// date of the last ordinate in the block. A block whose result is NaN is omitted.
+        /// </remarks>
         public TimeSeries QuarterlySeries(BlockFunctionType blockFunction = BlockFunctionType.Maximum, SmoothingFunctionType smoothingFunction = SmoothingFunctionType.None, int period = 1)
         {
             var qStart = new int[] { 1, 4, 7, 10 };
             var qEnd = new int[] { 3, 6, 9, 12 };
 
             var result = new TimeSeries(TimeInterval.Irregular);
+            GetBlockSource(smoothingFunction, period, false, out var dates, out var values);
+            if (dates.Length == 0) return result;
 
-            // Create smoothed series
-            TimeSeries smoothedSeries = Clone();
-            if (smoothingFunction == SmoothingFunctionType.MovingAverage)
+            var buckets = MonthBuckets(dates, out int startYear, out int endYear);
+            for (int i = startYear; i <= endYear; i++)
             {
-                smoothedSeries = period == 1 ? Clone() : MovingAverage(period);
+                for (int q = 0; q < qEnd.Length; q++)
+                {
+                    var reducer = new BlockReducer(blockFunction);
+                    for (int j = qStart[q]; j <= qEnd[q]; j++)
+                        buckets.Accumulate(MonthKey(i, j), dates, values, ref reducer);
+                    if (reducer.TryGetResult(out var date, out double value))
+                        result.Add(new SeriesOrdinate<DateTime, double>(date, value));
+                }
             }
-            else if (smoothingFunction == SmoothingFunctionType.MovingSum)
+            return result;
+        }
+
+        /// <summary>
+        /// Gets the dates and values a block series method aggregates.
+        /// </summary>
+        /// <param name="smoothingFunction">The smoothing function type.</param>
+        /// <param name="period">The smoothing period.</param>
+        /// <param name="sortByTime">True to return the ordinates in time order, as <see cref="ShiftDatesByMonth(int)"/> sorts them.</param>
+        /// <param name="dates">The ordinate dates.</param>
+        /// <param name="values">The ordinate values.</param>
+        /// <remarks>
+        /// Without smoothing, or with a moving average or sum over one period, the dates and values are mapped as
+        /// <see cref="Clone"/> maps them, without copying the series.
+        /// </remarks>
+        private void GetBlockSource(SmoothingFunctionType smoothingFunction, int period, bool sortByTime, out DateTime[] dates, out double[] values)
+        {
+            TimeSeries source = this;
+            bool cloned = true;
+            if (smoothingFunction == SmoothingFunctionType.MovingAverage && period != 1)
             {
-                smoothedSeries = period == 1 ? Clone() : MovingSum(period);
+                source = MovingAverage(period);
+                cloned = false;
+            }
+            else if (smoothingFunction == SmoothingFunctionType.MovingSum && period != 1)
+            {
+                source = MovingSum(period);
+                cloned = false;
             }
             else if (smoothingFunction == SmoothingFunctionType.Difference)
             {
-                smoothedSeries = Difference(period);
+                source = Difference(period);
+                cloned = false;
             }
 
-            for (int i = smoothedSeries.StartDate.Year; i <= smoothedSeries.EndDate.Year; i++)
+            int n = source.Count;
+            dates = new DateTime[n];
+            values = new double[n];
+            bool ascending = true;
+            for (int i = 0; i < n; i++)
             {
-
-                for (int q = 0; q < qEnd.Length; q++)
-                {
-                    var blockData = new List<SeriesOrdinate<DateTime, double>>();
-                    for (int j = qStart[q]; j <= qEnd[q]; j++)
-                    {
-                        blockData.AddRange(smoothedSeries.Where(x => x.Index.Year == i && x.Index.Month == j).ToList());
-                    }
-
-                    var ordinate = new SeriesOrdinate<DateTime, double>() { Value = double.NaN };
-
-                    if (blockFunction == BlockFunctionType.Minimum)
-                    {
-                        double min = double.MaxValue;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            if (blockData[j].Value < min)
-                            {
-                                min = blockData[j].Value;
-                                ordinate.Index = blockData[j].Index;
-                                ordinate.Value = blockData[j].Value;
-                            }
-                        }
-                    }
-                    else if (blockFunction == BlockFunctionType.Maximum)
-                    {
-                        double max = double.MinValue;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            if (blockData[j].Value > max)
-                            {
-                                max = blockData[j].Value;
-                                ordinate.Index = blockData[j].Index;
-                                ordinate.Value = blockData[j].Value;
-                            }
-                        }
-                    }
-                    else if (blockFunction == BlockFunctionType.Sum)
-                    {
-                        double sum = 0;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            sum += blockData[j].Value;
-                        }
-                        if (blockData.Count > 0)
-                        {
-                            ordinate.Index = blockData.Last().Index;
-                            ordinate.Value = sum;
-                        }
-                    }
-                    else if (blockFunction == BlockFunctionType.Average)
-                    {
-                        double sum = 0;
-                        for (int j = 0; j < blockData.Count; j++)
-                        {
-                            sum += blockData[j].Value;
-                        }
-                        if (blockData.Count > 0)
-                        {
-                            ordinate.Index = blockData.Last().Index;
-                            ordinate.Value = sum / blockData.Count;
-                        }
-                    }
-
-                    if (!double.IsNaN(ordinate.Value))
-                        result.Add(ordinate);
-
-                }
-
+                var ordinate = source._seriesOrdinates[i];
+                dates[i] = cloned ? CloneIndex(ordinate.Index) : ordinate.Index;
+                values[i] = cloned ? CloneValue(ordinate.Value) : ordinate.Value;
+                if (i > 0 && dates[i] <= dates[i - 1]) ascending = false;
             }
-            return result;
+            if (!sortByTime || ascending) return;
+
+            // Distinct ascending dates are already in the only sorted order. Otherwise use the same sort as
+            // SortByTime, so equal dates end up in the same order.
+            var ordinates = new List<SeriesOrdinate<DateTime, double>>(n);
+            for (int i = 0; i < n; i++)
+                ordinates.Add(new SeriesOrdinate<DateTime, double>(dates[i], values[i]));
+            ordinates.Sort((x, y) => x.Index.CompareTo(y.Index));
+            for (int i = 0; i < n; i++)
+            {
+                dates[i] = ordinates[i].Index;
+                values[i] = ordinates[i].Value;
+            }
+        }
+
+        /// <summary>
+        /// Returns the block key of a calendar month.
+        /// </summary>
+        /// <param name="year">The year.</param>
+        /// <param name="month">The month, from 1 to 12.</param>
+        private static int MonthKey(int year, int month)
+        {
+            return year * 12 + month - 1;
+        }
+
+        /// <summary>
+        /// Groups the ordinates by calendar month.
+        /// </summary>
+        /// <param name="dates">The ordinate dates.</param>
+        /// <param name="startYear">The first year of record.</param>
+        /// <param name="endYear">The last year of record.</param>
+        private static BlockBuckets MonthBuckets(DateTime[] dates, out int startYear, out int endYear)
+        {
+            var keys = new int[dates.Length];
+            startYear = int.MaxValue;
+            endYear = int.MinValue;
+            for (int i = 0; i < dates.Length; i++)
+            {
+                keys[i] = MonthKey(dates[i].Year, dates[i].Month);
+                if (dates[i].Year < startYear) startYear = dates[i].Year;
+                if (dates[i].Year > endYear) endYear = dates[i].Year;
+            }
+            return new BlockBuckets(keys);
+        }
+
+        /// <summary>
+        /// Ordinate positions grouped by an integer block key, in collection order within each key.
+        /// </summary>
+        /// <remarks>
+        /// A stable counting sort on the key: one pass replaces a scan of the whole series per block, and keeps
+        /// the order a <c>Where</c> filter over the series would give.
+        /// </remarks>
+        private readonly struct BlockBuckets
+        {
+            private readonly int[] _order;
+            private readonly int[] _start;
+
+            /// <summary>
+            /// Groups positions 0 to n - 1 by their keys.
+            /// </summary>
+            /// <param name="keys">The block key of each position; must not be empty.</param>
+            public BlockBuckets(int[] keys)
+            {
+                int min = int.MaxValue, max = int.MinValue;
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    if (keys[i] < min) min = keys[i];
+                    if (keys[i] > max) max = keys[i];
+                }
+                MinKey = min;
+                MaxKey = max;
+                _start = new int[max - min + 2];
+                for (int i = 0; i < keys.Length; i++)
+                    _start[keys[i] - min + 1]++;
+                for (int k = 1; k < _start.Length; k++)
+                    _start[k] += _start[k - 1];
+                var next = (int[])_start.Clone();
+                _order = new int[keys.Length];
+                for (int i = 0; i < keys.Length; i++)
+                    _order[next[keys[i] - min]++] = i;
+            }
+
+            /// <summary>
+            /// The smallest key.
+            /// </summary>
+            public int MinKey { get; }
+
+            /// <summary>
+            /// The largest key.
+            /// </summary>
+            public int MaxKey { get; }
+
+            /// <summary>
+            /// Adds the ordinates of one key to a block reducer, in order. A key out of range adds nothing.
+            /// </summary>
+            /// <param name="key">The block key.</param>
+            /// <param name="dates">The dates by position.</param>
+            /// <param name="values">The values by position.</param>
+            /// <param name="reducer">The reducer to update.</param>
+            public void Accumulate(int key, DateTime[] dates, double[] values, ref BlockReducer reducer)
+            {
+                if (key < MinKey || key > MaxKey) return;
+                for (int j = _start[key - MinKey]; j < _start[key - MinKey + 1]; j++)
+                    reducer.Add(dates[_order[j]], values[_order[j]]);
+            }
+        }
+
+        /// <summary>
+        /// Applies a block function to the ordinates of one block, in order.
+        /// </summary>
+        /// <remarks>
+        /// The reported date follows the rule of the <see cref="SeriesOrdinate{TIndex, TValue}.Index"/> setter, which
+        /// ignores a date equal in ticks to the current one: a date of zero ticks keeps the default kind, and a later
+        /// extreme at the same ticks keeps the earlier extreme's kind.
+        /// </remarks>
+        private struct BlockReducer
+        {
+            private readonly BlockFunctionType _function;
+            private double _extreme;
+            private double _sum;
+            private int _count;
+            private bool _selected;
+            private DateTime _index;
+
+            /// <summary>
+            /// Starts an empty block.
+            /// </summary>
+            /// <param name="function">The block function type.</param>
+            public BlockReducer(BlockFunctionType function)
+            {
+                _function = function;
+                _extreme = function == BlockFunctionType.Minimum ? double.MaxValue : double.MinValue;
+                _sum = 0d;
+                _count = 0;
+                _selected = false;
+                _index = default;
+            }
+
+            /// <summary>
+            /// Returns the date an ordinate holds after <paramref name="value"/> is assigned over <paramref name="current"/>.
+            /// </summary>
+            /// <param name="current">The current date.</param>
+            /// <param name="value">The date assigned.</param>
+            private static DateTime Assign(DateTime current, DateTime value)
+            {
+                return current.Equals(value) ? current : value;
+            }
+
+            /// <summary>
+            /// Adds the next ordinate of the block.
+            /// </summary>
+            /// <param name="date">The ordinate date.</param>
+            /// <param name="value">The ordinate value.</param>
+            public void Add(DateTime date, double value)
+            {
+                if (_function == BlockFunctionType.Minimum)
+                {
+                    if (value < _extreme) { _extreme = value; _index = Assign(_index, date); _selected = true; }
+                }
+                else if (_function == BlockFunctionType.Maximum)
+                {
+                    if (value > _extreme) { _extreme = value; _index = Assign(_index, date); _selected = true; }
+                }
+                else
+                {
+                    _sum += value;
+                    _count++;
+                    // Sum and average report the last date, assigned once over the default.
+                    _index = Assign(default, date);
+                    _selected = true;
+                }
+            }
+
+            /// <summary>
+            /// Gets the block result.
+            /// </summary>
+            /// <param name="index">The reported date: the first extreme for minimum and maximum, the last ordinate for sum and average.</param>
+            /// <param name="value">The block value.</param>
+            /// <returns>True when the block has a result that is not NaN.</returns>
+            public bool TryGetResult(out DateTime index, out double value)
+            {
+                index = _index;
+                value = double.NaN;
+                if (!_selected) return false;
+                if (_function == BlockFunctionType.Minimum || _function == BlockFunctionType.Maximum)
+                    value = _extreme;
+                else if (_function == BlockFunctionType.Sum)
+                    value = _sum;
+                else if (_function == BlockFunctionType.Average)
+                    value = _sum / _count;
+                return !double.IsNaN(value);
+            }
         }
 
         /// <summary>
@@ -2118,7 +2334,7 @@ namespace Numerics.Data
         /// <remarks>
         /// This is the exact preprocessing <see cref="PeaksOverThresholdSeries"/> applies before
         /// comparing values to the threshold, exposed so threshold-selection diagnostics can operate
-        /// on the same series the extraction thresholds — plotting diagnostics computed from the raw
+        /// on the same series the extraction thresholds; plotting diagnostics computed from the raw
         /// series would sit on a different value scale than the threshold whenever smoothing is
         /// configured. Moving average and moving sum with a period of 1 are identity clones;
         /// differencing applies at every period.
@@ -2228,7 +2444,7 @@ namespace Numerics.Data
         /// Resample the time series using the conditional k-Nearest Neighbors bootstrap of
         /// Lall and Sharma (1996). At each step, finds the K historical observations whose
         /// (standardized) value is closest to the current state, randomly picks one of them
-        /// at index j, and advances by taking x[j+1] — the observation that historically
+        /// at index j, and advances by taking x[j+1], the observation that historically
         /// came AFTER the chosen neighbor. This preserves the conditional p(x_{t+1} | x_t).
         /// </summary>
         /// <param name="timeSteps">The number of time steps to resample.</param>
@@ -2277,7 +2493,7 @@ namespace Numerics.Data
                 var kNearest = kNN.GetNeighbors([val]);
                 if (kNearest == null) continue;
                 int selectedIdx = kNearest[prng.Next(kNearest.Length)];
-                // Advance to the observation that came AFTER the chosen neighbor — this is
+                // Advance to the observation that came AFTER the chosen neighbor; this is
                 // what makes it a CONDITIONAL bootstrap of p(x_{t+1} | x_t). Returning
                 // this[selectedIdx] would collapse to a near-stationary process around the
                 // initial value because every returned neighbor is, by construction, close
@@ -2356,9 +2572,66 @@ namespace Numerics.Data
         /// <summary>
         /// Creates a copy of the time series.
         /// </summary>
+        /// <returns>An independent copy with new ordinate objects.</returns>
+        /// <remarks>
+        /// The ordinates are copied directly, with the same result as the XML round trip
+        /// <c>new TimeSeries(ToXElement())</c>: every NaN is stored as <see cref="double.NaN"/>,
+        /// negative zero becomes positive zero on .NET Framework (whose "G17" format drops the sign),
+        /// and a date of <see cref="DateTimeKind.Local"/> kind is re-parsed from its round-trip string.
+        /// </remarks>
         public TimeSeries Clone()
         {
-            return new TimeSeries(ToXElement());
+            var result = new TimeSeries(_timeInterval);
+            result._seriesOrdinates.Capacity = _seriesOrdinates.Count;
+            for (int i = 0; i < _seriesOrdinates.Count; i++)
+            {
+                var ordinate = _seriesOrdinates[i];
+                result._seriesOrdinates.Add(new SeriesOrdinate<DateTime, double>(CloneIndex(ordinate.Index), CloneValue(ordinate.Value)));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the date a clone stores, matching the "o" format round trip of <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="index">The date to copy.</param>
+        private static DateTime CloneIndex(DateTime index)
+        {
+            // Unspecified and UTC dates round-trip exactly. A local date is converted through its
+            // UTC offset, which moves a time inside a daylight-saving gap.
+            if (index.Kind != DateTimeKind.Local) return index;
+            return DateTime.ParseExact(index.ToString("o", CultureInfo.InvariantCulture), "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        }
+
+        /// <summary>
+        /// Returns the value a clone stores, matching the "G17" round trip of <see cref="ToXElement"/>.
+        /// </summary>
+        /// <param name="value">The value to copy.</param>
+        private static double CloneValue(double value)
+        {
+            if (double.IsNaN(value)) return double.NaN;
+#if NETFRAMEWORK
+            // .NET Framework formats negative zero as "0".
+            if (value == 0d) return 0d;
+#endif
+            return value;
+        }
+
+        /// <summary>
+        /// Returns the ordinate dates as an array of <see cref="DateTime.Ticks"/>.
+        /// </summary>
+        /// <returns>An array with the ticks of each ordinate date, in collection order.</returns>
+        /// <remarks>
+        /// A bulk accessor for interop callers (for example a Python binding), which can copy one
+        /// <see cref="long"/> array instead of converting each <see cref="DateTime"/>. The
+        /// <see cref="DateTime.Kind"/> of the dates is not included.
+        /// </remarks>
+        public long[] IndexTicksToArray()
+        {
+            var result = new long[_seriesOrdinates.Count];
+            for (int i = 0; i < result.Length; i++)
+                result[i] = _seriesOrdinates[i].Index.Ticks;
+            return result;
         }
 
     }

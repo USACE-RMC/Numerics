@@ -200,5 +200,28 @@ namespace Mathematics.LinearAlgebra
             }
         }
 
+        /// <summary>
+        /// Solve(Matrix) returns an n x m solution (a 3 x 2 right-hand side gives a 3 x 2 result), and a non-square
+        /// matrix such as 2 x 3 is rejected rather than truncated.
+        /// </summary>
+        [TestMethod()]
+        public void Test_SolveMatrixShapeAndSquareCheck()
+        {
+            var A = new Matrix(new double[,] { { 4, 1, 0 }, { 1, 3, 1 }, { 0, 1, 2 } });
+            // Exact solution X; B = A * X.
+            var X = new Matrix(new double[,] { { 1, -2 }, { 0.5, 3 }, { -1, 0.25 } });
+            var B = A * X;
+            var solved = new LUDecomposition(A).Solve(B);
+            Assert.AreEqual(3, solved.NumberOfRows);
+            Assert.AreEqual(2, solved.NumberOfColumns);
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 2; j++)
+                    Assert.AreEqual(X[i, j], solved[i, j], 1E-14);
+            var wide = new LUDecomposition(A).Solve(new Matrix(3, 5));
+            Assert.AreEqual(5, wide.NumberOfColumns);
+
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => new LUDecomposition(new Matrix(new double[,] { { 1, 2, 3 }, { 4, 5, 6 } })));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => new LUDecomposition(new Matrix(3, 2)));
+        }
     }
 }

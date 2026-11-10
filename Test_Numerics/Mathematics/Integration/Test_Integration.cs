@@ -78,5 +78,17 @@ namespace Mathematics.Integration
             Assert.AreEqual(e, val, 1E-3);
 
         }
+
+        /// <summary>
+        /// The shared node and weight tables reproduce the per-call arrays bit for bit. The expected
+        /// patterns were produced by the implementation that allocated the arrays on every call.
+        /// </summary>
+        [TestMethod]
+        public void Test_GaussLegendre_BitsUnchanged()
+        {
+            Func<double, double> f = x => Math.Exp(-x) * Math.Cos(3 * x);
+            Assert.AreEqual(0x3FB35E863514D5AA, BitConverter.DoubleToInt64Bits(Numerics.Mathematics.Integration.Integration.GaussLegendre(f, 0, 2)));
+            Assert.AreEqual(0x3FB35E863514D490, BitConverter.DoubleToInt64Bits(Numerics.Mathematics.Integration.Integration.GaussLegendre20(f, 0, 2)));
+        }
     }
 }

@@ -20,7 +20,7 @@ namespace Numerics.Distributions
     /// </para>
     /// <para>
     ///     In probability and statistics, the PERT distribution is a family of continuous probability distributions
-    ///     defined by the minimum (a), most likely (b) and maximum (c) values that a variable can take.
+    ///     defined by the minimum (a), most likely (c) and maximum (b) values that a variable can take.
     ///     It is a transformation of the four-parameter Beta distribution.
     /// </para>
     /// <para>
@@ -162,12 +162,16 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Returns the exact median InverseCDF(0.5) of the underlying four-parameter Beta distribution. When the minimum,
+        /// most likely and maximum values are equal, the median is that fixed value.
+        /// </remarks>
         public override double Median
         {
-            get 
+            get
             {
                 if (_min.AlmostEquals(_max) && _min.AlmostEquals(_mode)) return _min;
-                return (Min + 6 * MostLikely + Max) / 8; 
+                return InverseCDF(0.5d);
             }
         }
 
@@ -229,6 +233,12 @@ namespace Numerics.Distributions
                 var five = Statistics.Percentile(data, 0.05, true);
                 var fifty = Statistics.Percentile(data, 0.5, true);
                 var ninetyFive = Statistics.Percentile(data, 0.95, true);
+                // Equal 5th and 95th percentiles define the fixed-value PERT
+                if (five == ninetyFive)
+                {
+                    SetParameters(five, five, five);
+                    return;
+                }
                 var pertP = new PertPercentile(five, fifty, ninetyFive);
                 pertP.SolveParameters();
                 var pert = pertP.ToPert();
@@ -320,30 +330,15 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The established envelope bounds the min below by -10^(ceil(log10|min|) + 1) and the max above by
+        /// 10^(ceil(log10|max|) + 1). When that envelope does not contain its initial values, for example when the sample
+        /// minimum or maximum is exactly zero, the bound magnitude is based on the sample scale instead and the initial mode
+        /// is clamped into the sample range.
+        /// </remarks>
         public Tuple<double[], double[], double[]> GetParameterConstraints(IList<double> sample)
         {
-            var initialVals = new double[NumberOfParameters];
-            var lowerVals = new double[NumberOfParameters];
-            var upperVals = new double[NumberOfParameters];
-            // Estimate initial values using the method of moments (a.k.a product moments).
-            var min = Tools.Min(sample);
-            var max = Tools.Max(sample);
-            var mean = Tools.Mean(sample);
-            var mode = (mean * 6d - max - min) / 4d;
-            initialVals[0] = min - Tools.DoubleMachineEpsilon;
-            initialVals[1] = mode;
-            initialVals[2] = max + Tools.DoubleMachineEpsilon;
-            // Get bounds of min
-            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(min)) + 1d));
-            upperVals[0] = min;
-            // Get bounds of mode
-            lowerVals[1] = min;
-            upperVals[1] = max;
-            // Get bounds of max
-            lowerVals[2] = max;
-            upperVals[2] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(max)) + 1d));
-
-            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+            return DistributionNumerics.MinModeMaxConstraints(sample, (mean, min, max) => (mean * 6d - max - min) / 4d);
         }
 
         /// <inheritdoc/>

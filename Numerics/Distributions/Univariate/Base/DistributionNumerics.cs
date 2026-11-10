@@ -54,6 +54,84 @@ namespace Numerics.Distributions
             }
         }
 
+        /// <summary>
+        /// Returns the initial values and bounds of a three-parameter (min, mode, max) distribution fitted to a sample.
+        /// </summary>
+        /// <param name="sample">The observations.</param>
+        /// <param name="momentMode">The method-of-moments mode of the family, given the sample mean, minimum and maximum.</param>
+        /// <returns>The initial values and the lower and upper bounds of the min, mode and max.</returns>
+        /// <remarks>
+        /// The established envelope bounds the min below by -10^(ceil(log10|min|) + 1) and the max above by
+        /// 10^(ceil(log10|max|) + 1), and starts the mode at the moment estimate. When that envelope does not contain
+        /// its initial values, for example when the sample minimum or maximum is exactly zero, the bound magnitude is
+        /// S = max(|min|, |max|, max - min), or 1 when S is zero, the bounds are -10^(ceil(log10 S) + 1) and
+        /// 10^(ceil(log10 S) + 1), which always contain the sample range, and the initial mode is clamped into the
+        /// sample range. The min and max start one machine epsilon outside the sample range.
+        /// </remarks>
+        internal static Tuple<double[], double[], double[]> MinModeMaxConstraints(IList<double> sample, Func<double, double, double, double> momentMode)
+        {
+            return PreferLegacyConstraints(
+                () => LegacyMinModeMaxConstraints(sample, momentMode), () => RobustMinModeMaxConstraints(sample, momentMode));
+        }
+
+        /// <summary>Returns the established (min, mode, max) initialization and prior envelope.</summary>
+        /// <param name="sample">The observations.</param>
+        /// <param name="momentMode">The method-of-moments mode, given the sample mean, minimum and maximum.</param>
+        /// <returns>The legacy initial values and lower and upper bounds.</returns>
+        private static Tuple<double[], double[], double[]> LegacyMinModeMaxConstraints(IList<double> sample, Func<double, double, double, double> momentMode)
+        {
+            var initialVals = new double[3];
+            var lowerVals = new double[3];
+            var upperVals = new double[3];
+            // Estimate initial values using the method of moments (a.k.a product moments).
+            var min = Tools.Min(sample);
+            var max = Tools.Max(sample);
+            var mean = Tools.Mean(sample);
+            var mode = momentMode(mean, min, max);
+            initialVals[0] = min - Tools.DoubleMachineEpsilon;
+            initialVals[1] = mode;
+            initialVals[2] = max + Tools.DoubleMachineEpsilon;
+            // Get bounds of min
+            lowerVals[0] = -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(min)) + 1d));
+            upperVals[0] = min;
+            // Get bounds of mode
+            lowerVals[1] = min;
+            upperVals[1] = max;
+            // Get bounds of max
+            lowerVals[2] = max;
+            upperVals[2] = Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(max)) + 1d));
+
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
+        /// <summary>Returns (min, mode, max) initial values inside bounds whose magnitude follows the sample scale.</summary>
+        /// <param name="sample">The observations.</param>
+        /// <param name="momentMode">The method-of-moments mode, given the sample mean, minimum and maximum.</param>
+        /// <returns>Initial values inside bounds that contain the sample range.</returns>
+        private static Tuple<double[], double[], double[]> RobustMinModeMaxConstraints(IList<double> sample, Func<double, double, double, double> momentMode)
+        {
+            var initialVals = new double[3];
+            var lowerVals = new double[3];
+            var upperVals = new double[3];
+            var min = Tools.Min(sample);
+            var max = Tools.Max(sample);
+            var mean = Tools.Mean(sample);
+            var mode = Tools.Clamp(momentMode(mean, min, max), min, max);
+            double scale = Math.Max(Math.Max(Math.Abs(min), Math.Abs(max)), max - min);
+            if (!(scale > 0d)) scale = 1d;
+            double bound = Math.Pow(10d, Math.Ceiling(Math.Log10(scale) + 1d));
+            initialVals[0] = min - Tools.DoubleMachineEpsilon;
+            initialVals[1] = mode;
+            initialVals[2] = max + Tools.DoubleMachineEpsilon;
+            lowerVals[0] = -bound;
+            upperVals[0] = min;
+            lowerVals[1] = min;
+            upperVals[1] = max;
+            lowerVals[2] = max;
+            upperVals[2] = bound;
+            return new Tuple<double[], double[], double[]>(initialVals, lowerVals, upperVals);
+        }
+
         /// <summary>A cache key including nested distribution settings omitted from flattened parameter vectors.</summary>
         /// <param name="distribution">The distribution whose complete mutable configuration is serialized into the key.</param>
         /// <returns>An invariant, deterministic representation of the distribution and any nested component configuration.</returns>
@@ -73,6 +151,93 @@ namespace Numerics.Distributions
             return distribution.ToXElement().ToString(SaveOptions.DisableFormatting);
         }
 
+        /// <summary>Writes the evaluation-affecting settings that lie outside a distribution's flattened parameter vector.</summary>
+        /// <param name="distribution">The distribution whose settings are serialized.</param>
+        /// <param name="element">The element receiving the optional attributes, or <see langword="null"/> to report only whether any would be written.</param>
+        /// <returns><see langword="true"/> when at least one attribute applies; otherwise, <see langword="false"/>.</returns>
+        /// <remarks>
+        /// Each attribute is written only when its value differs from the family default, so the serialized form of a
+        /// default-configured distribution is unchanged. <see cref="LogNormal"/> and <see cref="LogPearsonTypeIII"/>
+        /// record a logarithm base other than 10. <see cref="LnNormal"/> records its natural-log coordinates
+        /// <c>Mu</c> and <c>Sigma</c> when its stored physical-moment surface is inactive, because the flattened
+        /// mean and standard deviation then do not determine those coordinates exactly.
+        /// </remarks>
+        internal static bool WriteConfigurationAttributes(UnivariateDistributionBase distribution, XElement? element)
+        {
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            switch (distribution)
+            {
+                case LogNormal logNormal when logNormal.Base != 10d:
+                    element?.SetAttributeValue(nameof(LogNormal.Base), logNormal.Base.ToString("G17", culture));
+                    return true;
+                case LogPearsonTypeIII logPearson when logPearson.Base != 10d:
+                    element?.SetAttributeValue(nameof(LogPearsonTypeIII.Base), logPearson.Base.ToString("G17", culture));
+                    return true;
+                case LnNormal lnNormal when !lnNormal.PhysicalMomentModeForSnapshot:
+                    element?.SetAttributeValue(nameof(LnNormal.Mu), lnNormal.Mu.ToString("G17", culture));
+                    element?.SetAttributeValue(nameof(LnNormal.Sigma), lnNormal.Sigma.ToString("G17", culture));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>Restores the optional settings written by <see cref="WriteConfigurationAttributes"/>.</summary>
+        /// <param name="element">The serialized distribution element.</param>
+        /// <param name="distribution">The distribution, already configured from its flattened parameters.</param>
+        /// <exception cref="ArgumentException">An optional attribute is present but malformed or out of range.</exception>
+        /// <remarks>Absent attributes leave the family defaults in place, so elements written without them restore as before.</remarks>
+        internal static void ReadConfigurationAttributes(XElement element, UnivariateDistributionBase distribution)
+        {
+            switch (distribution)
+            {
+                case LogNormal logNormal:
+                    if (TryReadAttribute(element, nameof(LogNormal.Base), out double logNormalBase))
+                        logNormal.Base = logNormalBase > 1d ? logNormalBase : throw InvalidBase(element);
+                    break;
+                case LogPearsonTypeIII logPearson:
+                    if (TryReadAttribute(element, nameof(LogPearsonTypeIII.Base), out double logPearsonBase))
+                        logPearson.Base = logPearsonBase > 1d ? logPearsonBase : throw InvalidBase(element);
+                    break;
+                case LnNormal lnNormal:
+                    bool hasMu = TryReadAttribute(element, nameof(LnNormal.Mu), out double mu);
+                    bool hasSigma = TryReadAttribute(element, nameof(LnNormal.Sigma), out double sigma);
+                    if (hasMu != hasSigma)
+                        throw new ArgumentException("The serialized natural-log coordinates must include both Mu and Sigma.", nameof(element));
+                    if (hasMu)
+                    {
+                        lnNormal.Mu = mu;
+                        lnNormal.Sigma = sigma;
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>Parses an optional finite floating-point attribute.</summary>
+        /// <param name="element">The element holding the attribute.</param>
+        /// <param name="name">The attribute name.</param>
+        /// <param name="value">The parsed value, or zero when the attribute is absent.</param>
+        /// <returns><see langword="true"/> when the attribute is present; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentException">The attribute is present but is not a finite number.</exception>
+        private static bool TryReadAttribute(XElement element, string name, out double value)
+        {
+            value = 0d;
+            var attribute = element.Attribute(name);
+            if (attribute == null) return false;
+            if (!double.TryParse(attribute.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value)
+                || !Tools.IsFinite(value))
+                throw new ArgumentException("The serialized distribution setting '" + name + "' is invalid.", nameof(element));
+            return true;
+        }
+
+        /// <summary>Creates the exception for a serialized logarithm base that is not greater than one.</summary>
+        /// <param name="element">The serialized distribution element.</param>
+        /// <returns>The argument exception to throw.</returns>
+        private static ArgumentException InvalidBase(XElement element)
+        {
+            return new ArgumentException("The serialized logarithm base of '" + element.Attribute("Type")?.Value + "' must be greater than one.", nameof(element));
+        }
+
         /// <summary>Forms an affine standardized value without overflowing a finite difference unnecessarily.</summary>
         /// <param name="x">The value in physical coordinates.</param>
         /// <param name="location">The location to subtract.</param>
@@ -85,15 +250,6 @@ namespace Numerics.Distributions
                 ? x / scale - location / scale : difference / scale;
         }
 
-        /// <summary>Computes log(1-exp(a)) for a nonpositive log probability, including its limits.</summary>
-        /// <param name="a">The logarithm of a probability in the interval from negative infinity through zero.</param>
-        /// <returns><c>log(1-exp(a))</c>, or not-a-number when <paramref name="a"/> is positive or not-a-number.</returns>
-        internal static double Log1mExp(double a)
-        {
-            if (a > 0 || double.IsNaN(a)) return double.NaN;
-            return a < -0.69314718055994530942 ? Tools.Log1p(-Math.Exp(a)) : Math.Log(-Tools.Expm1(a));
-        }
-
         /// <summary>Computes log(exp(a)-exp(b)), with equal arguments representing zero mass.</summary>
         /// <param name="a">The logarithm of the minuend.</param>
         /// <param name="b">The logarithm of the subtrahend, which must not exceed <paramref name="a"/>.</param>
@@ -102,7 +258,7 @@ namespace Numerics.Distributions
         {
             if (double.IsNaN(a) || double.IsNaN(b) || b > a) return double.NaN;
             if (a == b) return double.NegativeInfinity;
-            return a + Log1mExp(b - a);
+            return a + Tools.Log1mExp(b - a);
         }
 
         /// <summary>Adds two nonnegative quantities represented by their logarithms.</summary>
@@ -126,7 +282,7 @@ namespace Numerics.Distributions
         internal static double NormalLogCDF(double z)
         {
             if (double.IsNaN(z)) return double.NaN;
-            if (z > 0) return Log1mExp(NormalLogCDF(-z));
+            if (z > 0) return Tools.Log1mExp(NormalLogCDF(-z));
             if (z >= -10) return Math.Log(Normal.StandardCDF(z));
             if (double.IsNegativeInfinity(z)) return double.NegativeInfinity;
             double x = -z;
@@ -419,6 +575,37 @@ namespace Numerics.Distributions
             for (int i = 0; i < nodes.Length; i++)
                 sum = LogSum(sum, Math.Log(weights[i]) + distribution.LogPDF(lower + width * nodes[i]));
             return Math.Log(width) + sum;
+        }
+
+        /// <summary>The element count from which <see cref="ForEachElementRange"/> runs its ranges in parallel.</summary>
+        private const int ParallelElementThreshold = 4096;
+
+        /// <summary>The number of elements in each parallel range of <see cref="ForEachElementRange"/>.</summary>
+        private const int ParallelElementRange = 2048;
+
+        /// <summary>
+        /// Runs an element-wise kernel over [0, count), in parallel ranges when the count is large.
+        /// </summary>
+        /// <param name="count">The number of elements.</param>
+        /// <param name="body">The kernel, called with the half-open range [start, end) it must fill.</param>
+        /// <remarks>
+        /// Each element is computed independently by the same kernel whatever range it falls in, so the results do
+        /// not depend on the scheduling or the processor count. Counts below 4096 run serially in one range; larger
+        /// counts are split into ranges of 2048 elements scheduled by <see cref="Parallel.For(int, int, Action{int})"/>.
+        /// </remarks>
+        internal static void ForEachElementRange(int count, Action<int, int> body)
+        {
+            if (count < ParallelElementThreshold)
+            {
+                body(0, count);
+                return;
+            }
+            int ranges = (count + ParallelElementRange - 1) / ParallelElementRange;
+            Parallel.For(0, ranges, r =>
+            {
+                int start = r * ParallelElementRange;
+                body(start, Math.Min(count, start + ParallelElementRange));
+            });
         }
     }
 }

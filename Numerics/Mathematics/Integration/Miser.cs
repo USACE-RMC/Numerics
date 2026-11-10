@@ -74,6 +74,30 @@ namespace Numerics.Mathematics.Integration
 
         private SobolSequence _sobol;
 
+        // True once the current Sobol sequence has been sampled by an Integrate call.
+        private bool _sobolUsed;
+
+        // Work arrays per recursion depth: pt, rmid, fmaxl, fmaxr, fminl, fminr and the child region.
+        // A node only uses its own depth's arrays, and siblings run one after the other, so reuse is
+        // safe; every entry is written before it is read, so results are unchanged.
+        [NonSerialized] private List<double[][]>? _workspace;
+
+        /// <summary>
+        /// Returns the work arrays for a recursion depth, allocating them on first use.
+        /// </summary>
+        /// <param name="depth">The recursion depth.</param>
+        /// <returns>Seven arrays: six of length <see cref="Dimensions"/> and one of twice that length.</returns>
+        private double[][] Workspace(int depth)
+        {
+            var pool = _workspace ??= new List<double[][]>();
+            while (pool.Count <= depth)
+            {
+                int n = Dimensions;
+                pool.Add(new[] { new double[n], new double[n], new double[n], new double[n], new double[n], new double[n], new double[2 * n] });
+            }
+            return pool[depth];
+        }
+
         /// <summary>
         /// The multidimensional function to integrate.
         /// </summary>
@@ -130,10 +154,22 @@ namespace Numerics.Mathematics.Integration
         public bool UseSobolSequence { get; set; } = true;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Draws exactly <see cref="Integrator.MaxFunctionEvaluations"/> samples and sets
+        /// <see cref="Integrator.Status"/> to <see cref="IntegrationStatus.Success"/> on completion.
+        /// The Sobol sequence restarts on every call, so repeated calls with
+        /// <see cref="UseSobolSequence"/> true return the same result; <see cref="Random"/> is not
+        /// reset and continues between calls.
+        /// </remarks>
         public override void Integrate()
         {
             ClearResults();
             Validate();
+
+            // Restart the Sobol sequence so every call reproduces the first. The constructor's sequence
+            // is still fresh on the first call, which avoids rebuilding the direction numbers.
+            if (_sobolUsed) _sobol = new SobolSequence(Dimensions);
+            _sobolUsed = true;
 
             try
             {
@@ -152,9 +188,10 @@ namespace Numerics.Mathematics.Integration
                 double result = 0;
                 double error = 0;
 
-                miser(Function, regn, MaxFunctionEvaluations, Dither, ref result, ref error);
+                miser(Function, regn, MaxFunctionEvaluations, Dither, ref result, ref error, 0);
                 Result = result * volume;
                 StandardError = Math.Sqrt(error) * volume;
+                Status = IntegrationStatus.Success;
 
             }
             catch (Exception ex)
@@ -175,7 +212,8 @@ namespace Numerics.Mathematics.Integration
         /// a power-of-two subdivision region. </param>
         /// <param name="ave"> The mean value of the function in the region </param>
         /// <param name="var"> An estimate of the statistical uncertainty of ave (square of standard deviation), i.e. variance</param>
-        private void miser(Func<double[], double> function, double[] regn, int npts, double dith, ref double ave, ref double var)
+        /// <param name="depth"> The recursion depth, which selects the work arrays.</param>
+        private void miser(Func<double[], double> function, double[] regn, int npts, double dith, ref double ave, ref double var, int depth)
         {
             // Monte Carlo samples a user-supplied ndim-dimensional function func in a rectangular volume
             // specified by regn[0..2 * ndim - 1], a vector consisting of ndim “lower - left” coordinates of the
@@ -192,7 +230,7 @@ namespace Numerics.Mathematics.Integration
             // Here PFAC is the fraction of remaining function evaluations used at each stage to explore
             // the variance of func. At least MNPT function evaluations are performed in any terminal
             // subregion; a subregion is further bisected only if at least MNBS function evaluations are
-            // available. We take MNBS = 4 * MNPT.
+            // available. MNBS = 4 * MNPT.
 
             int iran = 0;
             int j, jb, n, ndim, npre, nptl, nptr;
@@ -200,7 +238,8 @@ namespace Numerics.Mathematics.Integration
             double sum, sumb, summ, summ2;
 
             ndim = Dimensions;
-            var pt = new double[ndim];
+            var work = Workspace(depth);
+            var pt = work[0];
             if (npts < MNBS)
             {
                 // Too few points to bisect, do straight Monte Carlo
@@ -219,12 +258,12 @@ namespace Numerics.Mathematics.Integration
             else
             {
                 // Do the preliminary (uniform sampling)
-                var rmid = new double[ndim];
+                var rmid = work[1];
                 npre = Math.Max((int)(npts * PFAC), MNPT);
-                var fmaxl = new double[ndim];
-                var fmaxr = new double[ndim];
-                var fminl = new double[ndim];
-                var fminr = new double[ndim];
+                var fmaxl = work[2];
+                var fmaxr = work[3];
+                var fminl = work[4];
+                var fminr = work[5];
                 // Initialize the left and right bounds for each dimension
                 for (j = 0; j < ndim; j++)
                 {              
@@ -284,17 +323,17 @@ namespace Numerics.Mathematics.Integration
                 nptl = (int)(MNPT + (npts - npre - 2 * MNPT) * fracl * siglb / (fracl * siglb + (1.0 - fracl) * sigrb)); // Equation (7.9.23)
                 nptr = npts - npre - nptl;
                 // Now allocate and integrate the two sub-regions
-                var regn_temp = new double[2 * ndim];
+                var regn_temp = work[6];
                 for (j = 0; j < ndim; j++)
                 {
                     regn_temp[j] = regn[j];
                     regn_temp[ndim + j] = regn[ndim + j];
                 }
                 regn_temp[ndim + jb] = rmid[jb];
-                miser(function, regn_temp, nptl, dith, ref avel, ref varl);
+                miser(function, regn_temp, nptl, dith, ref avel, ref varl, depth + 1);
                 regn_temp[jb] = rmid[jb];
                 regn_temp[ndim + jb] = regn[ndim + jb];
-                miser(function, regn_temp, nptr, dith, ref ave, ref var);
+                miser(function, regn_temp, nptr, dith, ref ave, ref var, depth + 1);
                 ave = fracl * avel + (1 - fracl) * ave;
                 var = fracl * fracl * varl + (1 - fracl) * (1 - fracl) * var;
                 // Combine left and right regions by equation (7.9.11)

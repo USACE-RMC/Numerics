@@ -551,7 +551,7 @@ namespace Numerics.Distributions
             if (x <= 0) return double.NegativeInfinity;
             double logarithm = Kappa * LogStandardizedValue(x);
             double power = Math.Exp(logarithm);
-            return power == 0 ? logarithm : DistributionNumerics.Log1mExp(-power);
+            return power == 0 ? logarithm : Tools.Log1mExp(-power);
         }
 
         /// <inheritdoc/>

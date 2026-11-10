@@ -144,12 +144,12 @@ namespace Data.TimeSeriesAnalysis
         private static readonly ConcurrentDictionary<string, (bool ok, DateTime at)> _serviceState = new();
 
         /// <summary>
-        /// How long a "service unreachable" verdict sticks before we re-probe.
+        /// How long a "service unreachable" verdict sticks before the next probe.
         /// </summary>
         private static readonly TimeSpan ProbeFailureTtl = TimeSpan.FromSeconds(30);
 
         /// <summary>
-        /// "Can we hit this service?" probe with TTL on negative results. Returns false
+        /// "Is this service reachable?" probe with TTL on negative results. Returns false
         /// when the host is offline or when the supplied probe throws (any exception is
         /// treated as "service down" for the next 30 seconds).
         /// </summary>
@@ -179,119 +179,39 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
-        /// HTTP handler that serves one deterministic USGS peak-flow response and rejects connectivity preflight requests.
+        /// Fake USGS Water Data API that answers requests through a routing function.
         /// </summary>
         /// <remarks>
-        /// The handler makes the regression test independent of live internet access while still
-        /// verifying the downloader requests the expected USGS endpoint directly.
+        /// Requests are recorded with the API key header they carried. A route that returns null answers
+        /// 404, and connectivity probes fail, so tests also prove no preflight request is made.
         /// </remarks>
-        private sealed class GuardedUsgsPeakHandler : HttpMessageHandler
+        private sealed class FakeUsgsApiHandler : HttpMessageHandler
         {
             /// <summary>
-            /// Gets the absolute URLs requested through this handler.
+            /// Maps a request URL to a response, or null for 404.
             /// </summary>
-            /// <remarks>
-            /// The test uses this collection to verify no hidden preflight request was issued.
-            /// </remarks>
-            internal List<string> Requests { get; } = new List<string>();
-
-            /// <inheritdoc/>
-            /// <remarks>
-            /// Returns a small USGS peak-flow RDB body only for the expected data URL and fails
-            /// connectivity preflight requests explicitly.
-            /// </remarks>
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            {
-                string url = request.RequestUri?.AbsoluteUri ?? "";
-                Requests.Add(url);
-
-                if (IsBlockedPreflight(url))
-                {
-                    return Task.FromException<HttpResponseMessage>(
-                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
-                }
-
-                if (!IsExpectedUsgsPeakUrl(url))
-                {
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                    {
-                        Content = new StringContent($"Unexpected URL: {url}")
-                    });
-                }
-
-                string body = string.Join(Environment.NewLine, new[]
-                {
-                    "USGS\t01614000\t2020-04-21\t1\t12345"
-                });
-
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(body)
-                });
-            }
+            private readonly Func<string, HttpResponseMessage> _route;
 
             /// <summary>
-            /// Determines whether a URL is one of the connectivity probes this regression test forbids.
-            /// </summary>
-            /// <param name="url">The absolute URL requested through the handler.</param>
-            /// <returns>True when the URL is a forbidden connectivity preflight; otherwise false.</returns>
-            /// <remarks>
-            /// The blocked list covers the old Google probe and the older generic USGS root probe.
-            /// </remarks>
-            internal static bool IsBlockedPreflight(string url)
-            {
-                return url.Contains("google", StringComparison.OrdinalIgnoreCase) ||
-                       url.Contains("generate_204", StringComparison.OrdinalIgnoreCase) ||
-                       url.StartsWith("https://waterservices.usgs.gov/nwis", StringComparison.OrdinalIgnoreCase);
-            }
-
-            /// <summary>
-            /// Determines whether a URL matches the expected USGS peak-flow request for this test fixture.
-            /// </summary>
-            /// <param name="url">The absolute URL requested through the handler.</param>
-            /// <returns>True when the URL targets the expected USGS peak-flow endpoint; otherwise false.</returns>
-            /// <remarks>
-            /// The check keeps the test tied to the production URL builder, including site number,
-            /// agency code, and RDB output format.
-            /// </remarks>
-            private static bool IsExpectedUsgsPeakUrl(string url)
-            {
-                return url.StartsWith("https://nwis.waterdata.usgs.gov/nwis/peak?", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("site_no=01614000", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("agency_cd=USGS", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("format=rdb", StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        /// <summary>
-        /// HTTP handler that serves deterministic USGS instantaneous RDB responses.
-        /// </summary>
-        /// <remarks>
-        /// The handler allows only the expected <c>/nwis/iv</c> request for USGS 01646500 and
-        /// rejects generic connectivity probes. This keeps the test deterministic and independent
-        /// from the live USGS service.
-        /// </remarks>
-        private sealed class GuardedUsgsInstantaneousHandler : HttpMessageHandler
-        {
-            /// <summary>
-            /// USGS parameter code expected by this handler.
-            /// </summary>
-            private readonly string _parameterCode;
-
-            /// <summary>
-            /// Whether the handler should simulate an HTTP timeout after URL validation.
-            /// </summary>
-            private readonly bool _simulateTimeout;
-
-            /// <summary>
-            /// Whether successful responses should complete asynchronously.
+            /// Whether responses complete on the thread pool.
             /// </summary>
             private readonly bool _completeAsynchronously;
 
             /// <summary>
-            /// Number of duplicate timestamp pairs to append to the deterministic response.
+            /// Guards the request lists; continuous downloads send requests in parallel.
             /// </summary>
-            private readonly int _duplicateTimestampPairs;
+            private readonly object _gate = new object();
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="FakeUsgsApiHandler"/> class.
+            /// </summary>
+            /// <param name="route">Maps a request URL to a response, or null for 404.</param>
+            /// <param name="completeAsynchronously">True to complete responses on the thread pool.</param>
+            internal FakeUsgsApiHandler(Func<string, HttpResponseMessage> route, bool completeAsynchronously = false)
+            {
+                _route = route;
+                _completeAsynchronously = completeAsynchronously;
+            }
 
             /// <summary>
             /// Gets the absolute URLs requested through this handler.
@@ -299,130 +219,53 @@ namespace Data.TimeSeriesAnalysis
             internal List<string> Requests { get; } = new List<string>();
 
             /// <summary>
-            /// Initializes a new instance of the <see cref="GuardedUsgsInstantaneousHandler"/> class.
+            /// Gets the X-Api-Key header of each request, or null.
             /// </summary>
-            /// <param name="parameterCode">The expected USGS parameter code.</param>
-            /// <param name="simulateTimeout">Whether to throw a timeout after validating the request URL.</param>
-            /// <param name="completeAsynchronously">Whether to complete successful responses on the thread pool.</param>
-            /// <param name="duplicateTimestampPairs">The number of duplicate timestamp pairs to include in the response.</param>
-            /// <exception cref="ArgumentException">Thrown when <paramref name="parameterCode"/> is empty.</exception>
-            /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="duplicateTimestampPairs"/> is negative.</exception>
-            /// <remarks>
-            /// Parameter <c>00060</c> represents discharge and <c>00065</c> represents gage height.
-            /// Asynchronous completion is used by synchronization-context regression tests, while
-            /// duplicate timestamp pairs exercise the downloader's normalization cleanup.
-            /// </remarks>
-            internal GuardedUsgsInstantaneousHandler(
-                string parameterCode,
-                bool simulateTimeout = false,
-                bool completeAsynchronously = false,
-                int duplicateTimestampPairs = 0)
-            {
-                if (string.IsNullOrWhiteSpace(parameterCode))
-                    throw new ArgumentException("A parameter code is required.", nameof(parameterCode));
-                if (duplicateTimestampPairs < 0)
-                    throw new ArgumentOutOfRangeException(nameof(duplicateTimestampPairs), "Duplicate timestamp pair count cannot be negative.");
-
-                _parameterCode = parameterCode;
-                _simulateTimeout = simulateTimeout;
-                _completeAsynchronously = completeAsynchronously;
-                _duplicateTimestampPairs = duplicateTimestampPairs;
-            }
-
-            /// <inheritdoc/>
-            /// <remarks>
-            /// Returns a small nonuniform instantaneous RDB body only for the expected USGS data URL.
-            /// </remarks>
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            {
-                string url = request.RequestUri?.AbsoluteUri ?? "";
-                Requests.Add(url);
-
-                if (IsBlockedPreflight(url))
-                {
-                    return Task.FromException<HttpResponseMessage>(
-                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
-                }
-
-                if (!IsExpectedUsgsInstantaneousUrl(url))
-                {
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                    {
-                        Content = new StringContent($"Unexpected URL: {url}")
-                    });
-                }
-
-                if (_simulateTimeout)
-                {
-                    return Task.FromException<HttpResponseMessage>(
-                        new TaskCanceledException($"Simulated instantaneous timeout: {url}"));
-                }
-
-                string valueOne = _parameterCode == "00060" ? "101.5" : "6.12";
-                string valueTwo = _parameterCode == "00060" ? "102.0" : "6.13";
-                string valueThree = _parameterCode == "00060" ? "104.5" : "6.17";
-                var lines = new List<string>
-                {
-                    $"agency_cd\tsite_no\tdatetime\ttz_cd\t{_parameterCode}_00000\t{_parameterCode}_00000_cd",
-                    "5s\t15s\t20d\t6s\t14n\t10s",
-                    $"USGS\t01646500\t2024-01-01 00:00\tEST\t{valueOne}\tA",
-                    $"USGS\t01646500\t2024-01-01 00:15\tEST\t{valueTwo}\tA",
-                    $"USGS\t01646500\t2024-01-01 00:45\tEST\t{valueThree}\tA"
-                };
-
-                for (int i = 0; i < _duplicateTimestampPairs; i++)
-                {
-                    string timestamp = new DateTime(2024, 1, 2).AddMinutes(i).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-                    lines.Add($"USGS\t01646500\t{timestamp}\tEST\t{1000d + i:0.0}\tP");
-                    lines.Add($"USGS\t01646500\t{timestamp}\tEST\t{2000d + i:0.0}\tA");
-                }
-
-                string body = string.Join(Environment.NewLine, lines);
-
-                var response = new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(body)
-                };
-
-                return _completeAsynchronously
-                    ? Task.Run(() => response)
-                    : Task.FromResult(response);
-            }
+            internal List<string> ApiKeys { get; } = new List<string>();
 
             /// <summary>
-            /// Determines whether a URL is one of the connectivity probes this regression forbids.
+            /// Returns a 200 response with a text body.
             /// </summary>
-            /// <param name="url">The absolute URL requested through the handler.</param>
-            /// <returns><c>true</c> when the URL is a forbidden preflight; otherwise, <c>false</c>.</returns>
-            /// <remarks>
-            /// The instantaneous data endpoint is under <c>/nwis/iv</c>; only generic roots and the
-            /// old Google probe are treated as preflight requests.
-            /// </remarks>
+            /// <param name="body">The body.</param>
+            internal static HttpResponseMessage Text(string body) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
+
+            /// <summary>
+            /// Determines whether a URL is a connectivity probe.
+            /// </summary>
+            /// <param name="url">The absolute URL.</param>
+            /// <returns>True for a probe of a provider root or a generic connectivity check.</returns>
             internal static bool IsBlockedPreflight(string url)
             {
                 string normalized = url.TrimEnd('/');
                 return url.Contains("google", StringComparison.OrdinalIgnoreCase) ||
                        url.Contains("generate_204", StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(normalized, "https://waterservices.usgs.gov/nwis", StringComparison.OrdinalIgnoreCase);
+                       url.StartsWith("https://waterservices.usgs.gov", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(normalized, "https://api.waterdata.usgs.gov", StringComparison.OrdinalIgnoreCase);
             }
 
-            /// <summary>
-            /// Determines whether a URL matches the expected USGS instantaneous request.
-            /// </summary>
-            /// <param name="url">The absolute URL requested through the handler.</param>
-            /// <returns><c>true</c> when the URL targets the expected fixture endpoint; otherwise, <c>false</c>.</returns>
-            /// <remarks>
-            /// The check pins the request to the instantaneous-value API, the 01646500 gage, the
-            /// requested parameter code, and RDB formatting.
-            /// </remarks>
-            private bool IsExpectedUsgsInstantaneousUrl(string url)
+            /// <inheritdoc/>
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
-                return url.StartsWith("https://waterservices.usgs.gov/nwis/iv/?", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("sites=01646500", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains($"parameterCd={_parameterCode}", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("startDT=1900-01-01", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("siteStatus=all", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("format=rdb", StringComparison.OrdinalIgnoreCase);
+                string url = request.RequestUri?.AbsoluteUri ?? "";
+                lock (_gate)
+                {
+                    Requests.Add(url);
+                    ApiKeys.Add(request.Headers.TryGetValues("X-Api-Key", out var keys) ? keys.FirstOrDefault() : null);
+                }
+
+                if (IsBlockedPreflight(url))
+                    return Task.FromException<HttpResponseMessage>(new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
+
+                HttpResponseMessage response;
+                try
+                {
+                    response = _route(url) ?? new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent($"Unexpected URL: {url}") };
+                }
+                catch (Exception ex)
+                {
+                    return Task.FromException<HttpResponseMessage>(ex);
+                }
+                return _completeAsynchronously ? Task.Run(() => response) : Task.FromResult(response);
             }
         }
 
@@ -458,72 +301,6 @@ namespace Data.TimeSeriesAnalysis
             {
                 Interlocked.Increment(ref _postCount);
                 ThreadPool.QueueUserWorkItem(_ => d(state));
-            }
-        }
-
-        /// <summary>
-        /// HTTP handler that serves a deterministic USGS measured-stage response with duplicate timestamps.
-        /// </summary>
-        /// <remarks>
-        /// The fixture is based on USGS 01570500, where the live field-measurements API returns two
-        /// approved gage-height records for 1936-03-15 05:00:00 with values 14.51 and 14.52.
-        /// </remarks>
-        private sealed class DuplicateUsgsMeasuredStageHandler : HttpMessageHandler
-        {
-            /// <summary>
-            /// Gets the absolute URLs requested through this handler.
-            /// </summary>
-            internal List<string> Requests { get; } = new List<string>();
-
-            /// <inheritdoc/>
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            {
-                string url = request.RequestUri?.AbsoluteUri ?? "";
-                Requests.Add(url);
-
-                if (GuardedUsgsPeakHandler.IsBlockedPreflight(url))
-                {
-                    return Task.FromException<HttpResponseMessage>(
-                        new HttpRequestException($"Unexpected connectivity preflight request: {url}"));
-                }
-
-                if (!IsExpectedUsgsMeasuredStageUrl(url))
-                {
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                    {
-                        Content = new StringContent($"Unexpected URL: {url}")
-                    });
-                }
-
-                string body = string.Join("", new[]
-                {
-                    "{",
-                    "\"type\":\"FeatureCollection\",",
-                    "\"features\":[",
-                    "{\"type\":\"Feature\",\"id\":\"75f11a56-5796-4dc9-b22a-054da446a164\",\"properties\":{\"time\":\"1936-03-15T05:00:00+00:00\",\"value\":\"14.51\"}},",
-                    "{\"type\":\"Feature\",\"id\":\"8dccaa2d-8480-4b5d-b19b-18122749b6c6\",\"properties\":{\"time\":\"1936-03-15T05:00:00+00:00\",\"value\":\"14.52\"}}",
-                    "],",
-                    "\"links\":[]",
-                    "}"
-                });
-
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(body)
-                });
-            }
-
-            /// <summary>
-            /// Determines whether a URL matches the expected USGS measured-stage request.
-            /// </summary>
-            private static bool IsExpectedUsgsMeasuredStageUrl(string url)
-            {
-                return url.StartsWith("https://api.waterdata.usgs.gov/ogcapi/v0/collections/field-measurements/items?",
-                           StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("monitoring_location_id=USGS-01570500", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("parameter_code=00065", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("limit=10000", StringComparison.OrdinalIgnoreCase) &&
-                       url.Contains("f=json", StringComparison.OrdinalIgnoreCase);
             }
         }
 
@@ -744,7 +521,7 @@ namespace Data.TimeSeriesAnalysis
                 startDate: WinStart, endDate: WinStart.AddDays(1)));
 
         /// <summary>
-        /// Probes a small USGS peak-discharge download (annual maxes — a small payload) to confirm USGS is responsive.
+        /// Probes a small USGS peak-discharge download (annual maxes, a small payload) to confirm USGS is responsive.
         /// </summary>
         private static Task<bool> UsgsAvailable() => AvailableAsync("USGS", async () =>
         {
@@ -885,6 +662,17 @@ namespace Data.TimeSeriesAnalysis
         {
             var remote = new IPEndPoint(IPAddress.Parse("205.167.25.177"), 443);
             Assert.IsNull(TimeSeriesDownload.RejectIPv6BindEndPoint(remote));
+        }
+
+        /// <summary>
+        /// The User-Agent names the library and its major and minor version.
+        /// </summary>
+        [TestMethod]
+        public void UserAgent_NamesLibraryVersion()
+        {
+            var version = typeof(TimeSeriesDownload).Assembly.GetName().Version!;
+            Assert.AreEqual($"USACE-Numerics/{version.Major}.{version.Minor}", TimeSeriesDownload.UserAgent);
+            Assert.IsTrue(System.Net.Http.Headers.ProductInfoHeaderValue.TryParse(TimeSeriesDownload.UserAgent, out _));
         }
 
         #endregion
@@ -1062,39 +850,176 @@ namespace Data.TimeSeriesAnalysis
         #region USGS Tests
 
         /// <summary>
-        /// Verifies USGS downloads do not run a generic connectivity preflight before requesting the data.
+        /// Runs a USGS download against a fake Water Data API.
         /// </summary>
-        /// <returns>A task that completes when the regression check finishes.</returns>
-        /// <remarks>
-        /// The test uses a deterministic in-memory HTTP handler so it can prove request routing
-        /// without relying on the live USGS service or the host machine's internet connection.
-        /// </remarks>
-        [TestMethod]
-        public async Task USGS_PeakDischarge_DoesNotRunConnectivityPreflight()
+        /// <param name="handler">The fake API.</param>
+        /// <param name="download">The download to run.</param>
+        /// <returns>The download result.</returns>
+        private static async Task<(TimeSeries TimeSeries, string RawText)> WithFakeUsgs(FakeUsgsApiHandler handler, Func<Task<(TimeSeries TimeSeries, string RawText)>> download)
         {
-            var defaultHandler = new GuardedUsgsPeakHandler();
-            var decompressHandler = new GuardedUsgsPeakHandler();
-
-            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
-            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
-
+            using var defaultClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+            using var decompressClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
             TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
             try
             {
-                var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_3, TimeSeriesDownload.TimeSeriesType.PeakDischarge);
-
-                Assert.IsNotNull(ts, "Time series is null.");
-                Assert.AreEqual(1, ts.Count);
-                Assert.AreEqual(12345d, ts[0].Value);
-                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
-                Assert.HasCount(1, defaultHandler.Requests, "Expected exactly one USGS data request.");
-                Assert.IsFalse(defaultHandler.Requests.Any(GuardedUsgsPeakHandler.IsBlockedPreflight));
-                Assert.IsEmpty(decompressHandler.Requests, "Peak download should not use the decompression client.");
+                return await download();
             }
             finally
             {
                 TimeSeriesDownload.ResetHttpClientsForTesting();
             }
+        }
+
+        /// <summary>
+        /// Single-series daily metadata response.
+        /// </summary>
+        private const string UsgsDailyMetadata = "x,y,id,begin,end,primary\n,,daily1,1930-03-01 05:00:00+00:00,2026-11-03 05:00:00+00:00,Primary\n";
+
+        /// <summary>
+        /// Daily values: CSV columns, a missing day, an empty value and a quoted qualifier list. No preflight request is made.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_DailyDischarge_ParsesCsvAndFillsMissingDays()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/time-series-metadata/")) return FakeUsgsApiHandler.Text(UsgsDailyMetadata);
+                if (url.Contains("/daily/items?")) return FakeUsgsApiHandler.Text(
+                    "x,y,time,value,approval_status,qualifier\r\n" +
+                    ",,2020-01-01,101.5,Approved,\r\n" +
+                    ",,2020-01-02,,Approved,\"ICE,EQUIP\"\r\n" +
+                    ",,2020-01-04,104,Provisional,\r\n");
+                return null;
+            });
+            var (ts, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6));
+
+            Assert.AreEqual(TimeInterval.OneDay, ts.TimeInterval);
+            Assert.AreEqual(4, ts.Count);
+            Assert.AreEqual(new DateTime(2020, 1, 1), ts[0].Index);
+            Assert.AreEqual(DateTimeKind.Unspecified, ts[0].Index.Kind);
+            Assert.AreEqual(101.5, ts[0].Value);
+            Assert.IsTrue(double.IsNaN(ts[1].Value), "An empty value is missing.");
+            Assert.AreEqual(new DateTime(2020, 1, 3), ts[2].Index);
+            Assert.IsTrue(double.IsNaN(ts[2].Value), "A missing day is filled with NaN.");
+            Assert.AreEqual(104d, ts[3].Value);
+
+            string data = handler.Requests.Single(u => u.Contains("/daily/items?"));
+            StringAssert.StartsWith(data, "https://api.waterdata.usgs.gov/ogcapi/v1/collections/daily/items?");
+            foreach (var part in new[] { "monitoring_location_id=USGS-01646500", "parameter_code=00060", "statistic_id=00003", "f=csv", "sortby=time", "limit=50000", "skipGeometry=true" })
+                Assert.Contains(part, data);
+            Assert.DoesNotContain("datetime=", data);
+            Assert.IsFalse(handler.Requests.Any(FakeUsgsApiHandler.IsBlockedPreflight));
+            StringAssert.StartsWith(raw, "# U.S. Geological Survey, Water Data API");
+            Assert.Contains("\"ICE,EQUIP\"", raw);
+        }
+
+        /// <summary>
+        /// Daily stage defaults to the daily mean; options choose the statistic and the date range.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_DailyStage_OptionsSetStatisticAndDates()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text(UsgsDailyMetadata) :
+                url.Contains("/daily/items?") ? FakeUsgsApiHandler.Text("x,y,time,value\n,,2020-06-01,6.1\n") : null);
+
+            await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyStage));
+            string meanUrl = handler.Requests.Single(u => u.Contains("/daily/items?"));
+            Assert.Contains("parameter_code=00065", meanUrl);
+            Assert.Contains("statistic_id=00003", meanUrl);
+
+            handler.Requests.Clear();
+            var options = new TimeSeriesDownload.UsgsDownloadOptions
+            {
+                Statistic = TimeSeriesDownload.UsgsStatistic.Maximum,
+                StartDate = new DateTime(2020, 1, 1),
+                EndDate = new DateTime(2020, 12, 31)
+            };
+            await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyStage, options));
+            string maxUrl = handler.Requests.Single(u => u.Contains("/daily/items?"));
+            Assert.Contains("statistic_id=00001", maxUrl);
+            Assert.Contains("datetime=2020-01-01/2020-12-31", maxUrl);
+
+            await Assert.ThrowsAsync<ArgumentException>(async () => await TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyStage,
+                new TimeSeriesDownload.UsgsDownloadOptions { StartDate = new DateTime(2021, 1, 1), EndDate = new DateTime(2020, 1, 1) }));
+            await Assert.ThrowsAsync<ArgumentNullException>(async () => await TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyStage, null));
+        }
+
+        /// <summary>
+        /// When a site has two daily series for the statistic, the values are requested again for the primary one.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_Daily_MultipleSeries_UsesPrimary()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/time-series-metadata/")) return FakeUsgsApiHandler.Text(
+                    "x,y,id,begin,end,primary\n,,aux,2001-01-01 05:00:00+00:00,2002-01-01 05:00:00+00:00,\n,,main,2001-01-01 05:00:00+00:00,2002-01-01 05:00:00+00:00,Primary\n");
+                if (url.Contains("time_series_id=main")) return FakeUsgsApiHandler.Text("x,y,time,value\n,,2001-01-01,7\n,,2001-01-02,8\n");
+                if (url.Contains("/daily/items?")) return FakeUsgsApiHandler.Text("x,y,time,value\n,,2001-01-01,7\n,,2001-01-01,99\n,,2001-01-02,8\n");
+                return null;
+            });
+            var (ts, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6));
+            Assert.AreEqual(2, ts.Count);
+            Assert.AreEqual(7d, ts[0].Value);
+            Assert.IsTrue(handler.Requests.Any(u => u.Contains("time_series_id=main")));
+        }
+
+        /// <summary>
+        /// A full page of 50,000 records is followed by a query that starts the day after the last record.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_Daily_FullPage_PagesForwardByDate()
+        {
+            var start = new DateTime(1880, 1, 1);
+            var page = new System.Text.StringBuilder("x,y,time,value\n");
+            for (int i = 0; i < 50000; i++) page.Append(",,").Append(start.AddDays(i).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append(",1\n");
+            string next = start.AddDays(50000).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/time-series-metadata/")) return FakeUsgsApiHandler.Text(UsgsDailyMetadata);
+                if (url.Contains("datetime=" + next + "/..")) return FakeUsgsApiHandler.Text($"x,y,time,value\n,,{next},2\n");
+                if (url.Contains("/daily/items?")) return FakeUsgsApiHandler.Text(page.ToString());
+                return null;
+            });
+            var (ts, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6));
+            Assert.AreEqual(50001, ts.Count);
+            Assert.AreEqual(2d, ts[50000].Value);
+            Assert.AreEqual(2, handler.Requests.Count(u => u.Contains("/daily/items?")));
+            Assert.HasCount(1, System.Text.RegularExpressions.Regex.Matches(raw, "^x,y,time,value", System.Text.RegularExpressions.RegexOptions.Multiline), "The CSV header appears once.");
+        }
+
+        /// <summary>
+        /// Peaks with a time of day are dated in the site's local standard time; missing month or day is taken as 1;
+        /// stage peaks use parameter 00065.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_Peaks_UseLocalStandardDate()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/monitoring-locations/items/USGS-01646500")) return FakeUsgsApiHandler.Text("{\"type\":\"Feature\",\"properties\":{\"time_zone_abbreviation\":\"EST\"}}");
+                if (url.Contains("/peaks/items?")) return FakeUsgsApiHandler.Text(
+                    "x,y,time,value,year,month,day,time_of_day,qualifier\n" +
+                    ",,1889-01-01,484000,1889,,,,HISTORIC\n" +
+                    ",,1931-04-03,37900,1931,4,3,,\n" +
+                    ",,1942-10-01,,1942,10,,,\n" +
+                    ",,1998-03-23,152000,1998,3,23,02:15:00+00:00,\n" +
+                    ",,2006-06-28,103000,2006,6,28,15:00:00+00:00,\n");
+                return null;
+            });
+            var (ts, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.PeakDischarge));
+
+            CollectionAssert.AreEqual(new[] { new DateTime(1889, 1, 1), new DateTime(1931, 4, 3), new DateTime(1998, 3, 22), new DateTime(2006, 6, 28) },
+                ts.Select(o => o.Index).ToArray());
+            CollectionAssert.AreEqual(new[] { 484000d, 37900d, 152000d, 103000d }, ts.Select(o => o.Value).ToArray());
+            Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval, "Peaks fall on irregular dates.");
+            Assert.Contains("parameter_code=00060", handler.Requests.Single(u => u.Contains("/peaks/")));
+            Assert.Contains("HISTORIC", raw);
+
+            handler.Requests.Clear();
+            await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.PeakStage));
+            Assert.Contains("parameter_code=00065", handler.Requests.Single(u => u.Contains("/peaks/")));
         }
 
         /// <summary>
@@ -1121,8 +1046,8 @@ namespace Data.TimeSeriesAnalysis
                 await Assert.ThrowsAsync<OperationCanceledException>(async () =>
                     await TimeSeriesDownload.FromUSGS(USGS_3, TimeSeriesDownload.TimeSeriesType.PeakDischarge, cts.Token));
 
-                Assert.HasCount(1, defaultHandler.Requests, "Expected one started USGS peak request.");
-                Assert.IsEmpty(decompressHandler.Requests, "Peak download should not use the decompression client.");
+                Assert.IsTrue(decompressHandler.Requests.Any(u => u.Contains("/peaks/items?")), "Expected a started USGS peak request.");
+                Assert.IsEmpty(defaultHandler.Requests);
             }
             finally
             {
@@ -1133,148 +1058,144 @@ namespace Data.TimeSeriesAnalysis
         /// <summary>
         /// Verifies duplicate USGS measured-stage timestamps keep the last source value.
         /// </summary>
+        /// <remarks>
+        /// The fixture is based on USGS 01570500, where the field-measurements API returns two approved gage-height
+        /// records for 1936-03-15 05:00:00 with values 14.51 and 14.52.
+        /// </remarks>
         [TestMethod]
         public async Task USGS_MeasuredStage_DuplicateDateTimes_LastValueWins()
         {
-            var defaultHandler = new DuplicateUsgsMeasuredStageHandler();
-            var decompressHandler = new DuplicateUsgsMeasuredStageHandler();
+            var handler = new FakeUsgsApiHandler(url => url.Contains("/field-measurements/items?") ? FakeUsgsApiHandler.Text(
+                "x,y,time,time_of_day,value,approval_status,qualifier\n" +
+                ",,1935-01-01,17:30:00+00:00,9.5,Approved,\n" +
+                ",,1935-01-02,17:30:00+00:00,,Approved,\n" +
+                ",,1935-06-01,,7.25,Approved,\n" +
+                ",,1936-03-15,05:00:00+00:00,14.51,Approved,\n" +
+                ",,1936-03-15,05:00:00+00:00,14.52,Approved,\n") : null);
+            var (ts, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_5, TimeSeriesDownload.TimeSeriesType.MeasuredStage));
 
-            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
-            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            var duplicateTime = new DateTime(1936, 3, 15, 5, 0, 0, DateTimeKind.Utc);
+            Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
+            Assert.AreEqual(3, ts.Count);
+            Assert.AreEqual(new DateTime(1935, 1, 1, 17, 30, 0, DateTimeKind.Utc), ts[0].Index, "Sorted by time.");
+            Assert.AreEqual(new DateTime(1935, 6, 1, 0, 0, 0, DateTimeKind.Utc), ts[1].Index, "A bare date is midnight UTC on every machine.");
+            Assert.AreEqual(DateTimeKind.Utc, ts[1].Index.Kind);
+            Assert.AreEqual(14.52d, ts.Single(o => o.Index == duplicateTime).Value);
+            string url = handler.Requests.Single();
+            StringAssert.StartsWith(url, "https://api.waterdata.usgs.gov/ogcapi/v1/collections/field-measurements/items?");
+            Assert.Contains("monitoring_location_id=USGS-01570500", url);
+            Assert.Contains("parameter_code=00065", url);
+            Assert.Contains("f=csv", url);
+            Assert.Contains("time_of_day", url);
+            Assert.DoesNotContain("sortby", url);
+            Assert.Contains("14.51", raw);
+        }
 
-            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
-            try
+        /// <summary>
+        /// Builds a fake API for continuous values over 2023-11-15 to 2024-01-02, one window per year.
+        /// </summary>
+        /// <param name="parameterCode">The expected parameter code.</param>
+        /// <param name="simulateTimeout">True to time out every continuous request.</param>
+        /// <param name="completeAsynchronously">True to complete responses on the thread pool.</param>
+        private static FakeUsgsApiHandler ContinuousFake(string parameterCode, bool simulateTimeout = false, bool completeAsynchronously = false)
+        {
+            return new FakeUsgsApiHandler(url =>
             {
-                var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_5,
-                    TimeSeriesDownload.TimeSeriesType.MeasuredStage);
+                if (url.Contains("/time-series-metadata/") && url.Contains("parameter_code=" + parameterCode) && url.Contains("computation_period_identifier=Points"))
+                    return FakeUsgsApiHandler.Text("x,y,id,begin,end,primary\n,,iv1,2023-11-15 00:00:00+00:00,2024-01-02 00:00:00+00:00,Primary\n");
+                if (url.Contains("/continuous/items?time_series_id=iv1"))
+                {
+                    if (simulateTimeout) throw new TaskCanceledException("Simulated instantaneous timeout");
+                    if (url.Contains("datetime=2023-11-15T00:00:00Z/2023-12-31T23:59:59Z"))
+                        return FakeUsgsApiHandler.Text("x,y,time,value\n,,2023-11-15 00:00:00+00:00,101.5\n,,2023-11-15 00:15:00+00:00,102\n,,2023-11-15 00:45:00+00:00,104.5\n");
+                    if (url.Contains("datetime=2024-01-01T00:00:00Z/2024-01-02T00:00:00Z"))
+                        return FakeUsgsApiHandler.Text("x,y,time,value\n,,2024-01-01 00:00:00+00:00,110\n");
+                }
+                return null;
+            }, completeAsynchronously);
+        }
 
-                var duplicateTime = new DateTime(1936, 3, 15, 5, 0, 0, DateTimeKind.Utc);
-
-                Assert.IsNotNull(ts, "Time series is null.");
-                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
-                Assert.AreEqual(ts.Count, ts.Select(o => o.Index).Distinct().Count(), "Duplicate date indices detected.");
-                Assert.AreEqual(1, ts.Count(o => o.Index == duplicateTime), "Expected one retained record for the duplicate timestamp.");
-                Assert.AreEqual(14.52d, ts.Single(o => o.Index == duplicateTime).Value);
-                Assert.IsEmpty(defaultHandler.Requests, "Measured stage should not use the default client.");
-                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS OGC data request.");
-                Assert.IsTrue(decompressHandler.Requests[0].Contains("monitoring_location_id=USGS-01570500", StringComparison.OrdinalIgnoreCase));
-                Assert.IsTrue(decompressHandler.Requests[0].Contains("parameter_code=00065", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
+        /// <summary>
+        /// Instantaneous discharge and stage: the primary series, one request per calendar year, irregular UTC dates in time order.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_Instantaneous_YearlyChunks_UtcIrregular()
+        {
+            foreach (var (type, code) in new[] { (TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge, "00060"), (TimeSeriesDownload.TimeSeriesType.InstantaneousStage, "00065") })
             {
-                TimeSeriesDownload.ResetHttpClientsForTesting();
+                var handler = ContinuousFake(code);
+                var (ts, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, type));
+                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
+                CollectionAssert.AreEqual(new[]
+                {
+                    new DateTime(2023, 11, 15, 0, 0, 0, DateTimeKind.Utc), new DateTime(2023, 11, 15, 0, 15, 0, DateTimeKind.Utc),
+                    new DateTime(2023, 11, 15, 0, 45, 0, DateTimeKind.Utc), new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                }, ts.Select(o => o.Index).ToArray());
+                Assert.IsTrue(ts.All(o => o.Index.Kind == DateTimeKind.Utc));
+                Assert.AreEqual(110d, ts[3].Value);
+                Assert.AreEqual(2, handler.Requests.Count(u => u.Contains("/continuous/items?")));
+                Assert.Contains("time series iv1", raw);
+                Assert.IsFalse(handler.Requests.Any(FakeUsgsApiHandler.IsBlockedPreflight));
             }
         }
 
         /// <summary>
-        /// Verifies deterministic USGS instantaneous discharge downloads remain irregular.
+        /// The date range in the options clips the yearly windows.
         /// </summary>
-        /// <returns>A task that completes when the regression check finishes.</returns>
-        /// <remarks>
-        /// USGS instantaneous discharge uses parameter <c>00060</c> on the <c>/nwis/iv</c> endpoint.
-        /// </remarks>
         [TestMethod]
-        public async Task USGS_InstantaneousDischarge_DeterministicDownload_IsIrregular()
+        public async Task USGS_Instantaneous_OptionsClipWindows()
         {
-            await VerifyUsgsInstantaneousDownloadIsIrregular(
-                TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge,
-                "00060");
-        }
-
-        /// <summary>
-        /// Verifies deterministic USGS instantaneous stage downloads remain irregular.
-        /// </summary>
-        /// <returns>A task that completes when the regression check finishes.</returns>
-        /// <remarks>
-        /// USGS instantaneous stage uses parameter <c>00065</c> on the <c>/nwis/iv</c> endpoint.
-        /// </remarks>
-        [TestMethod]
-        public async Task USGS_InstantaneousStage_DeterministicDownload_IsIrregular()
-        {
-            await VerifyUsgsInstantaneousDownloadIsIrregular(
-                TimeSeriesDownload.TimeSeriesType.InstantaneousStage,
-                "00065");
+            var handler = ContinuousFake("00060");
+            var options = new TimeSeriesDownload.UsgsDownloadOptions { StartDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc) };
+            var (ts, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge, options));
+            Assert.AreEqual(1, ts.Count);
+            Assert.AreEqual(1, handler.Requests.Count(u => u.Contains("/continuous/items?")));
         }
 
         /// <summary>
         /// Verifies instantaneous USGS timeout messages use the longer instantaneous limit.
         /// </summary>
-        /// <returns>A task that completes when the regression check finishes.</returns>
-        /// <remarks>
-        /// The handler throws a timeout immediately after URL validation so the test does not wait
-        /// for the full timeout duration.
-        /// </remarks>
         [TestMethod]
         public async Task USGS_InstantaneousDischarge_TimeoutMessage_UsesInstantaneousLimit()
         {
-            var defaultHandler = new GuardedUsgsInstantaneousHandler("00060", simulateTimeout: true);
-            var decompressHandler = new GuardedUsgsInstantaneousHandler("00060", simulateTimeout: true);
-
-            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
-            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
-
-            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
-            try
-            {
-                var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
-                    await TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge));
-
-                Assert.Contains("120 seconds", exception.Message);
-                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
-                Assert.HasCount(2, decompressHandler.Requests, "Expected the retry helper to make two instantaneous attempts.");
-            }
-            finally
-            {
-                TimeSeriesDownload.ResetHttpClientsForTesting();
-            }
+            var handler = ContinuousFake("00060", simulateTimeout: true);
+            var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge)));
+            Assert.Contains("120 seconds", exception.Message);
         }
 
         /// <summary>
         /// Verifies USGS instantaneous parsing does not resume on the caller synchronization context.
         /// </summary>
-        /// <returns>A task that completes when the regression check finishes.</returns>
         /// <remarks>
-        /// BestFit starts downloads from the WPF UI thread. This test forces the fake HTTP response
-        /// to complete asynchronously while a synchronization context is installed, then verifies
-        /// the downloader did not post its large-response continuation back to that context.
+        /// BestFit starts downloads from the WPF UI thread. The fake responses complete asynchronously while a
+        /// synchronization context is installed; the downloader must not post continuations back to it.
         /// </remarks>
         [TestMethod]
         public async Task USGS_InstantaneousDischarge_DoesNotPostBackToSynchronizationContext()
         {
-            var defaultHandler = new GuardedUsgsInstantaneousHandler("00060", completeAsynchronously: true);
-            var decompressHandler = new GuardedUsgsInstantaneousHandler("00060", completeAsynchronously: true);
-
-            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
-            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
-
+            var handler = ContinuousFake("00060", completeAsynchronously: true);
+            using var defaultClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
+            using var decompressClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
             TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
             try
             {
                 var context = new CountingSynchronizationContext();
                 SynchronizationContext previousContext = SynchronizationContext.Current;
                 Task<(TimeSeries TimeSeries, string RawText)> downloadTask;
-
                 try
                 {
                     SynchronizationContext.SetSynchronizationContext(context);
-                    downloadTask = TimeSeriesDownload.FromUSGS(
-                        USGS_6,
-                        TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
+                    downloadTask = TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
                 }
                 finally
                 {
                     SynchronizationContext.SetSynchronizationContext(previousContext);
                 }
 
-                var (ts, raw) = await downloadTask;
-
+                var (ts, _) = await downloadTask;
                 Assert.AreEqual(0, context.PostCount, "USGS instantaneous download should not post continuations to the caller synchronization context.");
-                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
-                Assert.AreEqual(3, ts.Count);
-                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
-                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
-                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS instantaneous data request.");
-                Assert.IsFalse(decompressHandler.Requests.Any(GuardedUsgsInstantaneousHandler.IsBlockedPreflight));
+                Assert.AreEqual(4, ts.Count);
             }
             finally
             {
@@ -1283,42 +1204,302 @@ namespace Data.TimeSeriesAnalysis
         }
 
         /// <summary>
-        /// Verifies duplicate-heavy USGS instantaneous responses are normalized without a long rebuild.
+        /// Verifies duplicate-heavy USGS instantaneous responses are normalized quickly, last value winning.
         /// </summary>
-        /// <returns>A task that completes when the regression check finishes.</returns>
-        /// <remarks>
-        /// The fixture mimics provisional/approved duplicate timestamps in instantaneous RDB data.
-        /// A previous cleanup path cleared the million-row series through per-item removal, which
-        /// made full-period BestFit downloads appear to spin indefinitely after the response arrived.
-        /// </remarks>
         [TestMethod]
         [Timeout(15000, CooperativeCancellation = true)]
         public async Task USGS_InstantaneousDischarge_DuplicateHeavyResponse_NormalizesQuickly()
         {
-            const int duplicateTimestampPairs = 50000;
-            var defaultHandler = new GuardedUsgsInstantaneousHandler("00060", duplicateTimestampPairs: duplicateTimestampPairs);
-            var decompressHandler = new GuardedUsgsInstantaneousHandler("00060", duplicateTimestampPairs: duplicateTimestampPairs);
+            const int pairs = 20000;
+            var body = new System.Text.StringBuilder("x,y,time,value\n");
+            for (int i = 0; i < pairs; i++)
+            {
+                string time = new DateTime(2024, 1, 1).AddMinutes(i).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "+00:00";
+                body.Append(",,").Append(time).Append(',').Append((1000 + i).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                body.Append(",,").Append(time).Append(',').Append((2000 + i).ToString(CultureInfo.InvariantCulture)).Append('\n');
+            }
+            var handler = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text("x,y,id,begin,end,primary\n,,iv1,2024-01-01 00:00:00+00:00,2024-02-01 00:00:00+00:00,Primary\n") :
+                url.Contains("/continuous/items?") ? FakeUsgsApiHandler.Text(body.ToString()) : null);
+            var (ts, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge));
+            Assert.AreEqual(pairs, ts.Count);
+            Assert.AreEqual(2000d + pairs - 1, ts[pairs - 1].Value);
+        }
 
-            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
-            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
-
-            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
+        /// <summary>
+        /// The API key is sent in the X-Api-Key header of every request and never written to the raw text; the
+        /// per-download key overrides the default key.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_ApiKey_SentAsHeaderOnly()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text(UsgsDailyMetadata) :
+                url.Contains("/daily/items?") ? FakeUsgsApiHandler.Text("x,y,time,value\n,,2020-06-01,6.1\n") : null);
+            string previous = TimeSeriesDownload.UsgsApiKey;
             try
             {
-                var (ts, raw) = await TimeSeriesDownload.FromUSGS(
-                    USGS_6,
-                    TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge);
-                var finalDuplicateTimestamp = new DateTime(2024, 1, 2).AddMinutes(duplicateTimestampPairs - 1);
+                TimeSeriesDownload.UsgsApiKey = "default-key";
+                var (_, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6));
+                Assert.IsTrue(handler.ApiKeys.All(k => k == "default-key"));
+                Assert.DoesNotContain("default-key", raw);
+                Assert.IsFalse(handler.Requests.Any(u => u.Contains("api_key")));
 
-                Assert.IsNotNull(ts, "Time series is null.");
-                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
-                Assert.AreEqual(3 + duplicateTimestampPairs, ts.Count);
-                Assert.AreEqual(ts.Count, ts.Select(o => o.Index).Distinct().Count(), "Duplicate date indices detected.");
-                Assert.AreEqual(2000d + duplicateTimestampPairs - 1, ts.Single(o => o.Index == finalDuplicateTimestamp).Value);
-                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
-                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
-                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS instantaneous data request.");
-                Assert.IsFalse(decompressHandler.Requests.Any(GuardedUsgsInstantaneousHandler.IsBlockedPreflight));
+                handler.ApiKeys.Clear();
+                await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyDischarge,
+                    new TimeSeriesDownload.UsgsDownloadOptions { ApiKey = "my-key" }));
+                Assert.IsTrue(handler.ApiKeys.All(k => k == "my-key"));
+            }
+            finally
+            {
+                TimeSeriesDownload.UsgsApiKey = previous;
+            }
+        }
+
+        /// <summary>
+        /// A rate-limit response with a long Retry-After fails at once, with guidance about the API key.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_RateLimit_FailsFastWithGuidance()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                var response = new HttpResponseMessage((HttpStatusCode)429) { Content = new StringContent("{\"error\":{\"code\":\"OVER_RATE_LIMIT\"}}") };
+                response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(835));
+                return response;
+            });
+            var exception = await Assert.ThrowsAsync<Exception>(async () =>
+                await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.PeakDischarge)));
+            Assert.Contains("rate limit", exception.Message);
+            Assert.Contains("UsgsApiKey", exception.Message);
+            Assert.AreEqual(1, handler.Requests.Count(u => u.Contains("/peaks/")), "No retries while the limit is spent.");
+        }
+
+        /// <summary>
+        /// A site with no daily data reports that nothing matched.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_Daily_NoData_Throws()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text("x,y,id,begin,end,primary\n") :
+                url.Contains("/daily/items?") ? FakeUsgsApiHandler.Text("x,y,time,value\n") : null);
+            var exception = await Assert.ThrowsAsync<Exception>(async () => await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6)));
+            Assert.Contains("No data found", exception.Message);
+        }
+
+        #region Resilience
+
+        /// <summary>
+        /// Response content whose body stream fails part way, like a connection that drops mid-body.
+        /// </summary>
+        private sealed class DroppedBodyContent : HttpContent
+        {
+            /// <summary>The bytes sent before the connection drops.</summary>
+            private readonly byte[] _prefix;
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="DroppedBodyContent"/> class.
+            /// </summary>
+            /// <param name="prefix">The text sent before the connection drops.</param>
+            internal DroppedBodyContent(string prefix) { _prefix = System.Text.Encoding.UTF8.GetBytes(prefix); }
+
+            /// <inheritdoc/>
+            protected override Task SerializeToStreamAsync(System.IO.Stream stream, TransportContext context) => throw new System.IO.IOException("The response ended prematurely.");
+
+            /// <inheritdoc/>
+            protected override Task<System.IO.Stream> CreateContentReadStreamAsync() => Task.FromResult<System.IO.Stream>(new DroppingStream(_prefix));
+
+            /// <inheritdoc/>
+            protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        }
+
+        /// <summary>
+        /// A read-only stream that returns a prefix and then throws <see cref="System.IO.IOException"/>.
+        /// </summary>
+        private sealed class DroppingStream : System.IO.MemoryStream
+        {
+            /// <summary>
+            /// Initializes a new instance of the <see cref="DroppingStream"/> class.
+            /// </summary>
+            /// <param name="prefix">The bytes returned before the failure.</param>
+            internal DroppingStream(byte[] prefix) : base(prefix) { }
+
+            /// <inheritdoc/>
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int n = base.Read(buffer, offset, count);
+                if (n == 0) throw new System.IO.IOException("The response ended prematurely.");
+                return n;
+            }
+
+            /// <inheritdoc/>
+            public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromResult(Read(buffer, offset, count));
+
+            /// <inheritdoc/>
+            public override Task CopyToAsync(System.IO.Stream destination, int bufferSize, CancellationToken cancellationToken)
+            {
+                var buffer = new byte[bufferSize];
+                int n;
+                while ((n = Read(buffer, 0, buffer.Length)) > 0) destination.Write(buffer, 0, n);
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>
+        /// A rate-limit response with a Retry-After delay.
+        /// </summary>
+        /// <param name="seconds">The Retry-After delay in seconds.</param>
+        private static HttpResponseMessage RateLimited(int seconds)
+        {
+            var response = new HttpResponseMessage((HttpStatusCode)429) { Content = new StringContent("rate") };
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(seconds));
+            return response;
+        }
+
+        /// <summary>
+        /// A USGS page whose connection drops part way is retried (an IOException is transient), for every provider
+        /// that uses the shared retry helper.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_DroppedBody_IsRetried()
+        {
+            int calls = 0;
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/time-series-metadata/")) return FakeUsgsApiHandler.Text(UsgsDailyMetadata);
+                if (!url.Contains("/daily/items?")) return null;
+                if (Interlocked.Increment(ref calls) == 1) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new DroppedBodyContent("x,y,time,value\n,,2020-01") };
+                return FakeUsgsApiHandler.Text("x,y,time,value\n,,2020-01-01,1\n,,2020-01-02,2\n");
+            });
+            var (ts, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6));
+            Assert.HasCount(2, ts);
+            Assert.AreEqual(2, calls);
+        }
+
+        /// <summary>
+        /// A USGS page cut off inside its last record (no final line break) is retried; one that stays cut off fails
+        /// instead of returning partial data.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_TruncatedPage_IsRetriedThenFails()
+        {
+            int calls = 0;
+            var handler = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/time-series-metadata/")) return FakeUsgsApiHandler.Text(UsgsDailyMetadata);
+                if (!url.Contains("/daily/items?")) return null;
+                return Interlocked.Increment(ref calls) == 1
+                    ? FakeUsgsApiHandler.Text("x,y,time,value\n,,2020-01-01,1\n,,2020-01-0")
+                    : FakeUsgsApiHandler.Text("x,y,time,value\n,,2020-01-01,1\n,,2020-01-02,2\n");
+            });
+            var (ts, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6));
+            Assert.HasCount(2, ts);
+            Assert.AreEqual(2, calls);
+
+            calls = 0;
+            var cut = new FakeUsgsApiHandler(url =>
+            {
+                if (url.Contains("/time-series-metadata/")) return FakeUsgsApiHandler.Text(UsgsDailyMetadata);
+                if (!url.Contains("/daily/items?")) return null;
+                Interlocked.Increment(ref calls);
+                return FakeUsgsApiHandler.Text("x,y,time,value\n,,2020-01-01,1\n,,2020-01-0");
+            });
+            var e = await Assert.ThrowsAsync<System.IO.IOException>(async () => await WithFakeUsgs(cut, () => TimeSeriesDownload.FromUSGS(USGS_6)));
+            Assert.Contains("ended before its last record", e.Message);
+            Assert.AreEqual(4, calls, "Four attempts, then a clear failure.");
+        }
+
+        /// <summary>
+        /// A timed-out request is retried at most once: two attempts instead of four.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_Timeout_RetriedAtMostOnce()
+        {
+            var handler = ContinuousFake("00060", simulateTimeout: true);
+            var options = new TimeSeriesDownload.UsgsDownloadOptions { StartDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc) };
+            await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge, options)));
+            Assert.AreEqual(2, handler.Requests.Count(u => u.Contains("/continuous/items?")));
+        }
+
+        /// <summary>
+        /// GHCN honours a short Retry-After (waits it, then succeeds) and stops at once on a long one, with a
+        /// rate-limit message.
+        /// </summary>
+        [TestMethod]
+        public async Task GHCN_RetryAfter_IsHonoured()
+        {
+            string dly = "USC00040741202401PRCP" + string.Concat(Enumerable.Repeat("   10  0", 31)) + "\n";
+            int calls = 0;
+            var shortWait = new FakeUsgsApiHandler(_ => Interlocked.Increment(ref calls) == 1 ? RateLimited(1) : FakeUsgsApiHandler.Text(dly));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var (ts, _) = await WithFakeUsgs(shortWait, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1), ""));
+            Assert.HasCount(31, ts);
+            Assert.IsGreaterThanOrEqualTo(0.95, watch.Elapsed.TotalSeconds, "Waited the 1 s Retry-After, not the 0.5 s backoff.");
+
+            var longWait = new FakeUsgsApiHandler(_ => RateLimited(3600));
+            var e = await Assert.ThrowsAsync<Exception>(async () => await WithFakeUsgs(longWait, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1), "")));
+            Assert.Contains("rate limit", e.Message);
+            Assert.HasCount(1, longWait.Requests, "A long Retry-After is final.");
+
+            var notFound = new FakeUsgsApiHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("missing") });
+            await Assert.ThrowsAsync<HttpRequestException>(async () => await WithFakeUsgs(notFound, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1), "")));
+            Assert.HasCount(1, notFound.Requests, "A 404 is not retried.");
+        }
+
+        /// <summary>
+        /// A GHCN station file whose connection drops part way is downloaded again.
+        /// </summary>
+        [TestMethod]
+        public async Task GHCN_DroppedBody_IsRetried()
+        {
+            string dly = "USC00040741202401PRCP" + string.Concat(Enumerable.Repeat("   10  0", 31)) + "\n";
+            int calls = 0;
+            var handler = new FakeUsgsApiHandler(_ => Interlocked.Increment(ref calls) == 1
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new DroppedBodyContent(dly.Substring(0, 100)) }
+                : FakeUsgsApiHandler.Text(dly));
+            var (ts, _) = await WithFakeUsgs(handler, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1), ""));
+            Assert.HasCount(31, ts);
+            Assert.AreEqual(2, calls);
+        }
+
+        /// <summary>
+        /// BOM requests go through the swappable client; the qualifier overload asks for the Quality Code field and a
+        /// malformed values response gives a clear error.
+        /// </summary>
+        [TestMethod]
+        public async Task BOM_TestClient_QualityCodesAndMalformedValues()
+        {
+            string list = "[[\"ts_id\",\"ts_name\"],[\"1573010\",\"DMQaQc.Merged.DailyMean.24HR\"]]";
+            string values = "[{\"ts_id\":\"1573010\",\"columns\":\"Timestamp,Value,Quality Code\",\"data\":[[\"2021-11-01T00:00:00.000+10:00\",1.5,10],[\"2021-11-02T00:00:00.000+10:00\",2.5,90]]}]";
+            var handler = new FakeUsgsApiHandler(url => FakeUsgsApiHandler.Text(url.Contains("getTimeseriesList") ? list : values));
+            using var client = new HttpClient(handler);
+            TimeSeriesDownload.SetHttpClientsForTesting(client, client, client);
+            try
+            {
+                var plain = await TimeSeriesDownload.FromABOM(BOM_1, startDate: WinStart, endDate: WinEnd);
+                Assert.HasCount(2, plain);
+                Assert.DoesNotContain("returnfields", handler.Requests.Last());
+                var q = new List<string>();
+                var withQ = await TimeSeriesDownload.FromABOM(BOM_1, TimeSeriesDownload.TimeSeriesType.DailyDischarge, TimeSeriesDownload.DischargeUnit.CubicMetersPerSecond,
+                    TimeSeriesDownload.HeightUnit.Meters, TimeSeriesDownload.DepthUnit.Millimeters, WinStart, WinEnd, q);
+                Assert.Contains("returnfields=Timestamp%2CValue%2CQuality+Code", handler.Requests.Last());
+                CollectionAssert.AreEqual(new[] { "10", "90" }, q);
+                CollectionAssert.AreEqual(plain.Select(o => o.Value).ToArray(), withQ.Select(o => o.Value).ToArray());
+            }
+            finally
+            {
+                TimeSeriesDownload.ResetHttpClientsForTesting();
+            }
+
+            var bad = new FakeUsgsApiHandler(url => FakeUsgsApiHandler.Text(url.Contains("getTimeseriesList") ? list : "[{\"data\":[[\"2021-11-01"));
+            using var badClient = new HttpClient(bad);
+            TimeSeriesDownload.SetHttpClientsForTesting(badClient, badClient, badClient);
+            try
+            {
+                var e = await Assert.ThrowsAsync<Exception>(async () => await TimeSeriesDownload.FromABOM(BOM_1, startDate: WinStart, endDate: WinEnd));
+                Assert.Contains("Failed to parse BOM time series values as JSON", e.Message);
             }
             finally
             {
@@ -1326,52 +1507,110 @@ namespace Data.TimeSeriesAnalysis
             }
         }
 
+        #endregion
+
         /// <summary>
-        /// Verifies a deterministic USGS instantaneous download preserves nonuniform timestamps.
+        /// The qualifier overloads return the same series plus one qualifier per ordinate; only instantaneous USGS
+        /// requests change, by asking for the qualifier field.
         /// </summary>
-        /// <param name="seriesType">The instantaneous USGS series type to request.</param>
-        /// <param name="parameterCode">The expected USGS parameter code.</param>
-        /// <returns>A task that completes when the regression check finishes.</returns>
-        /// <remarks>
-        /// The fixture has a 15-minute step followed by a 30-minute step. The downloader must keep
-        /// those timestamps exactly and must not convert the series into a regular interval.
-        /// </remarks>
-        private static async Task VerifyUsgsInstantaneousDownloadIsIrregular(
-            TimeSeriesDownload.TimeSeriesType seriesType,
-            string parameterCode)
+        [TestMethod]
+        public async Task Download_QualifierOverloads_SameSeries()
         {
-            var defaultHandler = new GuardedUsgsInstantaneousHandler(parameterCode);
-            var decompressHandler = new GuardedUsgsInstantaneousHandler(parameterCode);
+            var handler = ContinuousFake("00060");
+            var options = new TimeSeriesDownload.UsgsDownloadOptions();
+            var (plain, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge, options));
+            Assert.IsTrue(handler.Requests.Where(u => u.Contains("/continuous/")).All(u => u.Contains("properties=time,value&")));
+            handler.Requests.Clear();
+            var q = new List<string>();
+            var (withQ, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge, options, q));
+            Assert.IsTrue(handler.Requests.Where(u => u.Contains("/continuous/")).All(u => u.Contains("properties=time,value,qualifier&")));
+            Assert.HasCount(withQ.Count, q);
+            CollectionAssert.AreEqual(plain.Select(o => o.Value).ToArray(), withQ.Select(o => o.Value).ToArray());
 
-            using var defaultClient = new HttpClient(defaultHandler) { Timeout = TimeSpan.FromSeconds(5) };
-            using var decompressClient = new HttpClient(decompressHandler) { Timeout = TimeSpan.FromSeconds(5) };
+            var daily = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text(UsgsDailyMetadata) :
+                url.Contains("/daily/items?") ? FakeUsgsApiHandler.Text("x,y,time,value,approval_status,qualifier\n,,2020-01-01,1.5,Approved,\n,,2020-01-03,,Provisional,\"ICE,EQUIP\"\n") : null);
+            var dq = new List<string>();
+            var (dts, _) = await WithFakeUsgs(daily, () => TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyDischarge, options, dq));
+            CollectionAssert.AreEqual(new[] { "", "", "ICE,EQUIP" }, dq);
+            Assert.HasCount(3, dts);
 
-            TimeSeriesDownload.SetHttpClientsForTesting(defaultClient, decompressClient);
-            try
+            var ghcn = new FakeUsgsApiHandler(_ => FakeUsgsApiHandler.Text("USC00040741202401PRCP" + "   10T 0" + string.Concat(Enumerable.Repeat("    0  0", 30)) + "\n"));
+            var gq = new List<string>();
+            var (gts, _) = await WithFakeUsgs(ghcn, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1, TimeSeriesDownload.TimeSeriesType.DailyPrecipitation, TimeSeriesDownload.DepthUnit.Millimeters, gq), ""));
+            Assert.AreEqual(1d, gts[0].Value);
+            Assert.AreEqual("T 0", gq[0]);
+
+            var chmn = new FakeUsgsApiHandler(_ => FakeUsgsApiHandler.Text("﻿ ID,Date,Parameter/Paramètre,Value/Valeur,Symbol/Symbole\n08LG010,2021-11-01,discharge/débit,1.5,B\n"));
+            var cq = new List<string>();
+            await WithFakeUsgs(chmn, async () => (await TimeSeriesDownload.FromCHMN(CHMN_1, TimeSeriesDownload.TimeSeriesType.DailyDischarge,
+                TimeSeriesDownload.DischargeUnit.CubicMetersPerSecond, TimeSeriesDownload.HeightUnit.Meters, null, null, cq), ""));
+            CollectionAssert.AreEqual(new[] { "B" }, cq);
+
+            await Assert.ThrowsAsync<ArgumentNullException>(async () => await TimeSeriesDownload.FromUSGS(USGS_6, TimeSeriesDownload.TimeSeriesType.DailyDischarge, options, null!));
+            await Assert.ThrowsAsync<ArgumentNullException>(async () => await TimeSeriesDownload.FromGHCN(GHCN_1, TimeSeriesDownload.TimeSeriesType.DailySnow, TimeSeriesDownload.DepthUnit.Inches, null!));
+        }
+
+        /// <summary>
+        /// GHCN and CHMN report an empty, header-only or HTML response with status 200 as "No data found", like USGS.
+        /// </summary>
+        [TestMethod]
+        public async Task GHCN_CHMN_EmptyOrHtmlResponse_ThrowsNoData()
+        {
+            const string chmnHeader = "﻿ ID,Date,Parameter/Paramètre,Value/Valeur,Symbol/Symbole\n";
+            foreach (string body in new[] { "", "  \r\n", "<html><body>Access denied</body></html>" })
             {
-                var (ts, raw) = await TimeSeriesDownload.FromUSGS(USGS_6, seriesType);
-                var expectedDates = new[]
-                {
-                    new DateTime(2024, 1, 1, 0, 0, 0),
-                    new DateTime(2024, 1, 1, 0, 15, 0),
-                    new DateTime(2024, 1, 1, 0, 45, 0)
-                };
-
-                Assert.IsNotNull(ts, "Time series is null.");
-                Assert.AreEqual(TimeInterval.Irregular, ts.TimeInterval);
-                Assert.AreEqual(expectedDates.Length, ts.Count);
-                CollectionAssert.AreEqual(expectedDates, ts.Select(o => o.Index).ToArray());
-                Assert.IsFalse(string.IsNullOrWhiteSpace(raw), "Raw text should contain the fake USGS response.");
-                Assert.IsEmpty(defaultHandler.Requests, "Instantaneous download should not use the default client.");
-                Assert.HasCount(1, decompressHandler.Requests, "Expected exactly one USGS instantaneous data request.");
-                Assert.IsTrue(decompressHandler.Requests[0].Contains("/nwis/iv/", StringComparison.OrdinalIgnoreCase));
-                Assert.IsTrue(decompressHandler.Requests[0].Contains($"parameterCd={parameterCode}", StringComparison.OrdinalIgnoreCase));
-                Assert.IsTrue(decompressHandler.Requests[0].Contains("startDT=1900-01-01", StringComparison.OrdinalIgnoreCase));
-                Assert.IsFalse(decompressHandler.Requests.Any(GuardedUsgsInstantaneousHandler.IsBlockedPreflight));
+                var ghcn = new FakeUsgsApiHandler(_ => FakeUsgsApiHandler.Text(body));
+                var e = await Assert.ThrowsAsync<Exception>(async () => await WithFakeUsgs(ghcn, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1), "")));
+                Assert.Contains("No data found", e.Message);
             }
-            finally
+            foreach (string body in new[] { "", chmnHeader, chmnHeader + "\n", "<!DOCTYPE html><html></html>" })
             {
-                TimeSeriesDownload.ResetHttpClientsForTesting();
+                var chmn = new FakeUsgsApiHandler(_ => FakeUsgsApiHandler.Text(body));
+                var e = await Assert.ThrowsAsync<Exception>(async () => await WithFakeUsgs(chmn, async () => (await TimeSeriesDownload.FromCHMN("99ZZ999"), "")));
+                Assert.Contains("No data found", e.Message);
+            }
+
+            // A station file without the requested element returns an empty series.
+            var noSnow = new FakeUsgsApiHandler(_ => FakeUsgsApiHandler.Text("USC00040741202401PRCP" + string.Concat(Enumerable.Repeat("    0   ", 31)) + "\n"));
+            var (snow, _) = await WithFakeUsgs(noSnow, async () => (await TimeSeriesDownload.FromGHCN(GHCN_1, TimeSeriesDownload.TimeSeriesType.DailySnow), ""));
+            Assert.IsEmpty(snow);
+            var data = new FakeUsgsApiHandler(_ => FakeUsgsApiHandler.Text(chmnHeader + "08LG010,2021-11-01,discharge/débit,1.5,\n"));
+            var (one, _) = await WithFakeUsgs(data, async () => (await TimeSeriesDownload.FromCHMN(CHMN_1), ""));
+            Assert.HasCount(1, one);
+        }
+
+        /// <summary>
+        /// ParseUSGS applied to the raw text of a download gives the downloaded series, for daily, instantaneous, peak and
+        /// measured types.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_ParseRawText_ReproducesDownload()
+        {
+            var dailyHandler = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text(UsgsDailyMetadata) :
+                url.Contains("/daily/items?") ? FakeUsgsApiHandler.Text("x,y,time,value,approval_status,qualifier\n,,2020-01-01,1.5,Approved,\n,,2020-01-03,,Approved,\"ICE,EQUIP\"\n") : null);
+            var peakHandler = new FakeUsgsApiHandler(url =>
+                url.Contains("/monitoring-locations/") ? FakeUsgsApiHandler.Text("{\"properties\":{\"time_zone_abbreviation\":\"EST\"}}") :
+                url.Contains("/peaks/items?") ? FakeUsgsApiHandler.Text("x,y,time,value,year,month,day,time_of_day,qualifier\n,,1998-03-23,152000,1998,3,23,02:15:00+00:00,\n,,1889-01-01,484000,1889,,,,\n") : null);
+            var measuredHandler = new FakeUsgsApiHandler(url => url.Contains("/field-measurements/items?") ? FakeUsgsApiHandler.Text(
+                "x,y,time,time_of_day,value\n,,1936-03-15,05:00:00+00:00,14.5\n,,1935-06-01,,7.25\n") : null);
+            var cases = new (FakeUsgsApiHandler Handler, TimeSeriesDownload.TimeSeriesType Type, TimeSpan? Offset)[]
+            {
+                (dailyHandler, TimeSeriesDownload.TimeSeriesType.DailyDischarge, null),
+                (ContinuousFake("00060"), TimeSeriesDownload.TimeSeriesType.InstantaneousDischarge, null),
+                (peakHandler, TimeSeriesDownload.TimeSeriesType.PeakDischarge, TimeSpan.FromHours(-5)),
+                (measuredHandler, TimeSeriesDownload.TimeSeriesType.MeasuredStage, null)
+            };
+            foreach (var (handler, type, offset) in cases)
+            {
+                var (ts, raw) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS(USGS_6, type));
+                var parsed = TimeSeriesDownload.ParseUSGS(raw, type, offset);
+                Assert.AreEqual(ts.TimeInterval, parsed.TimeInterval, type.ToString());
+                CollectionAssert.AreEqual(ts.Select(o => o.Index).ToArray(), parsed.Select(o => o.Index).ToArray(), type.ToString());
+                CollectionAssert.AreEqual(ts.Select(o => o.Index.Kind).ToArray(), parsed.Select(o => o.Index.Kind).ToArray(), type.ToString());
+                CollectionAssert.AreEqual(ts.Select(o => BitConverter.DoubleToInt64Bits(o.Value)).ToArray(),
+                    parsed.Select(o => BitConverter.DoubleToInt64Bits(o.Value)).ToArray(), type.ToString());
             }
         }
 
@@ -1420,8 +1659,23 @@ namespace Data.TimeSeriesAnalysis
         [TestMethod]
         public async Task USGS_InvalidStation_Throws()
         {
-            await Assert.ThrowsAsync<ArgumentException>(async () =>
-                await TimeSeriesDownload.FromUSGS("1134500"));
+            foreach (string bad in new[] { "1134500", "1234567890123456", "0113450A", "USGS-01134500", "" })
+                await Assert.ThrowsAsync<ArgumentException>(async () => await TimeSeriesDownload.FromUSGS(bad), bad);
+            await Assert.ThrowsAsync<ArgumentException>(async () => await TimeSeriesDownload.FromUSGS(null!));
+        }
+
+        /// <summary>
+        /// A 15-digit latitude-longitude site number is accepted and requested as USGS-{site}.
+        /// </summary>
+        [TestMethod]
+        public async Task USGS_FifteenDigitSite_IsRequested()
+        {
+            var handler = new FakeUsgsApiHandler(url =>
+                url.Contains("/time-series-metadata/") ? FakeUsgsApiHandler.Text(UsgsDailyMetadata) :
+                url.Contains("/daily/items?") ? FakeUsgsApiHandler.Text("x,y,time,value\n,,2026-06-01,6.1\n") : null);
+            var (ts, _) = await WithFakeUsgs(handler, () => TimeSeriesDownload.FromUSGS("393109104464500"));
+            Assert.HasCount(1, ts);
+            Assert.IsTrue(handler.Requests.All(u => u.Contains("monitoring_location_id=USGS-393109104464500")));
         }
 
         /// <summary>

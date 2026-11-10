@@ -1,6 +1,6 @@
 ﻿# Multivariate Distributions
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Univariate Functions →](../functions/index.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Regional Frequency Analysis →](regional.md)
 
 The ***Numerics*** library provides several multivariate distributions for modeling correlated random variables: the **Multivariate Normal**, **Multivariate Student-t**, **Dirichlet**, and **Multinomial** distributions. These are fundamental in multivariate statistics, risk assessment, and uncertainty quantification.
 
@@ -72,6 +72,7 @@ This produces a sample $\mathbf{x} \sim \mathcal{N}_k(\boldsymbol{\mu}, \boldsym
 ```cs
 using Numerics.Distributions;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling;
 
 // Example 1: Standard multivariate normal (dimension 3)
 // Mean = [0, 0, 0], Covariance = Identity
@@ -147,16 +148,18 @@ double cdf = mvn.CDF(x);
 Console.WriteLine($"CDF at x = [{string.Join(", ", x)}]:");
 Console.WriteLine($"  P(X ≤ x) = {cdf:F6}");
 
-// For dimensions > 2, uses Monte Carlo integration
+// For dimensions > 2, uses a randomized lattice rule (Genz)
 // Can control accuracy with properties:
-mvn.MaxEvaluations = 100000;    // Max function evaluations
+mvn.MaxEvaluations = 100000;    // Max function evaluations (default 1,000 × dimension)
 mvn.AbsoluteError = 1e-4;       // Absolute error tolerance
 mvn.RelativeError = 1e-4;       // Relative error tolerance
 ```
 
+In one and two dimensions the CDF is a closed form. Above two dimensions it is the Genz MVNDST algorithm [[7]](#7): the variables are reordered and transformed to the unit hypercube, and the integral is estimated with a randomized, antithetic Korobov lattice rule whose random shifts come from the `MVNUNI` generator. The result therefore carries a small integration error, of the order of `AbsoluteError` (the defaults are `AbsoluteError` = 1E-4 and `RelativeError` = 1E-4). The generator defaults to a Mersenne twister seeded with `MultivariateNormal.DefaultMVNUNISeed` (12345), so a freshly constructed distribution returns the same value every time, while repeated calls on one instance advance the generator and differ slightly. Assign `mvn.MVNUNI = new MersenneTwister(seed)` to tie the integration to a seed of your own. The generator is instance state, so concurrent CDF calls need one distribution (or one generator) per thread.
+
 ### Bivariate CDF (Special Case)
 
-For two-dimensional case, exact calculation available:
+For two-dimensional case, exact calculation available. `BivariateCDF` follows the Genz BVN convention and returns the upper orthant probability $P(Z_1 > z_1, Z_2 > z_2)$; the lower orthant CDF is `BivariateCDF(-z1, -z2, rho)`:
 
 ```cs
 // Bivariate standard normal with correlation ρ
@@ -164,9 +167,11 @@ double z1 = 1.0;
 double z2 = 1.5;
 double rho = 0.6;
 
-double bivCDF = MultivariateNormal.BivariateCDF(z1, z2, rho);
+double upper = MultivariateNormal.BivariateCDF(z1, z2, rho);
+double bivCDF = MultivariateNormal.BivariateCDF(-z1, -z2, rho);
 
-Console.WriteLine($"Bivariate CDF:");
+Console.WriteLine($"Bivariate normal orthants:");
+Console.WriteLine($"  P(Z₁ > {z1}, Z₂ > {z2} | ρ={rho}) = {upper:F6}");
 Console.WriteLine($"  P(Z₁ ≤ {z1}, Z₂ ≤ {z2} | ρ={rho}) = {bivCDF:F6}");
 
 // Useful for correlation analysis and joint probabilities
@@ -226,6 +231,15 @@ for (int j = 0; j < mvn.Dimension; j++)
 
 Console.WriteLine($"Sample means: [{string.Join(", ", sampleMeans.Select(m => m.ToString("F2")))}]");
 Console.WriteLine($"True means:   [{string.Join(", ", mvn.Mean.Select(m => m.ToString("F2")))}]");
+```
+
+A seed of zero or below, including the default -1, seeds the generator from the clock. The overloads `GenerateRandomValues(n, random)` and `LatinHypercubeRandomValues(n, random)` draw from a supplied generator instead, with no clock fallback; `new MersenneTwister(seed)` with a positive seed reproduces the seeded overloads exactly, and one generator can be shared across consecutive calls to draw independent samples:
+
+```cs
+var generator = new MersenneTwister(12345);
+double[,] batch1 = mvn.GenerateRandomValues(500, generator);
+double[,] batch2 = mvn.GenerateRandomValues(500, generator);   // continues the same generator
+double[,] design = mvn.LatinHypercubeRandomValues(100, new MersenneTwister(7));
 ```
 
 ## Correlation Structure
@@ -500,6 +514,7 @@ where $\mathbf{L}$ is the Cholesky factor of $\boldsymbol{\Sigma}$, $\mathbf{z} 
 
 ```cs
 using Numerics.Distributions;
+using Numerics.Sampling;
 
 // Bivariate Student-t with 5 degrees of freedom
 double nu = 5;
@@ -533,6 +548,20 @@ Console.WriteLine($"CDF at x: {cdf:F6}");
 
 // Generate random samples
 double[,] samples = mvt.GenerateRandomValues(1000, seed: 42);
+
+// The same sample from a supplied generator, with no clock fallback
+double[,] same = mvt.GenerateRandomValues(1000, new MersenneTwister(42));
+```
+
+The CDF uses the Genz-Bretz method, a translation of Alan Genz's `MVTDST` [[8]](#8). One dimension uses the univariate Student-t CDF. Two dimensions are deterministic: an integer $\nu$ up to 10,000 uses the Dunnett and Sobel closed form [[9]](#9), exact to rounding, and any other $\nu$ integrates the exact bivariate normal probability over the $\chi(\nu)/\sqrt{\nu}$ mixing variable by adaptive Gauss-Kronrod quadrature, which agrees with exact references to about $10^{-14}$. Above two dimensions the CDF is the randomized Korobov lattice rule described for the multivariate normal, with one extra coordinate for the mixing variable and lattice shifts drawn from this distribution's `MVNUNI` generator. It refines until its 99% error estimate is within `AbsoluteError` (default $10^{-5}$) or `RelativeError` times the value (default 0), or until `MaxEvaluations` integrand evaluations (default 25,000) are spent. The mixing coordinate is the radial factor $r = \sqrt{x/a}$ with $a = \nu/2$ and $P(a, x)$ equal to the lattice coordinate; $x$ is found by Halley's method on the logarithm of the smaller incomplete gamma tail, started from the Wilson-Hilferty approximation as in Numerical Recipes (section 6.2.1) [[10]](#10), usually in two or three steps. With the defaults, a three-dimensional CDF takes about 6 to 10 ms, against about 20 to 28 ms for scipy `multivariate_t.cdf(maxpts=25000)` and 21 to 23 ms for R `pmvt` with `GenzBretz(maxpts = 25000)`:
+
+```cs
+var mvt3 = new MultivariateStudentT(4, new double[3], new double[,] { { 1, 0.5, 0.2 }, { 0.5, 1, 0.3 }, { 0.2, 0.3, 1 } })
+{
+    AbsoluteError = 1E-7,
+    MaxEvaluations = 1000000
+};
+double p3 = mvt3.CDF(new[] { 0.5, 1.0, -0.2 });   // about 0.2928856
 ```
 
 ## Dirichlet Distribution
@@ -724,6 +753,36 @@ int category = Multinomial.Sample(weights, rng);
 Console.WriteLine($"Sampled category: {category}");
 ```
 
+### Vectorized Categorical Draws
+
+`Multinomial.CategoricalIndices(cumulativeWeights, uniforms)` maps a whole array of variates to categories in one call. Each index is the first k with `cumulativeWeights[k] > u`, clipped to the last category, which equals numpy `clip(searchsorted(cumulative, u, side="right"), 0, n - 1)`. A variate exactly on a boundary selects the next category, a zero-weight category is skipped, and a variate at or above the last entry selects the last category. The table must be nonempty, finite and non-decreasing; it need not be normalized, provided the variates are on the same scale.
+
+```cs
+using Numerics.Distributions;
+using Numerics.Sampling;
+
+double[] cumulative = { 0.2, 0.5, 1.0 };      // weights 0.2, 0.3, 0.5
+var prng = new MersenneTwister(12345);
+var u = new double[10000];
+for (int i = 0; i < u.Length; i++) u[i] = prng.NextDouble();
+
+int[] categories = Multinomial.CategoricalIndices(cumulative, u);
+// Boundary rule: u = 0.2 selects category 1, u = 1.0 clips to category 2.
+int[] edges = Multinomial.CategoricalIndices(cumulative, new[] { 0.2, 1.0 });   // { 1, 2 }
+```
+
+Each variate costs one binary search, O(log n), so m draws cost O(m log n). `Multinomial.Sample` accepts a variate on a boundary into the lower category instead; use `CategoricalIndices` where the right-continuous convention of `searchsorted` is required.
+
+`Multinomial.CategoricalIndices(cumulativeWeights, uniforms, inclusive: true)` selects the first k with `cumulativeWeights[k] >= u` instead, clipped to the last category, which equals numpy `clip(searchsorted(cumulative, u, side="left"), 0, n - 1)`. On a table of CDF values F(0), F(1), ... of a count distribution this is the inverse-transform rule min{k : F(k) ≥ u}. The two forms differ only for a variate equal to a table entry: there the inclusive form returns that entry's index (the lowest one when entries repeat), and a variate at or below the first entry selects category 0. `inclusive: false` is the two-argument form.
+
+```cs
+var poisson = new Poisson(3.5);
+var cdf = new double[40];
+for (int k = 0; k < cdf.Length; k++) cdf[k] = poisson.CDF(k);
+int[] counts = Multinomial.CategoricalIndices(cdf, u, inclusive: true);     // Poisson(3.5) counts
+int[] ties = Multinomial.CategoricalIndices(cumulative, new[] { 0.2, 0.5 }, inclusive: true);   // { 0, 1 }
+```
+
 ## Key Concepts
 
 ### Positive Definiteness
@@ -768,6 +827,20 @@ var marginal1 = new Normal(mu1, sigma1);
 Console.WriteLine($"Marginal X₁ ~ N({mu1:F2}, {sigma1:F2})");
 ```
 
+`Marginal(indices)` returns the multivariate normal over any subset of the dimensions, in the order given, and `Conditional(observedIndices, observedValues)` returns the distribution of the remaining dimensions given observed values at the others, using the conditioning formulas above with $\boldsymbol{\Sigma}_{bb}$ solved through its Cholesky factorization:
+
+```cs
+var mvn3 = new MultivariateNormal(new[] { 100.0, 50.0, 75.0 },
+    new double[,] { { 225, 60, 45 }, { 60, 100, 30 }, { 45, 30, 144 } });
+
+MultivariateNormal pair = mvn3.Marginal(2, 0);                        // (X₃, X₁)
+MultivariateNormal given = mvn3.Conditional(new[] { 1 }, new[] { 60.0 });  // (X₁, X₃) | X₂ = 60
+
+Console.WriteLine($"E[X₁ | X₂ = 60] = {given.Mean[0]:F3}, Var = {given.Covariance[0, 0]:F3}");
+```
+
+Both return distributions built with the parent's `Decomposition` and share its `MVNUNI` generator by reference, as `Clone` does. The marginal or conditional of a distribution built with `DecompositionMethod.SingularValue` is therefore itself a degenerate normal when its covariance is singular. `Conditional` throws `ArgumentOutOfRangeException` when the observed sub-covariance $\boldsymbol{\Sigma}_{bb}$ is not positive-definite.
+
 ### Independence
 
 Variables are independent if covariance matrix is diagonal:
@@ -791,7 +864,7 @@ Console.WriteLine("Independent MVN → Diagonal covariance matrix");
 3. **Use Cholesky decomposition** - Efficient for generation and PDF
 4. **Consider dimension** - CDF computation expensive for high dimensions
 5. **Monte Carlo for CDF** - Set appropriate tolerance for accuracy
-6. **Conditional distributions** - Use formula for bivariate case
+6. **Conditional distributions** - Use `Conditional` for any observed subset
 7. **Outlier detection** - Use Mahalanobis distance
 
 ## Sampling Algorithms
@@ -839,7 +912,7 @@ This method is exact and avoids the need to enumerate the full multinomial suppo
 ## Computational Notes
 
 - **PDF**: O(k^3) for Cholesky decomposition (one-time), O(k^2) per evaluation
-- **CDF**: O(k) for k<=2, O(n*k) for k>2 (Monte Carlo with n evaluations)
+- **CDF**: closed form for k<=2; O(n*k^2) for k>2, a randomized lattice rule with n integrand evaluations (at most `MaxEvaluations`)
 - **Sampling**: O(k^2) per sample using Cholesky (MVN and Student-t)
 - **Storage**: O(k^2) for covariance/scale matrix
 
@@ -883,12 +956,12 @@ var bivariateLog = new BivariateEmpirical(
 ```
 
 **Properties:**
-- `X1Values`, `X2Values` — grid axis values
-- `ProbabilityValues` — CDF values on the grid
-- `Dimension` — always 2
+- `X1Values`, `X2Values`: grid axis values
+- `ProbabilityValues`: CDF values on the grid
+- `Dimension`: always 2
 - Supports `Transform.None`, `Transform.Logarithmic`, and `Transform.NormalZ` for interpolation
 
-**Note:** The `PDF()` method returns `double.NaN` because this is a purely empirical CDF — no density function is defined.
+**Note:** The `PDF()` method returns `double.NaN` because this is a purely empirical CDF; no density function is defined.
 
 ### Practical Example: Joint Flood Stage-Duration Exceedance
 
@@ -945,6 +1018,14 @@ Console.WriteLine($"P(Stage > 16 AND/OR Duration > 48hr) = {jointExceedance:F4}"
 
 <a id="6">[6]</a> Kotz, S. & Nadarajah, S. (2004). *Multivariate t Distributions and Their Applications*. Cambridge University Press.
 
+<a id="7">[7]</a> Genz, A. (1992). Numerical computation of multivariate normal probabilities. *Journal of Computational and Graphical Statistics*, 1(2), 141-149. https://doi.org/10.1080/10618600.1992.10477010
+
+<a id="8">[8]</a> Genz, A. & Bretz, F. (2009). *Computation of Multivariate Normal and t Probabilities*. Lecture Notes in Statistics 195. Springer. https://doi.org/10.1007/978-3-642-01689-9
+
+<a id="9">[9]</a> Dunnett, C. W. & Sobel, M. (1954). A bivariate generalization of Student's t-distribution, with tables for certain special cases. *Biometrika*, 41(1/2), 153-169. https://doi.org/10.1093/biomet/41.1-2.153
+
+<a id="10">[10]</a> Press, W. H., Teukolsky, S. A., Vetterling, W. T. & Flannery, B. P. (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.), section 6.2.1. Cambridge University Press.
+
 ---
 
-[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Univariate Functions →](../functions/index.md)
+[← Previous: Copulas](copulas.md) | [Back to Index](../index.md) | [Next: Regional Frequency Analysis →](regional.md)

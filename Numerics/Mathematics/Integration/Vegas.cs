@@ -94,7 +94,7 @@ namespace Numerics.Mathematics.Integration
         /// The largest supported spatial dimension. A guard against runaway inputs rather than an
         /// algorithmic bound: the importance-sampling grid is separable, so it holds
         /// <see cref="NumberOfBins"/> × D bins rather than bins^D, and the stratification
-        /// self-limits — strata per axis are (calls/2)^(1/D), which reaches one around fifteen
+        /// self-limits: strata per axis are (calls/2)^(1/D), which reaches one around fifteen
         /// dimensions, at which point the algorithm runs as pure adaptive importance sampling.
         /// That is the same graceful degradation GSL and Lepage's reference implementation rely
         /// on; neither imposes a dimension cap.
@@ -115,6 +115,7 @@ namespace Numerics.Mathematics.Integration
         private double[] dx = null!;
         private double[] binDensities = null!;
         private double[] randomPoint = null!;
+        private double[] randomDraws = null!;
         private double[] binEdges = null!;
         private double[,] binContributions = null!;
         private double[,] refinedBinContributions = null!;
@@ -153,7 +154,7 @@ namespace Numerics.Mathematics.Integration
 
         /// <summary>
         /// The seed for Matousek-scrambled Sobol driving points, or null (the default) for the
-        /// unrandomized sequence — the seeded scrambling restores a caller's reproducibility
+        /// unrandomized sequence; the seeded scrambling restores a caller's reproducibility
         /// contract that the unrandomized sequence, being seed-independent, cannot honor.
         /// Assigning rebuilds the driving sequence from its start, so set it before
         /// integrating; the sequence then continues across warm-up and recording calls exactly
@@ -259,6 +260,7 @@ namespace Numerics.Mathematics.Integration
             dx = new double[Dimensions];
             binDensities = new double[NumberOfBins];
             randomPoint = new double[Dimensions];
+            randomDraws = new double[Dimensions];
             binEdges = new double[NumberOfBins];
             binContributions = new double[NumberOfBins, Dimensions];
             refinedBinContributions = new double[NumberOfBins, Dimensions];
@@ -342,9 +344,21 @@ namespace Numerics.Mathematics.Integration
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <see cref="Integrator.FunctionEvaluations"/> and <see cref="Integrator.Iterations"/> count
+        /// the work of this call only, so <see cref="Integrator.MaxFunctionEvaluations"/> is a per-call
+        /// budget. Whether the grid and accumulated results carry over from a previous call is set by
+        /// <see cref="Initialize"/>.
+        /// </remarks>
         public override void Integrate()
         {
             Validate();
+
+            // Per-call counters start from zero; the adapted grid and accumulated results are governed
+            // by Initialize, not by these counters.
+            FunctionEvaluations = 0;
+            Iterations = 0;
+            Status = IntegrationStatus.None;
 
             try
             {
@@ -479,7 +493,18 @@ namespace Numerics.Mathematics.Integration
                         weight = jacobianDeterminant;
 
                         // Generate random or Sobol sequences
-                        double[] rnd = UseSobolSequence ? _sobol.NextDouble() : Random.NextDoubles(Dimensions);
+                        double[] rnd;
+                        if (UseSobolSequence)
+                        {
+                            rnd = _sobol.NextDouble();
+                        }
+                        else
+                        {
+                            // Same draw order as Random.NextDoubles, into a reused buffer.
+                            rnd = randomDraws;
+                            for (j = 0; j < Dimensions; j++)
+                                rnd[j] = Random.NextDouble();
+                        }
 
                         for (j = 0; j < Dimensions; j++)
                         {

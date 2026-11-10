@@ -29,15 +29,26 @@ namespace Numerics.Distributions
     {
         /// <summary>
         /// The number of accumulation chunks used by the reduction over sampled distributions.
-        /// Fixed, not derived from the processor count, so the summation order — and therefore the
-        /// mean curve — does not vary with the machine or the thread count.
+        /// Fixed, not derived from the processor count, so the summation order, and therefore the
+        /// mean curve, does not vary with the machine or the thread count.
         /// </summary>
         private const int ReductionChunks = 64;
 
         /// <summary>
         /// Construct an instance of the UncertaintyAnalysisResults class.
         /// </summary>
-        public UncertaintyAnalysisResults() { }
+        /// <remarks>
+        /// <see cref="AIC"/>, <see cref="BIC"/>, <see cref="DIC"/>, <see cref="RMSE"/> and <see cref="ERL"/> start
+        /// as <see cref="double.NaN"/>, meaning not computed, as in the constructor that processes an ensemble.
+        /// </remarks>
+        public UncertaintyAnalysisResults()
+        {
+            AIC = double.NaN;
+            BIC = double.NaN;
+            DIC = double.NaN;
+            RMSE = double.NaN;
+            ERL = double.NaN;
+        }
 
         /// <summary>
         /// Constructs a new instance with computed uncertainty metrics.
@@ -155,6 +166,7 @@ namespace Numerics.Distributions
         /// Returns the class from a byte array. 
         /// </summary>
         /// <param name="bytes">Byte array.</param>
+        /// <returns>The deserialized results, or null when the bytes are neither valid JSON nor a readable legacy blob.</returns>
         public static UncertaintyAnalysisResults? FromByteArray(byte[] bytes)
         {
             try
@@ -173,16 +185,17 @@ namespace Numerics.Distributions
             }
             catch (Exception)
             {
-                // An error can occur because we're trying to deserialize a blob written with binary formatter,
-                //as a blob of json bytes. If that happens, fall back to the old.
+                // A blob written with the binary formatter fails to deserialize as a blob of JSON bytes.
+                // If that happens, fall back to the legacy reader.
                 return FromByteArrayLegacy(bytes);
             }
         }
 
-         /// <summary>
+        /// <summary>
         /// Returns the class from a byte array using the legacy BinaryFormatter.
         /// </summary>
         /// <param name="bytes">Byte array.</param>
+        /// <returns>The deserialized results, or null when the bytes cannot be read.</returns>
         private static UncertaintyAnalysisResults? FromByteArrayLegacy(byte[] bytes)
         {
             try
@@ -194,19 +207,16 @@ namespace Numerics.Distributions
                     memStream.Write(bytes, 0, bytes.Length);
                     memStream.Seek(0, SeekOrigin.Begin);
                     var obj = binForm.Deserialize(memStream);
-                    #pragma warning disable SYSLIB0011 // Suppress obsolete BinaryFormatter warning for legacy support
+                    #pragma warning restore SYSLIB0011
                     return (UncertaintyAnalysisResults)obj;
                 }
-
-
             }
             catch (Exception)
             {
-                // An error can occur because of differences in versions. 
-                // If there is an error, just catch it and force the user to rerun the
-                // uncertainty analysis. 
+                // A blob from an incompatible version, or a runtime without BinaryFormatter support, cannot be
+                // read. Returning null signals the caller to rerun the uncertainty analysis.
+                return null;
             }
-            return null;
         }
 
         /// <summary>
@@ -428,6 +438,100 @@ namespace Numerics.Distributions
             if (probabilities == null || probabilities.Length == 0)
                 throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
 
+            MeanCurve = ComputeMeanCurve(sampledDistributions, null, probabilities, minProbability, maxProbability);
+        }
+
+        /// <summary>
+        /// Computes the weighted mean (predictive) curve by averaging the CDFs of the sampled distributions with
+        /// the given weights, for example the branch weights of a logic tree.
+        /// </summary>
+        /// <param name="sampledDistributions">Array of sampled distributions; null entries are skipped.</param>
+        /// <param name="probabilities">Array of non-exceedance probabilities for interpolation.</param>
+        /// <param name="weights">The non-negative, finite weight of each sampled distribution, aligned with
+        /// <paramref name="sampledDistributions"/>. The weights need not sum to one.</param>
+        /// <param name="minProbability">Minimum probability for range determination (default = 0.001).</param>
+        /// <param name="maxProbability">Maximum probability for range determination (default = 1 - 1e-9).</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="weights"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when a required array is null or empty, the weights and
+        /// distributions differ in length, or no non-null distribution has a positive weight.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative or not finite, or the total
+        /// weight overflows.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when every sampled distribution is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// The expected non-exceedance probability at each grid quantile is
+        /// sum(w_j F_j(x)) / sum(w_j) over the non-null distributions, which is the CDF of the mixture with the
+        /// normalized weights. The quantile grid, the fixed-chunk reduction, the monotone filter and the
+        /// interpolation are those of <see cref="ProcessMeanCurve(UnivariateDistributionBase[], double[], double, double)"/>,
+        /// so the result does not depend on the machine or the thread count. A distribution with zero weight
+        /// contributes neither to the sums nor to the quantile range.
+        /// </para>
+        /// <para>
+        /// When every non-null distribution carries the same weight, the unweighted computation is used, so the
+        /// mean curve is bitwise identical to
+        /// <see cref="ProcessMeanCurve(UnivariateDistributionBase[], double[], double, double)"/> whatever the
+        /// common value.
+        /// </para>
+        /// </remarks>
+        public void ProcessMeanCurve(UnivariateDistributionBase[] sampledDistributions, double[] probabilities, double[] weights, double minProbability = 0.001, double maxProbability = 1 - 1e-9)
+        {
+            ValidateSampledDistributions(sampledDistributions);
+            if (probabilities == null || probabilities.Length == 0)
+                throw new ArgumentException("Probabilities cannot be null or empty.", nameof(probabilities));
+            if (weights == null)
+                throw new ArgumentNullException(nameof(weights));
+            if (weights.Length != sampledDistributions.Length)
+                throw new ArgumentException("There must be exactly one weight per sampled distribution.", nameof(weights));
+
+            bool uniform = true;
+            bool anyPositive = false;
+            bool seen = false;
+            double common = 0d;
+            double sum = 0d;
+            for (int j = 0; j < weights.Length; j++)
+            {
+                if (!Tools.IsFinite(weights[j]) || weights[j] < 0d)
+                    throw new ArgumentOutOfRangeException(nameof(weights), "Each weight must be finite and non-negative.");
+                if (sampledDistributions[j] is null) continue;
+                if (weights[j] > 0d) anyPositive = true;
+                sum += weights[j];
+                if (!seen)
+                {
+                    common = weights[j];
+                    seen = true;
+                }
+                else if (weights[j] != common)
+                {
+                    uniform = false;
+                }
+            }
+            if (!anyPositive)
+                throw new ArgumentException("At least one non-null sampled distribution must have a positive weight.", nameof(weights));
+            if (double.IsInfinity(sum))
+                throw new ArgumentOutOfRangeException(nameof(weights), "The total weight must be finite.");
+
+            MeanCurve = ComputeMeanCurve(sampledDistributions, uniform ? null : weights, probabilities, minProbability, maxProbability);
+        }
+
+        /// <summary>
+        /// Computes the mean curve over the sampled distributions, unweighted or weighted.
+        /// </summary>
+        /// <param name="sampledDistributions">The validated ensemble; null entries are skipped.</param>
+        /// <param name="weights">Null for the unweighted mean; otherwise the validated weights, aligned with the ensemble.</param>
+        /// <param name="probabilities">Array of non-exceedance probabilities for interpolation.</param>
+        /// <param name="minProbability">Minimum probability for range determination.</param>
+        /// <param name="maxProbability">Maximum probability for range determination.</param>
+        /// <returns>The mean curve at <paramref name="probabilities"/>.</returns>
+        /// <remarks>
+        /// With <paramref name="weights"/> null every operation is that of the unweighted mean: each chunk adds the
+        /// CDFs and the total is divided by the count of non-null distributions. With weights, each chunk adds
+        /// w_j F_j(x) and its weight total, and the sum is divided by the total weight; distributions with zero
+        /// weight are skipped. The quantiles are interpolated on a logarithmic scale only when every knot,
+        /// including the first, is positive and the knots span more than one decade, the same rule as
+        /// <see cref="BootstrapAnalysis.ExpectedProbabilities(IList{double}, IList{double}, IUnivariateDistribution[])"/>.
+        /// </remarks>
+        private static double[] ComputeMeanCurve(UnivariateDistributionBase[] sampledDistributions, double[]? weights, double[] probabilities, double minProbability, double maxProbability)
+        {
             int B = sampledDistributions.Length;
 
             // Compute min and max X values across all distributions. The extremes merge per
@@ -442,6 +546,7 @@ namespace Numerics.Distributions
                 (j, state, local) =>
                 {
                     if (sampledDistributions[j] is null) return local;
+                    if (weights != null && weights[j] == 0d) return local;
                     var innerMin = sampledDistributions[j].InverseCDF(minProbability);
                     var innerMax = sampledDistributions[j].InverseCDF(maxProbability);
                     return (innerMin < local.Min ? innerMin : local.Min,
@@ -478,6 +583,7 @@ namespace Numerics.Distributions
             int chunkCount = Math.Min(ReductionChunks, B);
             var chunkSums = new double[chunkCount][];
             var chunkValid = new int[chunkCount];
+            var chunkWeights = new double[chunkCount];
             for (int c = 0; c < chunkCount; c++) chunkSums[c] = new double[bins];
 
             Parallel.For(0, chunkCount, c =>
@@ -486,17 +592,33 @@ namespace Numerics.Distributions
                 int start = (int)((long)c * B / chunkCount);
                 int end = (int)((long)(c + 1) * B / chunkCount);
                 int valid = 0;
+                double weightSum = 0d;
                 for (int j = start; j < end; j++)
                 {
                     var distribution = sampledDistributions[j];
                     if (distribution is null) continue;
-                    valid++;
-                    for (int i = 0; i < bins; i++)
+                    if (weights == null)
                     {
-                        accumulator[i] += distribution.CDF(quantiles[i]);
+                        valid++;
+                        for (int i = 0; i < bins; i++)
+                        {
+                            accumulator[i] += distribution.CDF(quantiles[i]);
+                        }
+                    }
+                    else
+                    {
+                        double weight = weights[j];
+                        if (weight == 0d) continue;
+                        valid++;
+                        weightSum += weight;
+                        for (int i = 0; i < bins; i++)
+                        {
+                            accumulator[i] += weight * distribution.CDF(quantiles[i]);
+                        }
                     }
                 }
                 chunkValid[c] = valid;
+                chunkWeights[c] = weightSum;
             });
 
             int validDistributions = 0;
@@ -504,19 +626,26 @@ namespace Numerics.Distributions
             if (validDistributions == 0)
                 throw new InvalidOperationException("At least one sampled distribution must be non-null.");
 
+            double totalWeight = 0d;
+            if (weights != null)
+            {
+                for (int c = 0; c < chunkCount; c++) totalWeight += chunkWeights[c];
+            }
+
             var expected = new double[bins];
             for (int i = 0; i < bins; i++)
             {
                 double total = 0d;
                 for (int c = 0; c < chunkCount; c++) total += chunkSums[c][i];
-                expected[i] = total / validDistributions;
+                expected[i] = weights == null ? total / validDistributions : total / totalWeight;
             }
 
-            // Build monotonic interpolation points
+            // Build monotonic interpolation points. The range that decides the log transform
+            // includes the first point, which is always an interpolation knot.
             var yVals = new List<double> { quantiles[0] };
             var xVals = new List<double> { expected[0] };
-            double minY = double.MaxValue;
-            double maxY = double.MinValue;
+            double minY = quantiles[0];
+            double maxY = quantiles[0];
 
             for (int i = 1; i < bins; i++)
             {
@@ -538,7 +667,7 @@ namespace Numerics.Distributions
                 XTransform = Transform.NormalZ,
                 YTransform = useLogTransform ? Transform.Logarithmic : Transform.None
             };
-            MeanCurve = linint.Interpolate(probabilities);
+            return linint.Interpolate(probabilities);
         }
 
         /// <summary>

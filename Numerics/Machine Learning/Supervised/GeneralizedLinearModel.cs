@@ -16,6 +16,29 @@ namespace Numerics.MachineLearning
     ///     <b> Authors: </b>
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
+    /// <para>
+    ///     <b> Description: </b>
+    /// </para>
+    /// <para>
+    ///     The link type selects the family: identity for Normal, log for Poisson, and logit, probit or
+    ///     complementary log-log for Bernoulli responses. The maximum likelihood estimate is computed by
+    ///     iteratively reweighted least squares (Fisher scoring), which also centers the optimizer's start
+    ///     and bounds; the optimizer then refines it, and the fit with the higher likelihood is kept. When
+    ///     Fisher scoring does not converge, for example under complete separation in a binary model, the
+    ///     optimizer starts from a family-specific initial value inside fixed bounds.
+    /// </para>
+    /// <para>
+    ///     The parameter covariance is the inverse Fisher information (X'WX)^-1 with weights
+    ///     W = (d&#956;/d&#951;)^2 / V(&#956;), multiplied by the dispersion: the residual variance for the Normal
+    ///     family and one for the Poisson and Bernoulli families. The robust option uses the HC0 sandwich
+    ///     estimator.
+    /// </para>
+    /// <para>
+    ///     <b> References: </b>
+    /// </para>
+    /// <para>
+    ///     McCullagh, P. and Nelder, J. A. (1989). Generalized Linear Models, 2nd ed. Chapman and Hall.
+    /// </para>
     /// </remarks>
     public class GeneralizedLinearModel
     {
@@ -52,6 +75,9 @@ namespace Numerics.MachineLearning
             X = hasIntercept ? AddInterceptColumn(x) : x;
             HasIntercept = hasIntercept;
             DegreesOfFreedom = X.NumberOfRows - X.NumberOfColumns;
+            _rows = new double[X.NumberOfRows][];
+            for (int i = 0; i < _rows.Length; i++)
+                _rows[i] = X.Row(i);
 
             // Set model name
             if (Y.Header == null || Y.Header.Length == 0)
@@ -62,9 +88,9 @@ namespace Numerics.MachineLearning
             // Set parameter names for summary report.
             ParameterNames = new List<string>();
             if (hasIntercept) ParameterNames.Add("Intercept");
-            if (X.Header != null && X.Header.Length == x.NumberOfColumns)
+            if (x.Header != null && x.Header.Length == x.NumberOfColumns)
             {
-                ParameterNames.AddRange(X.Header);
+                ParameterNames.AddRange(x.Header);
             }
             else
             {
@@ -108,6 +134,10 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// The list of the estimated parameter names.
         /// </summary>
+        /// <remarks>
+        /// "Intercept" comes first when the model has an intercept, followed by the predictor matrix header names
+        /// when the header has one name per predictor column, or β1, β2, ... otherwise.
+        /// </remarks>
         public List<string> ParameterNames { get; private set; } = null!;
 
         /// <summary>
@@ -153,6 +183,12 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// the Akaike Information Criterion (AIC).
         /// </summary>
+        /// <remarks>
+        /// AIC = 2k - 2 ln L with k the number of regression coefficients. For the Normal family (identity link),
+        /// ln L is evaluated at the maximum likelihood variance σ² = SSE / n, which matches statsmodels GLM; the
+        /// residual standard error <see cref="StandardError"/> keeps the divisor n - k. R's glm also counts the
+        /// variance as a parameter, so its Gaussian AIC is larger by 2.
+        /// </remarks>
         public double AIC { get; private set; }
 
         /// <summary>
@@ -191,6 +227,16 @@ namespace Numerics.MachineLearning
         /// </summary>
         private Func<(double mu, double y), double> _logLikelihoodTerm;
 
+        /// <summary>
+        /// The rows of the design matrix <see cref="X"/>, read by every likelihood and gradient evaluation.
+        /// </summary>
+        private readonly double[][] _rows;
+
+        /// <summary>
+        /// The Fisher scoring estimate that centers the optimizer, or null when Fisher scoring did not converge.
+        /// </summary>
+        private double[]? _fisherScoringEstimate;
+
         #endregion
 
         #region Methods
@@ -217,6 +263,10 @@ namespace Numerics.MachineLearning
         /// Helper method to add an intercept column to the covariate matrix.
         /// </summary>
         /// <param name="x">The matrix of predictor values.</param>
+        /// <returns>
+        /// The matrix with a leading column of ones. When <paramref name="x"/> has one header name per column, the
+        /// header is "Intercept" followed by those names.
+        /// </returns>
         private static Matrix AddInterceptColumn(Matrix x)
         {
             Matrix result = new Matrix(x.NumberOfRows, x.NumberOfColumns + 1);
@@ -225,6 +275,12 @@ namespace Numerics.MachineLearning
                 result[i, 0] = 1.0;
                 for (int j = 0; j < x.NumberOfColumns; j++)
                     result[i, j + 1] = x[i, j];
+            }
+            if (x.Header != null && x.Header.Length == x.NumberOfColumns)
+            {
+                result.Header = new string[x.NumberOfColumns + 1];
+                result.Header[0] = "Intercept";
+                Array.Copy(x.Header, 0, result.Header, 1, x.NumberOfColumns);
             }
             return result;
         }
@@ -282,6 +338,135 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
+        /// Returns the family variance function V(&#956;) for the model's link type.
+        /// </summary>
+        /// <param name="mu">The mean response.</param>
+        /// <returns>1 for the Normal family, &#956; for Poisson and &#956;(1 - &#956;) for Bernoulli.</returns>
+        private double FamilyVariance(double mu)
+        {
+            switch (LinkType)
+            {
+                case LinkFunctionType.Identity:
+                    return 1.0;
+                case LinkFunctionType.Log:
+                    return mu;
+                default:
+                    return mu * (1.0 - mu);
+            }
+        }
+
+        /// <summary>
+        /// Returns the Fisher information X'WX at the given parameters.
+        /// </summary>
+        /// <param name="beta">The parameter vector.</param>
+        /// <returns>The p by p information matrix.</returns>
+        private Matrix FisherInformation(double[] beta)
+        {
+            int n = X.NumberOfRows, p = X.NumberOfColumns;
+            var info = new Matrix(p, p);
+            for (int i = 0; i < n; i++)
+            {
+                var xi = _rows[i];
+                double eta = xi.DotProduct(beta);
+                double dMu = InverseLinkDerivative(eta);
+                double w = dMu * dMu / FamilyVariance(LinkFunction.InverseLink(eta));
+                for (int a = 0; a < p; a++)
+                    for (int b = 0; b < p; b++)
+                        info[a, b] += w * xi[a] * xi[b];
+            }
+            return info;
+        }
+
+        /// <summary>
+        /// Computes the maximum likelihood estimate by iteratively reweighted least squares.
+        /// </summary>
+        /// <param name="beta">The estimate when the iteration converges.</param>
+        /// <param name="standardErrors">The square roots of the diagonal of the inverse Fisher information at the estimate.</param>
+        /// <returns>True when the iteration converged to finite values.</returns>
+        /// <remarks>
+        /// Starts from the mean values used by R's glm (y for Normal, y + 0.1 for Poisson and (y + 0.5) / 2
+        /// for Bernoulli) and stops when the relative change in deviance falls below 1E-12, or after 100
+        /// iterations. Each step solves the weighted normal equations (X'WX) b = X'Wz with working
+        /// response z = &#951; + (y - &#956;) d&#951;/d&#956;.
+        /// </remarks>
+        private bool TryFisherScoring(out double[] beta, out double[] standardErrors)
+        {
+            int n = X.NumberOfRows, p = X.NumberOfColumns;
+            beta = new double[p];
+            standardErrors = new double[p];
+            var eta = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                double mu0 = LinkType == LinkFunctionType.Identity ? Y[i] :
+                             LinkType == LinkFunctionType.Log ? Y[i] + 0.1 : (Y[i] + 0.5) / 2.0;
+                eta[i] = LinkFunction.Link(mu0);
+            }
+            double deviance = double.MaxValue;
+            bool converged = false;
+            try
+            {
+                for (int iteration = 0; iteration < 100; iteration++)
+                {
+                    var xtwx = new Matrix(p, p);
+                    var xtwz = new Vector(p);
+                    for (int i = 0; i < n; i++)
+                    {
+                        double mu = LinkFunction.InverseLink(eta[i]);
+                        double dMu = InverseLinkDerivative(eta[i]);
+                        double w = dMu * dMu / FamilyVariance(mu);
+                        double z = eta[i] + (Y[i] - mu) / dMu;
+                        for (int a = 0; a < p; a++)
+                        {
+                            double wx = w * X[i, a];
+                            xtwz[a] += wx * z;
+                            for (int b = 0; b < p; b++)
+                                xtwx[a, b] += wx * X[i, b];
+                        }
+                    }
+                    var next = new CholeskyDecomposition(xtwx).Solve(xtwz).Array;
+                    for (int i = 0; i < n; i++)
+                        eta[i] = _rows[i].DotProduct(next);
+                    double newDeviance = -2.0 * LogLikelihoodKernel(next);
+                    beta = next;
+                    if (!Tools.IsFinite(newDeviance)) return false;
+                    if (Math.Abs(newDeviance - deviance) <= 1E-12 * (Math.Abs(newDeviance) + 0.1))
+                    {
+                        converged = true;
+                        break;
+                    }
+                    deviance = newDeviance;
+                }
+                if (!converged || beta.Any(b => !Tools.IsFinite(b))) return false;
+                var covariance = FisherInformation(beta).Inverse();
+                for (int a = 0; a < p; a++)
+                    standardErrors[a] = Math.Sqrt(covariance[a, a]);
+                return standardErrors.All(Tools.IsFinite);
+            }
+            catch (Exception)
+            {
+                // A singular weighted cross-product (the Cholesky factorization throws) or a saturated
+                // link ends Fisher scoring; the optimizer then starts from the family-specific values.
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Returns the log-likelihood kernel (without constants) at the given parameters.
+        /// </summary>
+        /// <param name="beta">The parameter vector.</param>
+        /// <returns>The sum of the per-observation log-likelihood terms.</returns>
+        private double LogLikelihoodKernel(double[] beta)
+        {
+            double logLH = 0.0;
+            for (int i = 0; i < X.NumberOfRows; i++)
+            {
+                double mu = LinkFunction.InverseLink(_rows[i].DotProduct(beta));
+                logLH += _logLikelihoodTerm((mu, Y[i]));
+            }
+            return logLH;
+        }
+
+        /// <summary>
         /// Set up the local optimizer.
         /// </summary>
         /// <param name="method">The optimization method. Default = Nelder-Mead.</param>
@@ -292,14 +477,8 @@ namespace Numerics.MachineLearning
 
             double logLikelihood(double[] beta)
             {
-                int n = X.NumberOfRows;
-                double logLH = 0.0;
-                for (int i = 0; i < n; i++)
-                {
-                    double mu = LinkFunction.InverseLink(X.GetRow(i).DotProduct(beta));
-                    logLH += _logLikelihoodTerm((mu, Y[i]));
-                }
-                if (double.IsNaN(logLH) || double.IsInfinity(logLH)) return double.MaxValue;
+                double logLH = LogLikelihoodKernel(beta);
+                if (!Tools.IsFinite(logLH)) return double.MaxValue;
                 return -logLH;
             }
             double[] gradient(double[] beta)
@@ -309,12 +488,13 @@ namespace Numerics.MachineLearning
                 Vector g = new Vector(p);
                 for (int i = 0; i < n; i++)
                 {
-                    Vector xi = new Vector(X.Row(i));
-                    double eta = xi.Array.DotProduct(beta);
+                    var xi = _rows[i];
+                    double eta = xi.DotProduct(beta);
                     double mu = LinkFunction.InverseLink(eta);
                     double dMu_dEta = InverseLinkDerivative(eta);
                     double gradTerm = (Y[i] - mu) * dMu_dEta;
-                    g -= xi * gradTerm;
+                    for (int j = 0; j < p; j++)
+                        g[j] = g[j] - xi[j] * gradTerm;
                 }
                 return g.Array;
             }
@@ -324,7 +504,21 @@ namespace Numerics.MachineLearning
             var lower = new double[p];
             var upper = new double[p];
 
-            if (LinkType == LinkFunctionType.Identity)
+            _fisherScoringEstimate = null;
+            if (TryFisherScoring(out var start, out var startSE))
+            {
+                // Center the search on the maximum likelihood estimate with bounds far wider than its
+                // sampling uncertainty, so the bounds never bind at the optimum.
+                _fisherScoringEstimate = start;
+                for (int i = 0; i < p; i++)
+                {
+                    double width = Math.Max(1.0, 10.0 * Math.Abs(start[i])) + 100.0 * startSE[i];
+                    initial[i] = start[i];
+                    lower[i] = start[i] - width;
+                    upper[i] = start[i] + width;
+                }
+            }
+            else if (LinkType == LinkFunctionType.Identity)
             {
                 double min = Statistics.Minimum(Y.Array);
                 double max = Statistics.Maximum(Y.Array);
@@ -423,11 +617,17 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Train the Generalized Linear Model.
         /// </summary>
+        /// <remarks>
+        /// Runs the optimizer and keeps its result unless the Fisher scoring estimate has a higher
+        /// log-likelihood.
+        /// </remarks>
         public void Train()
         {
            if (Optimizer == null) throw new ArgumentNullException(nameof(Optimizer));
             Optimizer.Minimize();
             Parameters = Optimizer.BestParameterSet.Values;
+            if (_fisherScoringEstimate != null && LogLikelihoodKernel(_fisherScoringEstimate) >= LogLikelihoodKernel(Parameters))
+                Parameters = (double[])_fisherScoringEstimate.Clone();
             ComputeDiagnostics();
         }
 
@@ -456,8 +656,8 @@ namespace Numerics.MachineLearning
             switch (LinkType)
             {
                 case LinkFunctionType.Identity:
-                    // Assume residual variance = SE^2
-                    double sigma = StandardError;
+                    // Normal log-likelihood at the maximum likelihood variance sse / n, as statsmodels GLM uses
+                    double sigma = Math.Sqrt(sse / n);
                     logLik = -n * 0.5 * Math.Log(2 * Math.PI) - n * Math.Log(sigma) - sse / (2 * sigma * sigma);
                     break;
 
@@ -489,32 +689,31 @@ namespace Numerics.MachineLearning
             AICc = GoodnessOfFit.AICc(n, p, logLik);
             BIC = GoodnessOfFit.BIC(n, p, logLik);
 
-            // Jacobian matrix for the delta method
-            Matrix J = new Matrix(n, p);
-            for (int i = 0; i < n; i++)
-            {
-                var xi = X.GetRow(i);
-                double eta = xi.DotProduct(Parameters);
-                double dMu = InverseLinkDerivative(eta);
-                for (int j = 0; j < p; j++)
-                    J[i, j] = dMu * xi[j];
-            }
-
-            Matrix JTJ = J.Transpose().Multiply(J);
-            Matrix JTJinv = JTJ.Inverse();
-
+            // Inverse Fisher information (X'WX)^-1 with W = (dmu/deta)^2 / V(mu)
+            Matrix bread = FisherInformation(Parameters).Inverse();
             if (!UseRobustSE)
             {
-                Covariance = JTJinv;
+                // Dispersion: the residual variance for the Normal family, one otherwise
+                double dispersion = LinkType == LinkFunctionType.Identity ? StandardError * StandardError : 1.0;
+                Covariance = bread.Multiply(dispersion);
             }
             else
             {
-                Matrix Omega = Matrix.Diagonal(diag);
-                Matrix meat = J.Transpose().Multiply(Omega).Multiply(J);
-                Covariance = JTJinv.Multiply(meat).Multiply(JTJinv);
+                // HC0 sandwich: bread * sum(x x' u^2) * bread with score u = (y - mu) (dmu/deta) / V(mu)
+                Matrix meat = new Matrix(p, p);
+                for (int i = 0; i < n; i++)
+                {
+                    var xi = _rows[i];
+                    double eta = xi.DotProduct(Parameters);
+                    double u = Residuals[i] * InverseLinkDerivative(eta) / FamilyVariance(mu[i]);
+                    for (int a = 0; a < p; a++)
+                        for (int b = 0; b < p; b++)
+                            meat[a, b] += u * u * xi[a] * xi[b];
+                }
+                Covariance = bread.Multiply(meat).Multiply(bread);
             }
 
-            ParameterStandardErrors = LinkType != LinkFunctionType.Log ? Covariance.Diagonal().Map(Math.Sqrt).Multiply(StandardError) : Covariance.Diagonal().Map(Math.Sqrt);
+            ParameterStandardErrors = Covariance.Diagonal().Map(Math.Sqrt);
             ParameterZScores = new double[p];
             ParameterPValues = new double[p];
             for (int i = 0; i < p; i++)
@@ -581,10 +780,17 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Returns the prediction with confidence intervals in a 2D array with columns: lower, mean, upper.
+        /// Returns the mean prediction with a confidence interval for the mean response, in a 2D array
+        /// with columns: lower, mean, upper.
         /// </summary>
         /// <param name="x">The matrix of predictors.</param>
-        /// <param name="alpha">The confidence level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <param name="alpha">The significance level; Default = 0.1, which will result in the 90% confidence intervals.</param>
+        /// <returns>The lower bound, mean and upper bound for each row of <paramref name="x"/>.</returns>
+        /// <remarks>
+        /// The interval is formed on the link scale, &#951; &#177; z se(&#951;) with se(&#951;)^2 = x'Cx, and mapped
+        /// through the inverse link, so it stays inside the response range. It describes uncertainty in
+        /// the mean response, not the spread of new observations.
+        /// </remarks>
         public double[,] Predict(Matrix x, double alpha = 0.1)
         {
             var xp = PrepareDesignMatrix(x);
@@ -593,11 +799,13 @@ namespace Numerics.MachineLearning
             for (int i = 0; i < xp.NumberOfRows; i++)
             {
                 var xi = xp.GetRow(i);
-                double mu = LinkFunction.InverseLink(xi.DotProduct(Parameters.ToArray()));
+                double eta = xi.DotProduct(Parameters.ToArray());
                 double se = Math.Sqrt(xi.DotProduct(Covariance.Multiply(new Vector(xi)).Array));
-                result[i, 0] = mu - z * se;
-                result[i, 1] = mu;
-                result[i, 2] = mu + z * se;
+                double a = LinkFunction.InverseLink(eta - z * se);
+                double b = LinkFunction.InverseLink(eta + z * se);
+                result[i, 0] = Math.Min(a, b);
+                result[i, 1] = LinkFunction.InverseLink(eta);
+                result[i, 2] = Math.Max(a, b);
             }
             return result;
         }

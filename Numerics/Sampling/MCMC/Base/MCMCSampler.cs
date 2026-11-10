@@ -16,8 +16,18 @@ namespace Numerics.Sampling.MCMC
     /// <param name="parameters">The list of parameters to evaluate.</param>
     /// <returns>The log-Likelihood given the parameter set.</returns>
     /// <remarks>
-    /// This function should account for the data likelihood 
+    /// <para>
+    /// This function should account for the data likelihood
     /// as well as the prior likelihood of the model parameters.
+    /// </para>
+    /// <para>
+    /// The delegate must return the full unnormalized log-posterior, log p(θ) + log L(y | θ). The
+    /// samplers never add the prior density themselves: <see cref="MCMCSampler.PriorDistributions"/> is
+    /// used only to reject or clamp positions outside the prior support and to draw the initial chain
+    /// states. A delegate that returns the data log-likelihood alone samples the posterior under a flat
+    /// prior on that support, and a delegate that adds the prior twice samples p(θ)² L(y | θ).
+    /// The same contract holds for <see cref="SNIS"/> in both of its modes.
+    /// </para>
     /// </remarks>
     [Serializable]
     public delegate double LogLikelihood(double[] parameters);
@@ -288,27 +298,58 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         /// <remarks>
         /// <para>
-        /// When this is true — the default — <see cref="Sample"/> advances all
+        /// When this is true (the default), <see cref="Sample"/> advances all
         /// <see cref="NumberOfChains"/> chains inside a
         /// <see cref="System.Threading.Tasks.Parallel.For(int, int, Action{int})"/>, and every chain calls
         /// the <i>same</i> <see cref="LogLikelihoodFunction"/> delegate instance. The log-likelihood is
         /// therefore invoked concurrently from multiple threads, as is the gradient delegate for
         /// gradient-based samplers, so the delegate must be thread-safe or stateless. A likelihood that
-        /// closes over mutable state — an automatic-differentiation tape, a reused workspace or buffer, a
-        /// native solver handle, a cached factorization, a non-thread-safe PRNG — races by default, and
+        /// closes over mutable state (an automatic-differentiation tape, a reused workspace or buffer, a
+        /// native solver handle, a cached factorization, a non-thread-safe PRNG) races by default, and
         /// the resulting corruption is silent: it surfaces as an implausible posterior rather than as an
         /// exception.
         /// </para>
         /// <para>
-        /// Set this to false when the likelihood is not thread-safe. Per-chain resources cannot be
-        /// selected from inside the callback, because neither <see cref="LogLikelihood"/> nor the
-        /// gradient delegate receives a chain index — they take only the parameter vector.
+        /// Set this to false when the likelihood is not thread-safe, or select a per-chain resource
+        /// inside the callback through <see cref="CurrentChainIndex"/>. Neither
+        /// <see cref="LogLikelihood"/> nor the gradient delegate receives a chain index as an argument.
         /// </para>
         /// </remarks>
         public bool ParallelizeChains { get; set; } = true;
 
         /// <summary>
-        /// Determines if the MCMC simulation should be resumed. Default = false.
+        /// Stores <see cref="CurrentChainIndex"/> + 1 for the calling thread, so the default value 0 means
+        /// that no chain is being advanced.
+        /// </summary>
+        [ThreadStatic]
+        private static int _currentChainIndexPlusOne;
+
+        /// <summary>
+        /// Gets the zero-based index of the chain that the calling thread is advancing, or -1 when the
+        /// thread is not inside a chain transition.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Sample"/> sets this value for the duration of each chain's transitions, on the thread
+        /// that runs them, under both settings of <see cref="ParallelizeChains"/>. A likelihood or gradient
+        /// delegate can read it to select a per-chain resource, such as an automatic-differentiation tape
+        /// or a native solver handle, so the delegate does not need to be thread-safe across chains.
+        /// </para>
+        /// <para>
+        /// It is -1 during chain initialization, MAP estimation and any sampler-specific setup, which all
+        /// run serially on the calling thread before the chains are advanced, so a delegate that keys on
+        /// it needs a resource for -1 as well. <see cref="SNIS"/> has no chains and never sets it.
+        /// </para>
+        /// <para>
+        /// The value is restored when a chain's transitions finish, so a likelihood that itself runs a
+        /// nested sampler sees the outer chain index again once the nested run returns. Reading it does
+        /// not change the random streams or the sampled values.
+        /// </para>
+        /// </remarks>
+        public static int CurrentChainIndex => _currentChainIndexPlusOne - 1;
+
+        /// <summary>
+        /// Determines if the MCMC simulation should be resumed. Default = true.
         /// </summary>
         public bool ResumeSimulation { get; set; } = true;
 
@@ -321,6 +362,11 @@ namespace Numerics.Sampling.MCMC
             /// Initialize the chains using the Maximum a Posteriori (MAP) estimate and covariance matrix.
             /// If the MAP optimization fails, chains will be automatically initialization with random samples from the priors.
             /// </summary>
+            /// <remarks>
+            /// A failed MAP initialization sets <see cref="MAPInitializationFailed"/> and initializes that run as
+            /// <see cref="Randomize"/> would, but leaves <see cref="Initialize"/> set to <see cref="MAP"/>, so
+            /// the next run on the same instance attempts MAP again.
+            /// </remarks>
             MAP,
             /// <summary>
             /// Automatically initialize the chains with random samples from the priors. This is the default.
@@ -372,7 +418,31 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// Cancellation token source.
         /// </summary>
+        /// <remarks>
+        /// <see cref="Sample"/> replaces this source with a new one when it starts, so cancel a run through
+        /// <see cref="CancelSimulation"/> while it is in progress, or supply a token before it starts
+        /// through <see cref="CancellationToken"/>.
+        /// </remarks>
         public CancellationTokenSource? CancellationTokenSource { get; set; }
+
+        /// <summary>
+        /// Gets or sets an external token that stops <see cref="Sample"/> early. Default = none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Sample"/> checks this token alongside <see cref="CancellationTokenSource"/>, so
+        /// cancelling it has the same effect as <see cref="CancelSimulation"/>: the run stops after the current recorded iteration of
+        /// every chain, without throwing, and the chains and output hold the iterations completed so far.
+        /// A token that is already cancelled when <see cref="Sample"/> starts still lets one recorded
+        /// iteration run.
+        /// </para>
+        /// <para>
+        /// Cancellation is checked between recorded iterations, so a run stops within one recorded
+        /// iteration of every chain, which is <see cref="ThinningInterval"/> transitions per chain.
+        /// <see cref="SNIS"/> does not observe it.
+        /// </para>
+        /// </remarks>
+        public CancellationToken CancellationToken { get; set; }
 
         #endregion
 
@@ -490,7 +560,9 @@ namespace Numerics.Sampling.MCMC
             }
 
             var prng = new MersenneTwister(PRNGSeed);
-            var rnds = LatinHypercube.Random(InitialIterations, NumberOfParameters, prng.Next());
+            // The generator overload has no clock fallback, so the starting sample is a deterministic
+            // function of PRNGSeed for every seed.
+            var rnds = LatinHypercube.Random(InitialIterations, NumberOfParameters, new MersenneTwister(prng.Next()));
             var parameters = new double[NumberOfParameters];
             var tempPopulation = new List<ParameterSet>();       
             var initials = new ParameterSet[NumberOfChains];
@@ -498,6 +570,10 @@ namespace Numerics.Sampling.MCMC
 
             if (Initialize == InitializationType.MAP)
             {
+                // Clear any MAP state from an earlier run on this instance before attempting MAP again.
+                _mapSuccessful = false;
+                _MVN = null;
+
                 // Use differential evolution to find a global optimum
                 var lowerBounds = PriorDistributions.Select(x => x.Minimum).ToArray();
                 var upperBounds = PriorDistributions.Select(x => x.Maximum).ToArray();
@@ -537,8 +613,11 @@ namespace Numerics.Sampling.MCMC
                     }
                     catch (Exception)
                     {
-                        // If this fails go to naive initialization below
-                        Initialize = InitializationType.Randomize;
+                        // If this fails go to naive initialization below. The Initialize setting is left
+                        // as the caller set it, so a later run on this instance attempts MAP again; the
+                        // cleared MAP state makes this run initialize exactly as Randomize does.
+                        _mapSuccessful = false;
+                        _MVN = null;
                         MAPInitializationFailed = true;
                     }
                 }
@@ -603,7 +682,52 @@ namespace Numerics.Sampling.MCMC
         }
 
         /// <summary>
-        /// Returns a proposed MCMC parameter set and its fitness. 
+        /// Runs <see cref="SampleChain"/> with <see cref="CurrentChainIndex"/> set to the chain index on the
+        /// calling thread, restoring the previous value afterwards.
+        /// </summary>
+        /// <param name="index">The Markov Chain zero-based index.</param>
+        /// <param name="state">The initial state.</param>
+        /// <returns>The chain state after one recorded iteration.</returns>
+        private ParameterSet SampleChainAsCurrent(int index, ParameterSet state)
+        {
+            int previous = _currentChainIndexPlusOne;
+            _currentChainIndexPlusOne = index + 1;
+            try
+            {
+                return SampleChain(index, state);
+            }
+            finally
+            {
+                _currentChainIndexPlusOne = previous;
+            }
+        }
+
+        /// <summary>
+        /// The smallest positive value on the 2^-32 grid that <see cref="MersenneTwister.NextDouble"/> draws from.
+        /// </summary>
+        internal const double SmallestPositiveUniform = 1d / 4294967296d;
+
+        /// <summary>
+        /// Draws a uniform value from a chain generator, replacing an exact 0 with
+        /// <see cref="SmallestPositiveUniform"/>.
+        /// </summary>
+        /// <param name="random">The chain generator.</param>
+        /// <returns>A uniform value in (0, 1).</returns>
+        /// <remarks>
+        /// <see cref="MersenneTwister.NextDouble"/> returns exactly 0 with probability 2^-32. A Metropolis test
+        /// on <c>log(0) = -infinity</c> accepts any proposal, including one of zero density, and a momentum drawn
+        /// as <c>Normal.StandardZ(0)</c> sits 38 standard deviations out. Mapping 0 to the next value on the
+        /// generator's grid removes both cases. Every other draw is returned unchanged and the generator advances
+        /// exactly once, so the random stream is unchanged unless a draw is exactly 0.
+        /// </remarks>
+        internal static double NextPositiveUniform(Random random)
+        {
+            double u = random.NextDouble();
+            return u > 0d ? u : SmallestPositiveUniform;
+        }
+
+        /// <summary>
+        /// Returns a proposed MCMC parameter set and its fitness.
         /// </summary>
         /// <param name="index">The Markov Chain zero-based index.</param>
         /// <param name="state">The current chain state to compare against.</param>
@@ -647,12 +771,12 @@ namespace Numerics.Sampling.MCMC
 
                 if (ParallelizeChains)
                 {
-                    Parallel.For(0, NumberOfChains, (j) => { _chainStates[j] = SampleChain(j, _chainStates[j]); });
+                    Parallel.For(0, NumberOfChains, (j) => { _chainStates[j] = SampleChainAsCurrent(j, _chainStates[j]); });
                 }
                 else
                 {
                     for (int j = 0; j < NumberOfChains; j++)
-                        _chainStates[j] = SampleChain(j, _chainStates[j]);
+                        _chainStates[j] = SampleChainAsCurrent(j, _chainStates[j]);
                 }
 
                 // Record output
@@ -682,8 +806,8 @@ namespace Numerics.Sampling.MCMC
                     }
                 }
 
-                // Check for cancellation
-                if (CancellationTokenSource.Token.IsCancellationRequested)
+                // Check for cancellation, from CancelSimulation or from the external token
+                if (CancellationTokenSource.Token.IsCancellationRequested || CancellationToken.IsCancellationRequested)
                     break;
 
                 // Update progress

@@ -1,5 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Distributions;
 using Numerics.Distributions.Copulas;
+using Numerics.Sampling;
 using System;
 using System.Collections.Generic;
 
@@ -118,6 +120,34 @@ namespace Distributions.BivariateCopulas
             {
                 return new ProductFallbackCopula();
             }
+        }
+
+        /// <summary>
+        /// Verifies that the generator overload of <see cref="BivariateCopula.GenerateRandomValues(int, int)"/>
+        /// reproduces the seeded overload, with and without marginals, and rejects a null generator.
+        /// </summary>
+        [TestMethod]
+        public void Test_GenerateRandomValues_GeneratorOverloadMatchesSeed()
+        {
+            var copula = new GumbelCopula(1.8d);
+            AssertIdentical(copula.GenerateRandomValues(300, 9), copula.GenerateRandomValues(300, new MersenneTwister(9)));
+            copula.MarginalDistributionX = new Normal(10d, 2d);
+            copula.MarginalDistributionY = new GeneralizedExtremeValue(100d, 20d, -0.1d);
+            AssertIdentical(copula.GenerateRandomValues(100, 4), copula.GenerateRandomValues(100, new MersenneTwister(4)));
+            Assert.ThrowsExactly<ArgumentNullException>(() => copula.GenerateRandomValues(10, (Random)null!));
+        }
+
+        /// <summary>
+        /// Asserts that two samples are identical, entry for entry.
+        /// </summary>
+        /// <param name="expected">The expected sample.</param>
+        /// <param name="actual">The actual sample.</param>
+        private static void AssertIdentical(double[,] expected, double[,] actual)
+        {
+            Assert.AreEqual(expected.GetLength(0), actual.GetLength(0));
+            for (int i = 0; i < expected.GetLength(0); i++)
+                for (int j = 0; j < 2; j++)
+                    Assert.AreEqual(expected[i, j], actual[i, j], 0d);
         }
     }
 }

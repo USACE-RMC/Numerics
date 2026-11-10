@@ -21,14 +21,19 @@ namespace Numerics
     {
 
         /// <summary>
-        /// Value used for comparing double precision equivalence. Represented as 2^(-53) = 1.11022302462516E-16.
+        /// Value used for comparing double precision equivalence: 1.11022302462516E-16, approximately 2^(-53).
         /// </summary>
         public const double DoubleMachineEpsilon = 1.11022302462516E-16;
 
         /// <summary>
-        /// Value used for comparing single precision equivalence. Represented as 2^(-24) = 5.96046447753906E-07
+        /// Value used for comparing single precision equivalence: the single-precision unit roundoff
+        /// 2^(-24) = 5.9604644775390625E-08, exactly representable as a float.
         /// </summary>
-        public const float SingleMachineEpsilon = (float)5.96046447753906E-07;
+        /// <remarks>
+        /// This is the single-precision counterpart of <see cref="DoubleMachineEpsilon"/> (2^(-53)): half the
+        /// spacing of floats just above one.
+        /// </remarks>
+        public const float SingleMachineEpsilon = 5.9604644775390625E-08f;
 
         /// <summary>
         /// Euler constant.
@@ -119,6 +124,39 @@ namespace Numerics
         }
 
         /// <summary>
+        /// Returns √(a² + b²) without destructive underflow or overflow.
+        /// </summary>
+        /// <param name="a">The first value.</param>
+        /// <param name="b">The second value.</param>
+        /// <returns>The Euclidean norm of (a, b).</returns>
+        /// <remarks>
+        /// <para>
+        /// The larger magnitude m is factored out, so the result is m·√(1 + r²) with r = min/max ≤ 1 (Press et al.,
+        /// Numerical Recipes, 3rd ed., 2007, section 2.6). The ratio is squared by multiplication, which rounds
+        /// correctly, and the result is within 2 ulps of the exact value.
+        /// </para>
+        /// <para>
+        /// Special values follow IEEE 754 and C99 hypot: an infinite argument returns +∞, even when the other is NaN;
+        /// otherwise a NaN argument returns NaN; and (0, 0) returns 0. The result is symmetric in the order and signs of
+        /// the arguments.
+        /// </para>
+        /// </remarks>
+        public static double Hypot(double a, double b)
+        {
+            double absa = Math.Abs(a), absb = Math.Abs(b);
+            if (double.IsPositiveInfinity(absa) || double.IsPositiveInfinity(absb)) return double.PositiveInfinity;
+            if (double.IsNaN(absa) || double.IsNaN(absb)) return double.NaN;
+            if (absa > absb)
+            {
+                double r = absb / absa;
+                return absa * Math.Sqrt(1d + r * r);
+            }
+            if (absb == 0d) return 0d;
+            double s = absa / absb;
+            return absb * Math.Sqrt(1d + s * s);
+        }
+
+        /// <summary>
         /// Returns a value with the same magnitude as a and the same sign as b.
         /// </summary>
         /// <param name="a">Value a.</param>
@@ -184,6 +222,7 @@ namespace Numerics
         /// </summary>
         /// <param name="x">The number whose logarithm is to be found.</param>
         /// <returns>The guarded base-10 logarithm of <paramref name="x"/>.</returns>
+        /// <remarks>Values in [0, 1E-16) are raised to 1E-16, so <c>Log10(0)</c> returns -16 rather than negative infinity.</remarks>
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public static double Log10(double x)
         {
@@ -195,6 +234,8 @@ namespace Numerics
         /// Returns the natural (base e) logarithm of a specified number. 
         /// </summary>
         /// <param name="x">The number whose logarithm is to be found.</param>
+        /// <returns>The guarded natural logarithm of <paramref name="x"/>.</returns>
+        /// <remarks>Values in [0, 1E-16), including negative zero, are raised to 1E-16, so <c>Log(0)</c> returns about -36.84 rather than negative infinity.</remarks>
         public static double Log(double x)
         {
             if (x < 1E-16 && Math.Sign(x) != -1) x = 1E-16;
@@ -213,16 +254,27 @@ namespace Numerics
         /// this method avoids catastrophic cancellation that occurs in <c>Math.Log(1 + x)</c>.
         /// </returns>
         /// <remarks>
-        /// Uses a direct call to <see cref="Math.Log(double)"/> when <c>|x| &gt; 1e-4</c>.
-        /// For <c>|x| ≤ 1e-4</c>, applies a compensated evaluation of <c>log(1 + x)</c>:
-        /// <code>log(y) - ((y - 1) - x) / y</code> with <c>y = 1 + x</c>, which reduces rounding error.
+        /// <para>
+        /// Applies the compensated evaluation <code>log(y) - ((y - 1) - x) / y</code> with <c>y = 1 + x</c> at every
+        /// finite <c>x &gt; -1</c>: <c>(y - 1) - x</c> is exactly the rounding error of <c>1 + x</c>, and dividing it
+        /// by <c>y</c> is the first-order correction of <c>log(y)</c> for that error, so the result is within one unit
+        /// in the last place of the correctly rounded value wherever <c>log</c> is (it is not correctly rounded
+        /// everywhere). The direct <c>log(1 + x)</c> loses up to about 1e-12 relative
+        /// accuracy for <c>1e-4 &lt; |x| &lt; 1e-2</c>, where the rounding of <c>1 + x</c> is a large share of the
+        /// result.
+        /// </para>
+        /// <para>
+        /// Where <c>1 + x</c> is zero, negative, infinite or NaN the correction is not defined, and the value is
+        /// <see cref="Math.Log(double)"/> of <c>1 + x</c>: −∞ at <c>x = −1</c>, NaN below it or for NaN, and +∞
+        /// for +∞.
+        /// </para>
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double Log1p(double x)
         {
-            if (Math.Abs(x) > 1e-4)
-                return Math.Log(1.0 + x);
-            // series expansion for small x
             double y = 1.0 + x;
+            if (!(y > 0d) || double.IsInfinity(y))
+                return Math.Log(y);
             return Math.Log(y) - ((y - 1.0) - x) / y;
         }
 
@@ -236,25 +288,111 @@ namespace Numerics
         /// return exactly -1 and large inputs overflow to positive infinity.
         /// </returns>
         /// <remarks>
-        /// Uses the compensated evaluation <c>(u - 1) * x / log(u)</c> with <c>u = exp(x)</c>, which
-        /// corrects the rounding of the exponential; when <c>u</c> rounds to one the input itself is
-        /// returned. For large positive inputs the compensation's intermediate product overflows
-        /// while <c>exp(x) - 1</c> is still finite; there the subtraction is exact to the last unit
-        /// anyway, so the direct difference is returned. This is the companion of
-        /// <see cref="Log1p"/> for log-space probability arithmetic such as survival products of
-        /// many small probabilities.
+        /// <para>
+        /// For <c>|x| &gt; 1/2</c> the direct difference <c>exp(x) - 1</c> is returned. There the subtraction
+        /// cancels at most a factor of about 2.6, so the result stays within about one unit in the last place
+        /// (measured against mpmath: at most 1.06 units), which is closer than the compensated form below,
+        /// whose division by <c>log(u)</c> adds its own rounding. The difference also gives exactly -1 once
+        /// <c>exp(x)</c> falls below half a unit of 1, and positive infinity when <c>exp(x)</c> overflows.
+        /// </para>
+        /// <para>
+        /// For <c>|x| &lt;= 1/2</c>, and for NaN, it uses the compensated evaluation
+        /// <c>(u - 1) * x / log(u)</c> with <c>u = exp(x)</c>, which corrects the rounding of the exponential
+        /// where the subtraction would cancel; when <c>u</c> rounds to one the input itself is returned. This is
+        /// the companion of <see cref="Log1p(double)"/> for log-space probability arithmetic such as survival
+        /// products of many small probabilities.
+        /// </para>
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double Expm1(double x)
         {
+            if (Math.Abs(x) > 0.5) return Math.Exp(x) - 1.0;
             double u = Math.Exp(x);
             if (u == 1.0) return x;
-            if (double.IsPositiveInfinity(u)) return u;
-            if (u <= DoubleMachineEpsilon / 2.0) return -1.0;
-            double numerator = (u - 1.0) * x;
-            // The product overflows only for x large enough that 1 is far below one unit in the last
-            // place of u, where exp(x) - 1 carries no cancellation to compensate for.
-            if (double.IsInfinity(numerator)) return u - 1.0;
-            return numerator / Math.Log(u);
+            return (u - 1.0) * x / Math.Log(u);
+        }
+
+        /// <summary>Computes log(1-exp(a)) for a nonpositive log probability, including its limits.</summary>
+        /// <param name="a">The logarithm of a probability in the interval from negative infinity through zero.</param>
+        /// <returns><c>log(1-exp(a))</c>, or not-a-number when <paramref name="a"/> is positive or not-a-number.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static double Log1mExp(double a)
+        {
+            if (a > 0 || double.IsNaN(a)) return double.NaN;
+            return a < -0.69314718055994530942 ? Tools.Log1p(-Math.Exp(a)) : Math.Log(-Tools.Expm1(a));
+        }
+
+        /// <summary>Cancellation-free exp(x)-1-x.</summary>
+        /// <param name="x">The argument.</param>
+        /// <returns><c>exp(x)-1-x</c>, evaluated by its Taylor series when the subtraction would cancel.</returns>
+        /// <remarks>For |x| below 0.5 the series <c>Σₙ₌₂ xⁿ/n!</c> is summed to a relative tolerance of 1E-17; otherwise
+        /// <c>expm1(x) - x</c> loses at most a factor of about 4.7 to cancellation.</remarks>
+        internal static double Expm1MinusX(double x)
+        {
+            if (Math.Abs(x) >= 0.5) return Tools.Expm1(x) - x;
+            double term = x * x / 2, sum = term;
+            for (int n = 3; n < 60; n++)
+            {
+                term *= x / n;
+                sum += term;
+                if (Math.Abs(term) <= Math.Abs(sum) * 1E-17) break;
+            }
+            return sum;
+        }
+
+        /// <summary>Cancellation-free log(1+x)-x.</summary>
+        /// <param name="x">The argument, greater than negative one in its probability-distribution uses.</param>
+        /// <returns><c>log(1+x)-x</c>, evaluated by a local series when subtraction would cancel.</returns>
+        internal static double Log1pMinusX(double x)
+        {
+            if (Math.Abs(x) >= 0.25) return Tools.Log1p(x) - x;
+            double power = -x * x, sum = power / 2;
+            for (int n = 3; n < 100; n++)
+            {
+                power *= -x;
+                double term = power / n;
+                sum += term;
+                if (Math.Abs(term) <= Math.Abs(sum) * 1E-17) break;
+            }
+            return sum;
+        }
+
+        /// <summary>
+        /// Computes <c>log(1 + x)</c> for each value of a list, with improved numerical accuracy for small values.
+        /// </summary>
+        /// <param name="values">The input values.</param>
+        /// <returns>One result per value, each equal to <see cref="Log1p(double)"/> at that value.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        /// <remarks>
+        /// One call evaluates the whole list, in the same way as the list forms of the distribution members
+        /// (for example <see cref="Distributions.Normal.StandardZ(IList{double})"/>); a caller crossing a language
+        /// boundary (for example from Python) pays the crossing once instead of once per value.
+        /// </remarks>
+        public static double[] Log1p(IList<double> values)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var result = new double[values.Count];
+            for (int i = 0; i < values.Count; i++)
+                result[i] = Log1p(values[i]);
+            return result;
+        }
+
+        /// <summary>
+        /// Computes <c>exp(x) - 1</c> for each value of a list, with improved numerical accuracy for small values.
+        /// </summary>
+        /// <param name="values">The input values.</param>
+        /// <returns>One result per value, each equal to <see cref="Expm1(double)"/> at that value.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        /// <remarks>
+        /// One call evaluates the whole list, in the same way as <see cref="Log1p(IList{double})"/>.
+        /// </remarks>
+        public static double[] Expm1(IList<double> values)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var result = new double[values.Count];
+            for (int i = 0; i < values.Count; i++)
+                result[i] = Expm1(values[i]);
+            return result;
         }
 
         /// <summary>
@@ -277,9 +415,22 @@ namespace Numerics
         /// <param name="x">First point.</param>
         /// <param name="y">Second point.</param>
         /// <returns>The Euclidean distance ||x - y||.</returns>
+        /// <remarks>
+        /// Arrays of compatible length are read directly, without interface dispatch, using the same
+        /// operations in the same order.
+        /// </remarks>
         public static double Distance(IList<double> x, IList<double> y)
         {
             double d = 0;
+            if (x is double[] a && y is double[] b && b.Length >= a.Length)
+            {
+                for (int i = 0; i < a.Length; i++)
+                {
+                    double dx = a[i] - b[i];
+                    d += dx * dx;
+                }
+                return Math.Sqrt(d);
+            }
             for (int i = 0; i < x.Count; i++)
             {
                 double dx = x[i] - y[i];
@@ -465,6 +616,385 @@ namespace Numerics
             for (int i = 0; i < values1.Count; i++)
                 sum += values1[i] * values2[i];
             return sum;
+        }
+
+        /// <summary>
+        /// Returns the compensated (Neumaier) sum of a list of values.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <returns>The compensated sum, or NaN when the list is empty.</returns>
+        /// <remarks>
+        /// <para>
+        /// The values are added in index order with Neumaier's improvement of Kahan summation: a running
+        /// correction collects the rounding error of each addition, taken exactly from whichever of the running
+        /// sum and the new value is larger in magnitude, and is added to the running sum at the end. Unlike plain
+        /// Kahan summation, the result stays accurate when a term is larger than the running sum. The error is
+        /// bounded by 2u|s| + O(n u²) Σ|x_i| (u the unit roundoff, s the exact sum), so to first order it does not
+        /// grow with n, whereas the bound of <see cref="Sum(IList{double})"/> grows as (n − 1) u Σ|x_i|.
+        /// </para>
+        /// <para>
+        /// If the running sum is not finite, the IEEE sum is returned: NaN when any value is NaN or both infinities
+        /// occur, otherwise the infinity. Python's <c>math.fsum</c> gives the same NaN or infinity, but raises where
+        /// both infinities occur or finite values overflow, and returns 0 for an empty list, which returns NaN here as
+        /// for <see cref="Sum(IList{double})"/>.
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Neumaier, A. (1974). Rundungsfehleranalyse einiger Verfahren zur Summation endlicher Summen.
+        /// ZAMM - Zeitschrift für Angewandte Mathematik und Mechanik, 54(1), 39-51. https://doi.org/10.1002/zamm.19740540106
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        public static double CompensatedSum(IList<double> values)
+        {
+            return CompensatedSum(values, false);
+        }
+
+        /// <summary>
+        /// Returns the compensated sum of a list of values by Neumaier's method, or by classic Kahan summation.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <param name="kahan">False for Neumaier's method, as <see cref="CompensatedSum(IList{double})"/>; true for
+        /// classic Kahan summation.</param>
+        /// <returns>The compensated sum, or NaN when the list is empty.</returns>
+        /// <remarks>
+        /// <para>
+        /// With <paramref name="kahan"/> false the result is bitwise <see cref="CompensatedSum(IList{double})"/>.
+        /// </para>
+        /// <para>
+        /// With <paramref name="kahan"/> true the values are added by classic Kahan summation instead: starting from
+        /// t = c = 0, each value v gives a = v − c, f = t + a, c = (f − t) − a and t = f, and the result is t. Neumaier's
+        /// method is the more accurate of the two, because Kahan's correction is lost when a term is larger than the
+        /// running sum; the Kahan form is provided for reproducing results of the classic Kahan loop. When the running
+        /// sum first becomes infinite the correction becomes NaN: a final infinite sum is returned as is, and any value
+        /// added after it gives NaN, as in the classic loop. Neumaier's method returns the IEEE sum in both cases.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        public static double CompensatedSum(IList<double> values, bool kahan)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (values.Count == 0) return double.NaN;
+            double sum = 0d, correction = 0d;
+            if (values is double[] array)
+            {
+                // The same additions without the interface call per value.
+                if (kahan)
+                    for (int i = 0; i < array.Length; i++) KahanAdd(ref sum, ref correction, array[i]);
+                else
+                    for (int i = 0; i < array.Length; i++) NeumaierAdd(ref sum, ref correction, array[i]);
+            }
+            else if (kahan)
+            {
+                for (int i = 0; i < values.Count; i++) KahanAdd(ref sum, ref correction, values[i]);
+            }
+            else
+            {
+                for (int i = 0; i < values.Count; i++) NeumaierAdd(ref sum, ref correction, values[i]);
+            }
+            return CompensatedResult(sum, correction, kahan);
+        }
+
+        /// <summary>
+        /// Returns the compensated (Neumaier) sum of the values an indicator selects.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <param name="indicators">The list of indicators (0's or 1's).</param>
+        /// <param name="useComplement">If false, 1's are indicator, if true, all 0's are indicator. Default = false.</param>
+        /// <returns>The compensated sum of the selected values, 0 when none is selected, or NaN when the list is empty
+        /// or the indicators differ in length from the values.</returns>
+        /// <remarks>
+        /// The selection follows <see cref="Sum(IList{double}, IList{int}, bool)"/>, and the selected values are summed
+        /// in index order as in <see cref="CompensatedSum(IList{double})"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> or <paramref name="indicators"/> is null.</exception>
+        public static double CompensatedSum(IList<double> values, IList<int> indicators, bool useComplement = false)
+        {
+            return CompensatedSum(values, indicators, useComplement, false);
+        }
+
+        /// <summary>
+        /// Returns the compensated sum of the values an indicator selects, by Neumaier's method or by classic Kahan
+        /// summation.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <param name="indicators">The list of indicators (0's or 1's).</param>
+        /// <param name="useComplement">If false, 1's are indicator, if true, all 0's are indicator.</param>
+        /// <param name="kahan">False for Neumaier's method; true for classic Kahan summation.</param>
+        /// <returns>The compensated sum of the selected values, 0 when none is selected, or NaN when the list is empty
+        /// or the indicators differ in length from the values.</returns>
+        /// <remarks>
+        /// <para>
+        /// The selected values are added in index order as in <see cref="CompensatedSum(IList{double}, bool)"/>; with
+        /// <paramref name="kahan"/> false the result is bitwise <see cref="CompensatedSum(IList{double}, IList{int}, bool)"/>.
+        /// </para>
+        /// <para>
+        /// With <paramref name="kahan"/> true the values are added by classic Kahan summation instead: starting from
+        /// t = c = 0, each value v gives a = v − c, f = t + a, c = (f − t) − a and t = f, and the result is t. Neumaier's
+        /// method is the more accurate of the two, because Kahan's correction is lost when a term is larger than the
+        /// running sum; the Kahan form is provided for reproducing results of the classic Kahan loop. When the running
+        /// sum first becomes infinite the correction becomes NaN: a final infinite sum is returned as is, and any value
+        /// added after it gives NaN, as in the classic loop. Neumaier's method returns the IEEE sum in both cases.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> or <paramref name="indicators"/> is null.</exception>
+        public static double CompensatedSum(IList<double> values, IList<int> indicators, bool useComplement, bool kahan)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (indicators == null) throw new ArgumentNullException(nameof(indicators));
+            if (values.Count == 0) return double.NaN;
+            if (indicators.Count != values.Count) return double.NaN;
+            int selected = useComplement ? 0 : 1;
+            double sum = 0d, correction = 0d;
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (indicators[i] != selected) continue;
+                if (kahan) KahanAdd(ref sum, ref correction, values[i]);
+                else NeumaierAdd(ref sum, ref correction, values[i]);
+            }
+            return CompensatedResult(sum, correction, kahan);
+        }
+
+        /// <summary>
+        /// Returns the compensated (Neumaier) sum of the values at a range of gathered indices,
+        /// values[indices[i]] for i in [start, start + count).
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <param name="indices">The 0-based positions in <paramref name="values"/> to sum; a position may repeat.</param>
+        /// <param name="start">The first entry of <paramref name="indices"/> to use.</param>
+        /// <param name="count">The number of entries of <paramref name="indices"/> to use.</param>
+        /// <returns>The compensated sum of the gathered values, or NaN when <paramref name="count"/> is zero.</returns>
+        /// <remarks>
+        /// The gathered values are summed in the order of <paramref name="indices"/> as in
+        /// <see cref="CompensatedSum(IList{double})"/>, without copying them to a new list.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> or <paramref name="indices"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> or <paramref name="count"/>
+        /// is negative, the range runs past the end of <paramref name="indices"/>, or a gathered index is outside
+        /// <paramref name="values"/>.</exception>
+        public static double CompensatedSum(IList<double> values, IList<int> indices, int start, int count)
+        {
+            return CompensatedSum(values, indices, start, count, false);
+        }
+
+        /// <summary>
+        /// Returns the compensated sum of the values at a range of gathered indices, values[indices[i]] for i in
+        /// [start, start + count), by Neumaier's method or by classic Kahan summation.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <param name="indices">The 0-based positions in <paramref name="values"/> to sum; a position may repeat.</param>
+        /// <param name="start">The first entry of <paramref name="indices"/> to use.</param>
+        /// <param name="count">The number of entries of <paramref name="indices"/> to use.</param>
+        /// <param name="kahan">False for Neumaier's method; true for classic Kahan summation.</param>
+        /// <returns>The compensated sum of the gathered values, or NaN when <paramref name="count"/> is zero.</returns>
+        /// <remarks>
+        /// <para>
+        /// The gathered values are added in the order of <paramref name="indices"/> as in
+        /// <see cref="CompensatedSum(IList{double}, bool)"/>; with <paramref name="kahan"/> false the result is bitwise
+        /// <see cref="CompensatedSum(IList{double}, IList{int}, int, int)"/>.
+        /// </para>
+        /// <para>
+        /// With <paramref name="kahan"/> true the values are added by classic Kahan summation instead: starting from
+        /// t = c = 0, each value v gives a = v − c, f = t + a, c = (f − t) − a and t = f, and the result is t. Neumaier's
+        /// method is the more accurate of the two, because Kahan's correction is lost when a term is larger than the
+        /// running sum; the Kahan form is provided for reproducing results of the classic Kahan loop. When the running
+        /// sum first becomes infinite the correction becomes NaN: a final infinite sum is returned as is, and any value
+        /// added after it gives NaN, as in the classic loop. Neumaier's method returns the IEEE sum in both cases.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> or <paramref name="indices"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> or <paramref name="count"/>
+        /// is negative, the range runs past the end of <paramref name="indices"/>, or a gathered index is outside
+        /// <paramref name="values"/>.</exception>
+        public static double CompensatedSum(IList<double> values, IList<int> indices, int start, int count, bool kahan)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (indices == null) throw new ArgumentNullException(nameof(indices));
+            if (start < 0) throw new ArgumentOutOfRangeException(nameof(start), "The start must not be negative.");
+            if (count < 0 || count > indices.Count - start)
+                throw new ArgumentOutOfRangeException(nameof(count), "The range must lie within the indices.");
+            if (count == 0) return double.NaN;
+            int n = values.Count;
+            double sum = 0d, correction = 0d;
+            for (int i = start; i < start + count; i++)
+            {
+                int j = indices[i];
+                if ((uint)j >= (uint)n)
+                    throw new ArgumentOutOfRangeException(nameof(indices), "Each gathered index must lie within the values.");
+                if (kahan) KahanAdd(ref sum, ref correction, values[j]);
+                else NeumaierAdd(ref sum, ref correction, values[j]);
+            }
+            return CompensatedResult(sum, correction, kahan);
+        }
+
+        /// <summary>
+        /// Returns the compensated (Neumaier) cumulative sums of a list of values.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <returns>An array whose entry i is the compensated sum of values[0] through values[i]; empty when the list is empty.</returns>
+        /// <remarks>
+        /// One pass carries the running sum and correction of <see cref="CompensatedSum(IList{double})"/>, so entry i
+        /// equals <see cref="CompensatedSum(IList{double})"/> of the first i + 1 values, bit for bit, including the
+        /// IEEE result once the running sum is not finite.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        public static double[] CompensatedCumulativeSum(IList<double> values)
+        {
+            return CompensatedCumulativeSum(values, false);
+        }
+
+        /// <summary>
+        /// Returns the compensated cumulative sums of a list of values, by Neumaier's method or by classic Kahan summation.
+        /// </summary>
+        /// <param name="values">The list of values.</param>
+        /// <param name="kahan">False for Neumaier's method, as <see cref="CompensatedCumulativeSum(IList{double})"/>; true
+        /// for classic Kahan summation.</param>
+        /// <returns>An array whose entry i is the compensated sum of values[0] through values[i]; empty when the list is empty.</returns>
+        /// <remarks>
+        /// <para>
+        /// Entry i equals <see cref="CompensatedSum(IList{double}, bool)"/> of the first i + 1 values with the same
+        /// <paramref name="kahan"/>, bit for bit; for Kahan it is the running t after value i.
+        /// </para>
+        /// <para>
+        /// With <paramref name="kahan"/> true the values are added by classic Kahan summation instead: starting from
+        /// t = c = 0, each value v gives a = v − c, f = t + a, c = (f − t) − a and t = f, and the result is t. Neumaier's
+        /// method is the more accurate of the two, because Kahan's correction is lost when a term is larger than the
+        /// running sum; the Kahan form is provided for reproducing results of the classic Kahan loop. When the running
+        /// sum first becomes infinite the correction becomes NaN: a final infinite sum is returned as is, and any value
+        /// added after it gives NaN, as in the classic loop. Neumaier's method returns the IEEE sum in both cases.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        public static double[] CompensatedCumulativeSum(IList<double> values, bool kahan)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var result = new double[values.Count];
+            double sum = 0d, correction = 0d;
+            if (values is double[] array)
+            {
+                // The same additions without the interface call per value.
+                if (kahan)
+                {
+                    for (int i = 0; i < array.Length; i++)
+                    {
+                        KahanAdd(ref sum, ref correction, array[i]);
+                        result[i] = sum;
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < array.Length; i++)
+                    {
+                        NeumaierAdd(ref sum, ref correction, array[i]);
+                        result[i] = NeumaierResult(sum, correction);
+                    }
+                }
+                return result;
+            }
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (kahan) KahanAdd(ref sum, ref correction, values[i]);
+                else NeumaierAdd(ref sum, ref correction, values[i]);
+                result[i] = CompensatedResult(sum, correction, kahan);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Adds one value to a Neumaier running sum and its compensation.
+        /// </summary>
+        /// <param name="sum">The running (uncompensated) sum, updated to sum + value.</param>
+        /// <param name="compensation">The accumulated rounding error of the running sum, updated with the error of
+        /// this addition.</param>
+        /// <param name="value">The value to add.</param>
+        /// <remarks>
+        /// <para>
+        /// This is the step of <see cref="CompensatedSum(IList{double})"/>. Start from sum = compensation = 0, call it
+        /// once per value in order, and read the result with <see cref="NeumaierResult(double, double)"/>; the result is
+        /// bitwise the one <see cref="CompensatedSum(IList{double})"/> returns for the same values in the same order.
+        /// </para>
+        /// <para>
+        /// With t = sum + value, the rounding error of the addition is recovered exactly by the Fast2Sum step with the
+        /// operands ordered by magnitude: (sum − t) + value when |sum| ≥ |value|, otherwise (value − t) + sum. Unlike
+        /// <see cref="KahanAdd(ref double, ref double, double)"/>, the error is not lost when a value is larger than the
+        /// running sum.
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Neumaier, A. (1974). Rundungsfehleranalyse einiger Verfahren zur Summation endlicher Summen.
+        /// ZAMM - Zeitschrift für Angewandte Mathematik und Mechanik, 54(1), 39-51. https://doi.org/10.1002/zamm.19740540106
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void NeumaierAdd(ref double sum, ref double compensation, double value)
+        {
+            double t = sum + value;
+            if (Math.Abs(sum) >= Math.Abs(value)) compensation += (sum - t) + value;
+            else compensation += (value - t) + sum;
+            sum = t;
+        }
+
+        /// <summary>
+        /// Returns the result of a Neumaier running sum formed by <see cref="NeumaierAdd(ref double, ref double, double)"/>.
+        /// </summary>
+        /// <param name="sum">The running sum.</param>
+        /// <param name="compensation">The running compensation.</param>
+        /// <returns>The sum plus its compensation, or the IEEE sum as it stands once it is not finite.</returns>
+        /// <remarks>
+        /// Once the running sum is infinite or NaN the compensation carries no information (it is NaN or infinite
+        /// itself), so the IEEE sum is returned: NaN when any value was NaN or both infinities occurred, otherwise the
+        /// infinity. This is the final step of <see cref="CompensatedSum(IList{double})"/>.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double NeumaierResult(double sum, double compensation)
+        {
+            return IsFinite(sum) ? sum + compensation : sum;
+        }
+
+        /// <summary>
+        /// Adds one value to a classic Kahan running sum and its compensation.
+        /// </summary>
+        /// <param name="sum">The running compensated sum t, which is also the result.</param>
+        /// <param name="compensation">The compensation c, the negated low-order part lost by the last addition.</param>
+        /// <param name="value">The value v to add.</param>
+        /// <remarks>
+        /// <para>
+        /// The step is a = v − c, f = t + a, c = (f − t) − a, t = f (Kahan, 1965). Start from sum = compensation = 0
+        /// and call it once per value in order; <paramref name="sum"/> is then bitwise the result of
+        /// <see cref="CompensatedSum(IList{double}, bool)"/> with kahan true for the same values in the same order.
+        /// </para>
+        /// <para>
+        /// Neumaier's step <see cref="NeumaierAdd(ref double, ref double, double)"/> is the more accurate of the two,
+        /// because Kahan's compensation is lost when a value is larger than the running sum; this step is provided for
+        /// reproducing results of the classic Kahan loop. Once the sum becomes infinite the compensation becomes NaN, and
+        /// any value added after it gives NaN.
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Kahan, W. (1965). Further remarks on reducing truncation errors. Communications of the ACM, 8(1), 40.
+        /// https://doi.org/10.1145/363707.363723
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void KahanAdd(ref double sum, ref double compensation, double value)
+        {
+            double a = value - compensation;
+            double f = sum + a;
+            compensation = (f - sum) - a;
+            sum = f;
+        }
+
+        /// <summary>
+        /// Returns the result of a compensated running sum.
+        /// </summary>
+        /// <param name="sum">The running sum.</param>
+        /// <param name="correction">The running correction.</param>
+        /// <param name="kahan">True when the sum was formed by <see cref="KahanAdd(ref double, ref double, double)"/>.</param>
+        /// <returns>The Kahan running sum as it stands; for Neumaier, <see cref="NeumaierResult(double, double)"/>.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static double CompensatedResult(double sum, double correction, bool kahan)
+        {
+            return kahan ? sum : NeumaierResult(sum, correction);
         }
 
 
@@ -756,32 +1286,176 @@ namespace Numerics
         }
 
         /// <summary>
-        /// The log-sum-exponential function.
+        /// Returns log(exp(u) + exp(v)) without overflow or underflow.
         /// </summary>
-        /// <param name="u">Log of u.</param>
-        /// <param name="v">Log of v.</param>
+        /// <param name="u">The first log value.</param>
+        /// <param name="v">The second log value.</param>
+        /// <returns>log(exp(u) + exp(v)); NaN when either value is NaN, +∞ when either is +∞ and neither is NaN,
+        /// and −∞ when both are −∞.</returns>
+        /// <remarks>
+        /// <para>
+        /// With m the larger and n the smaller value, the result is log1p(exp(n − m)) + m, or log1p(0) + log(2) + m when
+        /// the two are equal; it is bitwise <see cref="LogSumExp(IList{double})"/> of the two values. Separating the
+        /// largest term and using <see cref="Log1p(double)"/> keeps the result accurate when it is near zero, where
+        /// m + log(1 + exp(n − m)) loses relative accuracy (Blanchard, Higham and Higham, 2021).
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Blanchard, P., Higham, D. J., &amp; Higham, N. J. (2021). Accurately computing the log-sum-exp and softmax
+        /// functions. IMA Journal of Numerical Analysis, 41(4), 2311-2330. https://doi.org/10.1093/imanum/draa038
+        /// </para>
+        /// </remarks>
         public static double LogSumExp(double u, double v)
         {
+            if (double.IsNaN(u) || double.IsNaN(v)) return double.NaN;
             double max = Math.Max(u, v);
-            if (double.IsNegativeInfinity(max)) return double.NegativeInfinity;
-            return max + Math.Log(Math.Exp(u - max) + Math.Exp(v - max));
+            if (double.IsInfinity(max)) return max;
+            if (u == v) return LogSumExpResult(max, 2, 0d);
+            return LogSumExpResult(max, 1, Math.Exp(Math.Min(u, v) - max));
         }
 
         /// <summary>
-        /// The log-sum-exponential function. 
+        /// Returns log(Σ exp(x_i)) of a list of log values without overflow or underflow.
         /// </summary>
-        /// <param name="values">The list of values of log.</param>
+        /// <param name="values">The log values.</param>
+        /// <returns>The log of the sum of the exponentials; −∞ for an empty list or when every value is −∞, NaN when any
+        /// value is NaN, and +∞ when any value is +∞ and none is NaN.</returns>
+        /// <remarks>
+        /// <para>
+        /// With m the largest value and k the number of values equal to it, the result is log1p(s / k) + log(k) + m,
+        /// where s is the compensated sum (<see cref="NeumaierAdd(ref double, ref double, double)"/>) of exp(x_i − m)
+        /// over the other values, added in index order. This is the evaluation of <c>scipy.special.logsumexp</c>:
+        /// separating the largest terms and using <see cref="Log1p(double)"/> keeps the result accurate when it is near
+        /// zero, where m + log(Σ exp(x_i − m)) loses relative accuracy (Blanchard, Higham and Higham, 2021).
+        /// </para>
+        /// <para>
+        /// The special values also follow SciPy: an empty list returns −∞, the log of an empty sum, as does a list of
+        /// −∞ values; +∞ is returned when any value is +∞, since the sum is then infinite; and NaN propagates.
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Blanchard, P., Higham, D. J., &amp; Higham, N. J. (2021). Accurately computing the log-sum-exp and softmax
+        /// functions. IMA Journal of Numerical Analysis, 41(4), 2311-2330. https://doi.org/10.1093/imanum/draa038
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
         public static double LogSumExp(IList<double> values)
         {
-            if (values.Count == 0) return double.NaN;
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (values.Count == 0) return double.NegativeInfinity;
             double max = Max(values);
-            if (double.IsNegativeInfinity(max)) return double.NegativeInfinity;
-            double sum = 0;
+            if (double.IsNaN(max) || double.IsInfinity(max)) return max;
+            int count = 0;
+            double sum = 0d, compensation = 0d;
             for (int i = 0; i < values.Count; i++)
             {
-                sum += Math.Exp(values[i] - max);
+                double v = values[i];
+                if (v == max) count++;
+                else NeumaierAdd(ref sum, ref compensation, Math.Exp(v - max));
             }
-            return max + Math.Log(sum);
+            return LogSumExpResult(max, count, NeumaierResult(sum, compensation));
+        }
+
+        /// <summary>
+        /// Returns the log-sum-exponential of each column or each row of a matrix of log values.
+        /// </summary>
+        /// <param name="values">The log values.</param>
+        /// <param name="axis">0 to reduce over the rows, giving one value per column; 1 to reduce over the columns,
+        /// giving one value per row, as the <c>axis</c> argument of <c>scipy.special.logsumexp</c>.</param>
+        /// <returns>One value per column (axis 0) or per row (axis 1), each bitwise
+        /// <see cref="LogSumExp(IList{double})"/> of that column or row; −∞ for every entry when the reduced dimension
+        /// is empty.</returns>
+        /// <remarks>
+        /// The matrix is read in row-major order for both axes. For axis 0 the column maxima, counts and compensated
+        /// sums are carried across each row, so every column is reduced in the same order and with the same arithmetic as
+        /// <see cref="LogSumExp(IList{double})"/> without being copied out of the matrix.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="values"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="axis"/> is not 0 or 1.</exception>
+        public static double[] LogSumExp(double[,] values, int axis)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            if (axis != 0 && axis != 1) throw new ArgumentOutOfRangeException(nameof(axis), "The axis must be 0 or 1.");
+            int rows = values.GetLength(0), cols = values.GetLength(1);
+            if (axis == 1)
+            {
+                var rowResult = new double[rows];
+                for (int r = 0; r < rows; r++)
+                {
+                    double max = double.NegativeInfinity;
+                    for (int c = 0; c < cols; c++)
+                    {
+                        double v = values[r, c];
+                        if (double.IsNaN(v)) { max = double.NaN; break; }
+                        if (v > max) max = v;
+                    }
+                    if (double.IsNaN(max) || double.IsInfinity(max))
+                    {
+                        rowResult[r] = max;
+                        continue;
+                    }
+                    int count = 0;
+                    double sum = 0d, compensation = 0d;
+                    for (int c = 0; c < cols; c++)
+                    {
+                        double v = values[r, c];
+                        if (v == max) count++;
+                        else NeumaierAdd(ref sum, ref compensation, Math.Exp(v - max));
+                    }
+                    rowResult[r] = LogSumExpResult(max, count, NeumaierResult(sum, compensation));
+                }
+                return rowResult;
+            }
+
+            var maxima = new double[cols];
+            for (int c = 0; c < cols; c++) maxima[c] = double.NegativeInfinity;
+            for (int r = 0; r < rows; r++)
+            {
+                for (int c = 0; c < cols; c++)
+                {
+                    if (double.IsNaN(maxima[c])) continue;
+                    double v = values[r, c];
+                    if (double.IsNaN(v)) maxima[c] = double.NaN;
+                    else if (v > maxima[c]) maxima[c] = v;
+                }
+            }
+            var counts = new int[cols];
+            var sums = new double[cols];
+            var compensations = new double[cols];
+            for (int r = 0; r < rows; r++)
+            {
+                for (int c = 0; c < cols; c++)
+                {
+                    double max = maxima[c];
+                    if (double.IsNaN(max) || double.IsInfinity(max)) continue;
+                    double v = values[r, c];
+                    if (v == max) counts[c]++;
+                    else NeumaierAdd(ref sums[c], ref compensations[c], Math.Exp(v - max));
+                }
+            }
+            var result = new double[cols];
+            for (int c = 0; c < cols; c++)
+            {
+                double max = maxima[c];
+                result[c] = double.IsNaN(max) || double.IsInfinity(max)
+                    ? max
+                    : LogSumExpResult(max, counts[c], NeumaierResult(sums[c], compensations[c]));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns log1p(s / k) + log(k) + max, the log-sum-exponential with its k largest terms separated.
+        /// </summary>
+        /// <param name="max">The finite largest log value.</param>
+        /// <param name="count">The number k of values equal to <paramref name="max"/>, at least one.</param>
+        /// <param name="rest">The sum s of exp(x − max) over the other values.</param>
+        /// <returns>log(k + s) + max, evaluated in the order of <c>scipy.special.logsumexp</c>.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static double LogSumExpResult(double max, int count, double rest)
+        {
+            if (count > 1) rest /= count;
+            return Log1p(rest) + Math.Log(count) + max;
         }
 
         /// <summary>

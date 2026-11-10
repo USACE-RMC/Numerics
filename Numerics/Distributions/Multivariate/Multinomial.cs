@@ -355,6 +355,123 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Maps an array of uniform variates to category indices through a cumulative weight table:
+        /// each index is the first k with <c>cumulativeWeights[k] &gt; u</c>, clipped to the last category.
+        /// </summary>
+        /// <param name="cumulativeWeights">The cumulative category weights c[0] ≤ c[1] ≤ ... ≤ c[n-1].
+        /// Must be nonempty, finite, and non-decreasing. Normalization is not required.</param>
+        /// <param name="uniforms">The variates to map, on the scale of <paramref name="cumulativeWeights"/>
+        /// (for a table normalized to end at one, uniforms on [0, 1)). Must not contain NaN.</param>
+        /// <returns>One 0-based category index in [0, n-1] per variate, in input order.</returns>
+        /// <remarks>
+        /// <para>
+        /// The semantics equal numpy <c>clip(searchsorted(cumulativeWeights, uniforms, side="right"), 0, n - 1)</c>.
+        /// A variate exactly on a boundary c[k] selects category k + 1 (strictly greater), every variate
+        /// in [c[0], c[n-1]) skips a zero-weight category (c[k] = c[k-1]), a variate below c[0] selects
+        /// category 0, and a variate at or above c[n-1] (including +∞) selects the last category.
+        /// </para>
+        /// <para>
+        /// Each variate is located by binary search over the first n - 1 entries, so the cost is
+        /// O(m log n) for m variates, with one O(n) check of the table. The whole array is mapped in one
+        /// call, so a caller crossing a language boundary pays the crossing once. Unlike
+        /// <see cref="Sample(double[], Random)"/>, which accepts a variate on a boundary into the lower
+        /// category, this method follows the right-continuous inverse of the cumulative table.
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Devroye, L. (1986). Non-Uniform Random Variate Generation, Chapter III. Springer-Verlag, New York.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when either array is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the table is empty or decreases.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a table entry is not finite or a variate is NaN.</exception>
+        public static int[] CategoricalIndices(double[] cumulativeWeights, double[] uniforms)
+        {
+            return CategoricalIndices(cumulativeWeights, uniforms, false);
+        }
+
+        /// <summary>
+        /// Maps an array of uniform variates to category indices through a cumulative weight table, selecting either
+        /// the first k with <c>cumulativeWeights[k] &gt; u</c> or the first k with <c>cumulativeWeights[k] ≥ u</c>,
+        /// clipped to the last category.
+        /// </summary>
+        /// <param name="cumulativeWeights">The cumulative category weights c[0] ≤ c[1] ≤ ... ≤ c[n-1].
+        /// Must be nonempty, finite, and non-decreasing. Normalization is not required.</param>
+        /// <param name="uniforms">The variates to map, on the scale of <paramref name="cumulativeWeights"/>.
+        /// Must not contain NaN.</param>
+        /// <param name="inclusive">If false, each index is min{k : c[k] &gt; u}, as in
+        /// <see cref="CategoricalIndices(double[], double[])"/>. If true, each index is min{k : c[k] ≥ u},
+        /// the generalized inverse F⁻¹(u) = min{k : F(k) ≥ u} of a discrete CDF table F.</param>
+        /// <returns>One 0-based category index in [0, n-1] per variate, in input order.</returns>
+        /// <remarks>
+        /// <para>
+        /// With <paramref name="inclusive"/> true the semantics equal numpy
+        /// <c>clip(searchsorted(cumulativeWeights, uniforms, side="left"), 0, n - 1)</c>. A variate exactly on a
+        /// boundary c[k] selects category k (the lowest such k when entries repeat), a variate at or below c[0]
+        /// selects category 0 (even when c[0] is zero), and a variate above c[n-1] (including +∞) selects the last
+        /// category. The two forms differ only for variates equal to a table entry.
+        /// </para>
+        /// <para>
+        /// This is the inverse-transform rule for a discrete distribution: for a table of CDF values F(0), F(1), ...
+        /// of a count distribution such as the Poisson, the index is the smallest count whose CDF reaches u.
+        /// Each variate is located by binary search, so the cost is O(m log n) for m variates, with one O(n)
+        /// check of the table.
+        /// </para>
+        /// <para>
+        /// <b> References: </b>
+        /// Devroye, L. (1986). Non-Uniform Random Variate Generation, Chapter III. Springer-Verlag, New York.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when either array is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the table is empty or decreases.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a table entry is not finite or a variate is NaN.</exception>
+        public static int[] CategoricalIndices(double[] cumulativeWeights, double[] uniforms, bool inclusive)
+        {
+            if (cumulativeWeights == null) throw new ArgumentNullException(nameof(cumulativeWeights));
+            if (uniforms == null) throw new ArgumentNullException(nameof(uniforms));
+            int n = cumulativeWeights.Length;
+            if (n == 0) throw new ArgumentException("The cumulative weights must not be empty.", nameof(cumulativeWeights));
+            for (int k = 0; k < n; k++)
+            {
+                if (!Tools.IsFinite(cumulativeWeights[k]))
+                    throw new ArgumentOutOfRangeException(nameof(cumulativeWeights), "The cumulative weights must be finite.");
+                if (k > 0 && cumulativeWeights[k] < cumulativeWeights[k - 1])
+                    throw new ArgumentException("The cumulative weights must be non-decreasing.", nameof(cumulativeWeights));
+            }
+
+            var indices = new int[uniforms.Length];
+            int last = n - 1;
+            for (int i = 0; i < uniforms.Length; i++)
+            {
+                double u = uniforms[i];
+                if (double.IsNaN(u))
+                    throw new ArgumentOutOfRangeException(nameof(uniforms), "The uniform variates must not be NaN.");
+                // First k in [0, n - 1) with c[k] > u (or c[k] >= u when inclusive), else the last category.
+                int low = 0, high = last;
+                if (inclusive)
+                {
+                    while (low < high)
+                    {
+                        int middle = (low + high) >> 1;
+                        if (cumulativeWeights[middle] >= u) high = middle;
+                        else low = middle + 1;
+                    }
+                }
+                else
+                {
+                    while (low < high)
+                    {
+                        int middle = (low + high) >> 1;
+                        if (cumulativeWeights[middle] > u) high = middle;
+                        else low = middle + 1;
+                    }
+                }
+                indices[i] = low;
+            }
+            return indices;
+        }
+
+        /// <summary>
         /// Samples from a Binomial(n, p) distribution using the inverse CDF method for small n
         /// and the BTPE algorithm for large n.
         /// </summary>

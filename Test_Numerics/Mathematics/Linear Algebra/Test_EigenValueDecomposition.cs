@@ -1,4 +1,5 @@
 ﻿
+using System;
 using Numerics.Mathematics.LinearAlgebra;
 
 namespace Mathematics.LinearAlgebra
@@ -15,7 +16,7 @@ namespace Mathematics.LinearAlgebra
     /// </para>
     /// </remarks>
     [TestClass]
-    public class Test_EigenValueDecomposition
+    public partial class Test_EigenValueDecomposition
     {
 
         /// <summary>
@@ -358,6 +359,500 @@ namespace Mathematics.LinearAlgebra
 
                 double actual = new EigenValueDecomposition(matrix).EffectiveSampleSize();
                 Assert.AreEqual(1d, actual, 1E-12d, $"scale={scale:R}");
+            }
+        }
+
+        /// <summary>
+        /// IsConverged reports whether the rotation limit was reached, without changing any result.
+        /// </summary>
+        [TestMethod]
+        public void Test_IsConvergedReportsRotationLimit()
+        {
+            // Small and trivial matrices converge.
+            Assert.IsTrue(new EigenValueDecomposition(new Matrix(new double[,] { { 2d, 1d }, { 1d, 3d } })).IsConverged);
+            Assert.IsTrue(new EigenValueDecomposition(new Matrix(new double[,] { { 5d } })).IsConverged);
+            Assert.IsTrue(new EigenValueDecomposition(new Matrix(0)).IsConverged);
+            Assert.IsTrue(new EigenValueDecomposition(RandomGram(10, 12345)).IsConverged);
+
+            // A fixed 2000-rotation limit stops n = 60 early (max |AV - VD| of 7.2E-2); the limit scales with n^2,
+            // so the decomposition converges and the residual is at roundoff.
+            var S = RandomGram(60, 12345);
+            var eig = new EigenValueDecomposition(S);
+            Assert.IsTrue(eig.IsConverged);
+            var residual = S * eig.EigenVectors - eig.EigenVectors * Matrix.Diagonal(eig.EigenValues);
+            double max = 0d;
+            for (int i = 0; i < 60; i++)
+                for (int j = 0; j < 60; j++)
+                    max = System.Math.Max(max, System.Math.Abs(residual[i, j]));
+            Assert.IsLessThan(1E-10, max);
+
+            // Non-finite entries are rejected rather than returning eigenvalues such as (0, 2) for NaN.
+            Assert.ThrowsExactly<System.ArgumentException>(() => new EigenValueDecomposition(new Matrix(new double[,] { { 1d, double.NaN }, { double.NaN, 2d } })));
+            Assert.ThrowsExactly<System.ArgumentException>(() => new EigenValueDecomposition(new Matrix(new double[,] { { double.PositiveInfinity, 0d }, { 0d, 2d } })));
+        }
+
+        /// <summary>
+        /// The 50 x 50 tridiagonal Toeplitz matrix with 2 on the diagonal and -1 beside it has the analytic
+        /// eigenvalues 2 - 2 cos(k pi / 51), k = 1..50. It needs more than 2000 rotations, so it also pins
+        /// the scaled rotation limit.
+        /// </summary>
+        [TestMethod]
+        public void Test_LargeMatrixMatchesAnalyticEigenvalues()
+        {
+            const int n = 50;
+            var A = new Matrix(n);
+            for (int i = 0; i < n; i++)
+            {
+                A[i, i] = 2d;
+                if (i > 0) A[i, i - 1] = A[i - 1, i] = -1d;
+            }
+            var eig = new EigenValueDecomposition(A);
+            Assert.IsTrue(eig.IsConverged);
+            var computed = eig.EigenValues.ToArray();
+            System.Array.Sort(computed);
+            for (int k = 1; k <= n; k++)
+            {
+                double exact = 2d - 2d * System.Math.Cos(k * System.Math.PI / (n + 1));
+                // The stopping threshold is 1E-12 of the largest element (2), so eigenvalues agree to about 1E-11.
+                Assert.AreEqual(exact, computed[k - 1], 1E-10);
+            }
+        }
+
+    
+        /// <summary>
+        /// A 120 × 120 Gram matrix converges within the rotation limit; the eigenvectors are orthonormal, A·V = V·Λ to
+        /// rounding, and the eigenvalues match an independent Householder/QL decomposition.
+        /// </summary>
+        [TestMethod]
+        public void Test_CyclicJacobi_LargeGram()
+        {
+            int n = 120;
+            var rng = new System.Random(9);
+            var F = new Matrix(400, n);
+            for (int i = 0; i < 400; i++)
+                for (int j = 0; j < n; j++) F[i, j] = rng.NextDouble() - 0.5 + 0.01 * j;
+            var A = F.TransposeMultiply(F);
+            var eigen = new EigenValueDecomposition(A);
+            Assert.IsTrue(eigen.IsConverged);
+            var V = eigen.EigenVectors;
+            double scale = 0;
+            for (int i = 0; i < n; i++) scale = System.Math.Max(scale, System.Math.Abs(eigen.EigenValues[i]));
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = 0; j < n; j++)
+                {
+                    double dot = 0, av = 0;
+                    for (int k = 0; k < n; k++)
+                    {
+                        dot += V[k, i] * V[k, j];
+                        av += A[j, k] * V[k, i];
+                    }
+                    Assert.AreEqual(i == j ? 1.0 : 0.0, dot, 1E-12);
+                    Assert.AreEqual(eigen.EigenValues[i] * V[j, i], av, 1E-10 * scale);
+                }
+            }
+
+            var flat = new double[n * n];
+            for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) flat[i * n + j] = A[i, j];
+            EigenValueDecomposition.DecomposeTridiagonal(flat, n, out var reference, out _);
+            var sorted = eigen.EigenValues.ToArray();
+            System.Array.Sort(sorted);
+            System.Array.Reverse(sorted);
+            for (int i = 0; i < n; i++) Assert.AreEqual(reference[i], sorted[i], 1E-12 * scale);
+        }
+
+        /// <summary>
+        /// Measures the accuracy figures stated in the documentation on random Gram matrices and on matrices
+        /// Q Λ Qᵀ with a known spectrum, Q a product of three Householder reflections: Λ evenly spaced in [1, n], and
+        /// Λ graded geometrically from 1 down to 1E-12. For n = 10 to 300 the measured eigenpair residuals
+        /// ‖Av − λv‖₂ / ‖A‖_F are 2.2E-13 to 2.7E-12 (asserted below 1E-11), the eigenvectors are orthonormal to
+        /// 1.5E-14 (asserted below 5E-14), and the eigenvalues agree with Λ to 9.3E-15 of the largest eigenvalue for
+        /// the evenly spaced spectrum (asserted below 2E-14) and 1.2E-12 for the graded one (asserted below 2E-12).
+        /// This test checks n = 10, 50 and 120; the sweep that adds n = 300 runs with
+        /// <c>dotnet run -c Release --project Benchmarks_Numerics -- sweep CyclicJacobi</c>.
+        /// </summary>
+        [TestMethod]
+        public void Test_CyclicJacobi_DocumentedAccuracy()
+        {
+            CyclicJacobiDocumentedAccuracy(10, 50, 120);
+        }
+
+        /// <summary>
+        /// The QL method returns ascending eigenvalues equal to numpy.linalg.eigh and 50-digit mpmath.eigsy, with unit
+        /// eigenvector columns that satisfy A v = λ v.
+        /// </summary>
+        [TestMethod]
+        public void Test_QL_KnownValues()
+        {
+            var A = new Matrix(new double[,] { { 4.0, 1.0, -2.0, 0.5 }, { 1.0, 3.0, 0.0, 1.5 }, { -2.0, 0.0, 5.0, -1.0 }, { 0.5, 1.5, -1.0, 2.0 } });
+            double[] exact = { 0.641278407914022, 2.4510237937334756, 3.858181525316084, 7.049516273036418 };
+            var evd = new EigenValueDecomposition(A, EigenSolverMethod.QL);
+            Assert.IsTrue(evd.IsConverged);
+            for (int i = 0; i < 4; i++)
+            {
+                Assert.AreEqual(exact[i], evd.EigenValues[i], 4e-15 * 7.05, $"eigenvalue {i}");
+                double norm = 0;
+                for (int k = 0; k < 4; k++)
+                {
+                    double av = 0;
+                    for (int m = 0; m < 4; m++) av += A[k, m] * evd.EigenVectors[m, i];
+                    Assert.AreEqual(evd.EigenValues[i] * evd.EigenVectors[k, i], av, 1e-14, $"residual {i},{k}");
+                    norm += evd.EigenVectors[k, i] * evd.EigenVectors[k, i];
+                }
+                Assert.AreEqual(1d, norm, 1e-15);
+            }
+            Assert.AreEqual(4.0, evd.A[0, 0]);
+        }
+
+        /// <summary>
+        /// On random Gram matrices the QL eigenvalues are ascending and agree with the Jacobi eigenvalues, the eigenpair
+        /// residual ‖A v − λ v‖ is a small multiple of ε‖A‖, and the eigenvectors are orthonormal; the default constructor
+        /// and the Jacobi method give identical bits; a 0 × 0 matrix and an undefined method are handled.
+        /// </summary>
+        [TestMethod]
+        public void Test_QL_RandomMatricesAndJacobiIdentity()
+        {
+            foreach (int n in new[] { 1, 2, 5, 17, 60 })
+            {
+                var rng = new Random(n);
+                var B = new double[n, n];
+                for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) B[i, j] = rng.NextDouble() - 0.5;
+                var a = new double[n, n];
+                for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) { double s = 0; for (int k = 0; k < n; k++) s += B[i, k] * B[j, k]; a[i, j] = s; }
+                var A = new Matrix(a);
+                var ql = new EigenValueDecomposition(A, EigenSolverMethod.QL);
+                var jacobi = new EigenValueDecomposition(A, EigenSolverMethod.Jacobi);
+                var byDefault = new EigenValueDecomposition(A);
+
+                double scale = 0;
+                for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) scale = Math.Max(scale, Math.Abs(a[i, j]));
+                var sortedJacobi = jacobi.EigenValues.ToArray();
+                Array.Sort(sortedJacobi);
+                for (int i = 0; i < n; i++)
+                {
+                    if (i > 0) Assert.IsLessThanOrEqualTo(ql.EigenValues[i], ql.EigenValues[i - 1]);
+                    Assert.AreEqual(sortedJacobi[i], ql.EigenValues[i], 1e-12 * scale);
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(byDefault.EigenValues[i]), BitConverter.DoubleToInt64Bits(jacobi.EigenValues[i]));
+                    for (int k = 0; k < n; k++)
+                    {
+                        Assert.AreEqual(BitConverter.DoubleToInt64Bits(byDefault.EigenVectors[k, i]), BitConverter.DoubleToInt64Bits(jacobi.EigenVectors[k, i]));
+                        double av = 0;
+                        for (int m = 0; m < n; m++) av += a[k, m] * ql.EigenVectors[m, i];
+                        Assert.AreEqual(ql.EigenValues[i] * ql.EigenVectors[k, i], av, 50 * n * 2.2e-16 * scale, $"n = {n} residual");
+                    }
+                    for (int j = 0; j <= i; j++)
+                    {
+                        double dot = 0;
+                        for (int k = 0; k < n; k++) dot += ql.EigenVectors[k, i] * ql.EigenVectors[k, j];
+                        Assert.AreEqual(i == j ? 1d : 0d, dot, 1e-13, $"n = {n} orthonormality");
+                    }
+                }
+            }
+
+            var empty = new EigenValueDecomposition(new Matrix(0), EigenSolverMethod.QL);
+            Assert.AreEqual(0, empty.EigenValues.Length);
+            Assert.IsTrue(empty.IsConverged);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new EigenValueDecomposition(Matrix.Identity(2), (EigenSolverMethod)7));
+        }
+
+        /// <summary>
+        /// On exactly symmetric matrices the decomposition is bitwise the column-indexed tred2 followed by a transpose,
+        /// tql2 and the decreasing sort, evaluated by the sequential reference below.
+        /// </summary>
+        [TestMethod]
+        public void Test_DecomposeTridiagonal_MatchesColumnIndexedReferenceBitwise()
+        {
+            int cases = 0;
+            foreach (int n in new[] { 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 33, 64, 100 })
+            {
+                for (int seed = 0; seed < 4; seed++)
+                {
+                    var rng = new Random(1000 * n + seed);
+                    var B = new double[n * n];
+                    for (int i = 0; i < n * n; i++) B[i] = rng.NextDouble() - 0.5;
+                    var A = new double[n * n];
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j <= i; j++)
+                        {
+                            double s = 0;
+                            for (int k = 0; k < n; k++) s += B[i * n + k] * B[j * n + k];
+                            if (seed == 3 && (i + j) % 4 == 1) s = 0;
+                            A[i * n + j] = A[j * n + i] = s;
+                        }
+
+                    var V = (double[])A.Clone();
+                    var d = new double[n];
+                    var e = new double[n];
+                    ReferenceTridiagonalize(V, d, e, n);
+                    for (int i = 0; i < n; i++)
+                        for (int j = i + 1; j < n; j++)
+                            (V[i * n + j], V[j * n + i]) = (V[j * n + i], V[i * n + j]);
+                    ReferenceDiagonalize(V, d, e, n);
+                    var order = new int[n];
+                    for (int i = 0; i < n; i++) order[i] = i;
+                    Array.Sort(order, (x, y) => d[y] != d[x] ? d[y].CompareTo(d[x]) : x.CompareTo(y));
+
+                    EigenValueDecomposition.DecomposeTridiagonal((double[])A.Clone(), n, out var values, out var vectors);
+                    for (int i = 0; i < n; i++)
+                    {
+                        Assert.AreEqual(BitConverter.DoubleToInt64Bits(d[order[i]]), BitConverter.DoubleToInt64Bits(values[i]), $"n = {n} seed {seed} value {i}");
+                        for (int k = 0; k < n; k++)
+                            Assert.AreEqual(BitConverter.DoubleToInt64Bits(V[order[i] * n + k]), BitConverter.DoubleToInt64Bits(vectors[i * n + k]), $"n = {n} seed {seed} vector {i}");
+                    }
+                    cases++;
+                }
+            }
+            Assert.AreEqual(60, cases);
+        }
+
+        /// <summary>
+        /// The SIMD and batched-rotation paths stay bitwise equal to the sequential reference at orders that leave every
+        /// kind of vector tail and flush the rotation log several times, on random Gram matrices, on a matrix with zero
+        /// columns (the scale = 0 branch of tred2), on a diagonal matrix with repeated entries, and on an input symmetric
+        /// only to rounding, which is decomposed as the matrix mirrored from its upper triangle.
+        /// </summary>
+        [TestMethod]
+        public void Test_DecomposeTridiagonal_LargeAndStructuredMatchReferenceBitwise()
+        {
+            var inputs = new System.Collections.Generic.List<(string Name, int N, double[] A)>();
+            foreach (int n in new[] { 63, 129, 211 })
+            {
+                var rng = new Random(n);
+                var B = new double[n * n];
+                for (int i = 0; i < n * n; i++) B[i] = rng.NextDouble() - 0.5;
+                var A = new double[n * n];
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j <= i; j++)
+                    {
+                        double s = 0;
+                        for (int k = 0; k < n; k++) s += B[i * n + k] * B[j * n + k];
+                        A[i * n + j] = A[j * n + i] = s;
+                    }
+                inputs.Add(($"gram {n}", n, A));
+
+                var Z = (double[])A.Clone();
+                foreach (int z in new[] { 0, n / 3, n - 2 })
+                    for (int k = 0; k < n; k++) Z[z * n + k] = Z[k * n + z] = 0d;
+                inputs.Add(($"zero columns {n}", n, Z));
+            }
+            {
+                int n = 37;
+                var D = new double[n * n];
+                for (int i = 0; i < n; i++) D[i * n + i] = 1d + (i % 3);
+                inputs.Add(("diagonal", n, D));
+            }
+
+            foreach (var (name, n, A) in inputs)
+            {
+                AssertMatchesReference(A, A, n, name);
+
+                // Perturb the lower triangle by one ulp; the decomposition reads the upper triangle only.
+                var perturbed = (double[])A.Clone();
+                for (int i = 1; i < n; i++)
+                    for (int j = 0; j < i; j += 3) perturbed[i * n + j] = BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(perturbed[i * n + j]) + 1);
+                AssertMatchesReference(perturbed, A, n, name + " perturbed");
+            }
+        }
+
+        /// <summary>
+        /// Asserts that DecomposeTridiagonal of <paramref name="input"/> is bitwise the sequential reference applied to the
+        /// exactly symmetric <paramref name="symmetric"/>.
+        /// </summary>
+        private static void AssertMatchesReference(double[] input, double[] symmetric, int n, string name)
+        {
+            var V = (double[])symmetric.Clone();
+            var d = new double[n];
+            var e = new double[n];
+            ReferenceTridiagonalize(V, d, e, n);
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                    (V[i * n + j], V[j * n + i]) = (V[j * n + i], V[i * n + j]);
+            ReferenceDiagonalize(V, d, e, n);
+            var order = new int[n];
+            for (int i = 0; i < n; i++) order[i] = i;
+            Array.Sort(order, (x, y) => d[y] != d[x] ? d[y].CompareTo(d[x]) : x.CompareTo(y));
+
+            EigenValueDecomposition.DecomposeTridiagonal((double[])input.Clone(), n, out var values, out var vectors);
+            for (int i = 0; i < n; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(d[order[i]]), BitConverter.DoubleToInt64Bits(values[i]), $"{name} value {i}");
+                for (int k = 0; k < n; k++)
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(V[order[i] * n + k]), BitConverter.DoubleToInt64Bits(vectors[i * n + k]), $"{name} vector {i}");
+            }
+        }
+
+        /// <summary>The column-indexed Householder tridiagonalization (tred2), the sequential reference.</summary>
+        private static void ReferenceTridiagonalize(double[] V, double[] d, double[] e, int n)
+        {
+            for (int j = 0; j < n; j++) d[j] = V[(n - 1) * n + j];
+            for (int i = n - 1; i > 0; i--)
+            {
+                double scale = 0d, h = 0d;
+                for (int k = 0; k < i; k++) scale += Math.Abs(d[k]);
+                if (scale == 0d)
+                {
+                    e[i] = d[i - 1];
+                    for (int j = 0; j < i; j++)
+                    {
+                        d[j] = V[(i - 1) * n + j];
+                        V[i * n + j] = 0d;
+                        V[j * n + i] = 0d;
+                    }
+                }
+                else
+                {
+                    for (int k = 0; k < i; k++)
+                    {
+                        d[k] /= scale;
+                        h += d[k] * d[k];
+                    }
+                    double f = d[i - 1];
+                    double g = Math.Sqrt(h);
+                    if (f > 0) g = -g;
+                    e[i] = scale * g;
+                    h -= f * g;
+                    d[i - 1] = f - g;
+                    for (int j = 0; j < i; j++) e[j] = 0d;
+                    for (int j = 0; j < i; j++)
+                    {
+                        f = d[j];
+                        V[j * n + i] = f;
+                        g = e[j] + V[j * n + j] * f;
+                        for (int k = j + 1; k <= i - 1; k++)
+                        {
+                            g += V[k * n + j] * d[k];
+                            e[k] += V[k * n + j] * f;
+                        }
+                        e[j] = g;
+                    }
+                    f = 0d;
+                    for (int j = 0; j < i; j++)
+                    {
+                        e[j] /= h;
+                        f += e[j] * d[j];
+                    }
+                    double hh = f / (h + h);
+                    for (int j = 0; j < i; j++) e[j] -= hh * d[j];
+                    for (int j = 0; j < i; j++)
+                    {
+                        f = d[j];
+                        g = e[j];
+                        for (int k = j; k <= i - 1; k++) V[k * n + j] -= f * e[k] + g * d[k];
+                        d[j] = V[(i - 1) * n + j];
+                        V[i * n + j] = 0d;
+                    }
+                }
+                d[i] = h;
+            }
+
+            // Accumulate the transformations.
+            for (int i = 0; i < n - 1; i++)
+            {
+                V[(n - 1) * n + i] = V[i * n + i];
+                V[i * n + i] = 1d;
+                double h = d[i + 1];
+                if (h != 0d)
+                {
+                    for (int k = 0; k <= i; k++) d[k] = V[k * n + i + 1] / h;
+                    for (int j = 0; j <= i; j++)
+                    {
+                        double g = 0d;
+                        for (int k = 0; k <= i; k++) g += V[k * n + i + 1] * V[k * n + j];
+                        for (int k = 0; k <= i; k++) V[k * n + j] -= g * d[k];
+                    }
+                }
+                for (int k = 0; k <= i; k++) V[k * n + i + 1] = 0d;
+            }
+            for (int j = 0; j < n; j++)
+            {
+                d[j] = V[(n - 1) * n + j];
+                V[(n - 1) * n + j] = 0d;
+            }
+            V[(n - 1) * n + n - 1] = 1d;
+            e[0] = 0d;
+        }
+
+        /// <summary>Implicit QL iterations (tql2) on rows of W, the sequential reference.</summary>
+        private static void ReferenceDiagonalize(double[] W, double[] d, double[] e, int n)
+        {
+            for (int i = 1; i < n; i++) e[i - 1] = e[i];
+            e[n - 1] = 0d;
+            double f = 0d, tst1 = 0d;
+            double eps = Math.Pow(2d, -52d);
+            for (int l = 0; l < n; l++)
+            {
+                tst1 = Math.Max(tst1, Math.Abs(d[l]) + Math.Abs(e[l]));
+                int m = l;
+                while (m < n)
+                {
+                    if (Math.Abs(e[m]) <= eps * tst1) break;
+                    m++;
+                }
+                if (m > l)
+                {
+                    int iteration = 0;
+                    do
+                    {
+                        if (++iteration > 60) throw new ArithmeticException("The QL iteration did not converge.");
+                        double g = d[l];
+                        double p = (d[l + 1] - g) / (2d * e[l]);
+                        double r = Numerics.Tools.Hypot(p, 1d);
+                        if (p < 0) r = -r;
+                        d[l] = e[l] / (p + r);
+                        d[l + 1] = e[l] * (p + r);
+                        double dl1 = d[l + 1];
+                        double h = g - d[l];
+                        for (int i = l + 2; i < n; i++) d[i] -= h;
+                        f += h;
+
+                        p = d[m];
+                        double c = 1d, c2 = c, c3 = c;
+                        double el1 = e[l + 1];
+                        double s = 0d, s2 = 0d;
+                        for (int i = m - 1; i >= l; i--)
+                        {
+                            c3 = c2;
+                            c2 = c;
+                            s2 = s;
+                            g = c * e[i];
+                            h = c * p;
+                            r = Numerics.Tools.Hypot(p, e[i]);
+                            e[i + 1] = s * r;
+                            s = e[i] / r;
+                            c = p / r;
+                            p = c * d[i] - s * g;
+                            d[i + 1] = h + s * (c * g + s * d[i]);
+                            ReferenceRotate(W, i * n, (i + 1) * n, n, c, s);
+                        }
+                        p = -s * s2 * c3 * el1 * e[l] / dl1;
+                        e[l] = s * p;
+                        d[l] = c * p;
+                    } while (Math.Abs(e[l]) > eps * tst1);
+                }
+                d[l] += f;
+                e[l] = 0d;
+            }
+        }
+
+        /// <summary>The plane rotation of rows a and b.</summary>
+        private static void ReferenceRotate(double[] W, int a, int b, int n, double c, double s)
+        {
+            int w = System.Numerics.Vector<double>.Count;
+            var vc = new System.Numerics.Vector<double>(c);
+            var vs = new System.Numerics.Vector<double>(s);
+            int k = 0;
+            for (; k + w <= n; k += w)
+            {
+                var x = new System.Numerics.Vector<double>(W, a + k);
+                var y = new System.Numerics.Vector<double>(W, b + k);
+                (vs * x + vc * y).CopyTo(W, b + k);
+                (vc * x - vs * y).CopyTo(W, a + k);
+            }
+            for (; k < n; k++)
+            {
+                double x = W[a + k], y = W[b + k];
+                W[b + k] = s * x + c * y;
+                W[a + k] = c * x - s * y;
             }
         }
 

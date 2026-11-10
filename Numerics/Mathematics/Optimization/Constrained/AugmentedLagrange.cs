@@ -123,15 +123,19 @@ namespace Numerics.Mathematics.Optimization
                         lambdaIdx++;
                         break;
 
+                    // Powell-Hestenes-Rockafellar term rho/2 max(0, c + mu/rho)^2 (Birgin and Martinez 2014),
+                    // which is continuous at the boundary and keeps the multiplier's pull on the feasible side.
                     case ConstraintType.LesserThanOrEqualTo:
                         c = actual - _constraints[i].Value;
-                        if (c > 0) phi += rho2 * Math.Pow(c + _mu[muIdx] / rho, 2d);
+                        double tMu = Math.Max(0d, c + _mu[muIdx] / rho);
+                        phi += rho2 * tMu * tMu;
                         muIdx++;
                         break;
 
                     case ConstraintType.GreaterThanOrEqualTo:
                         c = _constraints[i].Value - actual;
-                        if (c > 0) phi += rho2 * Math.Pow(c + _nu[nuIdx] / rho, 2d);
+                        double tNu = Math.Max(0d, c + _nu[nuIdx] / rho);
+                        phi += rho2 * tNu * tNu;
                         nuIdx++;
                         break;
                 }
@@ -153,6 +157,30 @@ namespace Numerics.Mathematics.Optimization
 
             // magic parameters from Birgin & Martinez
             const double tau = 0.5, gam = 10;
+
+            // The result is the best feasible iterate, or the least-violating one when none is feasible.
+            // Evaluate alone would keep any lower objective value, feasible or not.
+            double[]? bestFeasible = null, leastViolating = null;
+            double bestFeasibleFitness = double.PositiveInfinity, leastViolatingFitness = double.NaN, leastViolation = double.PositiveInfinity;
+            void Track(double[] values, double fitness, double violation, bool isFeasible)
+            {
+                if (isFeasible && (bestFeasible == null || fitness < bestFeasibleFitness))
+                {
+                    bestFeasible = values;
+                    bestFeasibleFitness = fitness;
+                }
+                if (leastViolating == null || violation < leastViolation)
+                {
+                    leastViolating = values;
+                    leastViolatingFitness = fitness;
+                    leastViolation = violation;
+                }
+            }
+            void Finish()
+            {
+                if (bestFeasible != null) BestParameterSet = new ParameterSet((double[])bestFeasible.Clone(), bestFeasibleFitness);
+                else if (leastViolating != null) BestParameterSet = new ParameterSet((double[])leastViolating.Clone(), leastViolatingFitness);
+            }
 
             this.Optimizer.Minimize();
             var currentValues = this.Optimizer.BestParameterSet.Values.ToArray();
@@ -209,6 +237,7 @@ namespace Numerics.Mathematics.Optimization
                     }
                 }
 
+                Track(currentValues, currentFitness, penalty, feasible);
                 minFitness = currentFitness;
                 minPenalty = penalty;
                 minFeasible = feasible;
@@ -239,7 +268,11 @@ namespace Numerics.Mathematics.Optimization
                 this.Optimizer.Minimize();
                 currentValues = this.Optimizer.BestParameterSet.Values.ToArray();
                 currentFitness = Evaluate(currentValues, ref cancel);
-                if (cancel) return;
+                if (cancel)
+                {
+                    Finish();
+                    return;
+                }
 
                 ICM = 0;
                 penalty = 0;
@@ -286,6 +319,8 @@ namespace Numerics.Mathematics.Optimization
                             break;
                     }
             }
+                Track(currentValues, currentFitness, penalty, feasible);
+
                 // Update rho
                 if (ICM > tau * prevICM)
                 {
@@ -299,6 +334,7 @@ namespace Numerics.Mathematics.Optimization
                 {
                     if (feasible && CheckConvergence(minFitness, currentFitness))
                     {
+                        Finish();
                         UpdateStatus(OptimizationStatus.Success);
                         return;
                     }
@@ -311,6 +347,7 @@ namespace Numerics.Mathematics.Optimization
                 }
                 else if (ICM == 0)
                 {
+                    Finish();
                     UpdateStatus(OptimizationStatus.Success);
                     return;
                 }
@@ -318,7 +355,8 @@ namespace Numerics.Mathematics.Optimization
                 Iterations += 1;
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
+            Finish();
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
         }
 

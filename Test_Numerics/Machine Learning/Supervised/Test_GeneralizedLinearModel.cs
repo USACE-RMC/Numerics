@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using Numerics.Data;
 using Numerics.Functions;
 using Numerics.MachineLearning;
@@ -6,6 +7,7 @@ using Numerics.Mathematics.LinearAlgebra;
 using Numerics;
 using System.Collections.Generic;
 using Numerics.Data.Statistics;
+using Numerics.Distributions;
 using System.Diagnostics;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.VisualBasic;
@@ -26,6 +28,32 @@ namespace MachineLearning
     [TestClass]
     public class Test_GeneralizedLinearModel
     {
+        /// <summary>
+        /// Asserts that each value agrees with its reference to the given relative tolerance.
+        /// </summary>
+        private static void AssertRelative(double[] expected, double[] actual, double tolerance)
+        {
+            Assert.HasCount(expected.Length, actual);
+            for (int i = 0; i < expected.Length; i++)
+                Assert.AreEqual(expected[i], actual[i], tolerance * Math.Abs(expected[i]));
+        }
+
+        /// <summary>
+        /// Asserts that the confidence interval for the mean at one point equals the inverse link of the
+        /// reference link-scale fit plus or minus z times its reference standard error.
+        /// </summary>
+        private static void AssertMeanInterval(GeneralizedLinearModel glm, double[] point, double eta, double seEta, double tolerance)
+        {
+            var row = new Matrix(1, point.Length);
+            for (int j = 0; j < point.Length; j++)
+                row[0, j] = point[j];
+            var ci = glm.Predict(row, 0.1);
+            double z = Normal.StandardZ(0.95);
+            Assert.AreEqual(glm.LinkFunction.InverseLink(eta - z * seEta), ci[0, 0], tolerance * Math.Abs(ci[0, 0]));
+            Assert.AreEqual(glm.LinkFunction.InverseLink(eta), ci[0, 1], tolerance * Math.Abs(ci[0, 1]));
+            Assert.AreEqual(glm.LinkFunction.InverseLink(eta + z * seEta), ci[0, 2], tolerance * Math.Abs(ci[0, 2]));
+        }
+
 
         /// <summary>
         /// Test simple linear regression.
@@ -61,12 +89,19 @@ namespace MachineLearning
             Assert.AreEqual(se, true_se, 1E-3);
             Assert.AreEqual(df, true_df);
 
-            // The information criteria are asserted so the reference block below cannot go stale:
-            // an earlier revision of that block carried an AIC of 71.18 from a since-changed
-            // likelihood convention, which nothing checked.
-            Assert.AreEqual(343.2561, GLM.AIC, 1E-3);
-            Assert.AreEqual(343.3213, GLM.AICc, 1E-3);
-            Assert.AreEqual(349.7183, GLM.BIC, 1E-3);
+            // Full-precision references from R glm (gaussian) and predict(type = "link", se.fit = TRUE)
+            AssertRelative(new[] { 0.54510381239063532, 0.28060124689734761 }, GLM.Parameters, 1E-9);
+            AssertRelative(new[] { 0.055686680660656518, 0.04744194474643431 }, GLM.ParameterStandardErrors, 1E-9);
+            AssertMeanInterval(GLM, new[] { 1.0 }, 0.82570505928798288, 0.046058272235549397, 1E-9);
+
+            // The information criteria are asserted so the reference block below cannot go stale.
+            // Reference: statsmodels GLM(Gaussian).fit(tol=1e-14), whose log-likelihood uses the maximum
+            // likelihood variance SSE / n; AICc and BIC apply the same k = 2 coefficients to that likelihood.
+            Assert.AreEqual(343.2452800986481, GLM.AIC, 1E-9 * 343.25);
+            Assert.AreEqual(343.31049748995247, GLM.AICc, 1E-9 * 343.31);
+            Assert.AreEqual(349.70749733235726, GLM.BIC, 1E-9 * 349.71);
+            CollectionAssert.AreEqual(new[] { "Intercept", "Income" }, GLM.ParameterNames);
+            CollectionAssert.AreEqual(new[] { "Intercept", "Income" }, GLM.X.Header);
 
             // Test summary output table
             var summary = GLM.Summary();
@@ -81,16 +116,16 @@ namespace MachineLearning
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
                 Intercept           0.54510     0.05569       9.789     &lt; 1E-15 ***
-                β1                  0.28057     0.04744       5.914   3.34E-009 ***
+                Income              0.28060     0.04744       5.915   3.33E-009 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
                 Residual standard error: 0.6026 on 185 degrees of freedom
-                AIC: 343.2561  AICc: 343.3213  BIC: 349.7183
+                AIC: 343.2453  AICc: 343.3105  BIC: 349.7075
 
                 Residuals:
                        Min        1Q    Median        3Q       Max
-                   -2.4085   -0.3181    0.0256    0.2998    1.4516
+                   -2.4084   -0.3182    0.0256    0.2998    1.4516
             **/
 
         }
@@ -133,6 +168,21 @@ namespace MachineLearning
             Assert.AreEqual(se, true_se, 1E-3);
             Assert.AreEqual(df, true_df);
 
+            // Full-precision references from R glm (gaussian)
+            AssertRelative(new[] { 0.26728858327512789, 0.71448463598125422, 0.045890974614387597, -0.045269254018098205, -0.20476616474355294 }, GLM.Parameters, 1E-9);
+            AssertRelative(new[] { 0.037208576894117752, 0.042191081564293305, 0.025876780467574051, 0.0027795486105348191, 0.10550020045349268 }, GLM.ParameterStandardErrors, 1E-9);
+
+            // Reference: statsmodels GLM(Gaussian).fit(tol=1e-14), maximum likelihood variance SSE / n
+            Assert.AreEqual(119.38498159912051, GLM.AIC, 1E-9 * 119.38);
+            Assert.AreEqual(119.71647331182768, GLM.AICc, 1E-9 * 119.72);
+            Assert.AreEqual(135.54052468339344, GLM.BIC, 1E-9 * 135.54);
+            CollectionAssert.AreEqual(new[] { "Intercept", "Income", "Production", "Savings", "Unemployment" }, GLM.ParameterNames);
+
+            // HC0 sandwich standard errors from statsmodels GLM(cov_type = "HC0")
+            var robust = new GeneralizedLinearModel(x, y) { UseRobustSE = true };
+            robust.Train();
+            AssertRelative(new[] { 0.04346672496758418, 0.06146639782874282, 0.03220875496250248, 0.0041018099200166875, 0.09285335939432854 }, robust.ParameterStandardErrors, 1E-8);
+
 
             // Test summary output table
             var summary = GLM.Summary();
@@ -148,15 +198,15 @@ namespace MachineLearning
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
                 Intercept           0.26729     0.03721       7.184   6.79E-013 ***
-                β1                  0.71448     0.04219      16.934     &lt; 1E-15 ***
-                β2                  0.04588     0.02588       1.773      0.0762 .
-                β3                 -0.04527     0.00278     -16.286     &lt; 1E-15 ***
-                β4                 -0.20484     0.10550      -1.942      0.0522 .
+                Income              0.71448     0.04219      16.934     &lt; 1E-15 ***
+                Production          0.04589     0.02588       1.773      0.0762 .
+                Savings            -0.04527     0.00278     -16.287     &lt; 1E-15 ***
+                Unemployment       -0.20477     0.10550      -1.941      0.0523 .
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
                 Residual standard error: 0.3286 on 182 degrees of freedom
-                AIC: 29.6520  AICc: 29.9835  BIC: 45.8075
+                AIC: 119.3850  AICc: 119.7165  BIC: 135.5405
 
                 Residuals:
                        Min        1Q    Median        3Q       Max
@@ -199,6 +249,18 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
+            // Full-precision references from R glm (epsilon = 1e-15), family = poisson). The standard errors are
+            // the square roots of the inverse Fisher information, without residual scaling.
+            AssertRelative(new[] { 6.32232482284413155, 0.00240497236509498724, -0.00014802972500423025 }, par, 1E-8);
+            AssertRelative(new[] { 9.3823974509556433E-03, 1.8852864156226152E-05, 8.1630479562689164E-06 }, sig, 1E-8);
+            Assert.AreEqual(4069.4072041980912, aic, 1E-8);
+            AssertMeanInterval(GLM, new[] { 150.0, 100.0 }, 6.6682677052805186, 0.0074177661255122439, 1E-6);
+
+            // HC0 sandwich standard errors from statsmodels GLM(cov_type = "HC0")
+            var robust = new GeneralizedLinearModel(x, y, true, LinkFunctionType.Log) { UseRobustSE = true };
+            robust.Train();
+            AssertRelative(new[] { 0.10938843867092954, 0.00019555602879208487, 2.418649665390311E-05 }, robust.ParameterStandardErrors, 1E-8);
+
             // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
@@ -212,18 +274,18 @@ namespace MachineLearning
                 Model for predicting admits:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
-                Intercept           6.32270     0.00033  19,261.610     &lt; 1E-15 ***
-                β1                  0.00240     0.00000   5,917.117     &lt; 1E-15 ***
-                β2                 -0.00015     0.00000    -200.082     &lt; 1E-15 ***
+                Intercept           6.32232     0.00938     673.850     &lt; 1E-15 ***
+                drivers             0.00240     0.00002     127.565     &lt; 1E-15 ***
+                popden             -0.00015     0.00001     -18.134     &lt; 1E-15 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
-                Residual standard error: 363.7627 on 23 degrees of freedom
-                AIC: 4,069.4088  AICc: 4,070.4997  BIC: 4,073.1831
+                Residual standard error: 363.8273 on 23 degrees of freedom
+                AIC: 4,069.4072  AICc: 4,070.4981  BIC: 4,073.1815
 
                 Residuals:
                        Min        1Q    Median        3Q       Max
-                 -672.2369 -165.4579  -30.8744  240.6816  681.4094
+                 -672.6898 -165.2684  -30.6417  240.9063  681.6547
             **/
         }
 
@@ -258,10 +320,21 @@ namespace MachineLearning
             for (int i = 0; i < par.Length; i++)
             {
                 Assert.AreEqual(par[i], true_par[i], 1E-2);
-                Assert.AreEqual(sig[i], true_sig[i], 1E-1);
+                Assert.AreEqual(sig[i], true_sig[i], 1E-2);
             }
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
+
+            // Full-precision references from statsmodels GLM (tol = 1e-15); R glm agrees
+            AssertRelative(new[] { -3.4495483976684715, 0.0022939595044442606, 0.7770135737198524, -0.5600313868499891 }, par, 1E-8);
+            AssertRelative(new[] { 1.1328460189880603, 0.0010918391052182456, 0.32748388124797045, 0.12713699070678167 }, sig, 1E-8);
+            Assert.AreEqual(467.44176503127608, aic, 1E-8);
+            AssertMeanInterval(GLM, new[] { 600.0, 3.5, 2.0 }, -0.47368796068295693, 0.12200249874727558, 1E-6);
+
+            // HC0 sandwich standard errors from statsmodels GLM(cov_type = "HC0")
+            var robust = new GeneralizedLinearModel(x, y, true, LinkFunctionType.Logit) { UseRobustSE = true };
+            robust.Train();
+            AssertRelative(new[] { 1.1271948476628162, 0.0010967980666232225, 0.3372575222374859, 0.12981994890153167 }, robust.ParameterStandardErrors, 1E-8);
 
             // Test summary output table
             var summary = GLM.Summary();
@@ -276,10 +349,10 @@ namespace MachineLearning
                 Model for predicting admits:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
-                Intercept          -3.45096     1.13540      -3.039      0.0024 **
-                β1                  0.00229     0.00109       2.112      0.0347 *
-                β2                  0.77743     0.32406       2.399      0.0164 *
-                β3                 -0.56014     0.13156      -4.258   2.07E-005 ***
+                Intercept          -3.44955     1.13285      -3.045      0.0023 **
+                gre                 0.00229     0.00109       2.101      0.0356 *
+                gpa                 0.77701     0.32748       2.373      0.0177 *
+                rank               -0.56003     0.12714      -4.405   1.06E-005 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -328,6 +401,12 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
+            // Full-precision references from R glm (epsilon = 1e-15), family = binomial(link = "probit"))
+            AssertRelative(new[] { -2.0915039165971478, 0.0013982218132296579, 0.46435984785652201, -0.33171169240934795 }, par, 1E-7);
+            AssertRelative(new[] { 0.67183623098525813, 0.00064865270532141802, 0.19502629103577651, 0.074552427023099138 }, sig, 1E-7);
+            Assert.AreEqual(467.48080685848873, aic, 1E-8);
+            AssertMeanInterval(GLM, new[] { 600.0, 3.5, 2.0 }, -0.29073473832438368, 0.074666464270494157, 1E-5);
+
             // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
@@ -341,10 +420,10 @@ namespace MachineLearning
                 Model for predicting admits:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
-                Intercept          -2.09205     0.67949      -3.079      0.0021 **
-                β1                  0.00140     0.00065       2.145      0.0320 *
-                β2                  0.46460     0.19473       2.386      0.0170 *
-                β3                 -0.33184     0.07773      -4.269   1.96E-005 ***
+                Intercept          -2.09150     0.67184      -3.113      0.0019 **
+                gre                 0.00140     0.00065       2.156      0.0311 *
+                gpa                 0.46436     0.19503       2.381      0.0173 *
+                rank               -0.33171     0.07455      -4.449   8.61E-006 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -353,7 +432,7 @@ namespace MachineLearning
 
                 Residuals:
                        Min        1Q    Median        3Q       Max
-                   -0.7051   -0.3282   -0.1853    0.4915    0.9130
+                   -0.7050   -0.3282   -0.1854    0.4916    0.9130
             **/
 
         }
@@ -395,6 +474,13 @@ namespace MachineLearning
             Assert.AreEqual(aic, true_aic, 1E-2);
             Assert.AreEqual(df, true_df);
 
+            // Full-precision references from R glm (epsilon = 1e-15), family = binomial(link = "cloglog")). The
+            // likelihood is flat here: the optimum agrees to about 1e-7 relative while the AIC agrees to 1e-12.
+            AssertRelative(new[] { -3.0603432819970986, 0.0017513324027002104, 0.62134787588490714, -0.45878000410656655 }, par, 1E-6);
+            AssertRelative(new[] { 0.92237575196607491, 0.00087438119530254543, 0.26269371917165268, 0.10148235968169286 }, sig, 1E-6);
+            Assert.AreEqual(467.50257443548611, aic, 1E-8);
+            AssertMeanInterval(GLM, new[] { 600.0, 3.5, 2.0 }, -0.75238657869197056, 0.093295204275228263, 1E-5);
+
             // Test summary output table
             var summary = GLM.Summary();
             for (int i = 0; i < summary.Count; i++)
@@ -408,10 +494,10 @@ namespace MachineLearning
                 Model for predicting admits:
                 Parameters:
                                    Estimate  Std. Error     z value    Pr(>|z|)
-                Intercept          -3.05923     0.91259      -3.352      0.0008 ***
-                β1                  0.00175     0.00086       2.039      0.0414 *
-                β2                  0.62115     0.25702       2.417      0.0157 *
-                β3                 -0.45876     0.10382      -4.419   9.92E-006 ***
+                Intercept          -3.06034     0.92238      -3.318      0.0009 ***
+                gre                 0.00175     0.00087       2.003      0.0452 *
+                gpa                 0.62135     0.26269       2.365      0.0180 *
+                rank               -0.45878     0.10148      -4.521   6.16E-006 ***
                 ---
                 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -420,10 +506,45 @@ namespace MachineLearning
 
                 Residuals:
                        Min        1Q    Median        3Q       Max
-                   -0.7575   -0.3162   -0.1879    0.4899    0.8939
+                   -0.7576   -0.3162   -0.1879    0.4898    0.8939
             **/
         }
 
+        /// <summary>
+        /// Test that an identity-link fit with a slope far larger than the response range divided by the
+        /// sample size is not clipped by the optimizer bounds. Reference values from R glm (gaussian).
+        /// </summary>
+        [TestMethod]
+        public void Test_IdentityLargeSlope_NotBounded()
+        {
+            int n = 1000;
+            var x = new Matrix(n, 1);
+            var y = new Vector(n);
+            for (int i = 0; i < n; i++)
+            {
+                x[i, 0] = i / 999.0;
+                y[i] = 2 * x[i, 0] + 0.01 * (((i * 37) % 101) / 101.0 - 0.5);
+            }
+            var GLM = new GeneralizedLinearModel(x, y);
+            GLM.Train();
+            AssertRelative(new[] { -7.1788211789568574E-05, 2.0000465467206103 }, GLM.Parameters, 1E-8);
+            AssertRelative(new[] { 0.00018276437026589054, 0.00031647798632584382 }, GLM.ParameterStandardErrors, 1E-8);
+        }
+
+        /// <summary>
+        /// Test that an identity-link fit with a negative intercept is not bounded to the sign of the
+        /// response midpoint. Reference values from R glm (gaussian) on the home price example.
+        /// </summary>
+        [TestMethod]
+        public void Test_IdentityNegativeIntercept_NotBounded()
+        {
+            var features = new double[,] { { 1500, 3, 20 }, { 1800, 4, 15 }, { 1200, 2, 30 }, { 2000, 4, 10 }, { 1600, 3, 25 } };
+            var prices = new double[] { 250000, 320000, 190000, 380000, 270000 };
+            var GLM = new GeneralizedLinearModel(new Matrix(features), new Vector(prices));
+            GLM.Train();
+            AssertRelative(new[] { -20882.352941175963, 261.76470588235259, -26470.588235294024, -1823.5294117647102 }, GLM.Parameters, 1E-7);
+            AssertRelative(new[] { 98529.411764705801, 56.955637444226753, 21812.348491457829, 1740.0234656175326 }, GLM.ParameterStandardErrors, 1E-7);
+        }
 
     }
 }

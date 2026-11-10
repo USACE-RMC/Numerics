@@ -44,7 +44,7 @@ namespace Data.PairedData
         /// samples, and the GetYValues on the array of samples, and compares the results to the expected values.
         /// </summary>
         /// <param name="data"> The OrderedPairedData object being tested </param>
-        /// <param name="samples"> The array of values we want to test (i.e. pass to the GetYfromX method) </param>
+        /// <param name="samples"> The array of values to test (i.e. pass to the GetYfromX method) </param>
         /// <param name="expectedResults"> The array of expected Y's for the given X samples </param>
         private void SampleDatasetY(OrderedPairedData data, double[] samples, double[] expectedResults)
         {
@@ -65,7 +65,7 @@ namespace Data.PairedData
         /// samples and compares the result to the expected value.
         /// </summary>
         /// <param name="data"> The OrderedPairedData object being tested </param>
-        /// <param name="samples"> The array of values we want to test (i.e. pass to the GetXfromY method) </param>
+        /// <param name="samples"> The array of values to test (i.e. pass to the GetXfromY method) </param>
         /// <param name="expectedResults"> The array of expected X's for the given Y samples </param>
         private void SampleDatasetX(OrderedPairedData data, double[] samples, double[] expectedResults)
         {
@@ -293,6 +293,97 @@ namespace Data.PairedData
 
             var areaX4 = _dataset4.TrapezoidalAreaUnderX();
             Assert.AreEqual(25442742, areaX4, 1);
+        }
+
+        /// <summary>
+        /// The clone without validation equals Clone() for curves built with the constructors, keeps the source's
+        /// validity flag, and is independent of the source.
+        /// </summary>
+        [TestMethod]
+        public void Test_CloneWithoutValidation()
+        {
+            var valid = new OrderedPairedData(new double[] { 1, 2, 3, 4 }, new double[] { 10, 20, 20, 40 }, true, SortOrder.Ascending, false, SortOrder.Ascending);
+            var invalid = new OrderedPairedData(new double[] { 1, 2, 3, 4 }, new double[] { 10, 20, 15, 40 }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            var descending = new OrderedPairedData(new double[] { 4, 3, 2 }, new double[] { 0.1, 0.5, 0.9 }, true, SortOrder.Descending, true, SortOrder.Ascending);
+            foreach (var source in new[] { valid, invalid, descending })
+            {
+                var expected = source.Clone();
+                var copy = source.CloneWithoutValidation();
+                Assert.AreEqual(expected.IsValid, copy.IsValid);
+                Assert.AreEqual(expected.StrictX, copy.StrictX);
+                Assert.AreEqual(expected.StrictY, copy.StrictY);
+                Assert.AreEqual(expected.OrderX, copy.OrderX);
+                Assert.AreEqual(expected.OrderY, copy.OrderY);
+                Assert.AreEqual(expected.UseSmartSearch, copy.UseSmartSearch);
+                Assert.AreEqual(expected.Count, copy.Count);
+                for (int i = 0; i < expected.Count; i++)
+                {
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected[i].X), BitConverter.DoubleToInt64Bits(copy[i].X));
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected[i].Y), BitConverter.DoubleToInt64Bits(copy[i].Y));
+                    Assert.AreEqual(expected[i].IsValid, copy[i].IsValid);
+                }
+                for (double q = 0.5; q < 4.5; q += 0.25)
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected.GetYFromX(q)), BitConverter.DoubleToInt64Bits(copy.GetYFromX(q)));
+            }
+
+            // The copy is independent of the source.
+            var clone = valid.CloneWithoutValidation();
+            clone.Add(new Ordinate(5, 50));
+            clone[0] = new Ordinate(0, 5);
+            Assert.AreEqual(4, valid.Count);
+            Assert.AreEqual(1d, valid[0].X);
+
+            // The validity flag is the source's.
+            var edited = new OrderedPairedData(true, SortOrder.Ascending, true, SortOrder.Ascending);
+            edited.Add(new Ordinate(0, 0));
+            edited.Add(new Ordinate(1, double.NaN));
+            Assert.IsFalse(edited.IsValid);
+            Assert.IsFalse(edited.CloneWithoutValidation().IsValid);
+        }
+
+        /// <summary>
+        /// A non-finite last ordinate, or a single non-finite ordinate, makes the data invalid, whichever way it was added.
+        /// </summary>
+        [TestMethod]
+        public void Test_IsValid_NonFiniteLastOrdinate()
+        {
+            var lastNaN = new OrderedPairedData(new double[] { 0, 1, 2 }, new double[] { 0, 1, double.NaN }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.IsFalse(lastNaN.IsValid);
+            Assert.IsNotEmpty(lastNaN.GetErrors());
+            var lastInfinite = new OrderedPairedData(new double[] { 0, 1, double.PositiveInfinity }, new double[] { 0, 1, 2 }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.IsFalse(lastInfinite.IsValid);
+            var single = new OrderedPairedData(new double[] { 0 }, new double[] { double.NaN }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            Assert.IsFalse(single.IsValid);
+            Assert.IsTrue(new OrderedPairedData(new double[] { 0 }, new double[] { 5 }, true, SortOrder.Ascending, true, SortOrder.Ascending).IsValid);
+
+            // Added one at a time, then cloned: the incremental and full validations agree.
+            var added = new OrderedPairedData(true, SortOrder.Ascending, true, SortOrder.Ascending);
+            added.Add(new Ordinate(0, 0));
+            added.Add(new Ordinate(1, double.NaN));
+            Assert.IsFalse(added.IsValid);
+            Assert.IsFalse(added.Clone().IsValid);
+
+            // Replacing the bad ordinate through the indexer makes the data valid again.
+            added[1] = new Ordinate(1, 1);
+            Assert.AreEqual(1d, added[1].Y);
+            Assert.IsTrue(added.IsValid);
+        }
+
+        /// <summary>
+        /// The indexer replaces an ordinate whose bits differ, NaN included, and raises one Replace event.
+        /// </summary>
+        [TestMethod]
+        public void Test_Indexer_ReplacesNaNOrdinate()
+        {
+            var data = new OrderedPairedData(new double[] { 0, 1, 2 }, new double[] { 0, double.NaN, 2 }, true, SortOrder.Ascending, true, SortOrder.Ascending);
+            int events = 0;
+            data.CollectionChanged += (s, e) => events++;
+            data[1] = new Ordinate(1, 1);
+            Assert.AreEqual(1d, data[1].Y);
+            Assert.IsTrue(data.IsValid);
+            Assert.AreEqual(1, events);
+            data[1] = new Ordinate(1, 1);
+            Assert.AreEqual(1, events, "Assigning the same bits raises no event.");
         }
 
     }

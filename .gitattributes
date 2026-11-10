@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (CI and the linux-test Docker image) and must keep LF endings on every checkout.
+*.sh text eol=lf

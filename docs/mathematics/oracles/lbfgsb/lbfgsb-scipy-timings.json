@@ -1,0 +1,36 @@
+{
+  "python": "3.14.3",
+  "numpy": "2.4.2",
+  "scipy": "1.17.1",
+  "repetitions": 21,
+  "results": [
+    {
+      "problem": "Rosenbrock10",
+      "seconds": 0.006671999813988805,
+      "nit": 71,
+      "nfev": 88,
+      "fun": 1.0439786353380165e-11
+    },
+    {
+      "problem": "Rosenbrock100",
+      "seconds": 0.047887800028547645,
+      "nit": 517,
+      "nfev": 606,
+      "fun": 1.6085012901362403e-09
+    },
+    {
+      "problem": "BoxRosenbrock100",
+      "seconds": 0.05523749999701977,
+      "nit": 600,
+      "nfev": 717,
+      "fun": 77.97217831336475
+    },
+    {
+      "problem": "Quadratic1000",
+      "seconds": 0.0075357998721301556,
+      "nit": 14,
+      "nfev": 15,
+      "fun": 385.54210930186264
+    }
+  ]
+}

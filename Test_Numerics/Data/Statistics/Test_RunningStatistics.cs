@@ -72,6 +72,25 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// The documented regularization: SampleCovariance is (M2 + I) / (N - 1), so removing I / (N - 1) leaves
+        /// numpy.cov of (1, 2), (2, 1), (4, 5), (3, 3): [[5/3, 5.5/3], [5.5/3, 8.75/3]].
+        /// </summary>
+        [TestMethod]
+        public void Test_RunningMatrix_IdentityPrior()
+        {
+            var matrix = new RunningCovarianceMatrix(2);
+            matrix.Push(new double[] { 1, 2 });
+            matrix.Push(new double[] { 2, 1 });
+            matrix.Push(new double[] { 4, 5 });
+            matrix.Push(new double[] { 3, 3 });
+            var sample = matrix.SampleCovariance;
+            var numpy = new double[,] { { 5d / 3d, 5.5 / 3d }, { 5.5 / 3d, 8.75 / 3d } };
+            for (int i = 0; i < 2; i++)
+                for (int j = 0; j < 2; j++)
+                    Assert.AreEqual(numpy[i, j] + (i == j ? 1d / 3d : 0d), sample[i, j], 1E-12);
+        }
+
+        /// <summary>
         /// Test the push method of the running covariance matrix with mulitple pushes.
         /// </summary>
         [TestMethod]
@@ -366,6 +385,83 @@ namespace Data.Statistics
             Assert.AreNotSame(empty1, combinedEmpty);
             Assert.AreNotSame(empty2, combinedEmpty);
             Assert.AreEqual(0, combinedEmpty.Count);
+        }
+
+        /// <summary>
+        /// A single value has population variance and standard deviation 0, as Statistics.PopulationVariance gives;
+        /// an empty instance gives NaN and the sample variance of one value stays NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_PopulationVariance_SingleValue()
+        {
+            var one = new RunningStatistics(new[] { 5.0 });
+            Assert.AreEqual(0d, one.PopulationVariance);
+            Assert.AreEqual(0d, one.PopulationStandardDeviation);
+            Assert.AreEqual(Numerics.Data.Statistics.Statistics.PopulationVariance(new[] { 5.0 }), one.PopulationVariance);
+            Assert.IsTrue(double.IsNaN(one.Variance));
+            var empty = new RunningStatistics();
+            Assert.IsTrue(double.IsNaN(empty.PopulationVariance));
+            Assert.IsTrue(double.IsNaN(empty.PopulationStandardDeviation));
+        }
+
+        /// <summary>
+        /// Combining two accumulators whose total exceeds 2,097,151 values (where n³ no longer fits a long)
+        /// against the analytic moments of an equal two-point sample: 1.5M zeros and 1.5M threes have population
+        /// excess kurtosis exactly -2 and population skewness 0.
+        /// </summary>
+        [TestMethod]
+        public void Test_Combine_LargeCounts()
+        {
+            var a = new RunningStatistics();
+            var b = new RunningStatistics();
+            for (int i = 0; i < 1_500_000; i++)
+            {
+                a.Push(0d);
+                b.Push(3d);
+            }
+            var c = RunningStatistics.Combine(a, b);
+            double n = 3_000_000d;
+            Assert.AreEqual(3_000_000L, c.Count);
+            Assert.AreEqual(1.5, c.Mean, 1E-12);
+            Assert.AreEqual(2.25, c.PopulationVariance, 1E-12);
+            Assert.AreEqual(0d, c.PopulationSkewness, 1E-12);
+            Assert.AreEqual(-2d, c.PopulationKurtosis, 1E-9);
+            // Sample excess kurtosis from n m4 / m2² = 1: (n² - 1) / ((n - 2)(n - 3)) (1 - 3 + 6 / (n + 1)).
+            double g2 = (n * n - 1d) / ((n - 2d) * (n - 3d)) * (-2d + 6d / (n + 1d));
+            Assert.AreEqual(g2, c.Kurtosis, 1E-9);
+        }
+
+        /// <summary>
+        /// Clear returns the instance to the empty state, and pushing values afterwards reproduces a fresh
+        /// instance bit for bit.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clear()
+        {
+            var stats = new RunningStatistics(new double[] { 100, -3, 7.5, 42, 1E6 });
+            stats.Clear();
+            Assert.AreEqual(0L, stats.Count);
+            Assert.IsTrue(double.IsNaN(stats.Mean));
+            Assert.IsTrue(double.IsNaN(stats.Minimum));
+            Assert.IsTrue(double.IsNaN(stats.Maximum));
+            Assert.IsTrue(double.IsNaN(stats.Variance));
+
+            var values = new double[] { 1.25, 3.5, -2.75, 8.125, 4.0, 0.3 };
+            stats.Push(values);
+            var fresh = new RunningStatistics(values);
+            Assert.AreEqual(fresh.Count, stats.Count);
+            Assert.AreEqual(fresh.Minimum, stats.Minimum);
+            Assert.AreEqual(fresh.Maximum, stats.Maximum);
+            Assert.AreEqual(fresh.Mean, stats.Mean);
+            Assert.AreEqual(fresh.Variance, stats.Variance);
+            Assert.AreEqual(fresh.Skewness, stats.Skewness);
+            Assert.AreEqual(fresh.Kurtosis, stats.Kurtosis);
+
+            // A cleared instance combines like an empty one.
+            stats.Clear();
+            var combined = RunningStatistics.Combine(stats, fresh);
+            Assert.AreEqual(fresh.Count, combined.Count);
+            Assert.AreEqual(fresh.Kurtosis, combined.Kurtosis);
         }
     }
 }

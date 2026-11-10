@@ -1,0 +1,46 @@
+{
+  "library": "DiceKriging",
+  "DiceKriging": "1.6.1",
+  "R": "4.4.3",
+  "blas": "R reference BLAS",
+  "d": 10,
+  "m": 1000,
+  "sizes": [
+    {
+      "n": 100,
+      "reps": 5,
+      "fitSeconds": 0.6,
+      "predictSeconds": 0.0600000000000001,
+      "logLikelihood": [
+        [-43.5216500912036]
+      ]
+    },
+    {
+      "n": 500,
+      "reps": 3,
+      "fitSeconds": 16.72,
+      "predictSeconds": 0.340000000000003,
+      "logLikelihood": [
+        [168.690269319658]
+      ]
+    },
+    {
+      "n": 1000,
+      "reps": 1,
+      "fitSeconds": 110.97,
+      "predictSeconds": 0.72999999999999,
+      "logLikelihood": [
+        [810.322143379822]
+      ]
+    },
+    {
+      "n": 2000,
+      "reps": 1,
+      "fitSeconds": 2085.86,
+      "predictSeconds": 41,
+      "logLikelihood": [
+        [2420.02016918028]
+      ]
+    }
+  ]
+}

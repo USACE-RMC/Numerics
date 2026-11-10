@@ -318,5 +318,100 @@ namespace Distributions.Univariate
             Assert.AreEqual("0", k4.ParametersToString[2, 1]);
             Assert.AreEqual("0", k4.ParametersToString[3, 1]);
         }
+
+        /// <summary>
+        /// A NaN probability is rejected by the inverse CDF.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCDF_NaNProbability()
+        {
+            var k4 = new KappaFour(100, 10, 0.1, 0.2);
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => k4.InverseCDF(double.NaN));
+        }
+
+        /// <summary>
+        /// The density matches the support checks written against <see cref="KappaFour.Minimum"/> and
+        /// <see cref="KappaFour.Maximum"/> on a grid that includes points outside the support, the upper endpoint
+        /// and interior points.
+        /// </summary>
+        [TestMethod]
+        public void Test_PDF_MatchesSupportExpression()
+        {
+            var cases = new[] { new KappaFour(100, 10, 0.1, 0.2), new KappaFour(100, 10, -0.2, -0.5), new KappaFour(100, 10, 1.5, 0.3), new KappaFour(0, 1, 2, 1E-300) };
+            foreach (var k4 in cases)
+            {
+                double lower = k4.Minimum, upper = k4.Maximum;
+                var grid = new System.Collections.Generic.List<double> { double.NegativeInfinity, double.PositiveInfinity, upper };
+                if (!double.IsInfinity(lower)) { grid.Add(lower - 1); grid.Add(lower + 1E-6); }
+                if (!double.IsInfinity(upper)) { grid.Add(upper + 1); grid.Add(upper - 1E-6); }
+                double start = double.IsInfinity(lower) ? k4.InverseCDF(0.01) : lower, end = double.IsInfinity(upper) ? k4.InverseCDF(0.99) : upper;
+                for (int i = 1; i < 10; i++) grid.Add(start + (end - start) * i / 10d);
+                foreach (double x in grid)
+                {
+                    double expected;
+                    if (double.IsInfinity(x) || x < k4.Minimum || x > k4.Maximum) expected = 0d;
+                    else if (x == k4.Maximum) expected = k4.Kappa < 1d ? 0d : k4.Kappa == 1d ? 1d / k4.Alpha : double.PositiveInfinity;
+                    else if (x == k4.Minimum) continue;
+                    else expected = System.Math.Exp(k4.LogPDF(x));
+                    Assert.AreEqual(expected, k4.PDF(x), 0.0, $"x {x:R}");
+                    double expectedLog = double.IsInfinity(x) || x < k4.Minimum || x > k4.Maximum ? double.NegativeInfinity
+                        : x == k4.Maximum ? (expected > 0d ? System.Math.Log(expected) : double.NegativeInfinity) : k4.LogPDF(x);
+                    Assert.AreEqual(expectedLog, k4.LogPDF(x), 0.0, $"x {x:R}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// When the compensated lower endpoint cannot be evaluated (|κ log h| above 700) the analytical endpoint is
+        /// returned on every access, and changing a parameter recomputes the endpoint.
+        /// </summary>
+        [TestMethod]
+        public void Test_Minimum_CompensatedEndpointFailure()
+        {
+            Assert.IsFalse(KappaFourBoundary.TryLowerEndpoint(0, 1, 2, 1E-300, out _));
+            var k4 = new KappaFour(0, 1, 2, 1E-300);
+            double first = k4.Minimum;
+            Assert.AreEqual(first, k4.Minimum, 0.0);
+            Assert.AreEqual(new KappaFour(0, 1, 2, 1E-300).Minimum, first, 0.0);
+            k4.Kappa = 0.1;
+            Assert.IsTrue(KappaFourBoundary.TryLowerEndpoint(0, 1, 0.1, 1E-300, out double compensated));
+            Assert.AreEqual(compensated, k4.Minimum, 0.0);
+            k4.Kappa = 2;
+            Assert.AreEqual(first, k4.Minimum, 0.0);
+            k4.Hondo = 0.5;
+            Assert.AreEqual(new KappaFour(0, 1, 2, 0.5).Minimum, k4.Minimum, 0.0);
+        }
+
+        /// <summary>
+        /// The closed-form L-moments agree with the integrated branch on both sides of the |κ| = 1E-3 and |h| = 1E-3
+        /// switch, so the switch has no visible jump.
+        /// </summary>
+        /// <remarks>
+        /// Reference values for ξ = 10 and α = 2 computed with Python mpmath 1.3.0 at 60 significant digits from the
+        /// probability-weighted moments g_r = r Γ(1 + κ)Γ(r/h)/(h^(1 + κ) Γ(1 + κ + r/h)) and the corresponding h &lt; 0
+        /// form. The tolerances are 1E-14 relative for λ1 and λ2 and 5E-14 absolute for τ3 and τ4.
+        /// </remarks>
+        [TestMethod]
+        [DataRow(1.0001E-3, 0.5, 11.611806369381824, 1.1652130285604996, 0.2566167063892183, 0.15274541345776865)]
+        [DataRow(0.9999E-3, 0.5, 11.611806748811835, 1.1652133189146059, 0.25661681157679006, 0.1527454765504469)]
+        [DataRow(-1.0001E-3, -0.3, 10.841733433984263, 1.5484856166284047, 0.11614608171186738, 0.1539005969063767)]
+        [DataRow(-0.9999E-3, -0.3, 10.841732999219193, 1.5484854037514884, 0.11614593481821361, 0.1539005580784055)]
+        [DataRow(0.1, 1.0001E-3, 10.974030955066072, 1.2736241449291492, 0.10745707129714385, 0.1289016707921116)]
+        [DataRow(0.1, 0.9999E-3, 10.974030745864114, 1.273624256512736, 0.10745702942238328, 0.12890167578315836)]
+        [DataRow(-0.2, -1.0001E-3, 11.64136560448079, 1.7315869564248136, 0.3049652393972515, 0.21800793124654994)]
+        [DataRow(-0.2, -0.9999E-3, 11.641365790779878, 1.731586877120042, 0.30496526492759024, 0.21800793510072788)]
+        [DataRow(1.0001E-3, 1.0001E-3, 11.153455189286937, 1.3845148644476606, 0.16946425165295032, 0.1501168358775242)]
+        [DataRow(-1.0001E-3, -1.0001E-3, 11.155411613302801, 1.3880765113072797, 0.17038661393273602, 0.15063364195259785)]
+        [DataRow(0.3, 0.01, 10.695153466140328, 1.1164247518990507, -0.006343883233203591, 0.10549200453289603)]
+        [DataRow(-0.5, 20.0, 25.09910570460915, 1.1562480487707685, 0.9161754131378103, 0.8118370212481122)]
+        public void Test_LinearMomentsFromParameters_ContinuousAcrossIntegrationSwitch(double kappa, double hondo, double l1, double l2, double t3, double t4)
+        {
+            var k4 = new KappaFour(10d, 2d, kappa, hondo);
+            double[] lmom = k4.LinearMomentsFromParameters(new[] { 10d, 2d, kappa, hondo });
+            Assert.AreEqual(l1, lmom[0], 1E-14 * l1);
+            Assert.AreEqual(l2, lmom[1], 1E-14 * l2);
+            Assert.AreEqual(t3, lmom[2], 5E-14);
+            Assert.AreEqual(t4, lmom[3], 5E-14);
+        }
      }
 }

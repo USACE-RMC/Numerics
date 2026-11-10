@@ -44,7 +44,7 @@ namespace Distributions.Univariate
         public void Test_GLO_MOM_Fit()
         {
 
-            // The data is different than book, so I am using book moments.
+            // The data differs from the book, so the book moments are used.
             var GLO = new GeneralizedLogistic();
             // GLO.Estimate(sample, ParameterEstimationMethod.MethodOfMoments)
             GLO.SetParameters(GLO.DirectMethodOfMoments(new[] { 32714d, 16560.2848d, 0.49051d }));
@@ -419,6 +419,24 @@ namespace Distributions.Univariate
                 Assert.AreEqual(parameters[1], recovered[1], 1E-12);
                 Assert.AreEqual(parameters[2], recovered[2], 1E-15);
             }
+        }
+
+        /// <summary>
+        /// The location and shape setters set the same validity state as SetParameters.
+        /// </summary>
+        [TestMethod()]
+        public void Test_ParameterSetters_Validity()
+        {
+            var GLO = new GeneralizedLogistic(100, 10, 0.1);
+            GLO.Xi = double.NaN;
+            Assert.IsFalse(GLO.ParametersValid);
+            GLO.Xi = 100;
+            Assert.IsTrue(GLO.ParametersValid);
+            GLO.Kappa = double.NegativeInfinity;
+            Assert.IsFalse(GLO.ParametersValid);
+            GLO.Kappa = -0.2;
+            Assert.IsTrue(GLO.ParametersValid);
+            Assert.AreEqual(new GeneralizedLogistic(100, 10, -0.2).CDF(105), GLO.CDF(105), 0.0);
         }
     }
 }

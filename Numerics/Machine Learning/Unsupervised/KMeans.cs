@@ -2,7 +2,6 @@
 using Numerics.Sampling;
 using System;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace Numerics.MachineLearning
 {
@@ -136,19 +135,26 @@ namespace Numerics.MachineLearning
         /// </summary>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
         /// <param name="kMeansPlusPlus">Determines whether to use random initialization or to use the k-Means++ method. Default is to use k-Means++.</param>
+        /// <remarks>
+        /// The k-Means++ seeding chooses each new center with probability proportional to the distance
+        /// D(x) to the nearest chosen center, a variant of Arthur and Vassilvitskii (2007), who use D(x)^2.
+        /// </remarks>
         public void Train(int seed = -1, bool kMeansPlusPlus= true)
         {
 
             // 1. Initialize cluster centers
-            Means = Initialize(X, K, seed, kMeansPlusPlus);
+            var rows = new double[X.NumberOfRows][];
+            for (int i = 0; i < rows.Length; i++)
+                rows[i] = X.Row(i);
+            Means = Initialize(rows, Dimension, K, seed, kMeansPlusPlus);
 
             // 2. Optimize clusters
             for (Iterations = 1; Iterations <= MaxIterations; Iterations++)
             {
                 // Perform E-step
                 // Assign samples to closest centroids (create clusters)
-                var oldLabels = Labels.ToArray();
-                Labels = GetLabels(Means);
+                var oldLabels = Labels;
+                Labels = GetLabels(rows, Means);
 
                 // Check if the labels changed
                 bool labelsChanged = false;
@@ -171,13 +177,13 @@ namespace Numerics.MachineLearning
                     // later iteration convergence means the labels did not change, so the centroids
                     // already reflect them and the reported means are untouched.
                     if (Iterations == 1)
-                        Means = GetCentroids(Labels);
+                        Means = GetCentroids(rows, Labels);
                     break;
                 }
 
                 // Perform M-step
                 // Calculate new centroids from the clusters
-                Means = GetCentroids(Labels);
+                Means = GetCentroids(rows, Labels);
 
             }
 
@@ -192,17 +198,40 @@ namespace Numerics.MachineLearning
         /// <param name="kMeansPlusPlus">Determines whether to use random initialization or to use the k-Means++ method. Default is to use k-Means++.</param>
         public static double[,] Initialize(Matrix X, int k, int seed = -1, bool kMeansPlusPlus = true)
         {
-            var centroids = new double[k, X.NumberOfColumns];
+            var rows = new double[X.NumberOfRows][];
+            for (int i = 0; i < rows.Length; i++)
+                rows[i] = X.Row(i);
+            return Initialize(rows, X.NumberOfColumns, k, seed, kMeansPlusPlus);
+        }
+
+        /// <summary>
+        /// Initializes the centroids of the k-Means clusters from the data rows.
+        /// </summary>
+        /// <param name="rows">The rows of predictor values.</param>
+        /// <param name="dimension">The number of columns.</param>
+        /// <param name="k">The number of clusters.</param>
+        /// <param name="seed">The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
+        /// <param name="kMeansPlusPlus">Determines whether to use random initialization or the k-Means++ method.</param>
+        /// <returns>The initial centroids.</returns>
+        /// <remarks>
+        /// For k-Means++, each point keeps its distance to the nearest centroid chosen so far and
+        /// compares it only with the newest centroid. These are the comparisons, in order, of a scan
+        /// over every chosen centroid, so the seeding costs O(n k) and the draws match that scan.
+        /// </remarks>
+        private static double[,] Initialize(double[][] rows, int dimension, int k, int seed, bool kMeansPlusPlus)
+        {
+            int n = rows.Length;
+            var centroids = new double[k, dimension];
             var rnd = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
 
             if (kMeansPlusPlus == false)
             {
 
-                var rndIdxs = rnd.NextIntegers(0, X.NumberOfRows, k, false);
+                var rndIdxs = rnd.NextIntegers(0, n, k, false);
                 Array.Sort(rndIdxs);
                 for (int i = 0; i < k; i++)
-                    for (int j = 0; j < X.NumberOfColumns; j++)
-                        centroids[i, j] = X[rndIdxs[i], j];
+                    for (int j = 0; j < dimension; j++)
+                        centroids[i, j] = rows[rndIdxs[i]][j];
             }
             else
             {
@@ -211,53 +240,54 @@ namespace Numerics.MachineLearning
 
 
                 // 1. Choose one center uniformly at random from among the data points.
-                int idx = rnd.Next(0, X.NumberOfRows);
-                for (int j = 0; j < X.NumberOfColumns; j++)
-                    centroids[0, j] = X[idx, j];
+                int idx = rnd.Next(0, n);
+                for (int j = 0; j < dimension; j++)
+                    centroids[0, j] = rows[idx][j];
 
+                var minDistance = new double[n];
+                var D = new double[n];
+                var cdf = new double[n];
                 for (int c = 1; c < k; c++)
                 {
                     // 2. For each data point x not chosen yet, compute D(x),
                     // the distance between x and the nearest center that has already been chosen.
+                    int newest = c - 1;
+                    var center = new double[dimension];
+                    for (int j = 0; j < dimension; j++)
+                        center[j] = centroids[newest, j];
+                    RangeParallel.For(n, (long)n * dimension, i =>
+                    {
+                        double d = Tools.Distance(rows[i], center);
+                        if (newest == 0 || d < minDistance[i])
+                            minDistance[i] = d;
+                    });
 
                     double sum = 0;
-                    var D = new double[X.NumberOfRows];
-                    for (int i = 0; i < X.NumberOfRows; i++)
+                    for (int i = 0; i < n; i++)
                     {
-                        var x = X.Row(i);
-
-                        double min = Tools.Distance(x, centroids.GetRow(0));
-                        for (int j = 1; j < c; j++)
-                        {
-                            double d = Tools.Distance(x, centroids.GetRow(j));
-
-                            if (d < min)
-                                min = d;
-                        }
-
-                        D[i] = min;
-                        sum += min;
+                        D[i] = minDistance[i];
+                        sum += D[i];
                     }
 
                     // Following Accord.Net checks:
                     // https://github.com/accord-net/framework/blob/development/Sources/Accord.MachineLearning/Clustering/KMeans/KMeans.cs
 
-                    // Note: the following checks could have been avoided if we added
-                    // a small value to each distance, but is kept as this to avoid 022
-                    // breaking the random pattern in existing code.
+                    // Note: adding a small value to each distance would avoid the
+                    // following checks, but it would change the random sequence
+                    // drawn for a given seed.
 
                     if (sum == 0)
                     {
                         // Degenerate case: all points are the same, chose any of them
-                        idx = rnd.Next(0, X.NumberOfRows);
+                        idx = rnd.Next(0, n);
                     }
                     else
                     {
                         // 3. Choose one new data point at random as a new center, using a weighted
                         //    probability distribution where a point x is chosen with probability
-                        //    proportional to D(x)^2.
+                        //    proportional to D(x). Arthur and Vassilvitskii (2007) sample proportional
+                        //    to D(x)^2; this variant samples proportional to the distance itself.
                         var u = rnd.NextDouble();
-                        var cdf = new double[X.NumberOfRows];
                         for (int i = 0; i < D.Length; i++)
                         {
                             D[i] /= sum;
@@ -270,8 +300,8 @@ namespace Numerics.MachineLearning
                         }
 
                     }
-                    for (int j = 0; j < X.NumberOfColumns; j++)
-                        centroids[c, j] = X[idx, j];
+                    for (int j = 0; j < dimension; j++)
+                        centroids[c, j] = rows[idx][j];
                 }
             }
 
@@ -281,20 +311,29 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Gets the array of cluster labels given the list of centroids.
         /// </summary>
+        /// <param name="rows">The rows of predictor values.</param>
         /// <param name="centroids">The list of centroids.</param>
-        private int[] GetLabels(double[,] centroids)
+        private int[] GetLabels(double[][] rows, double[,] centroids)
         {
             // Assign samples to the closest centroids
             var labels = new int[X.NumberOfRows];
-            Parallel.For(0, X.NumberOfRows, idx =>  {  labels[idx] = GetClosestCentroid(X.Row(idx), centroids); });
+            var c = new double[K][];
+            for (int k = 0; k < K; k++)
+            {
+                c[k] = new double[Dimension];
+                for (int j = 0; j < Dimension; j++)
+                    c[k][j] = centroids[k, j];
+            }
+            RangeParallel.For(X.NumberOfRows, (long)X.NumberOfRows * K * Dimension, idx => { labels[idx] = GetClosestCentroid(rows[idx], c); });
             return labels;
         }
 
         /// <summary>
         /// Gets the centroids given the specified cluster labels.
         /// </summary>
+        /// <param name="rows">The rows of predictor values.</param>
         /// <param name="labels">The array of cluster labels assigned to each of the data points.</param>
-        private double[,] GetCentroids(int[] labels)
+        private double[,] GetCentroids(double[][] rows, int[] labels)
         {
             var count = new double[K];
             var centroids = new double[K, Dimension];
@@ -304,7 +343,7 @@ namespace Numerics.MachineLearning
             {
                 count[labels[i]]++;
                 for (int j = 0; j < Dimension; j++)
-                    centroids[labels[i], j] += X[i, j];
+                    centroids[labels[i], j] += rows[i][j];
             };
 
             // Get mean of clusters
@@ -328,7 +367,7 @@ namespace Numerics.MachineLearning
                         continue;
                     double distance = 0;
                     for (int j = 0; j < Dimension; j++)
-                        distance += Tools.Sqr(X[i, j] - centroids[labels[i], j]);
+                        distance += Tools.Sqr(rows[i][j] - centroids[labels[i], j]);
                     if (distance > maxDistance)
                     {
                         maxDistance = distance;
@@ -339,7 +378,7 @@ namespace Numerics.MachineLearning
                     continue;
                 consumed[farthest] = true;
                 for (int j = 0; j < Dimension; j++)
-                    centroids[k, j] = X[farthest, j];
+                    centroids[k, j] = rows[farthest][j];
             }
 
             return centroids;
@@ -348,15 +387,15 @@ namespace Numerics.MachineLearning
         /// <summary>
         /// Returns the index of the centroid closest to the sample vector.
         /// </summary>
-        /// <param name="sample">The sample vector.</param>
-        /// <param name="centroids">The list of centroids.</param>
-        private int GetClosestCentroid(double[] sample, double[,] centroids)
+        /// <param name="row">The sample vector.</param>
+        /// <param name="centroids">The centroids.</param>
+        private int GetClosestCentroid(double[] row, double[][] centroids)
         {
             double min = double.MaxValue;
             int minIdx = 0;
             for (int k = 0; k < K; k++)
             {
-                var dist = Tools.Distance(sample, centroids.GetRow(k));
+                var dist = Tools.Distance(row, centroids[k]);
                 if (dist < min)
                 {
                     min = dist;

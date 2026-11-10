@@ -276,8 +276,8 @@ namespace Mathematics.LinearAlgebra
         /// <remarks>
         /// Row three of <see cref="RankTwoCovariance"/> is identical to row one, so the matrix is exactly
         /// rank two and its third pivot is exactly zero in exact arithmetic. In floating point the pivot
-        /// evaluates to 4.440892E-16 — a positive number — so the purely absolute <c>pivot &lt;= 0</c> test
-        /// let the factorization complete and reported the matrix positive-definite. The pivot ratio is
+        /// evaluates to 4.440892E-16, a positive number, so a purely absolute <c>pivot &lt;= 0</c> test
+        /// lets the factorization complete and report the matrix positive-definite. The pivot ratio is
         /// 2.220446E-16, which the default tolerance of <c>3 * 2^-52 = 6.661338E-16</c> rejects with a
         /// factor of three to spare.
         /// <para>
@@ -324,8 +324,8 @@ namespace Mathematics.LinearAlgebra
         /// <remarks>
         /// For two variables with correlation ρ the second pivot ratio is exactly <c>1 - ρ²</c>. At
         /// ρ = 0.9999 the ratio is 1.999900E-04, some 4.5E+11 times the tolerance of 4.440892E-16 that
-        /// applies at n = 2. At ρ = 1 − 1E-12 — the tightest legitimately positive-definite matrix anywhere
-        /// in this test suite — the ratio is 1.999956E-12, still 4,503 times the tolerance. A false
+        /// applies at n = 2. At ρ = 1 − 1E-12 (the tightest legitimately positive-definite matrix anywhere
+        /// in this test suite) the ratio is 1.999956E-12, still 4,503 times the tolerance. A false
         /// rejection would require ρ within roughly two ulp of one, at which point the matrix is
         /// numerically singular in any case.
         /// </remarks>
@@ -350,7 +350,7 @@ namespace Mathematics.LinearAlgebra
         /// </summary>
         /// <remarks>
         /// For <c>[[1E12, 1], [1, 1E-11]]</c> the determinant is 9, so the matrix is comfortably positive
-        /// definite, and the second pivot ratio is 0.9 — entirely healthy. Measured against the largest
+        /// definite, and the second pivot ratio is 0.9, entirely healthy. Measured against the largest
         /// diagonal instead, the same pivot would read 9E-24 and any sane tolerance would reject it. The
         /// pivot is the conditional variance of the second variable, so its own diagonal is the only
         /// meaningful scale.
@@ -437,7 +437,7 @@ namespace Mathematics.LinearAlgebra
         /// between <c>n = 2</c> and <c>n = 4</c>.
         /// </summary>
         /// <remarks>
-        /// The first factor row is exact — <c>L[0,0] = 1</c> and <c>L[1,0] = ρ</c> — and
+        /// The first factor row is exact (<c>L[0,0] = 1</c> and <c>L[1,0] = ρ</c>), and
         /// <c>1 - fl(ρ²)</c> is exact by Sterbenz, so the pivot is bit-reproducible at
         /// 6.661338147750939E-16 rather than being an artifact of rounding order.
         /// </remarks>
@@ -481,7 +481,7 @@ namespace Mathematics.LinearAlgebra
             Assert.IsGreaterThanOrEqualTo(0, exception.Message.IndexOf("positive-definite", StringComparison.OrdinalIgnoreCase));
 
             // The same 4x4 is accepted once the tolerance is lowered below the pivot, confirming the pivot
-            // itself — not some other property of the padded matrix — is what the dimension changed.
+            // itself, not some other property of the padded matrix, is what the dimension changed.
             Assert.IsTrue(new CholeskyDecomposition(padded, 2d * Tools.DoubleMachineEpsilon).IsPositiveDefinite);
         }
 
@@ -610,6 +610,283 @@ namespace Mathematics.LinearAlgebra
             Assert.AreEqual("relativeTolerance", exception.ParamName);
         }
 
+        /// <summary>
+        /// A matrix the constructor accepts is returned with zero jitter and a bit-identical factor.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryCholesky_PositiveDefiniteMatchesConstructor()
+        {
+            var matrix = new Matrix(new[,] { { 16d, 4d, 8d }, { 4d, 5d, -4d }, { 8d, -4d, 22d } });
+            Assert.IsTrue(CholeskyDecomposition.TryCholesky(matrix, out CholeskyDecomposition chol, out double jitter));
+            var reference = new CholeskyDecomposition(matrix);
+            Assert.IsNotNull(chol);
+            Assert.AreEqual(0d, jitter, 0d);
+            Assert.IsTrue(chol.IsPositiveDefinite);
+            Assert.AreEqual(reference.RelativeTolerance, chol.RelativeTolerance, 0d);
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    Assert.AreEqual(reference.L[i, j], chol.L[i, j], 0d);
+                    Assert.AreEqual(matrix[i, j], chol.A[i, j], 0d);
+                }
+            }
+            Assert.AreEqual(reference.LogDeterminant(), chol.LogDeterminant(), 0d);
+
+            Assert.IsTrue(CholeskyDecomposition.TryCholesky(new Matrix(0), out chol, out jitter));
+            Assert.AreEqual(0d, jitter, 0d);
+            Assert.AreEqual(0, chol.L.NumberOfRows);
+        }
+
+        /// <summary>
+        /// An exactly rank-deficient covariance factors after the first relative jitter, and the factor
+        /// reproduces the jittered matrix.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryCholesky_RankDeficientUsesFirstJitter()
+        {
+            var matrix = new Matrix(new[,] { { 2d, 0.5d, 2d }, { 0.5d, 1d, 0.5d }, { 2d, 0.5d, 2d } });
+            Assert.IsTrue(CholeskyDecomposition.TryCholesky(matrix, out CholeskyDecomposition chol, out double jitter));
+            Assert.IsNotNull(chol);
+            // The mean diagonal is 5/3, so the first jitter is 5/3 * 1E-10.
+            Assert.AreEqual(5d / 3d * 1E-10 * 1d, jitter, 0d);
+            var product = chol.L * Matrix.Transpose(chol.L);
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    double expected = matrix[i, j] + (i == j ? jitter : 0d);
+                    Assert.AreEqual(expected, chol.A[i, j], 0d);
+                    Assert.AreEqual(expected, product[i, j], 1E-15);
+                }
+            }
+            // The input is not modified.
+            Assert.AreEqual(2d, matrix[0, 0], 0d);
+
+            // Rescaling the matrix rescales the jitter by the same factor.
+            var scaled = matrix * 1E6;
+            Assert.IsTrue(CholeskyDecomposition.TryCholesky(scaled, out _, out double scaledJitter));
+            Assert.AreEqual(jitter * 1E6, scaledJitter, 1E-12 * scaledJitter);
+
+            // A zero 1 x 1 matrix uses the unit scale.
+            Assert.IsTrue(CholeskyDecomposition.TryCholesky(new Matrix(1), out chol, out jitter));
+            Assert.AreEqual(1E-10, jitter, 0d);
+            Assert.AreEqual(Math.Sqrt(1E-10), chol.L[0, 0], 0d);
+        }
+
+        /// <summary>
+        /// An indefinite matrix fails within the default ladder and succeeds when the maximum is raised.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryCholesky_IndefiniteMatrix()
+        {
+            // Eigenvalues are -1 and 3, so a jitter above 1 is required.
+            var matrix = new Matrix(new[,] { { 1d, 2d }, { 2d, 1d } });
+            Assert.IsFalse(CholeskyDecomposition.TryCholesky(matrix, out CholeskyDecomposition chol, out double jitter));
+            Assert.IsNull(chol);
+            Assert.IsTrue(double.IsNaN(jitter));
+
+            // Ladder 1E-10, ..., 1E1: at 1 the matrix is singular, so 10 is the first accepted jitter.
+            Assert.IsTrue(CholeskyDecomposition.TryCholesky(matrix, 1E-10, 10d, out chol, out jitter));
+            Assert.AreEqual(1d * 1E-10 * Math.Pow(10d, 11), jitter, 0d);
+            // Analytic factor of [[1 + d, 2], [2, 1 + d]].
+            double a = 1d + jitter;
+            Assert.AreEqual(Math.Sqrt(a), chol.L[0, 0], 1E-14);
+            Assert.AreEqual(2d / Math.Sqrt(a), chol.L[1, 0], 1E-14);
+            Assert.AreEqual(Math.Sqrt(a - 4d / a), chol.L[1, 1], 1E-14);
+            Assert.AreEqual(0d, chol.L[0, 1], 0d);
+
+            // A negative 1 x 1 matrix cannot be rescued by the default ladder.
+            Assert.IsFalse(CholeskyDecomposition.TryCholesky(new Matrix(new[,] { { -1d } }), out chol, out jitter));
+            Assert.IsNull(chol);
+            Assert.IsTrue(double.IsNaN(jitter));
+        }
+
+        /// <summary>
+        /// Non-finite entries are rejected and invalid arguments throw.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryCholesky_InvalidInputs()
+        {
+            var matrix = new Matrix(new[,] { { 1d, double.NaN }, { double.NaN, 1d } });
+            Assert.IsFalse(CholeskyDecomposition.TryCholesky(matrix, out CholeskyDecomposition chol, out double jitter));
+            Assert.IsNull(chol);
+            Assert.IsTrue(double.IsNaN(jitter));
+            matrix = new Matrix(new[,] { { double.PositiveInfinity, 0d }, { 0d, 1d } });
+            Assert.IsFalse(CholeskyDecomposition.TryCholesky(matrix, out _, out _));
+
+            Assert.ThrowsExactly<ArgumentNullException>(() => CholeskyDecomposition.TryCholesky(null, out _, out _));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryCholesky(new Matrix(2, 3), out _, out _));
+            var identity = Matrix.Identity(2);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryCholesky(identity, 0d, 1d, out _, out _));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryCholesky(identity, double.NaN, 1d, out _, out _));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryCholesky(identity, 1E-2, 1E-3, out _, out _));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CholeskyDecomposition.TryCholesky(identity, 1E-2, double.PositiveInfinity, out _, out _));
+        }
+
+        /// <summary>
+        /// The factorization is bit-identical to the version 2.2.0 two-dimensional loop below
+        /// <see cref="CholeskyDecomposition.BlockedDimension"/>, and from it on agrees with that loop to rounding error;
+        /// rejected matrices are rejected at the same row with the same pivot.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryFactorize_MatchesVersion220Loop()
+        {
+            var rng = new Random(2026);
+            foreach (int n in new[] { 1, 2, 3, 7, 16, 41 })
+            {
+                var B = new Matrix(n);
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++)
+                        B[i, j] = rng.NextDouble() - 0.5;
+                var A = B * Matrix.Transpose(B);
+                for (int i = 0; i < n; i++)
+                {
+                    A[i, i] += 0.1;
+                    for (int j = 0; j < i; j++)
+                        A[i, j] = A[j, i];
+                }
+                AssertSameFactorization(A);
+            }
+            // Rejected: indefinite, rank-deficient, NaN.
+            AssertSameFactorization(new Matrix(new[,] { { 1d, 2d }, { 2d, 1d } }));
+            AssertSameFactorization(new Matrix(new[,] { { 2d, 0.5d, 2d }, { 0.5d, 1d, 0.5d }, { 2d, 0.5d, 2d } }));
+            AssertSameFactorization(new Matrix(new[,] { { 4d, 1d, 0d }, { 1d, double.NaN, 1d }, { 0d, 1d, 3d } }));
+        }
+
+        /// <summary>
+        /// Compares TryFactorize with the version 2.2.0 two-dimensional loop: the same decision, row and pivot, and a
+        /// factor that agrees to rounding error.
+        /// </summary>
+        private static void AssertSameFactorization(Matrix A)
+        {
+            double tolerance = CholeskyDecomposition.DefaultRelativeTolerance(A.NumberOfRows);
+            bool ok = CholeskyDecomposition.TryFactorize(A, tolerance, out Matrix lower, out int row, out double pivot);
+            bool refOk = ReferenceFactorize(A, tolerance, out Matrix refLower, out int refRow, out double refPivot);
+            Assert.AreEqual(refOk, ok);
+            Assert.AreEqual(refRow, row);
+            if (A.NumberOfRows < CholeskyDecomposition.BlockedDimension)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(refPivot), BitConverter.DoubleToInt64Bits(pivot));
+                for (int i = 0; i < A.NumberOfRows; i++)
+                {
+                    for (int j = 0; j < A.NumberOfRows; j++)
+                    {
+                        // On failure the strict upper triangle is zero, where the 2.2.0 reference leaves the input there.
+                        if (!ok && j > i) Assert.AreEqual(0d, lower[i, j], 0d);
+                        else Assert.AreEqual(BitConverter.DoubleToInt64Bits(refLower[i, j]), BitConverter.DoubleToInt64Bits(lower[i, j]));
+                    }
+                }
+                return;
+            }
+            if (double.IsNaN(refPivot)) Assert.IsTrue(double.IsNaN(pivot));
+            else Assert.AreEqual(refPivot, pivot, 1E-14 * Math.Max(1d, Math.Abs(refPivot)));
+            if (!ok) return;
+            double scale = 0;
+            for (int i = 0; i < A.NumberOfRows; i++)
+                for (int j = 0; j < A.NumberOfRows; j++) scale = Math.Max(scale, Math.Abs(refLower[i, j]));
+            for (int i = 0; i < A.NumberOfRows; i++)
+                for (int j = 0; j < A.NumberOfRows; j++)
+                    Assert.AreEqual(refLower[i, j], lower[i, j], 1E-14 * scale);
+        }
+
+        /// <summary>
+        /// Solve, Forward, Backward and InverseA have small residuals on both sides of
+        /// <see cref="CholeskyDecomposition.BlockedDimension"/>, and changing an entry of the exposed factor does not
+        /// change their results.
+        /// </summary>
+        [TestMethod]
+        public void Test_Solves_ResidualsBothSidesOfBlockedDimension()
+        {
+            var rng = new Random(77);
+            foreach (int n in new[] { 1, 5, CholeskyDecomposition.BlockedDimension - 1, CholeskyDecomposition.BlockedDimension, 40, 200 })
+            {
+                var B = new Matrix(n);
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++)
+                        B[i, j] = rng.NextDouble() - 0.5;
+                var A = B * Matrix.Transpose(B);
+                for (int i = 0; i < n; i++)
+                {
+                    A[i, i] += 0.5;
+                    for (int j = 0; j < i; j++) A[i, j] = A[j, i];
+                }
+                var chol = new CholeskyDecomposition(A);
+                var bValues = new double[n];
+                for (int i = 0; i < n; i++) bValues[i] = rng.NextDouble() - 0.5;
+                var b = new Vector(bValues);
+                var x = chol.Solve(b);
+                var y = chol.Forward(b);
+                var z = chol.Backward(b);
+                var L = chol.L;
+                for (int i = 0; i < n; i++)
+                {
+                    double ax = 0, ly = 0, ltz = 0;
+                    for (int k = 0; k < n; k++)
+                    {
+                        ax += A[i, k] * x[k];
+                        ly += L[i, k] * y[k];
+                        ltz += L[k, i] * z[k];
+                    }
+                    Assert.AreEqual(bValues[i], ax, 1E-11, $"Solve n {n} row {i}");
+                    Assert.AreEqual(bValues[i], ly, 1E-12, $"Forward n {n} row {i}");
+                    Assert.AreEqual(bValues[i], ltz, 1E-11, $"Backward n {n} row {i}");
+                }
+                var inverse = chol.InverseA();
+                for (int i = 0; i < n; i++)
+                {
+                    for (int j = 0; j < n; j++)
+                    {
+                        double s = 0;
+                        for (int k = 0; k < n; k++) s += A[i, k] * inverse[k, j];
+                        Assert.AreEqual(i == j ? 1d : 0d, s, 1E-10, $"InverseA n {n} [{i},{j}]");
+                        Assert.AreEqual(inverse[i, j], inverse[j, i], 0d, "InverseA is exactly symmetric");
+                    }
+                }
+                double before = chol.Solve(b)[0];
+                L[0, 0] *= 2;
+                Assert.AreEqual(before, chol.Solve(b)[0], 0d, "Solve uses the factor computed by the decomposition");
+            }
+        }
+
+        /// <summary>
+        /// The 2.2.0 implementation of CholeskyDecomposition.TryFactorize, kept as a bitwise reference.
+        /// </summary>
+        private static bool ReferenceFactorize(Matrix matrix, double relativeTolerance, out Matrix lower, out int failedRow, out double failedPivot)
+        {
+            int dimension = matrix.NumberOfRows;
+            lower = new Matrix(matrix.ToArray());
+            failedRow = -1;
+            failedPivot = double.NaN;
+            for (int i = 0; i < dimension; i++)
+            {
+                for (int j = i; j < dimension; j++)
+                {
+                    double sum = lower[i, j];
+                    for (int k = i - 1; k >= 0; k--)
+                        sum -= lower[i, k] * lower[j, k];
+                    if (i == j)
+                    {
+                        double diagonal = matrix[i, i];
+                        double threshold = diagonal > 0d && !double.IsInfinity(diagonal) ? relativeTolerance * diagonal : 0d;
+                        if (double.IsNaN(sum) || sum <= 0d || sum <= threshold)
+                        {
+                            failedRow = i;
+                            failedPivot = sum;
+                            return false;
+                        }
+                        lower[i, i] = Math.Sqrt(sum);
+                    }
+                    else
+                    {
+                        lower[j, i] = sum / lower[i, i];
+                    }
+                }
+            }
+            for (int i = 0; i < dimension; i++)
+                for (int j = 0; j < i; j++)
+                    lower[j, i] = 0.0d;
+            return true;
+        }
     }
 }
-

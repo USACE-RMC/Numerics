@@ -149,5 +149,38 @@ namespace MachineLearning
             CollectionAssert.AreEqual(new double[] { 0, 1, 0 }, predictions);
         }
 
+        /// <summary>
+        /// Test that predictions on a deterministic three-class fixture reproduce fixed reference
+        /// labels.
+        /// </summary>
+        [TestMethod]
+        public void Test_NaiveBayes_ReferenceValuesExact()
+        {
+            var X = MachineLearningFixtures.ReferenceFixture();
+            var classes = new double[30];
+            for (int i = 0; i < 30; i++)
+                classes[i] = i % 3;
+            var nb = new NaiveBayes(X, classes);
+            nb.Train();
+            var test = new double[,] { { 1.0, 2.0 }, { 5.5, 4.0 }, { 9.0, 7.5 }, { 4.0, 3.0 }, { 0.0, 6.0 } };
+            CollectionAssert.AreEqual(new[] { 0d, 1d, 2d, 1d, 1d }, nb.Predict(test));
+        }
+
+        /// <summary>
+        /// Test that predictions for a batch large enough to run in parallel reproduce fixed reference
+        /// labels exactly, independent of the processor count.
+        /// </summary>
+        [TestMethod]
+        public void Test_NaiveBayes_LargeReferenceValuesExact()
+        {
+            var X = MachineLearningFixtures.LargeFixture(6000);
+            var classes = new double[6000];
+            for (int i = 0; i < 6000; i++)
+                classes[i] = i % 5;
+            var nb = new NaiveBayes(X, classes);
+            nb.Train();
+            Assert.AreEqual(0x572154A5DA464B85UL, MachineLearningFixtures.BitHash(nb.Predict(MachineLearningFixtures.LargeFixture(3000))!));
+        }
+
     }
 }

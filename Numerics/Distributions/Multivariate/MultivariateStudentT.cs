@@ -109,29 +109,84 @@ namespace Numerics.Distributions
         private double[]? _variance;
         private double[]? _standardDeviation;
         private Random _MVNUNI = new MersenneTwister(MultivariateNormal.DefaultMVNUNISeed);
+        private int _maxEvaluations = 25000;
+        private double _absoluteError = 1E-5;
+        private double _relativeError = 0d;
+        private double[]? _correl;
+        private MultivariateNormal? _integrator;
 
         /// <summary>
-        /// The uniform(0,1) random number generator used by the inner multivariate normal CDF for dimensions
-        /// greater than two.
+        /// The maximum number of integrand evaluations of the lattice rule used by <see cref="CDF(double[])"/>
+        /// above two dimensions. Default = 25,000.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is not positive.</exception>
+        public int MaxEvaluations
+        {
+            get { return _maxEvaluations; }
+            set
+            {
+                if (value <= 0) throw new ArgumentOutOfRangeException(nameof(MaxEvaluations), "The maximum number of evaluations must be positive.");
+                _maxEvaluations = value;
+            }
+        }
+
+        /// <summary>
+        /// The absolute error tolerance of the lattice rule used by <see cref="CDF(double[])"/> above two
+        /// dimensions. Default = 1E-5.
+        /// </summary>
+        /// <remarks>
+        /// The rule stops when its 99% error estimate is at most the larger of this value and
+        /// <see cref="RelativeError"/> times the probability, or when <see cref="MaxEvaluations"/> is reached,
+        /// whichever comes first. With the default budget of 25,000 evaluations the error in three to five
+        /// dimensions is typically of order 1E-5; a tolerance of 1E-7 typically needs about 10^6 evaluations.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is negative or NaN.</exception>
+        public double AbsoluteError
+        {
+            get { return _absoluteError; }
+            set
+            {
+                if (!(value >= 0d)) throw new ArgumentOutOfRangeException(nameof(AbsoluteError), "The absolute error must be non-negative.");
+                _absoluteError = value;
+            }
+        }
+
+        /// <summary>
+        /// The relative error tolerance of the lattice rule used by <see cref="CDF(double[])"/> above two
+        /// dimensions. Default = 0, so only <see cref="AbsoluteError"/> applies.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is negative or NaN.</exception>
+        public double RelativeError
+        {
+            get { return _relativeError; }
+            set
+            {
+                if (!(value >= 0d)) throw new ArgumentOutOfRangeException(nameof(RelativeError), "The relative error must be non-negative.");
+                _relativeError = value;
+            }
+        }
+
+        /// <summary>
+        /// The uniform(0,1) random number generator used by the lattice rule of <see cref="CDF(double[])"/> for
+        /// dimensions greater than two.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Above two dimensions <see cref="CDF(double[])"/> integrates the χ²(ν) mixing variable against
-        /// <see cref="MultivariateNormal.CDF(double[])"/>, which is the Genz MVNDST randomized lattice rule
-        /// and draws its lattice shifts from this generator. The multivariate t CDF therefore carries a small
-        /// stochastic error above two dimensions and only reproduces when the generator is seeded. At one and
-        /// two dimensions the CDF is a closed form and never touches this generator.
+        /// Above two dimensions <see cref="CDF(double[])"/> is the Genz-Bretz randomized Korobov lattice rule,
+        /// which draws its lattice shifts from this generator. The CDF therefore carries a small stochastic
+        /// error above two dimensions and only reproduces when the generator is seeded. At one and two
+        /// dimensions the CDF is deterministic and never touches this generator.
         /// </para>
         /// <para>
         /// The default is a Mersenne twister seeded with <see cref="MultivariateNormal.DefaultMVNUNISeed"/>,
-        /// which makes the default result reproducible — but every instance left at the default replays the
+        /// which makes the default result reproducible, but every instance left at the default replays the
         /// identical lattice shifts, so the quadrature errors of separate instances are correlated rather
         /// than independent and do not average out when many evaluations are aggregated. Assign a seeded
         /// generator to tie results to a caller's own seed and to decorrelate the error across instances;
         /// this mirrors <see cref="MultivariateNormal.MVNUNI"/>.
         /// </para>
         /// <para>
-        /// MVNDST advances the generator, so successive CDF evaluations on the same instance consume
+        /// The lattice rule advances the generator, so successive CDF evaluations on the same instance consume
         /// successive shifts and are not bit-identical to one another above two dimensions; two freshly
         /// constructed instances with the same parameters and the same seed are.
         /// </para>
@@ -323,14 +378,15 @@ namespace Numerics.Distributions
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid.</exception>
         public void SetParameters(double degreesOfFreedom, double[] location, double[,] scaleMatrix)
         {
-            // Validate parameters
-            ValidateParameters(degreesOfFreedom, location, scaleMatrix, true);
+            // Validate parameters. The validation factors its own copy of the scale matrix, and that
+            // factor is reused rather than recomputed from identical values.
+            ValidateParameters(degreesOfFreedom, location, scaleMatrix, true, out var cholesky);
 
             _degreesOfFreedom = degreesOfFreedom;
             _dimension = location.Length;
             _location = location;
             _scaleMatrix = new Matrix(scaleMatrix);
-            _cholesky = new CholeskyDecomposition(_scaleMatrix);
+            _cholesky = cholesky!;
 
             // Precompute the log of the normalizing constant for the PDF:
             // ln C = LogGamma((ν+p)/2) - LogGamma(ν/2) - (p/2)*ln(νπ) - (1/2)*ln|Σ|
@@ -343,6 +399,8 @@ namespace Numerics.Distributions
             // Reset cached derived properties
             _variance = null;
             _standardDeviation = null;
+            _correl = null;
+            _integrator = null;
         }
 
         /// <summary>
@@ -357,6 +415,25 @@ namespace Numerics.Distributions
         /// </returns>
         public ArgumentOutOfRangeException? ValidateParameters(double degreesOfFreedom, double[] location, double[,] scaleMatrix, bool throwException)
         {
+            return ValidateParameters(degreesOfFreedom, location, scaleMatrix, throwException, out _);
+        }
+
+        /// <summary>
+        /// Validate the distribution parameters, handing back the factorization of the scale matrix built
+        /// along the way so that <see cref="SetParameters"/> does not have to recompute it.
+        /// </summary>
+        /// <param name="degreesOfFreedom">The degrees of freedom ν (nu).</param>
+        /// <param name="location">The location vector μ (mu).</param>
+        /// <param name="scaleMatrix">The scale matrix Σ (sigma).</param>
+        /// <param name="throwException">Determines whether to throw an exception or return it.</param>
+        /// <param name="cholesky">On return, the Cholesky decomposition of the scale matrix when the
+        /// parameters are valid; null otherwise.</param>
+        /// <returns>
+        /// An <see cref="ArgumentOutOfRangeException"/> if validation fails; otherwise null.
+        /// </returns>
+        private ArgumentOutOfRangeException? ValidateParameters(double degreesOfFreedom, double[] location, double[,] scaleMatrix, bool throwException, out CholeskyDecomposition? cholesky)
+        {
+            cholesky = null;
             if (double.IsNaN(degreesOfFreedom) || double.IsInfinity(degreesOfFreedom) || degreesOfFreedom <= 0)
             {
                 var ex = new ArgumentOutOfRangeException(nameof(degreesOfFreedom), "Degrees of freedom must be greater than zero.");
@@ -410,6 +487,7 @@ namespace Numerics.Distributions
                     var ex = new ArgumentOutOfRangeException(nameof(scaleMatrix), "Scale matrix is not positive-definite.");
                     if (throwException) throw ex; else return ex;
                 }
+                cholesky = chol;
             }
             catch (ArgumentOutOfRangeException) { throw; }
             catch (Exception)
@@ -489,40 +567,64 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
+        /// Returns the radial factor r = sqrt(W / ν) of the multivariate t integrand, where W is the χ²(ν) quantile of u.
+        /// </summary>
+        /// <param name="halfNu">Half the degrees of freedom, a = ν / 2 &gt; 0.</param>
+        /// <param name="logGammaHalfNu">ln Γ(a), computed once by the caller.</param>
+        /// <param name="u">The uniform coordinate in [0, 1).</param>
+        /// <returns>sqrt(x / a), where x solves P(a, x) = u; zero for u = 0.</returns>
+        /// <remarks>
+        /// W / 2 has the Gamma(a, 1) distribution, so r = sqrt(x / a) with x the inverse of the regularized lower
+        /// incomplete gamma function, found by <see cref="Gamma.InverseIncompleteRatio(double, double, bool, double)"/>.
+        /// </remarks>
+        internal static double RadialFactor(double halfNu, double logGammaHalfNu, double u)
+        {
+            return Math.Sqrt(Gamma.InverseIncompleteRatio(halfNu, u, false, logGammaHalfNu) / halfNu);
+        }
+
+        /// <summary>
         /// The Cumulative Distribution Function (CDF) for the distribution evaluated at a point x.
         /// </summary>
         /// <param name="x">A point in the distribution space.</param>
         /// <returns>The cumulative probability P(X ≤ x).</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the vector dimension does not match the
+        /// distribution dimension.</exception>
         /// <remarks>
         /// <para>
-        /// For dimension 1, this delegates to the univariate Student's t CDF.
+        /// The CDF is computed with the Genz-Bretz method, a translation of Alan Genz's Fortran <c>MVTDST</c>.
+        /// A coordinate at +∞ is unconstrained and drops out, a coordinate at −∞ gives zero, and NaN gives NaN.
+        /// The remaining limits are standardized by the scale-matrix diagonal and sorted, and the scale
+        /// correlation is factored, by the same routine as <see cref="MultivariateNormal.CDF(double[])"/>.
         /// </para>
         /// <para>
-        /// For dimensions ≥ 2, the CDF is computed via stratified numerical integration over the
-        /// mixing representation: P(X ≤ x) = E_W[ Φ_p((x−μ)·√(W/ν); 0, Σ) ] where W ~ χ²(ν),
-        /// and Φ_p is the multivariate normal CDF. The expectation is computed by evaluating the
-        /// MVN CDF at K=200 stratified quantiles of the χ²(ν) distribution and averaging.
+        /// One remaining variable uses the univariate Student's t CDF. Two remaining variables are
+        /// deterministic: integer ν up to 10,000 uses the Dunnett and Sobel (1954) closed form, which is exact
+        /// to rounding, and any other ν integrates the exact bivariate normal probability over the χ(ν)/√ν
+        /// mixing variable by adaptive Gauss-Kronrod quadrature, which agrees with exact references to about 1E-14.
         /// </para>
         /// <para>
-        /// <b>Above two dimensions this method is stochastic, stateful, and not thread-safe.</b> The inner
-        /// MVNDST is a randomized lattice rule that draws its shifts from <see cref="MVNUNI"/>, which is
-        /// instance state; at one and two dimensions the CDF is a closed form and touches no instance
-        /// state. The result carries a small quadrature error, of the order of the <c>1E-4</c> absolute
-        /// tolerance MVNDST is given. Each call advances the generator, so repeated calls at the same
-        /// point on the same instance return slightly different values; it is two freshly constructed
-        /// instances with the same parameters and seed that agree bit for bit. And because
+        /// Three or more remaining variables use the randomized Korobov lattice rule of MVNDST with one extra
+        /// coordinate for the mixing variable. The rule refines until its 99% error estimate meets
+        /// <see cref="AbsoluteError"/> or <see cref="RelativeError"/> times the value, or until
+        /// <see cref="MaxEvaluations"/> integrand evaluations are spent.
+        /// </para>
+        /// <para>
+        /// <b>Above two dimensions this method is stochastic, stateful, and not thread-safe.</b> The lattice
+        /// rule draws its shifts from <see cref="MVNUNI"/>, which is instance state; up to two dimensions the
+        /// CDF is deterministic, touches no generator or integration workspace, and may be called concurrently
+        /// on one instance. Each call advances the generator, so repeated calls
+        /// at the same point on the same instance return slightly different values; it is two freshly
+        /// constructed instances with the same parameters and seed that agree bit for bit. Because
         /// <see cref="MersenneTwister"/> has no internal synchronization, calling this method concurrently
-        /// on a single shared instance — <c>Parallel.For(… =&gt; mvt.CDF(points[i]))</c> — is a data race
-        /// that produces corrupted lattice shifts and silently wrong probabilities, or an
-        /// <see cref="IndexOutOfRangeException"/> from inside the generator.
+        /// on a single shared instance is a data race. Use one instance per thread, or a distinct generator
+        /// per thread assigned through <see cref="MVNUNI"/>; <see cref="Clone"/> shares the generator by
+        /// reference and does not help.
         /// </para>
         /// <para>
-        /// The remedy is one instance per thread, or a distinct generator per thread assigned through
-        /// <see cref="MVNUNI"/>; <see cref="Clone"/> shares the generator by reference and does not help.
-        /// </para>
-        /// <para>
-        /// Reference: Genz, A. and Bretz, F. (2009). "Computation of Multivariate Normal and t Probabilities."
-        /// Lecture Notes in Statistics, Vol. 195. Springer.
+        /// References: Genz, A. and Bretz, F. (2009). "Computation of Multivariate Normal and t Probabilities."
+        /// Lecture Notes in Statistics, Vol. 195. Springer. Dunnett, C. W. and Sobel, M. (1954). "A bivariate
+        /// generalization of Student's t-distribution with tables for certain special cases." Biometrika 41,
+        /// 153-169.
         /// </para>
         /// </remarks>
         public override double CDF(double[] x)
@@ -538,47 +640,42 @@ namespace Numerics.Distributions
                 return univT.CDF(x[0]);
             }
 
-            // For D >= 2, use stratified quantile integration over the χ²(ν) mixing variable.
-            // The multivariate-t CDF can be written as:
-            //   P(X ≤ x) = E_W[ Φ_MVN((x−μ)·√(W/ν); 0, Σ) ]   where W ~ χ²(ν)
-            //
-            // We evaluate this by computing the MVN CDF at K equally-spaced quantiles
-            // of χ²(ν) and averaging. The stratification over χ²(ν) is deterministic and
-            // works for any ν; the inner MVN CDF is a randomized lattice rule above two
-            // dimensions (see the method remarks).
-
-            const int K = 200;
-            var gamma = new GammaDistribution(2.0, _degreesOfFreedom / 2.0);
-
-            // Centered point for MVN CDF evaluation
-            var zVec = new double[Dimension];
+            var lower = new double[Dimension];
+            var upper = new double[Dimension];
+            var infin = new int[Dimension];
             for (int i = 0; i < Dimension; i++)
-                zVec[i] = x[i] - _location[i];
-
-            // Create MVN with zero mean and the scale matrix Σ for CDF evaluation, handing it this
-            // instance's MVNUNI so the lattice shifts MVNDST draws come from the caller-visible generator.
-            var mvn = new MultivariateNormal(new double[Dimension], _scaleMatrix.ToArray()) { MVNUNI = _MVNUNI };
-
-            double sum = 0.0;
-            for (int k = 0; k < K; k++)
             {
-                // Use midpoint of each stratum for stratified integration
-                double p = (k + 0.5) / K;
-                double w = gamma.InverseCDF(p);
-                double scaleFactor = Math.Sqrt(w / _degreesOfFreedom);
-
-                // Scale the centered vector: (x-μ) · √(W/ν)
-                var scaledZ = new double[Dimension];
-                for (int i = 0; i < Dimension; i++)
-                    scaledZ[i] = zVec[i] * scaleFactor;
-
-                sum += mvn.CDF(scaledZ);
+                if (double.IsNaN(x[i])) return double.NaN;
+                if (double.IsNegativeInfinity(x[i])) return 0d;
+                if (double.IsPositiveInfinity(x[i]))
+                {
+                    infin[i] = -1;
+                }
+                else
+                {
+                    upper[i] = (x[i] - _location[i]) / Math.Sqrt(_scaleMatrix[i, i]);
+                }
             }
 
-            double result = sum / K;
+            // The packed correlations are filled before they are published, so a concurrent caller never reads a
+            // partly filled array.
+            var correl = _correl;
+            if (correl == null)
+            {
+                correl = new double[Dimension * (Dimension - 1) / 2];
+                int k = 0;
+                for (int i = 1; i < Dimension; i++)
+                    for (int j = 0; j < i; j++)
+                        correl[k++] = _scaleMatrix[i, j] / Math.Sqrt(_scaleMatrix[i, i] * _scaleMatrix[j, j]);
+                _correl = correl;
+            }
+            var integrator = _integrator ??= new MultivariateNormal(new double[Dimension], _scaleMatrix.ToArray());
+            integrator.MVNUNI = _MVNUNI;
 
-            // Clamp to [0, 1]
-            return Math.Max(0.0, Math.Min(1.0, result));
+            double error = 0d, value = 0d;
+            int inform = 0;
+            integrator.MVTDST(Dimension, _degreesOfFreedom, lower, upper, infin, correl, _maxEvaluations, _absoluteError, _relativeError, ref error, ref value, ref inform);
+            return value;
         }
 
         /// <summary>
@@ -600,7 +697,30 @@ namespace Numerics.Distributions
         /// </remarks>
         public double[,] GenerateRandomValues(int sampleSize, int seed = -1)
         {
-            var rnd = seed > 0 ? new MersenneTwister(seed) : new MersenneTwister();
+            return GenerateRandomValues(sampleSize, seed > 0 ? new MersenneTwister(seed) : new MersenneTwister());
+        }
+
+        /// <summary>
+        /// Generate a matrix of random values from the multivariate Student's t-distribution, drawing from a
+        /// supplied generator.
+        /// </summary>
+        /// <param name="sampleSize">Size of random sample to generate.</param>
+        /// <param name="random">The generator. Each row draws <see cref="Dimension"/> values for the normal
+        /// component and then one for the χ²(ν) mixing variate.</param>
+        /// <returns>
+        /// A 2D array of random values. The number of rows equals the sample size.
+        /// The number of columns equals the dimension of the distribution.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="random"/> is null.</exception>
+        /// <remarks>
+        /// The sample is a deterministic function of the generator state, with no clock fallback. Passing
+        /// <c>new MersenneTwister(seed)</c> with a positive seed reproduces
+        /// <see cref="GenerateRandomValues(int, int)"/> with that seed exactly.
+        /// </remarks>
+        public double[,] GenerateRandomValues(int sampleSize, Random random)
+        {
+            if (random == null) throw new ArgumentNullException(nameof(random));
+            var rnd = random;
             var sample = new double[sampleSize, Dimension];
 
             // Use Gamma(ν/2, 2) to generate χ²(ν) variates, supporting non-integer ν
@@ -791,6 +911,9 @@ namespace Numerics.Distributions
                 _cholesky = new CholeskyDecomposition(this._scaleMatrix.Clone()),
                 _lnconstant = this._lnconstant,
                 _MVNUNI = this._MVNUNI,
+                _maxEvaluations = this._maxEvaluations,
+                _absoluteError = this._absoluteError,
+                _relativeError = this._relativeError,
             };
             return clone;
         }

@@ -80,66 +80,256 @@ namespace Numerics.Distributions.Copulas
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// φ(t) = −ln(1 − (1 − t)^θ), evaluated as −Log1mExp(θ·Log1p(−t)), which keeps its relative accuracy near both
+        /// ends of [0, 1]; it is the independence generator −ln t at θ = 1.
+        /// </remarks>
         public override double Generator(double t)
         {
-            double a = 1.0d - t;
-            return -Math.Log(1.0d - Math.Sign(a) * Math.Pow(Math.Abs(a), Theta));
-        }
-
-        /// <inheritdoc/>
-        public override double GeneratorInverse(double t)
-        {
-            double a = 1.0d - Math.Exp(-t);
-            return 1.0d - Math.Sign(a) * Math.Pow(Math.Abs(a), 1.0d / Theta);
-        }
-
-        /// <inheritdoc/>
-        public override double GeneratorPrime(double t)
-        {
-            double a = 1.0d - t;
-            return -(Theta * Math.Sign(a) * Math.Pow(Math.Abs(a), Theta - 1.0d)) / (1.0d - Math.Sign(a) * Math.Pow(Math.Abs(a), Theta));
-        }
-
-        /// <inheritdoc/>
-        public override double GeneratorPrime2(double t)
-        {
-            double a = 1.0d - t;
-            double num = Theta * (Theta + Math.Sign(a) * Math.Pow(Math.Abs(a), Theta) - 1.0d) * Math.Sign(a) * Math.Pow(Math.Abs(a), Theta - 2.0d);
-            double aa = 1.0d - Math.Sign(a) * Math.Pow(Math.Abs(a), Theta);
-            double den = Math.Sign(aa) * Math.Pow(Math.Abs(aa), 2d);
-            return num / den;
-        }
-
-        /// <inheritdoc/>
-        public override double GeneratorPrimeInverse(double t)
-        {
-            return Brent.Solve(x => GeneratorPrime(x) - t, 0d, 1d);
+            return -Tools.Log1mExp(Theta * Tools.Log1p(-t));
         }
 
         /// <inheritdoc/>
         /// <remarks>
-        /// The Joe conditional has no closed-form inverse, so the conditional probability
-        /// function h(x|u) = (1−u)^(θ−1)·[1 − (1−x)^θ]·A^(1/θ−1),
-        /// A = (1−u)^θ + (1−x)^θ − (1−u)^θ(1−x)^θ, is inverted numerically with Brent's
-        /// method on x ∈ [0, 1]. In exact arithmetic h(1|u) = 1, but the floating-point
-        /// evaluation can round below 1, so a conditional probability within rounding distance
-        /// of 1 would otherwise leave the bracket without a sign change; the inverse saturates
-        /// at the boundary there.
+        /// φ⁻¹(s) = 1 − (1 − e^(−s))^(1/θ) = −Expm1(y) with y = ln(1 − e^(−s))/θ. Below s = ln 2 the logarithm is
+        /// ln(2·sinh(s/2)) − s/2, a sum of two terms of one sign, and above it Log1p(−e^(−s)). Where y ≥ −1/2 the
+        /// result is −2τ/(1 − τ) with τ = tanh(y/2), which keeps its relative accuracy for small y (and −y below 1E-300 in
+        /// magnitude), and otherwise 1 − e^y.
+        /// </remarks>
+        public override double GeneratorInverse(double t)
+        {
+            double logW = t < Ln2 ? Math.Log(2d * Math.Sinh(0.5d * t)) - 0.5d * t : Tools.Log1p(-Math.Exp(-t));
+            double y = logW / Theta;
+            if (y < -0.5d) return 1d - Math.Exp(y);
+            // Below 1E-300 in magnitude 1 − e^y = −y, which keeps a subnormal y exact.
+            if (y > -1E-300d) return -y;
+            // 1 − e^y = −2·tanh(y/2)/(1 − tanh(y/2)).
+            double tau = Math.Tanh(0.5d * y);
+            return -2d * tau / (1d - tau);
+        }
+
+        /// <summary>The natural logarithm of 2.</summary>
+        private const double Ln2 = 0.69314718055994530942d;
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// φ′(t) = −θ(1 − t)^(θ−1)/(1 − (1 − t)^θ), with the power p = (1 − t)^(θ−1) formed from Log1p(−t). With
+        /// x = θ·Log1p(−t), the denominator is 1 − p·(1 − t) where x &lt; −1/2, and −2τ/(1 − τ) with τ = tanh(x/2)
+        /// otherwise, which keeps its relative accuracy for small t.
+        /// </remarks>
+        public override double GeneratorPrime(double t)
+        {
+            double theta = Theta;
+            double logBar = Tools.Log1p(-t);
+            double x = theta * logBar;
+            double power = Math.Exp((theta - 1d) * logBar);
+            double denominator;
+            if (x < -0.5d)
+            {
+                denominator = 1d - power * (1d - t);
+            }
+            else
+            {
+                // 1 − e^x = −2·tanh(x/2)/(1 − tanh(x/2)).
+                double tau = Math.Tanh(0.5d * x);
+                denominator = -2d * tau / (1d - tau);
+            }
+            return -theta * power / denominator;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// φ″(t) = θ(1 − t)^(θ−2)·((θ − 1) + (1 − t)^θ)/(1 − (1 − t)^θ)², with the powers formed from Log1p(−t).
+        /// </remarks>
+        public override double GeneratorPrime2(double t)
+        {
+            double theta = Theta;
+            double logBar = Tools.Log1p(-t);
+            double denominator = -Tools.Expm1(theta * logBar);
+            return theta * Math.Exp((theta - 2d) * logBar) * ((theta - 1d) + Math.Exp(theta * logBar)) / (denominator * denominator);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Solves φ′(t) = s for t. With x = −ln(1 − t) the equation is (θ − 1)·x + ln(1 − e^(−θx)) = ln(−θ/s); in
+        /// z = ln x the left side is increasing, and a safeguarded Newton iteration from the small-x and large-x
+        /// approximations converges to full precision in a few steps; t = −Expm1(−x). Each step evaluates the function
+        /// and its slope from one pair of exponentials: with a = θx and q = e^(−a), ln(1 − q) is Log1p(−q) above
+        /// a = ln 2 and, below it, q and 1 − q come from τ = tanh(a/2) as (1 − τ)/(1 + τ) and 2τ/(1 + τ). At θ = 1 the
+        /// closed form −1/s is used. Slopes at or above φ′(1) = 0 return 1.
+        /// </remarks>
+        public override double GeneratorPrimeInverse(double t)
+        {
+            double theta = Theta;
+            if (!(t < 0d)) return t >= 0d ? 1d : double.NaN;
+            if (theta == 1d) return Math.Min(1d, -1d / t);
+            double c = Math.Log(theta) - Math.Log(-t);
+            double small = -1d / t, large = c / (theta - 1d);
+            // The small-x root −1/s overshoots when x is large, and the large-x root c/(θ − 1) when x is small, so the
+            // smaller positive one starts nearer.
+            double start = Math.Log(large > 0d ? Math.Min(small, large) : small);
+            double z = SolveIncreasing(w =>
+            {
+                double x = Math.Exp(w), a = theta * x, q, oneMinusQ, logOneMinusQ;
+                if (a > Ln2)
+                {
+                    q = Math.Exp(-a);
+                    oneMinusQ = 1d - q;
+                    logOneMinusQ = Tools.Log1p(-q);
+                }
+                else if (a < 1E-300d)
+                {
+                    // 1 − e^(−a) = a to double precision, which keeps a subnormal a exact.
+                    q = 1d;
+                    oneMinusQ = a;
+                    logOneMinusQ = Math.Log(a);
+                }
+                else
+                {
+                    // e^(−a) = (1 − τ)/(1 + τ) with τ = tanh(a/2), so 1 − e^(−a) = 2τ/(1 + τ) keeps its relative accuracy.
+                    double tau = Math.Tanh(0.5d * a), scale = 1d / (1d + tau);
+                    q = (1d - tau) * scale;
+                    oneMinusQ = 2d * tau * scale;
+                    logOneMinusQ = Math.Log(oneMinusQ);
+                }
+                // The slope in z is x·((θ − 1) + θ/Expm1(θx)) = (θ − 1)·x + a·q/(1 − q).
+                return ((theta - 1d) * x + logOneMinusQ - c, (theta - 1d) * x + a * q / oneMinusQ);
+            }, start);
+            return -Tools.Expm1(-Math.Exp(z));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Inside the open unit square the density is <c>Math.Exp(LogPDF(u, v))</c>, so it shares the log-space
+        /// evaluation of <see cref="LogPDF(double, double)"/>. On the boundary and outside the square the generic
+        /// Archimedean density of the base class is returned.
+        /// </remarks>
+        public override double PDF(double u, double v)
+        {
+            if (!(u > 0d && u < 1d && v > 0d && v < 1d)) return base.PDF(u, v);
+            return Math.Exp(LogPDF(u, v));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// The Joe density c(u,v) = A^(1/θ−2)·(1−u)^(θ−1)·(1−v)^(θ−1)·(θ − 1 + A), with
+        /// A = (1−u)^θ + (1−v)^θ − (1−u)^θ(1−v)^θ (Joe, 1997), is evaluated in log space:
+        /// ln(1−u) and ln(1−v) come from Log1p, and ln A = h + Log1p(e^(l−h)·(1 − e^h)), where h ≥ l are
+        /// θ·ln(1−u) and θ·ln(1−v). The powers of 1−u and 1−v never form, so the log density stays finite
+        /// for every θ ≥ 1 and every u and v strictly inside the unit square.
+        /// </para>
+        /// <para>
+        /// On the boundary and outside the square the log of the generic Archimedean density is returned.
+        /// </para>
+        /// </remarks>
+        public override double LogPDF(double u, double v)
+        {
+            if (_parametersValid == false) ValidateParameter(Theta, true);
+            if (!(u > 0d && u < 1d && v > 0d && v < 1d)) return base.LogPDF(u, v);
+            double theta = Theta;
+            double logUBar = Tools.Log1p(-u), logVBar = Tools.Log1p(-v);
+            double logA = LogA(theta, logUBar, logVBar);
+            return (1d / theta - 2d) * logA + (theta - 1d) * (logUBar + logVBar) + Math.Log(theta - 1d + Math.Exp(logA));
+        }
+
+        /// <summary>
+        /// Returns ln A for A = (1−u)^θ + (1−v)^θ − (1−u)^θ(1−v)^θ, given ln(1−u) and ln(1−v).
+        /// </summary>
+        /// <param name="theta">The dependency parameter.</param>
+        /// <param name="logUBar">ln(1 − u).</param>
+        /// <param name="logVBar">ln(1 − v).</param>
+        /// <returns>The log of A.</returns>
+        /// <remarks>
+        /// With h ≥ l the two values θ·ln(1−u) and θ·ln(1−v), ln A = h + Log1p(e^(l−h)·(1 − e^h)), so the powers never form.
+        /// </remarks>
+        private static double LogA(double theta, double logUBar, double logVBar)
+        {
+            double high = Math.Max(theta * logUBar, theta * logVBar);
+            double low = Math.Min(theta * logUBar, theta * logVBar);
+            return high + Tools.Log1p(Math.Exp(low - high) * -Tools.Expm1(high));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The closed form h(v|u) = (1−u)^(θ−1)·[1 − (1−v)^θ]·A^(1/θ−1), evaluated in log space inside the unit square as
+        /// exp(<see cref="LogConditionalCDF(double, double)"/>).
+        /// Unlike the generic ratio φ′(u)/φ′(C(u,v)), it does not pass through the rounded C, which loses relative accuracy
+        /// where C is close to 1. On the boundary the generic conditional is returned.
+        /// </remarks>
+        public override double ConditionalCDF(double u, double v)
+        {
+            if (_parametersValid == false) ValidateParameter(Theta, true);
+            if (v == 0d) return 0d;
+            if (v == 1d) return 1d;
+            if (!(u > 0d && u < 1d && v > 0d && v < 1d)) return base.ConditionalCDF(u, v);
+            return Math.Exp(LogConditionalCDF(u, v));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Inside the unit square the conditional and the density share ln(1−u), ln(1−v) and ln(1 + r), computed once:
+        /// ln A = ln a + ln(1 + r) gives the density (1/θ − 2)·ln A + (θ − 1)·(ln(1−u) + ln(1−v)) + ln(θ − 1 + A).
+        /// </remarks>
+        protected override double LogConditionalAndDensity(double u, double v, out double density)
+        {
+            if (!(u > 0d && u < 1d && v > 0d && v < 1d)) return base.LogConditionalAndDensity(u, v, out density);
+            double theta = Theta;
+            double logUBar = Tools.Log1p(-u), logVBar = Tools.Log1p(-v);
+            double logA = theta * logUBar, logB = theta * logVBar;
+            double logR = logB - logA + Tools.Log1mExp(logA);
+            double log1pR = logR > 30d ? logR + Tools.Log1p(Math.Exp(-logR)) : Tools.Log1p(Math.Exp(logR));
+            double logBigA = logA + log1pR;
+            density = Math.Exp((1d / theta - 2d) * logBigA + (theta - 1d) * (logUBar + logVBar) + Math.Log(theta - 1d + Math.Exp(logBigA)));
+            return Tools.Log1mExp(logB) - (1d - 1d / theta) * log1pR;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Inside the unit square, with a = (1−u)^θ, b = (1−v)^θ and r = b(1 − a)/a, the conditional is
+        /// h = (1 − b)·(1 + r)^(−(1 − 1/θ)), so ln h = Log1mExp(ln b) − (1 − 1/θ)·Log1p(r), evaluated from ln a and ln b;
+        /// both terms are small where h is close to 1, so 1 − h keeps its relative accuracy. Elsewhere it is the log of
+        /// the conditional.
+        /// </remarks>
+        protected override double LogConditionalCDF(double u, double v)
+        {
+            if (!(u > 0d && u < 1d && v > 0d && v < 1d)) return Math.Log(ConditionalCDF(u, v));
+            double theta = Theta;
+            double logA = theta * Tools.Log1p(-u), logB = theta * Tools.Log1p(-v);
+            // h = (1 − b)·(1 + r)^(−(1 − 1/θ)) with a = (1−u)^θ, b = (1−v)^θ and r = b(1 − a)/a, so ln h is a sum of two
+            // terms that are both small where h is close to 1.
+            double logR = logB - logA + Tools.Log1mExp(logA);
+            double log1pR = logR > 30d ? logR + Tools.Log1p(Math.Exp(-logR)) : Tools.Log1p(Math.Exp(logR));
+            return Tools.Log1mExp(logB) - (1d - 1d / theta) * log1pR;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The Joe conditional has no closed-form inverse, so the closed-form conditional
+        /// <see cref="ConditionalCDF(double, double)"/> is inverted with a safeguarded Newton iteration whose derivative is
+        /// the density, started at v = t (see <see cref="ArchimedeanCopula.InvertConditionalCDF(double, double, double)"/>),
+        /// to full double precision. For 0 &lt; u &lt; 1, t ≤ 0 returns 0 and t ≥ 1 returns 1. The iteration evaluates this class's closed forms
+        /// through <see cref="LogConditionalAndDensity(double, double, out double)"/>, so a subclass that overrides
+        /// <see cref="ConditionalCDF(double, double)"/> or <see cref="PDF(double, double)"/> must override it as well.
+        /// At u = 0 the conditional is h(x|0) = 1 − (1−x)^θ, so the inverse is 1 − (1−t)^(1/θ), evaluated as
+        /// −Expm1(Log1p(−t)/θ) to keep its relative accuracy for small t. At u = 1, where h
+        /// is not defined, the inverse is its limit: for θ > 1 and 0 &lt; t &lt; 1, h(x|u) tends to 0 for every
+        /// 0 &lt; x &lt; 1, so the inverse tends to 1; at θ = 1, and for t = 0 or t = 1, it is t.
         /// </remarks>
         public override double InverseConditionalCDF(double u, double t)
         {
             // Validate parameters
             if (_parametersValid == false) ValidateParameter(Theta, true);
-
-            // Use conditional probability function
-            double p = t;
-            Func<double, double> f = x =>
+            if (u == 0d) return -Tools.Expm1(Tools.Log1p(-t) / Theta);
+            if (u == 1d)
             {
-                double vu = -(Math.Pow(1d - x, Theta) - 1d) * Math.Pow(Math.Pow(1d - u, Theta) - Math.Pow(1d - u, Theta) * Math.Pow(1d - x, Theta) + Math.Pow(1d - x, Theta), (-Theta + 1d) / Theta) * Math.Pow(1d - u, Theta - 1d);
-                return vu - p;
-            };
-            if (f(1d) <= 0d) return 1d;
-            return Brent.Solve(f, 0d, 1d);
+                if (Theta == 1d || !(t > 0d && t < 1d)) return t;
+                return 1d;
+            }
+
+            if (!(t > 0d && t < 1d)) return t >= 1d ? 1d : t <= 0d ? 0d : double.NaN;
+            if (Theta == 1d) return t;
+            return InvertConditionalCDF(u, t, t);
         }
 
         /// <inheritdoc/>

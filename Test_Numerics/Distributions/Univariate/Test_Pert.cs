@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
 namespace Distributions.Univariate
@@ -276,6 +277,85 @@ namespace Distributions.Univariate
             {
                 Assert.AreEqual(value, distribution.InverseCDF(probability));
             }
+        }
+
+        /// <summary>
+        /// The median is the exact Beta median, not the (a + 6c + b) / 8 approximation.
+        /// </summary>
+        [TestMethod]
+        public void Test_Median_ExactBetaMedian()
+        {
+            // scipy.stats.beta(1.4, 4.6, loc=0, scale=1).median()
+            var p1 = new Pert(0d, 0.1d, 1d);
+            Assert.AreEqual(0.20266485036146611, p1.Median, 1E-12 * 0.20266485036146611);
+            Assert.AreEqual(p1.InverseCDF(0.5d), p1.Median, 0d);
+
+            // scipy.stats.beta(1, 5, loc=0, scale=1).median()
+            var p2 = new Pert(0d, 0d, 1d);
+            Assert.AreEqual(0.12944943670387585, p2.Median, 1E-12 * 0.12944943670387585);
+
+            // scipy.stats.beta(3, 3, loc=0, scale=1).median()
+            Assert.AreEqual(0.5d, new Pert().Median, 1E-15);
+
+            // Shifted and scaled: scipy.stats.beta(1.4, 4.6, loc=10, scale=20).median()
+            var p3 = new Pert(10d, 12d, 30d);
+            Assert.AreEqual(10d + 20d * 0.20266485036146611, p3.Median, 1E-12 * 14.053297007229322);
+        }
+
+        /// <summary>
+        /// MLE succeeds when the sample minimum is exactly zero, where the established bounds collapse to zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pert_MLE_ZeroSampleMinimum()
+        {
+            var sample = new double[] { 0, 1, 2, 2.5, 3, 4, 5, 6, 8, 9 };
+            var constraints = new Pert().GetParameterConstraints(sample);
+            // S = max(|0|, |9|, 9) = 9, bound = 10^(ceil(log10 9) + 1) = 100; initial mode = (6 * mean - max - min) / 4 = 3.825
+            CollectionAssert.AreEqual(new double[] { -Numerics.Tools.DoubleMachineEpsilon, (Numerics.Tools.Mean(sample) * 6d - 9d - 0d) / 4d, 9 + Numerics.Tools.DoubleMachineEpsilon }, constraints.Item1);
+            CollectionAssert.AreEqual(new double[] { -100, 0, 9 }, constraints.Item2);
+            CollectionAssert.AreEqual(new double[] { 0, 9, 100 }, constraints.Item3);
+
+            var fit = new Pert();
+            fit.Estimate(sample, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.IsTrue(fit.ParametersValid);
+            Assert.IsTrue(fit.Min <= 0d && fit.Max >= 9d);
+            double logLH = fit.LogLikelihood(sample);
+
+            // The same sample shifted by one uses the established bounds; the likelihood is translation invariant.
+            var shifted = new double[sample.Length];
+            for (int i = 0; i < sample.Length; i++) shifted[i] = sample[i] + 1d;
+            var shiftedFit = new Pert();
+            shiftedFit.Estimate(shifted, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(shiftedFit.LogLikelihood(shifted), logLH, 1E-6);
+        }
+
+        /// <summary>
+        /// Samples whose established bounds contain the initial values keep exactly those constraints.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pert_ParameterConstraints_NonZeroSampleMatchesFormula()
+        {
+            var sample = new double[] { 1, 2, 3, 3.5, 4, 5, 6, 7, 9, 10 };
+            double min = 1, max = 10, mean = Numerics.Tools.Mean(sample);
+            var constraints = new Pert().GetParameterConstraints(sample);
+            CollectionAssert.AreEqual(new double[] { min - Numerics.Tools.DoubleMachineEpsilon, (mean * 6d - max - min) / 4d, max + Numerics.Tools.DoubleMachineEpsilon }, constraints.Item1);
+            CollectionAssert.AreEqual(new double[] { -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(min)) + 1d)), min, max }, constraints.Item2);
+            CollectionAssert.AreEqual(new double[] { min, max, Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(max)) + 1d)) }, constraints.Item3);
+        }
+
+        /// <summary>
+        /// The method of percentiles returns the fixed-value PERT for a constant sample.
+        /// </summary>
+        [TestMethod]
+        public void Test_Pert_MethodOfPercentiles_ConstantSample()
+        {
+            var fit = new Pert();
+            fit.Estimate(new double[] { 3, 3, 3, 3 }, ParameterEstimationMethod.MethodOfPercentiles);
+            Assert.IsTrue(fit.ParametersValid);
+            Assert.AreEqual(3d, fit.Min);
+            Assert.AreEqual(3d, fit.MostLikely);
+            Assert.AreEqual(3d, fit.Max);
+            Assert.AreEqual(3d, fit.InverseCDF(0.5));
         }
     }
 }

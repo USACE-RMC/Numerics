@@ -190,7 +190,7 @@ namespace Numerics.Sampling.MCMC
                 acfs[i] = ParameterResults[i].Autocorrelation;
             }
 
-            // Recompute (replaces ParameterResults[] and PosteriorMean — Output untouched)
+            // Recompute (replaces ParameterResults[] and PosteriorMean; Output untouched)
             ProcessParameterResults(alpha);
 
             // Restore preserved diagnostics

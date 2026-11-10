@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using Numerics.Data;
 using Numerics.Distributions;
 using System.Collections.Generic;
@@ -314,5 +315,91 @@ namespace Data.PairedData
             Assert.AreEqual(50d, mean.GetYFromX(5d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-10);
             Assert.AreEqual(-40d, mean.GetYFromX(-4d, Transform.None, Transform.None, ExtrapolationSides.Both), 1E-10);
         }
+        /// <summary>
+        /// GetErrors probes the mean like IsValid, so an invalid skewed pair has a message. The GEV pair has decreasing
+        /// means and increasing medians and tails, so GetErrors must report an error for it.
+        /// </summary>
+        [TestMethod]
+        public void Test_GetErrors_ProbesMean()
+        {
+            var a = new GeneralizedExtremeValue(10, 1, -0.028315803840903486);
+            var b = new GeneralizedExtremeValue(10.322463024092123, 0.24028996268300806, -0.29680008748397235);
+            Assert.IsGreaterThan(b.Mean, a.Mean);
+            Assert.IsLessThan(b.InverseCDF(0.5), a.InverseCDF(0.5));
+            var data = new UncertainOrderedPairedData(new double[] { 0, 1 }, new UnivariateDistributionBase[] { a, b }, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.GeneralizedExtremeValue);
+            Assert.IsFalse(data.IsValid);
+            Assert.IsNotEmpty(data.GetErrors());
+            Assert.IsFalse(data[0].OrdinateValid(data[1], true, true, SortOrder.Ascending, SortOrder.Ascending, true));
+            Assert.IsNotEmpty(data[0].OrdinateErrors(data[1], true, true, SortOrder.Ascending, SortOrder.Ascending, true));
+        }
+
+        /// <summary>
+        /// The opt-in tail probe catches a pair that is monotone at 1E-5 but crosses at 1 - 1E-12, keeps the default
+        /// result when unset, survives Clone and XML, and rejects invalid probabilities.
+        /// </summary>
+        [TestMethod]
+        public void Test_ValidationTailProbability()
+        {
+            var data = new UncertainOrderedPairedData(new double[] { 0, 1 }, new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(4.6, 0.1) }, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Normal);
+            Assert.IsTrue(double.IsNaN(data.ValidationTailProbability));
+            Assert.IsTrue(data.IsValid);
+            Assert.IsFalse(data.CurveSample(1 - 1E-12).IsValid);
+
+            data.ValidationTailProbability = 1E-12;
+            Assert.IsFalse(data.IsValid);
+            Assert.IsNotEmpty(data.GetErrors());
+
+            var clone = data.Clone();
+            Assert.AreEqual(1E-12, clone.ValidationTailProbability);
+            Assert.IsFalse(clone.IsValid);
+            var xml = data.SaveToXElement();
+            var restored = new UncertainOrderedPairedData(xml);
+            Assert.AreEqual(1E-12, restored.ValidationTailProbability);
+            Assert.IsFalse(restored.IsValid);
+
+            data.ValidationTailProbability = double.NaN;
+            Assert.IsTrue(data.IsValid);
+            Assert.IsNull(data.SaveToXElement().Attribute(nameof(UncertainOrderedPairedData.ValidationTailProbability)));
+
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => data.ValidationTailProbability = 0.5);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => data.ValidationTailProbability = 0);
+        }
+
+        /// <summary>
+        /// A single invalid ordinate, or an invalid last ordinate added with Add, makes the data invalid.
+        /// </summary>
+        [TestMethod]
+        public void Test_IsValid_InvalidLastOrdinate()
+        {
+            var single = new UncertainOrderedPairedData(new double[] { double.NaN }, new UnivariateDistributionBase[] { new Normal(0, 1) }, true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Normal);
+            Assert.IsFalse(single.IsValid);
+
+            var data = new UncertainOrderedPairedData(true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Normal);
+            data.Add(new UncertainOrdinate(0, new Normal(0, 1)));
+            Assert.IsTrue(data.IsValid);
+            data.Add(new UncertainOrdinate(double.PositiveInfinity, new Normal(5, 1)));
+            Assert.IsFalse(data.IsValid);
+            data.Validate();
+            Assert.IsFalse(data.IsValid, "A full validation agrees.");
+        }
+
+        /// <summary>
+        /// Clone keeps AllowDifferentDistributionTypes, so a valid mixed-type curve stays valid.
+        /// </summary>
+        [TestMethod]
+        public void Test_Clone_KeepsAllowDifferentDistributionTypes()
+        {
+            var data = new UncertainOrderedPairedData(true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Normal);
+            data.AllowDifferentDistributionTypes = true;
+            data.Add(new UncertainOrdinate(0, new Normal(0, 1)));
+            data.Add(new UncertainOrdinate(1, new Uniform(10, 12)));
+            Assert.IsTrue(data.IsValid);
+            var clone = data.Clone();
+            Assert.IsTrue(clone.AllowDifferentDistributionTypes);
+            Assert.IsTrue(clone.IsValid);
+            clone.Validate();
+            Assert.IsTrue(clone.IsValid);
+        }
+
     }
 }

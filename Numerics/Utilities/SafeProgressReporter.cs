@@ -10,6 +10,17 @@ namespace Numerics.Utilities
     /// </summary>
     /// <remarks>
     /// <para>
+    ///     "Thread-safe" here means that progress and message events are posted to the
+    ///     <see cref="SynchronizationContext"/> captured when the reporter is constructed (for
+    ///     example the UI thread), so handlers never run on a worker thread. A reporter constructed
+    ///     where <see cref="SynchronizationContext.Current"/> is null (console applications, tests,
+    ///     worker threads) raises no events. Each reporter expects one reporting thread: concurrent
+    ///     calls to <see cref="ReportProgress(double)"/> on the same instance are not atomic, so the
+    ///     posted previous-progress values, and the progress a parent aggregates from them, can be
+    ///     stale. Give each parallel task its own child reporter from
+    ///     <see cref="CreateProgressModifier(float, string)"/>.
+    /// </para>
+    /// <para>
     ///     Authors:
     ///     This class was co-developed by Alex Kennedy and Woodrow Fields. Credit to initial implementation and idea goes to Alex.
     ///     Converted to C# and partially documented by Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil

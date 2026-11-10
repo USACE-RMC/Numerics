@@ -48,6 +48,7 @@ namespace Numerics.Sampling.MCMC
         private Matrix sigmaIdentity = null!;
         private RunningCovarianceMatrix[] sigma = null!;
         private MultivariateNormal[] mvn = null!;
+        private MultivariateNormal[] mvnIdentity = null!;
 
         /// <summary>
         /// The scaling parameter used to scale the adaptive covariance matrix.
@@ -91,11 +92,17 @@ namespace Numerics.Sampling.MCMC
             // Set up multivariate Normal distributions and 
             // adaptive covariance matrix for each chain
             mvn = new MultivariateNormal[NumberOfChains];
+            mvnIdentity = new MultivariateNormal[NumberOfChains];
             sigma = new RunningCovarianceMatrix[NumberOfChains];
             for (int i = 0; i < NumberOfChains; i++)
             {
                 mvn[i] = new MultivariateNormal(NumberOfParameters);
                 sigma[i] = new RunningCovarianceMatrix(NumberOfParameters);
+
+                // The scaled identity proposal never changes, so it is factorized once here and
+                // ChainIteration only translates its mean.
+                mvnIdentity[i] = new MultivariateNormal(NumberOfParameters);
+                mvnIdentity[i].SetParameters(new double[NumberOfParameters], sigmaIdentity.Array);
 
                 if (Initialize == InitializationType.MAP && _mapSuccessful && _MVN != null)
                 {
@@ -118,20 +125,23 @@ namespace Numerics.Sampling.MCMC
             // Update the sample count
             SampleCount[index] += 1;
 
+            MultivariateNormal proposal;
             if (_chainPRNGs[index].NextDouble() <= Beta || SampleCount[index] <= 100 * NumberOfParameters)
             {
                 // Use the identity matrix the first 100*D samples
-                mvn[index].SetParameters(state.Values, sigmaIdentity.Array);
+                proposal = mvnIdentity[index];
+                proposal.SetMean(state.Values);
             }
             else
             {
                 // Use the adaptive covariance matrix
                 var proposalCov = sigma[index].Covariance * (Scale / (sigma[index].N - 1));
-                mvn[index].SetParameters(state.Values, proposalCov.Array);
+                proposal = mvn[index];
+                proposal.SetParameters(state.Values, proposalCov.Array);
             }
 
             // Get proposal vector
-            var xp = mvn[index].InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
+            var xp = proposal.InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
 
             // Determine whether the proposal is feasible before evaluating the target.
             bool isFeasible = true;
@@ -149,7 +159,7 @@ namespace Numerics.Sampling.MCMC
             {
                 double proposedLogLikelihood = LogLikelihoodFunction(xp);
                 double logRatio = proposedLogLikelihood - state.Fitness;
-                double logUniform = Math.Log(_chainPRNGs[index].NextDouble());
+                double logUniform = Math.Log(NextPositiveUniform(_chainPRNGs[index]));
                 if (logUniform <= logRatio)
                 {
                     AcceptCount[index] += 1;

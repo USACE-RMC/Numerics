@@ -11,8 +11,14 @@ namespace Numerics.Functions
     ///     Domain: x &gt; 0. h(x) = log(x), h&#8315;&#185;(&#951;) = exp(&#951;), h&#8242;(x) = 1/x.
     /// </para>
     /// <para>
-    ///     The log link is the canonical link for the Poisson and Exponential GLM families.
+    ///     The log link is the canonical link for the Poisson GLM family.
     ///     It is commonly used for scale parameters that must remain positive.
+    /// </para>
+    /// <para>
+    ///     Inputs inside the domain are clamped to x &#8805; 1e-12 before the link and its
+    ///     derivative are evaluated, so the round trip h&#8315;&#185;(h(x)) returns the clamp bound
+    ///     for x closer to the boundary than 1e-12, and <see cref="DLink(double)"/> returns the
+    ///     derivative at the bound.
     /// </para>
     /// <para>
     ///     <b> Authors: </b>

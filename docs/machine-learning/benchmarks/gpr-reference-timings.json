@@ -1,0 +1,75 @@
+{
+ "processor": "Intel Core Ultra 9 185H, 16 cores / 22 threads, Windows 11",
+ "d": 10,
+ "m": 1000,
+ "scikit-learn": {
+  "sklearn": "1.8.0",
+  "numpy": "2.4.2",
+  "scipy": "1.17.1",
+  "python": "3.14.3",
+  "blas": "scipy-openblas 0.3.31.dev"
+ },
+ "DiceKriging": {
+  "DiceKriging": "1.6.1",
+  "R": "4.4.3",
+  "blas": "R reference BLAS"
+ },
+ "sizes": [
+  {
+   "n": 100,
+   "reps": 5,
+   "scikit-learn": {
+    "fitSeconds": 0.26133949984796345,
+    "predictSeconds": 0.0035202999133616686,
+    "reps": 5
+   },
+   "DiceKriging": {
+    "fitSeconds": 0.6,
+    "predictSeconds": 0.0600000000000001,
+    "reps": 5
+   }
+  },
+  {
+   "n": 500,
+   "reps": 5,
+   "scikit-learn": {
+    "fitSeconds": 5.264460799982771,
+    "predictSeconds": 0.02111440012231469,
+    "reps": 3
+   },
+   "DiceKriging": {
+    "fitSeconds": 16.72,
+    "predictSeconds": 0.340000000000003,
+    "reps": 3
+   }
+  },
+  {
+   "n": 1000,
+   "reps": 5,
+   "scikit-learn": {
+    "fitSeconds": 31.263215499930084,
+    "predictSeconds": 0.04060499998740852,
+    "reps": 3
+   },
+   "DiceKriging": {
+    "fitSeconds": 110.97,
+    "predictSeconds": 0.72999999999999,
+    "reps": 1
+   }
+  },
+  {
+   "n": 2000,
+   "reps": 5,
+   "scikit-learn": {
+    "fitSeconds": 135.71931940014474,
+    "predictSeconds": 0.09873339999467134,
+    "reps": 1
+   },
+   "DiceKriging": {
+    "fitSeconds": 2085.86,
+    "predictSeconds": 41,
+    "reps": 1
+   }
+  }
+ ]
+}

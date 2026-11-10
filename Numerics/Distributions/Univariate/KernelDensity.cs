@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Numerics.Data;
 using Numerics.Data.Statistics;
-using Numerics.Mathematics.Optimization;
 using Numerics.Sampling;
 
 namespace Numerics.Distributions
@@ -150,7 +149,7 @@ namespace Numerics.Distributions
 
         /// <summary>
         /// The number of accumulation chunks used by the density reduction. Fixed, not derived from the
-        /// processor count, so the summation order — and therefore the returned density — does not vary
+        /// processor count, so the summation order, and therefore the returned density, does not vary
         /// with the machine or the thread count.
         /// </summary>
         private const int ReductionChunks = 64;
@@ -348,14 +347,100 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// The global mode on [InverseCDF(0.001), InverseCDF(0.999)]. The density is first ranked on an equally spaced
+        /// grid of 65 to 4097 points, with spacing at most a quarter of the bandwidth below the cap, using the linearly binned estimate
+        /// (Wand, M. P., and Jones, M. C., 1995, Kernel Smoothing, Chapman &amp; Hall, https://doi.org/10.1201/b14876): the sample is binned onto the grid and convolved with the kernel, which costs
+        /// O(n + grid · bandwidth / spacing) instead of a full density evaluation per grid point. The grid peaks within
+        /// 0.9 of the highest are then polished with a bounded Brent search of the exact density over two grid cells,
+        /// and the polished point with the largest exact density is returned.
+        /// </para>
+        /// <para>
+        /// A peak narrower than the grid spacing, or one whose binned value is below 0.9 of the highest, can be missed;
+        /// at a quarter bandwidth the binned estimate is within a few percent of the exact one. When the range exceeds
+        /// 1024 bandwidths the 4097-point cap makes the spacing coarser than a quarter bandwidth, and the eight highest
+        /// binned peaks at or above half the binned maximum are then re-ranked by the exact density.
+        /// </para>
+        /// </remarks>
         public override double Mode
         {
             get
             {
-                var brent = new BrentSearch(PDF, InverseCDF(0.001), InverseCDF(0.999));
-                brent.Maximize();
-                return brent.BestParameterSet.Values[0];
+                double lower = InverseCDF(0.001), upper = InverseCDF(0.999);
+                if (!(upper > lower)) return lower;
+                double[] grid = BinnedGridDensity(lower, upper);
+                if ((upper - lower) / (grid.Length - 1) > 0.25d * Bandwidth)
+                {
+                    // The 4097-point cap binds, so the grid is coarser than a quarter bandwidth and the binned values can
+                    // misrank close peaks: the eight highest binned peaks at or above half the binned maximum are
+                    // re-ranked by the exact density, which costs O(n) each.
+                    double step = (upper - lower) / (grid.Length - 1);
+                    var peaks = new List<int>();
+                    double highest = 0d;
+                    for (int i = 0; i < grid.Length; i++)
+                    {
+                        bool left = i == 0 || grid[i] >= grid[i - 1];
+                        bool right = i == grid.Length - 1 || grid[i] > grid[i + 1];
+                        if (left && right) peaks.Add(i);
+                        if (grid[i] > highest) highest = grid[i];
+                    }
+                    peaks.Sort((a, b) => grid[b].CompareTo(grid[a]));
+                    var exact = (double[])grid.Clone();
+                    for (int k = 0; k < peaks.Count && k < 8 && grid[peaks[k]] >= 0.5d * highest; k++)
+                        exact[peaks[k]] = PDF(lower + peaks[k] * step);
+                    grid = exact;
+                }
+                return DistributionNumerics.GridMode(PDF, lower, upper, grid);
             }
+        }
+
+        /// <summary>
+        /// Returns the linearly binned kernel density estimate on an equally spaced grid over
+        /// [lower, upper] with spacing at most a quarter of the bandwidth.
+        /// </summary>
+        /// <param name="lower">The left end of the grid.</param>
+        /// <param name="upper">The right end of the grid; greater than <paramref name="lower"/>.</param>
+        /// <returns>The binned density at the grid points, normalized as <see cref="PDF(double)"/> is.</returns>
+        /// <remarks>
+        /// Each sample point's weight is split between the two nearest bins of a bin grid that extends the density grid
+        /// by the kernel's reach (8 bandwidths for the Gaussian kernel, 1 for the compact kernels); points beyond it
+        /// cannot reach the density grid. The binned weights are then convolved with the kernel sampled at the bin
+        /// offsets.
+        /// </remarks>
+        private double[] BinnedGridDensity(double lower, double upper)
+        {
+            double h = Bandwidth;
+            int points = (int)Math.Min(4097d, Math.Max(65d, Math.Ceiling((upper - lower) / (0.25d * h)) + 1d));
+            double step = (upper - lower) / (points - 1);
+            double reach = _kernelDistribution == KernelType.Gaussian ? 8d : 1d;
+            int offset = (int)Math.Ceiling(reach * h / step);
+            int bins = points + 2 * offset;
+            double binLower = lower - offset * step;
+            var counts = new double[bins + 1];
+            for (int i = 0; i < _sampleData.Length; i++)
+            {
+                double position = (_sampleData[i] - binLower) / step;
+                if (!(position >= 0d && position <= bins - 1)) continue;
+                int k = (int)position;
+                double fraction = position - k;
+                double w = _weights == null ? 1d : _weights[i];
+                counts[k] += w * (1d - fraction);
+                counts[k + 1] += w * fraction;
+            }
+            var kernel = new double[2 * offset + 1];
+            for (int d = -offset; d <= offset; d++) kernel[d + offset] = _kernel.Function(d * step / h);
+            var density = new double[points];
+            // The same normalization as PDF, so binned and exact values are on one scale.
+            double scale = 1d / ((_weights == null ? _sampleData.Length : _sumW) * h);
+            for (int j = 0; j < points; j++)
+            {
+                double sum = 0d;
+                int center = j + offset;
+                for (int d = -offset; d <= offset; d++) sum += kernel[d + offset] * counts[center + d];
+                density[j] = sum * scale;
+            }
+            return density;
         }
 
         /// <inheritdoc/>
@@ -586,7 +671,7 @@ namespace Numerics.Distributions
         /// <param name="sample">The finite, nonempty sample used to obtain a fallback scale.</param>
         /// <returns>A finite, strictly positive bandwidth.</returns>
         /// <remarks>
-        /// A constant sample — including a single observation, whose sample dispersion is undefined —
+        /// A constant sample (including a single observation, whose sample dispersion is undefined)
         /// supports no spread estimate, so the density must not invent one from the constant's
         /// magnitude: the bandwidth is the magnitude times <see cref="DegenerateRelativeBandwidth"/>,
         /// a near-point mass at the observed value, falling back to
@@ -751,8 +836,8 @@ namespace Numerics.Distributions
         /// <remarks>
         /// The kernel contributions are accumulated over a fixed number of chunks and merged serially in
         /// chunk order, so the density is bit-reproducible run to run. A scheduler-dependent reduction
-        /// would let the last bits of the density — and with them <see cref="Mode"/> and the cached
-        /// interpolated CDF — vary between otherwise identical runs.
+        /// would let the last bits of the density (and with them <see cref="Mode"/> and the cached
+        /// interpolated CDF) vary between otherwise identical runs.
         /// </remarks>
         public override double PDF(double x)
         {

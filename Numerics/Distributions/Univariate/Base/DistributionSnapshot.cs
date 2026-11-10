@@ -16,7 +16,11 @@ namespace Numerics.Distributions
     /// table-backed families return <see langword="null"/> so their owners retain the generic
     /// canonical-string path. A bitwise match implies the canonical configuration string is
     /// unchanged; a mismatch falls back to the string comparison, which remains the deciding
-    /// authority, so incomplete capture can never invalidate correctly cached state.
+    /// authority. Capturing more than the canonical string records therefore costs at most a
+    /// string re-comparison. The converse does not hold: an unchanged string keeps cached
+    /// state, so the canonical string must itself record every setting that changes evaluated
+    /// values, including the logarithm base of the log families and the natural-log
+    /// coordinates of an <see cref="LnNormal"/> whose physical-moment surface is inactive.
     /// </remarks>
     internal sealed class DistributionSnapshot
     {

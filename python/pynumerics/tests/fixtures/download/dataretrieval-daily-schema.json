@@ -1,0 +1,77 @@
+{
+    "type":"object",
+    "title":"Daily values",
+    "properties":{
+        "geometry":{
+            "format":"geometry-any",
+            "x-ogc-role":"primary-geometry"
+        },
+        "time_series_id":{
+            "type":"string",
+            "title":"Time series ID",
+            "example":"6b0fefaa5f8a41a6b5907b31f2f4eb03",
+            "description":"A unique identifier representing a single time series. This corresponds to the `id` field in the `time-series-metadata` endpoint.\n"
+        },
+        "monitoring_location_id":{
+            "type":"string",
+            "title":"Monitoring location ID",
+            "example":"USGS-09380000",
+            "description":"A unique identifier representing a single monitoring location. This corresponds to the `id` field in the `monitoring-locations` endpoint. Monitoring location IDs are created by combining the agency code of the agency responsible for the monitoring location (e.g. USGS) with the ID number of the monitoring location (e.g. 02238500), separated by a hyphen (e.g. USGS-02238500).\n"
+        },
+        "parameter_code":{
+            "type":"string",
+            "title":"Parameter code",
+            "example":"00060",
+            "description":"Parameter codes are 5-digit codes used to identify the constituent measured and the units of measure. A complete list of parameter codes and associated groupings can be found at [https://api.waterdata.usgs.gov/ogcapi/v1/collections/parameter-codes/items](https://api.waterdata.usgs.gov/ogcapi/v1/collections/parameter-codes/items).\n"
+        },
+        "statistic_id":{
+            "type":"string",
+            "title":"Statistic ID",
+            "example":"00003",
+            "description":"A code corresponding to the statistic an observation represents. Example codes include 00001 (max), 00002 (min), and 00003 (mean). A complete list of codes and their descriptions can be found at [https://api.waterdata.usgs.gov/ogcapi/v1/collections/statistic-codes/items](https://api.waterdata.usgs.gov/ogcapi/v1/collections/statistic-codes/items).\n"
+        },
+        "time":{
+            "type":"string",
+            "title":"Time",
+            "example":"2024-06-15T14:00:00+00:00",
+            "description":"The date an observation represents. You can query this field using date-times or intervals, adhering to RFC 3339, or using ISO 8601 duration objects. Intervals may be bounded or half-bounded (double-dots at start or end).\nExamples:\n\n  - A date-time: \"2018-02-12T23:20:50Z\"\n  - A bounded interval: \"2018-02-12T00:00:00Z/2018-03-18T12:31:12Z\"\n  - Half-bounded intervals: \"2018-02-12T00:00:00Z/..\" or \"../2018-03-18T12:31:12Z\"\n  - Duration objects: \"P1M\" for data from the past month or \"PT36H\" for the last 36 hours\n\nOnly features that have a `time` that intersects the value of datetime are selected. If a feature has multiple temporal properties, it is the decision of the server whether only a single temporal property is used to determine the extent or all relevant temporal properties.\n",
+            "x-ogc-role":"primary-instant"
+        },
+        "value":{
+            "type":"string",
+            "title":"Value",
+            "example":"579.40",
+            "description":"The value of the observation. Values are transmitted as strings in the JSON response format in order to preserve precision.\n"
+        },
+        "unit_of_measure":{
+            "type":"string",
+            "title":"Unit of measure",
+            "example":"ft3/s",
+            "description":"A human-readable description of the units of measurement associated with an observation."
+        },
+        "approval_status":{
+            "type":"string",
+            "title":"Approval Status",
+            "example":"Approved",
+            "description":"Some of the data that you have obtained from this U.S. Geological Survey database may not have received Director's approval.  Any such data values are qualified as provisional and are subject to revision.  Provisional data are released on the condition that neither the USGS nor the United States Government may be held liable for any damages resulting from its use. This field reflects the approval status of each record, and is either \"Approved\", meaining processing review has been completed and the data is approved for publication, or \"Provisional\" and subject to revision. For more information about provisional data, go to [https://waterdata.usgs.gov/provisional-data-statement/](https://waterdata.usgs.gov/provisional-data-statement/).\n",
+            "enum":[
+                "Provisional",
+                "Approved"
+            ]
+        },
+        "qualifier":{
+            "type":"string",
+            "title":"Qualifier",
+            "example":"Ice",
+            "description":"This field indicates any qualifiers associated with an observation, for instance if a sensor may have been impacted by ice or if values were estimated.\n"
+        },
+        "last_modified":{
+            "type":"string",
+            "title":"Last modified date",
+            "example":"2025-06-16T14:13:28+00:00",
+            "description":"The last time a record was refreshed in our database. This may happen due to regular operational processes and does not necessarily indicate anything about the measurement has changed.\nYou can query this field using date-times or intervals, adhering to RFC 3339, or using ISO 8601 duration objects. Intervals may be bounded or half-bounded (double-dots at start or end).\nExamples:\n\n  - A date-time: \"2018-02-12T23:20:50Z\"\n  - A bounded interval: \"2018-02-12T00:00:00Z/2018-03-18T12:31:12Z\"\n  - Half-bounded intervals: \"2018-02-12T00:00:00Z/..\" or \"../2018-03-18T12:31:12Z\"\n  - Duration objects: \"P1M\" for data from the past month or \"PT36H\" for the last 36 hours\n\nOnly features that have a `last_modified` that intersects the value of datetime are selected.\n"
+        }
+    },
+    "$schema":"http://json-schema.org/draft/2019-09/schema",
+    "$id":"https://api.waterdata.usgs.gov/ogcapi/v1/collections/daily/schema"
+}

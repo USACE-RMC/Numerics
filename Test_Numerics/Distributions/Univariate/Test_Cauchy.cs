@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 
 namespace Distributions.Univariate
@@ -240,6 +241,71 @@ namespace Distributions.Univariate
             Assert.AreEqual(-312.76835, c2.InverseCDF(0.1), 1e-04);
             Assert.AreEqual(-77.65425, c2.InverseCDF(0.3), 1e-04);
             Assert.AreEqual(302.768353, c2.InverseCDF(0.9), 1e-04);
+        }
+
+        /// <summary>
+        /// Extreme quantiles keep full precision in both tails. Reference values from scipy.stats.cauchy.ppf and mpmath.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_Tails()
+        {
+            var c = new Cauchy();
+            Assert.AreEqual(-3.183098861837907e19, c.InverseCDF(1e-20), 1e5);
+            Assert.AreEqual(318316927901.77966, c.InverseCDF(1 - 1e-12), 1e-3);
+            Assert.AreEqual(0, c.InverseCDF(0.5));
+            Assert.AreEqual(double.NegativeInfinity, c.InverseCDF(0));
+            Assert.AreEqual(double.PositiveInfinity, c.InverseCDF(1));
+
+            var c2 = new Cauchy(100, 12);
+            Assert.AreEqual(100, c2.InverseCDF(0.5));
+            Assert.AreEqual(91.28148966393567, c2.InverseCDF(0.3), 1e-12);
+            Assert.AreEqual(116.51658304565409, c2.InverseCDF(0.8), 1e-12);
+        }
+
+        /// <summary>
+        /// CDF and CCDF keep full precision in the tails. Reference values from scipy.stats.cauchy.cdf, scipy.stats.cauchy.sf, and mpmath.
+        /// </summary>
+        [TestMethod()]
+        public void Test_CDF_CCDF_Tails()
+        {
+            var c = new Cauchy();
+            Assert.AreEqual(3.1830988618379065e-11, c.CDF(-1e10), 1e-25);
+            Assert.AreEqual(3.1830988618379065e-11, c.CCDF(1e10), 1e-25);
+            Assert.AreEqual(0.5, c.CDF(0));
+            Assert.AreEqual(0.5, c.CCDF(0));
+            Assert.AreEqual(0, c.CDF(double.NegativeInfinity));
+            Assert.AreEqual(1, c.CDF(double.PositiveInfinity));
+            Assert.AreEqual(0, c.CCDF(double.PositiveInfinity));
+            Assert.AreEqual(1, c.CCDF(double.NegativeInfinity));
+
+            var c2 = new Cauchy(100, 12);
+            Assert.AreEqual(0.27885793837630446, c2.CDF(90), 1e-15);
+            Assert.AreEqual(0.8788810584091566, c2.CDF(130), 1e-15);
+            Assert.AreEqual(0.12111894159084341, c2.CCDF(130), 1e-15);
+            Assert.AreEqual(0.7211420616236955, c2.CCDF(90), 1e-15);
+        }
+
+        /// <summary>
+        /// Setting the location revalidates the parameters.
+        /// </summary>
+        [TestMethod()]
+        public void Test_X0_SetterRevalidates()
+        {
+            var c = new Cauchy(0, 1);
+            c.X0 = double.NaN;
+            Assert.IsFalse(c.ParametersValid);
+            c.X0 = 5;
+            Assert.IsTrue(c.ParametersValid);
+        }
+
+        /// <summary>
+        /// InverseCDF rejects a NaN probability.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_NaNProbabilityThrows()
+        {
+            var c = new Cauchy();
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => c.InverseCDF(double.NaN));
         }
     }
 }

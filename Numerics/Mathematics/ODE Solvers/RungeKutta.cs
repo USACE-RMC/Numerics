@@ -157,9 +157,9 @@ namespace Numerics.Mathematics.ODESolvers
                 k4 = h * f(t + 12d / 13d * h, y + 1932d / 2197d * k1 - 7200d / 2197d * k2 + 7296d / 2197d * k3);
                 k5 = h * f(t + 1d / 1d * h, y + 439d / 216d * k1 - 8d * k2 + 3680d / 513d * k3 - 845d / 4104d * k4);
                 k6 = h * f(t + 1d / 2d * h, y - 8d / 27d * k1 + 2d * k2 - 3544d / 2565d * k3 + 1859d / 4104d * k4 - 11d / 40d * k5);
-                rk4 = y + 25d / 216d * k1 + 1408d / 2565d * k3 + 2197d / 4104d * k4 - 1d / 5d * k6;
+                rk4 = y + 25d / 216d * k1 + 1408d / 2565d * k3 + 2197d / 4104d * k4 - 1d / 5d * k5;
                 rk5 = y + 16d / 135d * k1 + 6656d / 12825d * k3 + 28561d / 56430d * k4 - 9d / 50d * k5 + 2d / 55d * k6;
-                error = Math.Max(minTolerance, Math.Abs(rk4 - rk5));
+                error = Math.Abs(rk4 - rk5);
 
                 // Check convergence
                 if (error <= tolerance || h <= dtMin)
@@ -224,9 +224,9 @@ namespace Numerics.Mathematics.ODESolvers
                 k4 = h * f(t + 3d / 5d * h, y + 3d / 10d * k1 - 9d / 10d * k2 + 6d / 5d * k3);
                 k5 = h * f(t + 1d / 1d * h, y - 11d / 54d * k1 + 5d / 2d * k2 - 70d / 27d * k3 + 35d / 27d * k4);
                 k6 = h * f(t + 7d / 8d * h, y + 1631d / 55296d * k1 + 175d / 512d * k2 + 575d / 13824d * k3 + 44275d / 110592d * k4 + 253d / 4096d * k5);
-                rk4 = y + 37d / 378d * k1 + 250d / 621d * k3 + 125d / 594d * k4 + 512d / 1771d * k6;
-                rk5 = y + 2825d / 27648d * k1 + 18575d / 48384d * k3 + 13525d / 55296d * k4 + 277d / 14336d * k5 + 1d / 4d * k6;
-                error = Math.Max(minTolerance, Math.Abs(rk4 - rk5));
+                rk5 = y + 37d / 378d * k1 + 250d / 621d * k3 + 125d / 594d * k4 + 512d / 1771d * k6;
+                rk4 = y + 2825d / 27648d * k1 + 18575d / 48384d * k3 + 13525d / 55296d * k4 + 277d / 14336d * k5 + 1d / 4d * k6;
+                error = Math.Abs(rk4 - rk5);
 
                 // Check convergence
                 if (error <= tolerance || h <= dtMin)

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Diagnostics; // keep to be able to uncomment and run Debug.WriteLine()
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
+using Numerics.Data.Statistics;
 using Numerics.Mathematics.LinearAlgebra;
 
 namespace Data.Regression
@@ -284,7 +285,7 @@ namespace Data.Regression
             {
                 for (int j = 0; j < 3; j++)
                 {
-                    Assert.AreEqual(trueY[i,j], testY[i,j], 1E-1);
+                    Assert.AreEqual(trueY[i,j], testY[i,j], 1E-6);
                 }
             }
         }
@@ -326,9 +327,77 @@ namespace Data.Regression
             {
                 for (int j = 0; j < 3; j++)
                 {
-                    Assert.AreEqual(trueY[i, j], testY[i, j], 1E-1);
+                    Assert.AreEqual(trueY[i, j], testY[i, j], 1E-6);
                 }
             }
+        }
+
+        /// <summary>
+        /// The ten-point fixture x = 1..10 used against R 4.4.3 lm(y ~ x).
+        /// </summary>
+        private static LinearRegression SmallFixture()
+        {
+            var x = new Matrix(new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }) { Header = new string[] { "xvar" } };
+            var y = new Vector(new double[] { 2.1, 3.9, 6.2, 7.8, 10.1, 12.2, 13.8, 16.1, 18.0, 20.3 }) { Header = "yvar" };
+            return new LinearRegression(x, y);
+        }
+
+        /// <summary>
+        /// The overall F test of the summary (intercept-only model against the fit) against R 4.4.3: F = 10625.280346820835
+        /// on 1 and 8 DF, pf(F, 1, 8, lower.tail = FALSE) = 8.763542658568975e-14.
+        /// </summary>
+        [TestMethod]
+        public void Test_SummaryFtest_R()
+        {
+            var lm = SmallFixture();
+            double sseF = lm.StandardError * lm.StandardError * lm.DegreesOfFreedom;
+            double mean = 0, sseR = 0;
+            for (int i = 0; i < lm.Y.Length; i++) mean += lm.Y[i];
+            mean /= lm.Y.Length;
+            for (int i = 0; i < lm.Y.Length; i++) sseR += (lm.Y[i] - mean) * (lm.Y[i] - mean);
+            HypothesisTests.FtestModels(sseR, sseF, lm.Y.Length - 1, lm.DegreesOfFreedom, out double f, out double p);
+            Assert.AreEqual(10625.280346820835, f, 1E-8);
+            Assert.AreEqual(8.763542658568975e-14, p, 8.763542658568975e-14 * 1E-6);
+        }
+
+        /// <summary>
+        /// Prediction intervals include the leverage x0' (X'X)^-1 x0, against R 4.4.3 predict(lm(y ~ x), interval =
+        /// "prediction", level = 0.95) on the ten-point fixture: at x = 5.5, [10.621058435825319, 11.478941564174683]; at
+        /// x = 15 (extrapolated), [29.565130247455052, 30.776687934363132].
+        /// </summary>
+        [TestMethod]
+        public void Test_PredictionIntervals_Leverage_R()
+        {
+            var lm = SmallFixture();
+            var pi = lm.PredictionIntervals(new Matrix(new double[] { 5.5, 15 }), 0.05);
+            Assert.AreEqual(10.621058435825319, pi[0, 0], 1E-9);
+            Assert.AreEqual(11.478941564174683, pi[0, 1], 1E-9);
+            Assert.AreEqual(11.050000000000001, pi[0, 2], 1E-9);
+            Assert.AreEqual(29.565130247455052, pi[1, 0], 1E-9);
+            Assert.AreEqual(30.776687934363132, pi[1, 1], 1E-9);
+            Assert.AreEqual(30.170909090909092, pi[1, 2], 1E-9);
+        }
+
+        /// <summary>
+        /// ParameterTStats holds the coefficient t values of R 4.4.3 summary(lm(y ~ x)) on the ten-point fixture
+        /// (-0.16507636548263524 and 103.07900051329966118), and the caller's column header names the slope.
+        /// </summary>
+        [TestMethod]
+        public void Test_ParameterTStatsAndNames_R()
+        {
+            var lm = SmallFixture();
+            Assert.IsNotNull(lm.ParameterTStats);
+            Assert.HasCount(2, lm.ParameterTStats);
+            Assert.AreEqual(-0.16507636548263524, lm.ParameterTStats[0], 1E-9);
+            Assert.AreEqual(103.07900051329966118, lm.ParameterTStats[1], 1E-7);
+            Assert.AreEqual(lm.Parameters[1] / lm.ParameterStandardErrors[1], lm.ParameterTStats[1]);
+            CollectionAssert.AreEqual(new[] { "Intercept", "xvar" }, lm.ParameterNames);
+
+            var noIntercept = new LinearRegression(new Matrix(new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }) { Header = new string[] { "xvar" } },
+                new Vector(new double[] { 2.1, 3.9, 6.2, 7.8, 10.1, 12.2, 13.8, 16.1, 18.0, 20.3 }), false);
+            CollectionAssert.AreEqual(new[] { "xvar" }, noIntercept.ParameterNames);
+            var unnamed = new LinearRegression(new Matrix(new double[] { 1, 2, 3, 4, 5 }), new Vector(new double[] { 1.1, 1.9, 3.2, 3.9, 5.1 }));
+            CollectionAssert.AreEqual(new[] { "Intercept", "β1" }, unnamed.ParameterNames);
         }
     }
 }

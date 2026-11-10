@@ -53,7 +53,7 @@ where $b - a$ is the initial interval width. This means each iteration gains app
 n \geq \frac{\log(b - a) - \log(\varepsilon)}{\log 2}
 ```
 
-For example, starting with $[0, 3]$ and tolerance $10^{-10}$, bisection needs at most $\lceil \log_2(3 \times 10^{10}) \rceil = 35$ iterations. This predictability is one of bisection's strengths — you know exactly how many iterations you need before you start.
+For example, starting with $[0, 3]$ and tolerance $10^{-10}$, bisection needs at most $\lceil \log_2(3 \times 10^{10}) \rceil = 35$ iterations. This predictability is one of bisection's strengths: you know exactly how many iterations you need before you start.
 
 ### Usage
 
@@ -65,16 +65,18 @@ Func<double, double> f = x => x * x - 4;
 
 // Bisection requires a bracketing interval
 double root = Bisection.Solve(f, 
-    firstGuess: 1.5,      // Optional hint for initial interval
+    firstGuess: 1.5,      // Must lie in the bracket; does not affect the search
     lowerBound: 0,        // f(0) = -4 < 0
     upperBound: 3,        // f(3) = 5 > 0
     tolerance: 1e-8,
     maxIterations: 1000,
     reportFailure: true);
 
-Console.WriteLine($"Root: {root:F10}");  // 2.0000000000
+Console.WriteLine($"Root: {root:F10}");  // 1.9999999981 (within the 1e-8 tolerance)
 Console.WriteLine($"Verification: f({root}) = {f(root):E3}");
 ```
+
+The search starts from the bracket endpoint where $f < 0$ and halves the whole bracket, so `firstGuess` only has to lie within the bounds. A NaN at one bound is tolerated (the other bound sets the orientation), NaN at both bounds throws an `ArgumentException`, and a NaN inside the bracket throws, or returns NaN when `reportFailure` is false. `NewtonRaphson.RobustSolve` handles NaN the same way. `Brent.Solve` does not check for NaN: give it a bracket on which the function is defined, and check $f$ at the returned root.
 
 ### Advantages and Disadvantages
 
@@ -125,29 +127,27 @@ where $f_a = f(a)$, $f_b = f(b)$, $f_c = f(c)$. IQI can converge even faster tha
 
 ### How It Works: The Decision Logic
 
-The power of Brent's method lies in how it decides which strategy to use at each step. The algorithm follows a specific decision procedure that ensures it never loses the safety of bisection while taking faster steps whenever possible. Here is the logic as implemented in the ***Numerics*** library:
+`Brent.Solve` is a literal port of `brentq.c` in SciPy (Charles Harris's implementation behind `scipy.optimize.brentq`), so it returns the same double as `scipy.optimize.brentq` for the same function, bracket and tolerances [[2]](#2) [[5]](#5). The algorithm keeps three points:
 
-1. **Maintain the bracket.** The algorithm tracks three points: $b$ (the current best estimate, where $|f(b)|$ is smallest), $a$ (the previous iterate), and $c$ (the contrapoint such that $f(b)$ and $f(c)$ have opposite signs). If $f(b)$ and $f(c)$ have the same sign, the contrapoint is reset to $a$.
+1. **Maintain the bracket.** $x_{\text{cur}}$ is the current estimate and $x_{\text{blk}}$ the contrapoint, with $f(x_{\text{cur}})$ and $f(x_{\text{blk}})$ of opposite signs; $x_{\text{pre}}$ is the previous estimate. When a new estimate changes sign against the previous one, the previous one becomes the contrapoint. If $|f(x_{\text{blk}})| < |f(x_{\text{cur}})|$ the two swap, so $x_{\text{cur}}$ always has the smaller residual.
 
-2. **Compute the midpoint and tolerance.** At each step, compute:
+2. **Compute the bisection step and tolerance.** At each step, compute:
 
 ```math
-x_m = \frac{c - b}{2}, \qquad \text{tol}_1 = 2 \varepsilon_{\text{mach}} |b| + \frac{\text{tol}}{2}
+s_{\text{bis}} = \frac{x_{\text{blk}} - x_{\text{cur}}}{2}, \qquad \delta = \frac{\text{xtol} + \text{rtol}\,|x_{\text{cur}}|}{2}
 ```
 
-where $\varepsilon_{\text{mach}}$ is machine epsilon and $\text{tol}$ is the user-specified tolerance. If $|x_m| \leq \text{tol}_1$ or $f(b) = 0$, the root has been found.
+If $|s_{\text{bis}}| < \delta$ or $f(x_{\text{cur}}) = 0$, $x_{\text{cur}}$ is returned.
 
-3. **Try a fast step.** If the previous step $e$ was large enough ($|e| \geq \text{tol}_1$) and $b$ is improving ($|f(a)| > |f(b)|$), then attempt an open method:
-   - If $a = c$ (only two distinct points available), use the **secant method**.
-   - If $a \neq c$ (three distinct points available), use **inverse quadratic interpolation**.
+3. **Try a fast step.** If the step before last was longer than $\delta$ and the residual is falling ($|f(x_{\text{cur}})| < |f(x_{\text{pre}})|$), attempt an open step:
+   - If $x_{\text{pre}} = x_{\text{blk}}$ (only two distinct points), use the **secant** step through them.
+   - Otherwise use **inverse quadratic extrapolation** through the three points.
 
-4. **Accept or reject the fast step.** The proposed step $d = p/q$ is accepted only if it satisfies two conditions:
-   - The step must be smaller than three-quarters of the distance to the midpoint: $2|p| < 3 |x_m \cdot q| - |\text{tol}_1 \cdot q|$
-   - The step must be smaller than half the previous step: $2|p| < |e \cdot q|$
+4. **Accept or reject the fast step.** The trial step $s$ is kept only when $2|s| < \min(|s_{\text{prev}}|,\ 3|s_{\text{bis}}| - \delta)$, where $s_{\text{prev}}$ is the step before last; otherwise the algorithm bisects. A step no longer than $\delta$ is lengthened to $\delta$ toward the contrapoint, so every evaluation makes progress.
 
-   These conditions ensure the method is making adequate progress toward the root. If either condition fails, the algorithm falls back to bisection.
+5. **Update.** Apply the step, evaluate $f$, and repeat. Each iteration costs one function evaluation, after the two at the bounds.
 
-5. **Update.** Apply the accepted step (or bisection fallback) to produce the new iterate $b$, evaluate $f(b)$, and repeat.
+A zero of $f$ at either bound is returned before the sign test, and a bracket where $f$ has the same strict sign at both ends throws an `ArgumentException`.
 
 This design means that Brent's method takes fast steps when they are safe and productive, but always has bisection as a backstop, so it never diverges.
 
@@ -163,7 +163,7 @@ Brent's method offers a rare combination of guaranteed convergence and fast prac
 
 - **No pathological failure modes.** Unlike Newton-Raphson, which can cycle, diverge, or overshoot for bad initial guesses, and unlike the secant method, which can leave the bracket entirely, Brent's method has no failure modes beyond exceeding the maximum iteration count.
 
-The convergence tolerance in the ***Numerics*** implementation uses a combined criterion: the root is accepted when the bracket half-width $|x_m|$ is within $\text{tol}_1 = 2\varepsilon_{\text{mach}}|b| + \text{tol}/2$, or when $f(b) = 0$ exactly. This accounts for both absolute and relative precision near the root.
+The convergence tolerance combines an absolute and a relative part: the root is accepted when the bracket half-width is less than $\delta = (\text{xtol} + \text{rtol}\,|x|)/2$, or when $f(x) = 0$ exactly. The `tolerance` argument is xtol, and rtol defaults to `Brent.MinimumRelativeTolerance` $= 4 \cdot 2^{-52} \approx 8.88 \times 10^{-16}$, the default and smallest rtol of `scipy.optimize.brentq`. The overload `Brent.Solve(f, a, b, absoluteTolerance, relativeTolerance, maxIterations, reportFailure)` sets both; a relative tolerance below the minimum, or a negative tolerance, throws an `ArgumentOutOfRangeException`.
 
 ### Why Brent's Method Is the Recommended Default
 
@@ -216,13 +216,20 @@ The `Solve` method accepts the following parameters:
 | `f` | `Func<double, double>` | (required) | The function to solve |
 | `lowerBound` | `double` | (required) | Lower bound $a$ of the bracketing interval |
 | `upperBound` | `double` | (required) | Upper bound $b$ of the bracketing interval |
-| `tolerance` | `double` | `1e-8` | Desired tolerance for the root |
+| `tolerance` | `double` | `1e-8` | Absolute tolerance for the root (xtol in SciPy) |
 | `maxIterations` | `int` | `1000` | Maximum number of iterations |
 | `reportFailure` | `bool` | `true` | If true, throws an exception on failure; if false, returns the last iterate |
 
+The second overload adds `relativeTolerance` (rtol in SciPy) after `tolerance`, which it renames `absoluteTolerance`:
+
+```cs
+// Bitwise equal to scipy.optimize.brentq(f, 0, 1, xtol=1e-12, rtol=1e-10).
+double r = Brent.Solve(f, 0, 1, absoluteTolerance: 1e-12, relativeTolerance: 1e-10);
+```
+
 ### Automatic Bracket Expansion
 
-When you are unsure whether your initial interval brackets the root, the `Brent.Bracket` helper method can expand the interval outward until a sign change is found. It repeatedly expands the interval by a factor of 1.6, testing the function value at each new endpoint:
+When you are unsure whether your initial interval brackets the root, the `Brent.Bracket` helper method can expand the interval outward until a sign change is found. Each step moves the endpoint with the smaller $|f|$ outward by 1.6 times the current width, and `a` and `b` are updated in place. The default is `maxIterations = 10` steps. The sign test runs before each step and once more after the final step. Equal bounds throw an `ArgumentException`.
 
 ```cs
 using Numerics.Mathematics.RootFinding;
@@ -238,7 +245,7 @@ bool found = Brent.Bracket(f, ref a, ref b, out fa, out fb, maxIterations: 10);
 if (found)
 {
     double root = Brent.Solve(f, a, b);
-    Console.WriteLine($"Root: {root:F10}");  // 5.0000000000
+    Console.WriteLine($"Root: {root:F10}");  // 5.0000000008 (default tolerance 1E-8)
 }
 else
 {
@@ -318,7 +325,7 @@ using Numerics.Mathematics.RootFinding;
 
 Func<double, double> f = x => Math.Cos(x) - x;
 
-// Suppress exception on failure — returns last iterate instead
+// Suppress exception on failure; returns last iterate instead
 double root = Brent.Solve(f, 0, 1,
     tolerance: 1e-15,       // Very tight tolerance
     maxIterations: 5,       // Very few iterations allowed
@@ -358,7 +365,7 @@ The secant method has **superlinear convergence** of order $\varphi = (1 + \sqrt
 |e_{n+1}| \approx \left|\frac{f''(x^*)}{2f'(x^*)}\right|^{\varphi - 1} |e_n|^{\varphi}
 ```
 
-This is faster than bisection's linear convergence but slower than Newton's quadratic convergence. However, since the secant method requires only **one function evaluation per iteration** (compared to Newton's two — one for $f$ and one for $f'$), it can be more efficient overall. In terms of function evaluations, the secant method's efficiency index is $\varphi^{1/1} \approx 1.618$, while Newton's is $2^{1/2} \approx 1.414$.
+This is faster than bisection's linear convergence but slower than Newton's quadratic convergence. However, since the secant method requires only **one function evaluation per iteration** (compared to Newton's two, one for $f$ and one for $f'$), it can be more efficient overall. In terms of function evaluations, the secant method's efficiency index is $\varphi^{1/1} \approx 1.618$, while Newton's is $2^{1/2} \approx 1.414$.
 
 ### Usage
 
@@ -414,7 +421,7 @@ Newton-Raphson has **quadratic convergence** near a simple root. If $e_n = x_n -
 e_{n+1} = -\frac{f''(x^*)}{2f'(x^*)} \cdot e_n^2 + O(e_n^3)
 ```
 
-This means the number of correct digits roughly **doubles** each iteration. Starting from $|e_0| = 0.1$, after 4 iterations the error is approximately $10^{-16}$ — near machine precision. This is why Newton's method typically converges in 4–6 iterations.
+This means the number of correct digits roughly **doubles** each iteration. Starting from $|e_0| = 0.1$, after 4 iterations the error is approximately $10^{-16}$, near machine precision. This is why Newton's method typically converges in 4–6 iterations.
 
 The constant $C = |f''(x^*)|/(2|f'(x^*)|)$ determines how fast convergence kicks in. When $|f''|$ is large relative to $|f'|$ at the root (i.e., the function curves sharply while crossing zero slowly), the method needs a closer starting point for quadratic convergence to dominate.
 
@@ -422,11 +429,11 @@ For **repeated roots** where $f(x^*) = f'(x^*) = 0$, convergence degrades to lin
 
 ### Basin of Attraction
 
-Newton's method is not globally convergent — its behavior depends critically on the initial guess. The **basin of attraction** for a root $x^*$ is the set of starting points $x_0$ from which Newton's method converges to $x^*$.
+Newton's method is not globally convergent: its behavior depends critically on the initial guess. The **basin of attraction** for a root $x^*$ is the set of starting points $x_0$ from which Newton's method converges to $x^*$.
 
 For polynomials with multiple roots, basins of attraction can have fractal boundaries. Even simple functions can produce surprising behavior:
 
-- For $f(x) = x^3 - 1$ (with roots at $1$, $e^{2\pi i/3}$, $e^{4\pi i/3}$ in the complex plane), the boundary between basins of attraction is a fractal — the Newton fractal.
+- For $f(x) = x^3 - 1$ (with roots at $1$, $e^{2\pi i/3}$, $e^{4\pi i/3}$ in the complex plane), the boundary between basins of attraction is a fractal, the Newton fractal.
 
 - For $f(x) = x^3 - 2x + 2$, starting at $x_0 = 0$ produces the cycle $0 \to 1 \to 1 \to \ldots$ that never converges.
 
@@ -545,11 +552,11 @@ Func<double, double> f = x => Math.Sin(x);
 // Find roots in different intervals
 var roots = new List<double>();
 
-// Find positive roots
+// Find the positive roots pi, 2pi, 3pi: each interval brackets one root
 for (int i = 0; i < 3; i++)
 {
-    double a = i * Math.PI + 0.1;
-    double b = (i + 1) * Math.PI - 0.1;
+    double a = (i + 0.5) * Math.PI;
+    double b = (i + 1.5) * Math.PI;
     
     if (f(a) * f(b) < 0) // Bracket contains a root
     {
@@ -627,12 +634,17 @@ The following table provides a comprehensive comparison of all root-finding meth
 
 ## Convergence Criteria
 
-All root-finding methods in ***Numerics*** use combined criteria:
+The scalar root-finding methods in ***Numerics*** stop on the change in $x$, not on $|f(x)|$. The default tolerance is $10^{-8}$.
 
-1. **Function value tolerance**: $|f(x)| < \text{tolerance}$
-2. **Parameter tolerance**: $|x_{n+1} - x_n| < \text{tolerance}$
+| Method | Stops when |
+|--------|-----------|
+| `Bisection.Solve` | the step satisfies $\|\Delta x\| \le \text{tolerance}$, or $f$ is exactly zero at the midpoint |
+| `Brent.Solve` | the bracket half-width is less than $(\text{tolerance} + \text{rtol}\,\|x\|)/2$, with rtol $= 4 \cdot 2^{-52}$ by default, or $f(x)$ is exactly zero |
+| `Secant.Solve` | $\|\Delta x\| < \text{tolerance}$, or $f$ is exactly zero |
+| `NewtonRaphson.Solve` and `RobustSolve` | $\|x_{n+1} - x_n\| < \text{tolerance}$ |
+| `NewtonRaphson.Solve` (systems) | both $\|\Delta x\| < \text{tolerance}$ and $\|f(x)\| < \text{tolerance}$ |
 
-Both must be satisfied for convergence. The default tolerance is $10^{-8}$.
+A small step does not guarantee a small residual for a flat or badly scaled function, so check $|f(x)|$ yourself when it matters.
 
 ## Best Practices
 
@@ -696,9 +708,10 @@ catch (Exception ex)
     Console.WriteLine($"Root finding failed: {ex.Message}");
 }
 
-// Or suppress exceptions
+// Or suppress exceptions. On non-convergence the last iterate is returned (not NaN),
+// so check the residual yourself.
 double root2 = Brent.Solve(f, a, b, reportFailure: false);
-if (double.IsNaN(root2))
+if (Math.Abs(f(root2)) > 1E-6)
 {
     Console.WriteLine("Failed to converge");
 }
@@ -728,6 +741,8 @@ Newton-Raphson and Brent are typically fastest, while Bisection is slowest but m
 <a id="3">[3]</a> Sprott, J. C. (1991). *Numerical Recipes, Routines and Examples in Basic*. Cambridge University Press.
 
 <a id="4">[4]</a> Süli, E. & Mayers, D. (2003). *An Introduction to Numerical Analysis*. Cambridge University Press.
+
+<a id="5">[5]</a> Virtanen, P., Gommers, R., Oliphant, T. E., et al. (2020). SciPy 1.0: fundamental algorithms for scientific computing in Python. *Nature Methods*, 17(3), 261-272. https://doi.org/10.1038/s41592-019-0686-2
 
 ---
 

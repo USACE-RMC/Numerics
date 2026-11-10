@@ -535,6 +535,17 @@ namespace Numerics.Data.Statistics
         /// <param name="probabilities">And array of probabilities for each event.</param>
         /// <param name="indicators">An 2D array of indicators, 0 means the event did not occur, 1 means the event did occur.</param>
         /// <param name="correlationMatrix">The correlation matrix defining the dependency.</param>
+        /// <returns>One probability per indicator row.</returns>
+        /// <remarks>
+        /// <para>
+        /// Precondition: the indicator matrix must start with the n singleton rows, where n is the number of
+        /// probabilities, so that row i (i &lt; n) flags event i alone. Those rows are not evaluated: entry i of the
+        /// result is <paramref name="probabilities"/>[i], clamped to [0, 1], whatever row i of
+        /// <paramref name="indicators"/> contains. Only rows n and later are computed as joint probabilities. The
+        /// method does not check this layout; a matrix that does not begin with the singleton rows gives marginal
+        /// probabilities in place of the joint probabilities of its first n rows.
+        /// </para>
+        /// </remarks>
         public static double[] JointProbabilitiesPCM(IList<double> probabilities, int[,] indicators, double[,] correlationMatrix)
         {
             // Validation Checks
@@ -600,11 +611,22 @@ namespace Numerics.Data.Statistics
         /// <param name="probabilities">An array of probabilities for each event.</param>
         /// <param name="indicators">An 2D array of indicators, 0 means the event did not occur, 1 means the event did occur.</param>
         /// <param name="multivariateNormal">The multivariate normal distribution for computing the joint probability.</param>
+        /// <returns>One probability per indicator row.</returns>
         /// <remarks>
+        /// <para>
+        /// Precondition: the indicator matrix must start with the n singleton rows, where n is the number of
+        /// probabilities, so that row i (i &lt; n) flags event i alone. Those rows are not evaluated: entry i of the
+        /// result is <paramref name="probabilities"/>[i], clamped to [0, 1], whatever row i of
+        /// <paramref name="indicators"/> contains. Only rows n and later are computed as joint probabilities. The
+        /// method does not check this layout; a matrix that does not begin with the singleton rows gives marginal
+        /// probabilities in place of the joint probabilities of its first n rows.
+        /// </para>
+        /// <para>
         /// Rows are evaluated serially in indicator order because dimensions above two advance the
         /// randomized-lattice generator assigned to <paramref name="multivariateNormal"/>. This
         /// makes a fresh seeded batch reproducible and avoids concurrent access to a shared random
         /// generator.
+        /// </para>
         /// </remarks>
         public static double[] JointProbabilitiesMVN(IList<double> probabilities, int[,] indicators, MultivariateNormal multivariateNormal)
         {
@@ -720,7 +742,7 @@ namespace Numerics.Data.Statistics
         /// sets. The integral is evaluated in probability space u = Phi(z) with adaptive
         /// Gauss-Kronrod quadrature over [1e-16, 1 - 1e-16] (the excluded endpoint slivers bound the
         /// truncation error by 2e-16), and the conditional survival product is accumulated in log
-        /// space through <see cref="Tools.Log1p"/> and recovered through <see cref="Tools.Expm1"/>,
+        /// space through <see cref="Tools.Log1p(double)"/> and recovered through <see cref="Tools.Expm1(double)"/>,
         /// so rare-event unions retain relative accuracy. The result is deterministic.
         /// </para>
         /// <para>
@@ -1166,7 +1188,7 @@ namespace Numerics.Data.Statistics
                     }
                 }
 
-                // If we are within the range of probabilities, simply add the probability with the current sign
+                // If within the range of probabilities, simply add the probability with the current sign
                 if (i < probabilities.Count)
                 {
                     result += s * probabilities[i];

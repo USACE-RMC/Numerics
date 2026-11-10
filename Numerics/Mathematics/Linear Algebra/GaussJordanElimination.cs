@@ -19,7 +19,7 @@ namespace Numerics.Mathematics.LinearAlgebra
     /// </para>
     /// <para>
     /// Gauss-Jordan Elimination is a row reduction algorithm that correctly formats matrices
-    /// so that we can solve linear systems in the form A*x = b. 
+    /// so that linear systems in the form A*x = b can be solved. 
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -43,6 +43,8 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <remarks>
         /// On output, A is replaced by its matrix inverse, and B is replaced by the corresponding set of solution vectors.
         /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when A is not square or B does not have as many rows as A.</exception>
+        /// <exception cref="ArgumentException">Thrown when A contains a NaN or infinite entry.</exception>
         public static void Solve(ref Matrix A, ref Matrix B)
         {
             // No right-hand sides. Replaces A by its inverse.
@@ -50,6 +52,19 @@ namespace Numerics.Mathematics.LinearAlgebra
             {
                 // Dummy vector with zero columns
                 B = new Matrix(A.NumberOfRows, 0);
+            }
+            if (A.NumberOfRows != A.NumberOfColumns)
+                throw new ArgumentOutOfRangeException(nameof(A), "The matrix A must be square.");
+            if (B.NumberOfRows != A.NumberOfRows)
+                throw new ArgumentOutOfRangeException(nameof(B), "The matrix B must have the same number of rows as A.");
+            // A NaN never wins the pivot comparison, so it would leave a stale pivot; reject it up front.
+            for (int r = 0; r < A.NumberOfRows; r++)
+            {
+                for (int c = 0; c < A.NumberOfColumns; c++)
+                {
+                    if (!Tools.IsFinite(A[r, c]))
+                        throw new ArgumentException("The matrix A must contain only finite entries.", nameof(A));
+                }
             }
 
             int n = A.NumberOfRows;
@@ -94,7 +109,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                 }
 
                 ipiv[icol] += 1;
-                // We now have the pivot element, so we interchange rows, if needed, to put the pivot
+                // With the pivot element found, rows are interchanged, if needed, to put the pivot
                 // element on the diagonal. The columns are not physically interchanged, only relabeled:
                 // index-c[i], the column of the (i+1)th pivot element, is the (i+1)th column that is
                 // reduced, while index-r[i] is the row in which that pivot element was originally located.
@@ -117,7 +132,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                         B[icol, l] = dum;
                     }
                 }
-                // We are now ready to divide the pivot row by the pivot element, located at i-row and i-col.
+                // Divide the pivot row by the pivot element, located at i-row and i-col.
                 indxr[i] = irow;
                 indxc[i] = icol;
                 if (A[icol, icol] == 0.0d)
@@ -131,7 +146,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                     A[icol, l] *= pivinv;
                 for (int l = 0; l < m; l++)
                     B[icol, l] *= pivinv;
-                // Now we reduce the rows except for the pivot one, of course.
+                // Reduce the rows except for the pivot one.
                 for (int ll = 0; ll < n; ll++)
                 {
                     if (ll != icol)
@@ -146,7 +161,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                 }
             }
             // This is the of the main loop over columns of the reduction. It only remains to unscramble
-            // the solution in view of the column interchanges. We do this by interchanging pairs of 
+            // the solution in view of the column interchanges. This is done by interchanging pairs of 
             // columns in the reverse order that the permutation was built up. 
             for (int l = n - 1; l >= 0; l -= 1)
             {
@@ -160,7 +175,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                     }
                 }
             }
-            // And we are done.
+            // Done.
         }
     }
 }

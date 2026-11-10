@@ -1,0 +1,291 @@
+# Publishes the pynumerics wheel to PyPI with trusted publishing (no API token).
+#
+# Automatic chain of a release:
+#   1. Publishing the GitHub Release vX.Y.Z runs NuGetPublish.yml ("Publish to NuGet.org"), which pushes
+#      RMC.Numerics X.Y.Z to nuget.org.
+#   2. When that run succeeds, this workflow starts (workflow_run) on the release commit. It checks that
+#      python/pynumerics/src/pynumerics/_version.py declares X.Y.Z (__version__, NUMERICS_VERSION) and no
+#      development version, waits (bounded) until nuget.org serves rmc.numerics.X.Y.Z.nupkg, and builds the
+#      wheel from it: build_wheel.py writes the package version, the assembly version and the SHA-256 of
+#      lib/net10.0/Numerics.dll into the wheel's _version.py. No pin commit is needed.
+#   3. The wheel is tested on Linux (the .github/docker/linux-test image, and ubuntu-24.04) and on Windows,
+#      then published to TestPyPI and, after the pypi environment's required reviewer approves, to PyPI.
+#
+# Manual fallbacks:
+#   - workflow_dispatch with release_tag vX.Y.Z (run it on that tag): the same build and tests, then
+#     TestPyPI; PyPI only when publish_to_pypi is checked.
+#   - A pushed tag pynumerics-vX.Y.Z or pynumerics-vX.Y.Z.postN on a commit whose __version__ equals the
+#     tag: the same chain through PyPI, for a post release of the Python package alone.
+#
+# One-time setup on pypi.org and test.pypi.org: add a trusted publisher (a pending publisher before the
+# first upload) for project "pynumerics", owner USACE-RMC, repository Numerics, workflow
+# PythonPublish.yml, environment "pypi" (and "testpypi"). In the repository settings, create those two
+# environments; give "pypi" a required reviewer. workflow_run starts only the copy of this file on the
+# default branch, so the chain is live once this file is on main.
+#
+# Only the wheel is published. An sdist would not contain Numerics.dll (it is staged at build time and
+# never tracked), so it could not be installed.
+
+name: Publish Python package
+
+on:
+  workflow_run:
+    workflows: [ 'Publish to NuGet.org' ]
+    types: [ completed ]
+  push:
+    tags: [ 'pynumerics-v*' ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'RMC.Numerics release tag whose nuget.org package the wheel ships (vX.Y.Z)'
+        required: true
+        type: string
+      publish_to_pypi:
+        description: 'Publish to PyPI after TestPyPI (the pypi environment still asks its reviewer)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the wheel
+    # A NuGet publish that failed, or a run of it not started by a release, starts nothing here.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      publish_pypi: ${{ steps.release.outputs.publish_pypi }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Resolve the release
+        id: release
+        env:
+          EVENT: ${{ github.event_name }}
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          INPUT_PYPI: ${{ inputs.publish_to_pypi }}
+        run: |
+          case "$EVENT" in
+            workflow_run)
+              tag="$RUN_TAG"; sha="$RUN_SHA"; publish=true ;;
+            workflow_dispatch)
+              tag="$INPUT_TAG"; sha="$GITHUB_SHA"; publish="$INPUT_PYPI" ;;
+            push)
+              tag="$GITHUB_REF_NAME"; sha="$GITHUB_SHA"; publish=true ;;
+            *)
+              echo "::error::unexpected event $EVENT"; exit 1 ;;
+          esac
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"; distribution="$version"
+          elif [[ "$EVENT" == push && "$tag" =~ ^pynumerics-v(([0-9]+\.[0-9]+\.[0-9]+)(\.post[0-9]+)?)$ ]]; then
+            version="${BASH_REMATCH[2]}"; distribution="${BASH_REMATCH[1]}"
+          else
+            echo "::error::'$tag' is not a release tag (vX.Y.Z, or pynumerics-vX.Y.Z[.postN] for a tag push)"
+            exit 1
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::'$sha' is not a commit"; exit 1
+          fi
+          {
+            echo "sha=$sha"
+            echo "version=$version"
+            echo "distribution=$distribution"
+            echo "publish_pypi=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release $tag: RMC.Numerics $version, pynumerics $distribution, commit $sha, PyPI $publish" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout the release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check the release, the distribution version and the declared identity agree
+        working-directory: python/pynumerics
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          DISTRIBUTION: ${{ steps.release.outputs.distribution }}
+        run: |
+          python - <<'EOF'
+          import os, runpy
+          v = runpy.run_path("src/pynumerics/_version.py")
+          assert ".dev" not in v["__version__"], "a development version is never published"
+          assert v["__version__"] == os.environ["DISTRIBUTION"], \
+              f"__version__ {v['__version__']} != release {os.environ['DISTRIBUTION']}"
+          assert v["NUMERICS_VERSION"] == os.environ["VERSION"], \
+              f"NUMERICS_VERSION {v['NUMERICS_VERSION']} != release {os.environ['VERSION']}"
+          assert v["NUMERICS_SOURCE_COMMIT"] == "" and v["NUMERICS_BUILD_COMMAND"] == "", \
+              "_version.py names a locally built Numerics.dll"
+          print("publishing pynumerics", v["__version__"], "with RMC.Numerics", v["NUMERICS_VERSION"])
+          EOF
+
+      # nuget.org serves a pushed package only after validation and indexing, usually within minutes.
+      - name: Wait until nuget.org serves the package
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          url="https://api.nuget.org/v3-flatcontainer/rmc.numerics/$VERSION/rmc.numerics.$VERSION.nupkg"
+          for attempt in $(seq 1 60); do
+            if curl -fsSIL --max-time 30 -o /dev/null "$url"; then
+              echo "available after $attempt check(s): $url"
+              exit 0
+            fi
+            echo "check $attempt: not yet available; retrying in 60 s"
+            sleep 60
+          done
+          echo "::error::nuget.org did not serve $url within 60 minutes"
+          exit 1
+
+      - name: Build (Numerics.dll and its identity from the nuget.org package)
+        working-directory: python/pynumerics
+        run: |
+          python -m pip install build
+          python scripts/build_wheel.py --download --out dist
+
+      - name: Record the identity written into the wheel
+        working-directory: python/pynumerics
+        run: |
+          python - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, re, zipfile
+          (wheel,) = glob.glob("dist/pynumerics-*-py3-none-any.whl")
+          text = zipfile.ZipFile(wheel).read("pynumerics/_version.py").decode("utf-8")
+          values = dict(re.findall(r'^(NUMERICS_\w+) = "([^"]*)"', text, re.MULTILINE))
+          assert re.fullmatch(r"[0-9a-f]{64}", values["NUMERICS_SHA256"]), values
+          assert values["NUMERICS_SOURCE_COMMIT"] == values["NUMERICS_BUILD_COMMAND"] == "", values
+          print(f"- wheel: `{wheel}`")
+          for name, value in values.items():
+              print(f"- {name}: `{value}`")
+          EOF
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: python/pynumerics/dist/*.whl
+          if-no-files-found: error
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ ubuntu-24.04, windows-2025 ]
+        python: [ '3.10', '3.14' ]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout the release commit (tests only)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download the wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+
+      - name: Install the wheel into a clean environment and run the tests
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ -x "$RUNNER_TEMP/venv/bin/python" ]; then PY="$RUNNER_TEMP/venv/bin/python"; else PY="$RUNNER_TEMP/venv/Scripts/python.exe"; fi
+          "$PY" -m pip install dist/pynumerics-*-py3-none-any.whl pytest numpydoc scipy statsmodels scikit-learn shapely "arviz>=0.17,<1" "dataretrieval>=1.4" "wetterdienst>=0.184" "kiwis-pie>=0.10.5"
+          cp -r python/pynumerics/tests "$RUNNER_TEMP/tests"
+          cp -r python/pynumerics/docs "$RUNNER_TEMP/docs"
+          cp -r python/pynumerics/scripts "$RUNNER_TEMP/scripts"
+          cp python/pynumerics/pyproject.toml "$RUNNER_TEMP/pyproject.toml"
+          cd "$RUNNER_TEMP"
+          "$PY" -m pytest -q -p no:cacheprovider -m "not benchmark" tests
+
+  test-docker:
+    name: Test (linux-test Docker image)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout the release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+
+      - name: Download the wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+
+      - name: Build the image
+        run: docker build -t numerics-linux-test .github/docker/linux-test
+
+      - name: Run ruff and pytest against the wheel
+        run: >-
+          docker run --rm -e CHECKS=pytest -e WHEEL_DIR=/dist
+          -v "$GITHUB_WORKSPACE:/src:ro" -v "$GITHUB_WORKSPACE/dist:/dist:ro" numerics-linux-test
+
+      - name: Install the wheel in a fresh container and check its identity
+        run: >-
+          docker run --rm -v "$GITHUB_WORKSPACE/dist:/dist:ro" numerics-linux-test identity-check.sh /dist
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [ test, test-docker ]
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/pynumerics
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [ build, publish-testpypi ]
+    if: needs.build.outputs.publish_pypi == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pynumerics
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pynumerics-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

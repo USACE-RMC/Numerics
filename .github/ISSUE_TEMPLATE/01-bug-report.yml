@@ -61,7 +61,7 @@ body:
     attributes:
       label: Operating system and .NET details
       description: Add any OS, target framework, SDK, runtime, or IDE version details you know.
-      placeholder: "Example: Windows 11, net8.0, .NET 10 SDK, Visual Studio 2026"
+      placeholder: "Example: Windows 11, net10.0, .NET 10 SDK, Visual Studio 2026"
     validations:
       required: false
 

@@ -151,14 +151,12 @@ namespace Numerics.Data
         /// <param name="allowDifferentTypes">Allow different distribution types. Default = false.</param>
         /// <returns> A boolean indicating if the ordinate is valid or not given the criteria.</returns>
         /// <remarks>
-        /// The central-tendency probe here is the MEAN (<see cref="GetOrdinate()"/>), while the
-        /// companion <see cref="OrdinateErrors(UncertainOrdinate, bool, bool, SortOrder, SortOrder, bool, bool)"/>
-        /// probes the MEDIAN. The asymmetry is deliberate: the median always lies between the two
-        /// percentile probes tested above and below it, but for a skewed Y distribution the mean can
-        /// fall outside that interval, so probing the mean here makes the validity test strictly more
-        /// demanding. The observable consequence is that a skewed pair can report invalid while the
-        /// median-based error probe returns no matching message. Do not align the two probes without
-        /// re-deriving the monotonicity guarantees for skewed distributions.
+        /// The pair is probed at the lower percentile (1E-5, or 0.05 for PERT percentile distributions), the MEAN
+        /// (<see cref="GetOrdinate()"/>) and the upper percentile. The median always lies between the two percentile
+        /// probes, but for a skewed Y distribution the mean can fall outside that interval, so probing the mean makes
+        /// the validity test strictly more demanding than probing the median.
+        /// <see cref="OrdinateErrors(UncertainOrdinate, bool, bool, SortOrder, SortOrder, bool, bool)"/> probes the mean
+        /// too, so every invalid pair has a matching message.
         /// </remarks>
         public bool OrdinateValid(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes = false)
         {
@@ -201,11 +199,9 @@ namespace Numerics.Data
         /// <param name="allowDifferentTypes">Allow different distribution types. Default = false.</param>
         /// <returns>A list of error messages given the criteria.</returns>
         /// <remarks>
-        /// The central-tendency probe here is the MEDIAN (<c>GetOrdinate(0.5)</c>), while
-        /// <see cref="OrdinateValid(UncertainOrdinate, bool, bool, SortOrder, SortOrder, bool, bool)"/>
-        /// probes the MEAN. See the remarks on that method for why the asymmetry is deliberate: the
-        /// median is always bracketed by the percentile probes, whereas the mean of a skewed Y
-        /// distribution need not be, so the validity test is intentionally the stricter of the two.
+        /// Uses the same probes as <see cref="OrdinateValid(UncertainOrdinate, bool, bool, SortOrder, SortOrder, bool, bool)"/>:
+        /// the lower percentile, the MEAN and the upper percentile. Probing the mean here, as the validity test does,
+        /// gives every invalid pair a matching message.
         /// </remarks>
         public List<string> OrdinateErrors(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes = false)
         {
@@ -240,12 +236,81 @@ namespace Numerics.Data
                 // Test reasonable lower bound
                 result.AddRange(GetOrdinate(minPercentile).OrdinateErrors(ordinateToCompare.GetOrdinate(minPercentile), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext));
                 // Test central tendency
-                result.AddRange(GetOrdinate(0.5d).OrdinateErrors(ordinateToCompare.GetOrdinate(0.5d), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext));
+                result.AddRange(GetOrdinate().OrdinateErrors(ordinateToCompare.GetOrdinate(), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext));
                 // Test reasonable upper bound
                 result.AddRange(GetOrdinate(1 - minPercentile).OrdinateErrors(ordinateToCompare.GetOrdinate(1 - minPercentile), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext));
             }
             // Finished Checking
             return result;
+        }
+
+        /// <summary>
+        /// Test if the ordinate is valid given monotonic criteria with the next/previous ordinate in a series,
+        /// with an additional pair of tail probes.
+        /// </summary>
+        /// <param name="ordinateToCompare">Ordinate to compare to the target ordinate.</param>
+        /// <param name="strictX">Are the x-values strictly monotonic?</param>
+        /// <param name="strictY">Are the y-values strictly monotonic?</param>
+        /// <param name="xOrder">The order of the x-values.</param>
+        /// <param name="yOrder">The order of the y-values.</param>
+        /// <param name="compareOrdinateIsNext">Boolean identifying if the ordinate to compare is the next or previous ordinate in a series.</param>
+        /// <param name="allowDifferentTypes">Allow different distribution types.</param>
+        /// <param name="tailProbability">An additional probe probability p, tested at p and 1 - p; NaN for none.</param>
+        /// <returns> A boolean indicating if the ordinate is valid or not given the criteria.</returns>
+        /// <remarks>
+        /// Runs the standard test first, then probes the curves at <paramref name="tailProbability"/> and its
+        /// complement. Use it when curves are sampled deeper in the tails than the standard 1E-5 probes.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="tailProbability"/> is not NaN and not in (0, 0.5).</exception>
+        public bool OrdinateValid(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes, double tailProbability)
+        {
+            ValidateTailProbability(tailProbability);
+            if (OrdinateValid(ordinateToCompare, strictX, strictY, xOrder, yOrder, compareOrdinateIsNext, allowDifferentTypes) == false)
+                return false;
+            if (double.IsNaN(tailProbability))
+                return true;
+            if (GetOrdinate(tailProbability).OrdinateValid(ordinateToCompare.GetOrdinate(tailProbability), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext) == false)
+                return false;
+            if (GetOrdinate(1 - tailProbability).OrdinateValid(ordinateToCompare.GetOrdinate(1 - tailProbability), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext) == false)
+                return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Get all errors associated with the ordinate given monotonic criteria with the next/previous ordinate in a series,
+        /// with an additional pair of tail probes.
+        /// </summary>
+        /// <param name="ordinateToCompare">Ordinate to compare to the target ordinate.</param>
+        /// <param name="strictX">Are the x-values strictly monotonic?</param>
+        /// <param name="strictY">Are the y-values strictly monotonic?</param>
+        /// <param name="xOrder">The order of the x-values.</param>
+        /// <param name="yOrder">The order of the y-values.</param>
+        /// <param name="compareOrdinateIsNext">Boolean identifying if the ordinate to compare is the next or previous ordinate in a series.</param>
+        /// <param name="allowDifferentTypes">Allow different distribution types.</param>
+        /// <param name="tailProbability">An additional probe probability p, tested at p and 1 - p; NaN for none.</param>
+        /// <returns>A list of error messages given the criteria.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="tailProbability"/> is not NaN and not in (0, 0.5).</exception>
+        public List<string> OrdinateErrors(UncertainOrdinate ordinateToCompare, bool strictX, bool strictY, SortOrder xOrder, SortOrder yOrder, bool compareOrdinateIsNext, bool allowDifferentTypes, double tailProbability)
+        {
+            ValidateTailProbability(tailProbability);
+            var result = OrdinateErrors(ordinateToCompare, strictX, strictY, xOrder, yOrder, compareOrdinateIsNext, allowDifferentTypes);
+            if (double.IsNaN(tailProbability) || IsValid == false || ordinateToCompare.IsValid == false || Y is null || ordinateToCompare.Y is null)
+                return result;
+            result.AddRange(GetOrdinate(tailProbability).OrdinateErrors(ordinateToCompare.GetOrdinate(tailProbability), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext));
+            result.AddRange(GetOrdinate(1 - tailProbability).OrdinateErrors(ordinateToCompare.GetOrdinate(1 - tailProbability), strictX, strictY, xOrder, yOrder, compareOrdinateIsNext));
+            return result;
+        }
+
+        /// <summary>
+        /// Checks an additional tail probe probability.
+        /// </summary>
+        /// <param name="tailProbability">NaN, or a probability in (0, 0.5).</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is not NaN and not in (0, 0.5).</exception>
+        internal static void ValidateTailProbability(double tailProbability)
+        {
+            if (double.IsNaN(tailProbability)) return;
+            if (!(tailProbability > 0d && tailProbability < 0.5))
+                throw new ArgumentOutOfRangeException(nameof(tailProbability), "The tail probability must be NaN or between 0 and 0.5.");
         }
 
         /// <summary>

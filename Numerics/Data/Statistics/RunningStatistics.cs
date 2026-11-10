@@ -136,13 +136,14 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Returns the population variance.
         /// On a dataset of size N, it will use an N normalizer and would thus be biased if applied to a subset.
-        /// Returns NaN if data is empty or if any entry is NaN.
+        /// Returns 0 for a single entry, as <see cref="Statistics.PopulationVariance(IList{double})"/> does, and NaN
+        /// if data is empty or if any entry is NaN.
         /// </summary>
         public double PopulationVariance
         {
             get
             {
-                return _n < 2L ? double.NaN : _m2 / _n;
+                return _n < 1L ? double.NaN : _m2 / _n;
             }
         }
 
@@ -162,13 +163,13 @@ namespace Numerics.Data.Statistics
         /// <summary>
         /// Returns the population standard deviation.
         /// On a dataset of size N, it will use an N normalizer and would thus be biased if applied to a subset.
-        /// Returns NaN if data is empty or if any entry is NaN.
+        /// Returns 0 for a single entry, and NaN if data is empty or if any entry is NaN.
         /// </summary>
         public double PopulationStandardDeviation
         {
             get
             {
-                return _n < 2L ? double.NaN : Math.Sqrt(_m2 / _n);
+                return _n < 1L ? double.NaN : Math.Sqrt(_m2 / _n);
             }
         }
 
@@ -274,6 +275,24 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Resets the running statistics to the empty state (in-place), without reallocating.
+        /// </summary>
+        /// <remarks>
+        /// Afterwards the instance is indistinguishable from a newly constructed one: pushing the same values
+        /// gives bitwise the same statistics.
+        /// </remarks>
+        public void Clear()
+        {
+            _n = 0L;
+            _min = double.PositiveInfinity;
+            _max = double.NegativeInfinity;
+            _m1 = 0d;
+            _m2 = 0d;
+            _m3 = 0d;
+            _m4 = 0d;
+        }
+
+        /// <summary>
         /// Creates a copy of the running statistics.
         /// </summary>
         /// <returns>A new running statistics instance with the same accumulated state, independent of the original.</returns>
@@ -309,14 +328,18 @@ namespace Numerics.Data.Statistics
             }
 
             long n = a._n + b._n;
+            // The powers of n are formed in double: as long products, n * n * n overflowed silently above
+            // n = 2,097,151. Wherever the long product fits, both forms round the same exact integer once.
+            double nSq = (double)n * n;
+            double nCube = nSq * n;
             double d = b._m1 - a._m1;
             double d2 = d * d;
             double d3 = d2 * d;
             double d4 = d2 * d2;
             double m1 = (a._n * a._m1 + b._n * b._m1) / n;
             double m2 = a._m2 + b._m2 + d2 * a._n * b._n / n;
-            double m3 = a._m3 + b._m3 + d3 * a._n * b._n * (a._n - b._n) / (n * n) + 3d * d * (a._n * b._m2 - b._n * a._m2) / n;
-            double m4 = a._m4 + b._m4 + d4 * a._n * b._n * (a._n * a._n - a._n * b._n + b._n * b._n) / (n * n * n) + 6d * d2 * (a._n * a._n * b._m2 + b._n * b._n * a._m2) / (n * n) + 4d * d * (a._n * b._m3 - b._n * a._m3) / n;
+            double m3 = a._m3 + b._m3 + d3 * a._n * b._n * (a._n - b._n) / nSq + 3d * d * (a._n * b._m2 - b._n * a._m2) / n;
+            double m4 = a._m4 + b._m4 + d4 * a._n * b._n * (a._n * a._n - a._n * b._n + b._n * b._n) / nCube + 6d * d2 * (a._n * a._n * b._m2 + b._n * b._n * a._m2) / nSq + 4d * d * (a._n * b._m3 - b._n * a._m3) / n;
             double min = Math.Min(a._min, b._min);
             double max = Math.Max(a._max, b._max);
             return new RunningStatistics()

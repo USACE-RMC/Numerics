@@ -531,7 +531,7 @@ namespace Numerics.Distributions
             if (x <= 0d || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
             double logX = Math.Log(x);
             double z = DistributionNumerics.Standardize(logX, Mu, Sigma);
-            return -0.5d * z * z - Math.Log(Sigma) - Math.Log(Tools.Sqrt2PI) - logX;
+            return -0.5d * z * z - Math.Log(Sigma) - Tools.LogSqrt2PI - logX;
         }
 
         /// <inheritdoc/>
@@ -653,7 +653,7 @@ namespace Numerics.Distributions
                 return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
 
             // Raw truncated moments: E[X^k | a < X < b] for k = 1..4
-            double[] Eraw = new double[5]; // we'll fill 1..4
+            double[] Eraw = new double[5]; // indices 1..4 are filled
 
             for (int k = 1; k <= 4; k++)
             {
@@ -666,7 +666,7 @@ namespace Numerics.Distributions
                 Eraw[k] = scale * (PhiBk - PhiAk) / Z;
             }
 
-            // Unconditional mean of X (about which we take central moments)
+            // Unconditional mean of X (the center of the central moments)
             double muX = Math.Exp(mu + 0.5 * sigma * sigma);
 
             // Central moments about μ_X (unconditional)

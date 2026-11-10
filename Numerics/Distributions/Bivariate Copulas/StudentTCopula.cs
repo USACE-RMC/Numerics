@@ -172,7 +172,7 @@ namespace Numerics.Distributions.Copulas
         /// <inheritdoc/>
         /// <remarks>
         /// The base <see cref="BivariateCopula.Theta"/> setter calls this method on the new
-        /// rho value; we delegate to <see cref="ValidateParameters(double, double, bool)"/>
+        /// rho value; this method delegates to <see cref="ValidateParameters(double, double, bool)"/>
         /// so that <c>_parametersValid</c> reflects the validity of both ρ and the current ν.
         /// </remarks>
         public override ArgumentOutOfRangeException? ValidateParameter(double parameter, bool throwException)
@@ -221,10 +221,9 @@ namespace Numerics.Distributions.Copulas
 
         /// <inheritdoc/>
         /// <remarks>
-        /// ν is clamped to the valid domain (ν &gt; 2) but otherwise kept continuous — no
-        /// integer rounding. MCMC samplers that propose continuous ν values see a smooth
-        /// likelihood, avoiding the step-function plateaus produced by previous rounding
-        /// behavior. The clamp uses 2 + 1e-10 because <c>2.0 + Tools.DoubleMachineEpsilon</c>
+        /// ν is clamped to the valid domain (ν &gt; 2) but otherwise kept continuous, with no
+        /// integer rounding, so MCMC samplers that propose continuous ν values see a smooth
+        /// likelihood rather than step-function plateaus. The clamp uses 2 + 1e-10 because <c>2.0 + Tools.DoubleMachineEpsilon</c>
         /// rounds back to 2.0 in IEEE 754 (the ULP at 2.0 is 2^-51, larger than ε = 2^-53).
         /// </remarks>
         public override void SetCopulaParameters(double[] parameters)
@@ -338,7 +337,7 @@ namespace Numerics.Distributions.Copulas
         /// <param name="v">The second uniform variate in (0, 1), used as the conditional probability.</param>
         /// <returns>
         /// A 2-element array [u, v'] where v' is the conditionally sampled variate,
-        /// computed by <see cref="InverseConditionalCDF"/>.
+        /// computed by <see cref="InverseConditionalCDF(double, double)"/>.
         /// </returns>
         public override double[] InverseCDF(double u, double v)
         {
@@ -387,6 +386,12 @@ namespace Numerics.Distributions.Copulas
         /// <item><description>Transform the conditional sample back to uniform: v = t_ν(x₂)</description></item>
         /// </list>
         /// </para>
+        /// <para>
+        /// At u = 0 and u = 1 the inverse is its limit. As x₁ tends to −∞ (u → 0) or +∞ (u → 1), the standardized
+        /// residual (x₂ − ρx₁)/s tends to ±ρ·√((ν+1)/(1−ρ²)) for every 0 &lt; v &lt; 1, so h(v|u) tends to the constant
+        /// c = t_{ν+1}(±ρ·√((ν+1)/(1−ρ²))) on (0, 1), and the inverse tends to 0 for t ≤ c and to 1 for t > c. For t = 0
+        /// and t = 1 it is t.
+        /// </para>
         /// </remarks>
         public override double InverseConditionalCDF(double u, double t)
         {
@@ -395,6 +400,14 @@ namespace Numerics.Distributions.Copulas
 
             double r = _theta;
             double nu = _nu;
+
+            if (u == 0d || u == 1d)
+            {
+                if (!(t > 0d && t < 1d)) return t;
+                double limit = r * Math.Sqrt((nu + 1d) / (1d - r * r));
+                double c = new StudentT(0, 1, nu + 1).CDF(u == 0d ? limit : -limit);
+                return t <= c ? 0d : 1d;
+            }
 
             // Transform u to t-quantile
             var tNu = new StudentT(0, 1, _nu);

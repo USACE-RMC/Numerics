@@ -18,7 +18,7 @@ namespace Numerics.Functions
     /// <see cref="Numerics.Distributions.UnivariateDistributionFactory"/> patterns: a closed
     /// switch per surface, with serialization dispatch keyed on the element's local name (which
     /// by contract is the concrete class name). The enum deliberately stays off
-    /// <see cref="IUnivariateFunction"/> — external implementors of the interface exist, and the
+    /// <see cref="IUnivariateFunction"/>: external implementors of the interface exist, and the
     /// net481 target has no default interface members, so the serialization surface lives on the
     /// concrete classes (<c>ToXElement()</c> instance methods with static <c>FromXElement</c>
     /// counterparts) and on this factory.

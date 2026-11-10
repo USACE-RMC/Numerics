@@ -2,6 +2,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Numerics.Sampling;
 
 namespace Data.Statistics
 {
@@ -28,7 +29,7 @@ namespace Data.Statistics
     /// </list>
     /// </remarks>
     [TestClass]
-    public class Test_HypothesisTests
+    public partial class Test_HypothesisTests
     {
         /// <summary>
         /// Test the OneSampleTtest method against known examples and R's "t.test()" function from the "stats" package.
@@ -65,6 +66,47 @@ namespace Data.Statistics
             var p = HypothesisTests.EqualVarianceTtest(data1, data2);
             double true_p = 0.0185;
             Assert.AreEqual(true_p, p, 1E-4);
+        }
+
+        /// <summary>
+        /// Two-sided t p-values far in the tail keep their relative accuracy (the complement 1 - CDF floored them near
+        /// 2E-16), against scipy.stats 1.17.1 ttest_1samp, ttest_ind (pooled and Welch) and ttest_rel, and R 4.4.3
+        /// summary(lm(y ~ x)) for the linear trend test.
+        /// </summary>
+        [TestMethod]
+        public void Test_Ttests_FarTail()
+        {
+            var o = new double[] { 10, 10.001, 9.999, 10.0005, 9.9995, 10.0002, 9.9998, 10.0001 };
+            Assert.AreEqual(5.609558661898506e-31, HypothesisTests.OneSampleTtest(o, 0), 5.609558661898506e-31 * 1E-8);
+
+            var a = new double[] { 10, 10.001, 9.999, 10.0005 };
+            var b = new double[] { 20, 20.001, 19.999, 20.0005, 19.9995 };
+            Assert.AreEqual(3.967421244871032e-28, HypothesisTests.EqualVarianceTtest(a, b), 3.967421244871032e-28 * 1E-8);
+            Assert.AreEqual(1.5142847333611348e-25, HypothesisTests.UnequalVarianceTtest(a, b), 1.5142847333611348e-25 * 1E-8);
+            var c = new double[] { 15, 15.0011, 14.9992, 15.0008 };
+            Assert.AreEqual(4.744656587997517e-15, HypothesisTests.PairedTtest(a, c), 4.744656587997517e-15 * 1E-6);
+
+            var time = new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+            var y = new double[] { 2.1, 3.9, 6.2, 7.8, 10.1, 12.2, 13.8, 16.1, 18.0, 20.3 };
+            Assert.AreEqual(8.7635426585689750e-14, HypothesisTests.LinearTrendTest(time, y), 8.7635426585689750e-14 * 1E-6);
+
+            // The two-sided tail 2 P(T > |t|) the tests use: t = 0 gives 1, an infinite t gives 0, NaN propagates,
+            // ν < 1 is refused.
+            Assert.AreEqual(1d, 2d * new StudentT(5d).CCDF(0d));
+            Assert.AreEqual(0d, 2d * new StudentT(5d).CCDF(double.PositiveInfinity));
+            Assert.IsTrue(double.IsNaN(2d * new StudentT(5d).CCDF(double.NaN)));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => new StudentT(0.5d).CCDF(1d));
+        }
+
+        /// <summary>
+        /// A single-value sample adds nothing to the pooled sum of squares: scipy.stats.ttest_ind([1], [1, 2, 3]) 1.17.1
+        /// gives p = 0.47776703213290644, in either argument order.
+        /// </summary>
+        [TestMethod]
+        public void Test_EqualVarianceTtest_SingleValueSample()
+        {
+            Assert.AreEqual(0.47776703213290644, HypothesisTests.EqualVarianceTtest(new double[] { 1 }, new double[] { 1, 2, 3 }), 1E-12);
+            Assert.AreEqual(0.47776703213290644, HypothesisTests.EqualVarianceTtest(new double[] { 1, 2, 3 }, new double[] { 1 }), 1E-12);
         }
 
         /// <summary>
@@ -129,6 +171,27 @@ namespace Data.Statistics
 
             Assert.AreEqual(trueFVal, fStat, 1E-3);
             Assert.AreEqual(truePVal, pValue, 1E-6);
+            // scipy.stats.f.sf(33.5899..., 1, 48) = 5.134738187407378e-07.
+            Assert.AreEqual(5.134738187407378e-07, pValue, 5.134738187407378e-07 * 1E-8);
+        }
+
+        /// <summary>
+        /// The nested-model F test is one-sided with df_R − df_F numerator degrees of freedom: scipy.stats.f.sf(5.25,
+        /// 2, 7) = 0.04047715405015526 for SSE 100 and 40 on 9 and 7 degrees of freedom. A statistic of zero gives 1, and
+        /// reversed degrees of freedom are refused.
+        /// </summary>
+        [TestMethod]
+        public void Test_FtestModels_NumeratorDegreesOfFreedom()
+        {
+            HypothesisTests.FtestModels(100, 40, 9, 7, out double fStat, out double pValue);
+            Assert.AreEqual(5.25, fStat, 1E-12);
+            Assert.AreEqual(0.04047715405015526, pValue, 1E-14);
+
+            HypothesisTests.FtestModels(40, 40, 9, 7, out fStat, out pValue);
+            Assert.AreEqual(0d, fStat);
+            Assert.AreEqual(1d, pValue);
+
+            Assert.ThrowsExactly<System.ArgumentException>(() => HypothesisTests.FtestModels(40, 100, 7, 9, out _, out _));
         }
 
         /// <summary>
@@ -150,14 +213,18 @@ namespace Data.Statistics
         {
             var data = new double[] { -17.82175266, -2.33394663, 4.66366786, 6.77181741, 48.09893105, -28.26940615, -9.98265593, -0.87518792, 14.97758789, -0.54200675, 8.80374205, -3.40846222, -3.35109891, -12.98362149, -1.42481547, 18.5800533, 10.86238267, -13.65904345, 1.76995771, 13.91485418, 10.8528196, -11.69442361, -11.6048953, 5.89082943, -13.20258835, 3.93329214, 2.62990935, -4.00680666, 18.4215721, 0.14773234, 10.20778973, -7.41284797, 8.42081407, 35.41116192, 59.37166512, 9.36721778, 22.37395361, 22.9971476, 13.47067667, -18.98066759, -22.84094314, 16.7108515, 18.72618308, 29.97227498, -16.078326, -0.26901107, -0.05773469, 14.44571902, -7.23727541, 18.87940528, -10.55665291, -0.40463948, 1.1599797, -9.47746043, -8.83651712, -0.1277879, -7.43500345, 18.02267959, 10.38996171, 6.73008507, -0.78965999, -6.63662283, -0.26534812, -18.26597299, 10.68284417, 4.14715065, -22.73605154, 0.38107214, 17.99480125, 4.67217999, -7.55979566, -5.02964486, 10.07853161, -10.20580542, -3.83664015, -3.13645528, -4.30412819, 12.06651361, 16.46249676, -0.77303738, 10.72787315, 12.09162065, 8.22959713, 5.86544228, -11.14598952, 9.55434186, -4.24740884, -2.84574008, -7.08625811, 0.80619592, 12.92545548, -3.22668772, -25.39204102, 9.92546076, -3.16982112, 18.60432604, -14.00214643, 1.17374306, -13.04390662, 24.21704845, 3.82716675, -5.17619789, -8.06288031, 4.1033081, -13.36564786, -15.91238602, -25.39452748, 18.80121063, 7.80923857, -6.8516946, 6.54494797, 26.80612853, 4.65921504, 23.73597901, 44.15782916, 2.64243694, -24.27815428, 40.02096079, 6.5730404, 25.71086816, 28.14206721, 55.47192889, -14.9762203, -10.03718017, 38.03084527, 7.20256442 };
 
-            // R is different because it estimates moments differently.
+            // R moments::jarque.test gives 3.444E-05; scipy.stats.jarque_bera 1.17.1 gives 3.443778022828376e-05.
             var p = HypothesisTests.JarqueBeraTest(data);
-            double true_p = 3.444E-05 / 2;
-            Assert.AreEqual(true_p, p, 1E-5);
+            double true_p = 3.443778022828376e-05;
+            Assert.AreEqual(true_p, p, true_p * 1E-8);
 
-            // known example
+            // scipy.stats.jarque_bera: statistic 1.0040277490351397, p-value 0.605310412198013. (The earlier 0.592128 came
+            // from an example that used the bias-corrected skewness and kurtosis.)
             var JB = HypothesisTests.JarqueBeraTest(new double[] { 4, 5, 5, 6, 9, 12, 13, 14, 14, 19, 22, 24, 25 });
-            Assert.AreEqual(0.592128, JB, 1E-6);
+            Assert.AreEqual(0.605310412198013, JB, 1E-12);
+
+            // scipy.stats.jarque_bera: p-value 0.6910990901340825.
+            Assert.AreEqual(0.6910990901340825, HypothesisTests.JarqueBeraTest(new double[] { 2.1, 3.5, 1.2, 8.9, 4.4, 5.0, 3.3, 2.8, 7.7, 6.1, 0.9, 4.2 }), 1E-12);
         }
 
 
@@ -375,6 +442,254 @@ namespace Data.Statistics
             Assert.AreEqual(0.03509475123312452, pValue, 0.03509475123312452 * 1E-6);
         }
 
+        /// <summary>
+        /// With n1 n2 odd the expected U is a half-integer (5 x 17 samples: E[U] = 42.5).
+        /// </summary>
+        /// <remarks>
+        /// Reference p-value computed with Python scipy 1.17.1
+        /// scipy.stats.mannwhitneyu(x, y, use_continuity=False, method='asymptotic') = 0.00687292391731027.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MannWhitney_OddProduct()
+        {
+            var sample1 = new double[] { 1.1, 2.3, 3.2, 4.8, 5.0 };
+            var sample2 = new double[] { 2.0, 3.5, 4.1, 5.5, 6.2, 7.7, 8.1, 9.4, 10.3, 11.0, 12.5, 13.1, 14.2, 15.6, 16.0, 17.3, 18.9 };
+            double pValue = HypothesisTests.MannWhitneyTest(sample1, sample2);
+            Assert.AreEqual(0.00687292391731027, pValue, 0.00687292391731027 * 1E-6);
+        }
+
+        /// <summary>
+        /// Test Hartigan's dip statistic against R diptest 0.77.2 <c>dip()</c>, including tied, constant,
+        /// single-value and empty samples.
+        /// </summary>
+        /// <remarks>
+        /// <b> References: </b>
+        /// Maechler, M. and Ringach, D. (2025). diptest: Hartigan's Dip Test Statistic for Unimodality - Corrected. R package version 0.77-2.
+        /// </remarks>
+        [TestMethod]
+        public void Test_HartiganDip_MatchesR()
+        {
+            Assert.AreEqual(0d, HypothesisTests.HartiganDip(new double[0]), 0d);
+            Assert.AreEqual(0.5, HypothesisTests.HartiganDip(new double[] { 5 }), 0d);
+            Assert.AreEqual(0.25, HypothesisTests.HartiganDip(new double[] { 1, 2 }), 0d);
+            Assert.AreEqual(0.125, HypothesisTests.HartiganDip(new double[] { 4, 1, 3, 2 }), 0d);
+            Assert.AreEqual(0.1, HypothesisTests.HartiganDip(new double[] { 3, 3, 3, 3, 3 }), 1E-15);
+            Assert.AreEqual(0.1875, HypothesisTests.HartiganDip(new double[] { 1, 1, 1, 2, 2, 5, 5, 5, 5, 9 }), 1E-15);
+            Assert.AreEqual(0.15555555555555556, HypothesisTests.HartiganDip(new double[] { 0.5, 1.5, 1.5, 2, 2, 2, 2.5, 3, 7, 7.5, 8, 8, 8.5, 9, 9 }), 1E-15);
+            Assert.AreEqual(0.125, HypothesisTests.HartiganDip(new double[] { 1, 0.5, -1, 0.5, -0.5, -1, 1, 1, -1, 0.5, 2.5, 1, -0.5, 0.5, -1.5, 0.5, -2, 2.5, -1, 1 }), 1E-15);
+            Assert.AreEqual(0.086314958296960093, HypothesisTests.HartiganDip(new double[] { -0.2600038160874425, -0.16285100167438976, -0.90087458650539542, -0.23135597425869309,
+                0.86195506130218913, 0.3763467681724586, -0.17715607751019694, -0.085177164177269976, -0.43612827351821809, 1.4237823458859504, 3.416678901465473,
+                3.8604758569957012, 3.6775664316148138, 3.0153586596756199, 2.0927864607817059, 1.2240458252098512, 3.6884804177102644, 2.4817555475005166,
+                1.5391226578204371, 3.8898272439175168 }), 1E-15);
+            Assert.AreEqual(0.10710382513661201, HypothesisTests.HartiganDip(BimodalDipFixture), 1E-15);
+        }
+
+        /// <summary>
+        /// A 30-value bimodal sample: R diptest gives D = 0.10710382513661201, p = 0.0047111 from the
+        /// interpolated table and p = 0.0048 from 100,000 simulated uniform samples.
+        /// </summary>
+        private static readonly double[] BimodalDipFixture =
+        {
+            -2.1, -1.7, -1.5, -1.2, -1.1, -0.9, -0.6, -0.4, -0.3, -0.1, 0.2, 0.4, 0.6, 0.9, 1.3,
+            4.1, 4.4, 4.6, 4.8, 5.0, 5.1, 5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.0, 7.4, 8.0
+        };
+
+        /// <summary>
+        /// Test that the dip statistic rejects NaN, infinite and null input.
+        /// </summary>
+        [TestMethod]
+        public void Test_HartiganDip_InvalidInput()
+        {
+            Assert.ThrowsExactly<ArgumentException>(() => HypothesisTests.HartiganDip(new double[] { 1, double.NaN, 3, 4 }));
+            Assert.ThrowsExactly<ArgumentException>(() => HypothesisTests.HartiganDip(new double[] { 1, double.PositiveInfinity, 3, 4 }));
+            Assert.ThrowsExactly<ArgumentNullException>(() => HypothesisTests.HartiganDip(null!));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => HypothesisTests.HartiganDipTest(BimodalDipFixture, 0));
+        }
+
+        /// <summary>
+        /// Test the simulated dip test p-value against R diptest 0.77.2 <c>dip.test()</c> within Monte
+        /// Carlo error, its reproducibility for a fixed seed, and the small-sample and minimum-dip cases.
+        /// </summary>
+        [TestMethod]
+        public void Test_HartiganDipTest_MatchesR()
+        {
+            // R: p = 0.0048 (100,000 simulations). Default 2,000 realizations: standard error about 0.0015.
+            double p = HypothesisTests.HartiganDipTest(BimodalDipFixture);
+            Assert.AreEqual(0.0048, p, 0.006);
+            Assert.AreEqual(p, HypothesisTests.HartiganDipTest(BimodalDipFixture), 0d);
+
+            // Normal quantiles have the minimum dip 1/(2n); R gives p = 1
+            var quantiles = new double[40];
+            for (int i = 0; i < 40; i++)
+                quantiles[i] = Normal.StandardZ((i + 0.5) / 40);
+            Assert.AreEqual(1d / 80, HypothesisTests.HartiganDip(quantiles), 1E-15);
+            Assert.AreEqual(1d, HypothesisTests.HartiganDipTest(quantiles), 0d);
+
+            // Three or fewer values and constant samples cannot reject
+            Assert.AreEqual(1d, HypothesisTests.HartiganDipTest(new double[] { 1, 2, 5 }), 0d);
+            Assert.AreEqual(1d, HypothesisTests.HartiganDipTest(new double[] { 3, 3, 3, 3, 3, 3 }), 0d);
+        }
+
+        /// <summary>
+        /// Test the parametric-bootstrap p-value of the Gaussian mixture likelihood-ratio test: it is
+        /// reproducible for a fixed seed, large for the unimodal fixture and at its minimum 1/(B + 1)
+        /// for the bimodal fixture, and the chi-square overload returns its reference value. This test uses
+        /// B = 39; the sweep with B = 199 runs with
+        /// <c>dotnet run -c Release --project Benchmarks_Numerics -- sweep Unimodality</c>.
+        /// </summary>
+        [TestMethod]
+        public void Test_UnimodalityTest_Bootstrap()
+        {
+            UnimodalityTestBootstrap(39);
+        }
+
+        /// <summary>
+        /// The two-sample Kolmogorov-Smirnov statistic equals scipy.stats.ks_2samp(first, second).statistic
+        /// bit for bit, including tied values within and across the samples. The expected values are the
+        /// scipy 1.17.1 statistics, which its exact mode rounds from the integer count, each the correctly
+        /// rounded rational noted beside it.
+        /// </summary>
+        [TestMethod]
+        public void Test_TwoSampleKolmogorovSmirnov_ScipyOracle()
+        {
+            Assert.AreEqual(1d / 3d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 1d, 2d, 3d }, new[] { 2d, 3d, 4d }), 0d);
+            Assert.AreEqual(1d / 3d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 1d, 1d, 2d, 2d, 3d }, new[] { 1d, 2d, 2d, 2d, 5d, 6d }), 0d);
+            Assert.AreEqual(0d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 0.5d }, new[] { 0.5d }), 0d);
+            Assert.AreEqual(1d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 1d, 2d, 3d, 4d, 5d, 6d, 7d }, new[] { 10d, 11d }), 0d);
+            // 8/35
+            Assert.AreEqual(0.22857142857142856d, HypothesisTests.TwoSampleKolmogorovSmirnov(
+                new[] { -3.2d, -1.0d, 0.0d, 0.4d, 2.2d, 2.2d, 7.5d }, new[] { -1.0d, 0.4d, 0.4d, 1.9d, 3.3d }), 0d);
+
+            // a = sorted((7i mod 23)/4, i < 40), b = sorted((5i mod 17)/3 + 0.5, i < 31): many ties. 77/620
+            var a = new double[40];
+            var b = new double[31];
+            for (int i = 0; i < a.Length; i++) a[i] = (i * 7 % 23) / 4.0;
+            for (int i = 0; i < b.Length; i++) b[i] = (i * 5 % 17) / 3.0 + 0.5;
+            Array.Sort(a);
+            Array.Sort(b);
+            Assert.AreEqual(0.12419354838709677d, HypothesisTests.TwoSampleKolmogorovSmirnov(a, b), 0d);
+            // The statistic is symmetric, and a list argument gives the same value as an array.
+            Assert.AreEqual(HypothesisTests.TwoSampleKolmogorovSmirnov(a, b), HypothesisTests.TwoSampleKolmogorovSmirnov(b, a), 0d);
+            Assert.AreEqual(HypothesisTests.TwoSampleKolmogorovSmirnov(a, b),
+                HypothesisTests.TwoSampleKolmogorovSmirnov(new System.Collections.Generic.List<double>(a), new System.Collections.Generic.List<double>(b)), 0d);
+
+            // a = sorted((p1 i mod q1)/4, i < n1), b = sorted((p2 i mod q2)/4 + s/4, i < n2): quarter-step ties.
+            AssertModularCase(40, 7, 23, 31, 5, 17, 2, 0.2d);                   // 1/5
+            AssertModularCase(13, 3, 11, 29, 7, 13, 1, 0.21750663129973474d);   // 82/377
+            AssertModularCase(97, 11, 31, 50, 13, 29, 3, 0.1134020618556701d);  // 11/97
+            AssertModularCase(200, 17, 41, 7, 3, 5, 0, 0.875d);                 // 7/8
+            AssertModularCase(64, 5, 19, 64, 9, 19, 1, 0.09375d);               // 3/32
+            AssertModularCase(1, 1, 1, 9, 2, 7, 0, 0.7777777777777778d);        // 7/9
+        }
+
+        /// <summary>
+        /// Builds the sorted quarter-step modular samples of <see cref="Test_TwoSampleKolmogorovSmirnov_ScipyOracle"/>
+        /// and checks the statistic bit for bit.
+        /// </summary>
+        /// <param name="n1">The first sample size.</param>
+        /// <param name="p1">The first multiplier.</param>
+        /// <param name="q1">The first modulus.</param>
+        /// <param name="n2">The second sample size.</param>
+        /// <param name="p2">The second multiplier.</param>
+        /// <param name="q2">The second modulus.</param>
+        /// <param name="shift">The second sample shift, in quarters.</param>
+        /// <param name="expected">The scipy statistic.</param>
+        private static void AssertModularCase(int n1, int p1, int q1, int n2, int p2, int q2, int shift, double expected)
+        {
+            var a = new double[n1];
+            var b = new double[n2];
+            for (int i = 0; i < n1; i++) a[i] = (i * p1 % q1) / 4.0;
+            for (int i = 0; i < n2; i++) b[i] = (i * p2 % q2) / 4.0 + shift / 4.0;
+            Array.Sort(a);
+            Array.Sort(b);
+            Assert.AreEqual(expected, HypothesisTests.TwoSampleKolmogorovSmirnov(a, b), 0d);
+        }
+
+        /// <summary>
+        /// The statistic is the correctly rounded rational D/(n1 n2). Tie-heavy samples give the exact
+        /// quotient, including 1/3 for [0, 1, 1] against [1, 1, 1] and for [1, 2, 3] against [2, 3, 4]; in the
+        /// second case the floating-point difference 1 - 2/3 is one unit in the last place above 1/3.
+        /// </summary>
+        [TestMethod]
+        public void Test_TwoSampleKolmogorovSmirnov_ExactRationals()
+        {
+            Assert.AreEqual(1d / 3d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 0d, 1d, 1d }, new[] { 1d, 1d, 1d }), 0d);
+            Assert.AreEqual(1d / 3d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 1d, 2d, 3d }, new[] { 2d, 3d, 4d }), 0d);
+            // Unequal sizes with ties: F1 - F2 is 2/3 - 1/7 = 11/21 at 1, then 1 - 4/7 = 3/7 at 2.
+            Assert.AreEqual(11d / 21d, HypothesisTests.TwoSampleKolmogorovSmirnov(
+                new[] { 1d, 1d, 2d }, new[] { 1d, 2d, 2d, 2d, 3d, 3d, 3d }), 0d);
+            // Disjoint samples, including samples tied at a single value each.
+            Assert.AreEqual(1d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 2d, 2d, 2d, 2d }, new[] { 5d, 5d, 5d }), 0d);
+            Assert.AreEqual(1d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 4d, 5d, 6d }, new[] { 1d, 2d }), 0d);
+            // Identical samples, and samples with the same empirical distribution at different sizes.
+            var same = new[] { -1d, 0d, 0d, 3d, 3d, 3d, 8d };
+            Assert.AreEqual(0d, HypothesisTests.TwoSampleKolmogorovSmirnov(same, (double[])same.Clone()), 0d);
+            Assert.AreEqual(0d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 1d, 2d }, new[] { 1d, 1d, 2d, 2d }), 0d);
+            // One value shared by both samples: both distributions jump together and the gap is 0.
+            Assert.AreEqual(0d, HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 7d, 7d }, new[] { 7d, 7d, 7d }), 0d);
+            // A single value against a sample containing it: 7 of the 10 values lie strictly below it.
+            Assert.AreEqual(0.7d, HypothesisTests.TwoSampleKolmogorovSmirnov(
+                new[] { 0.5d }, new[] { 0.1d, 0.1d, 0.2d, 0.2d, 0.3d, 0.3d, 0.4d, 0.5d, 0.6d, 0.7d }), 0d);
+        }
+
+        /// <summary>
+        /// On fixed-seed random samples with heavy ties, the statistic equals the correctly rounded
+        /// rational computed independently by counting each sample at every pooled value.
+        /// </summary>
+        [TestMethod]
+        public void Test_TwoSampleKolmogorovSmirnov_RandomizedExactRational()
+        {
+            var prng = new MersenneTwister(20261107);
+            for (int trial = 0; trial < 500; trial++)
+            {
+                int n1 = 1 + prng.Next(60), n2 = 1 + prng.Next(60), levels = 1 + prng.Next(12);
+                var a = new double[n1];
+                var b = new double[n2];
+                for (int i = 0; i < n1; i++) a[i] = prng.Next(levels + 1) / 4.0;
+                for (int i = 0; i < n2; i++) b[i] = prng.Next(levels + 1) / 4.0;
+                Array.Sort(a);
+                Array.Sort(b);
+
+                long numerator = 0;
+                foreach (double value in a)
+                    numerator = Math.Max(numerator, CountGap(a, b, value));
+                foreach (double value in b)
+                    numerator = Math.Max(numerator, CountGap(a, b, value));
+                // Both integers are exact doubles, so IEEE division gives the correctly rounded quotient.
+                double expected = (double)numerator / ((double)n1 * n2);
+                Assert.AreEqual(expected, HypothesisTests.TwoSampleKolmogorovSmirnov(a, b), 0d);
+            }
+        }
+
+        /// <summary>
+        /// Returns |i n2 - j n1|, where i and j count the values of each sample at or below the given value.
+        /// </summary>
+        /// <param name="a">The first sample.</param>
+        /// <param name="b">The second sample.</param>
+        /// <param name="value">The evaluation point.</param>
+        /// <returns>The scaled gap between the two empirical distribution functions.</returns>
+        private static long CountGap(double[] a, double[] b, double value)
+        {
+            long i = 0, j = 0;
+            foreach (double v in a) if (v <= value) i++;
+            foreach (double v in b) if (v <= value) j++;
+            return Math.Abs(i * b.Length - j * a.Length);
+        }
+
+        /// <summary>
+        /// Null, empty, non-finite and unsorted samples throw the documented exceptions naming the argument.
+        /// </summary>
+        [TestMethod]
+        public void Test_TwoSampleKolmogorovSmirnov_InvalidInputs()
+        {
+            var good = new[] { 1d, 2d };
+            Assert.AreEqual("first", Assert.Throws<ArgumentNullException>(() => HypothesisTests.TwoSampleKolmogorovSmirnov(null!, good)).ParamName);
+            Assert.AreEqual("second", Assert.Throws<ArgumentNullException>(() => HypothesisTests.TwoSampleKolmogorovSmirnov(good, null!)).ParamName);
+            Assert.AreEqual("first", Assert.Throws<ArgumentException>(() => HypothesisTests.TwoSampleKolmogorovSmirnov(new double[0], good)).ParamName);
+            Assert.AreEqual("second", Assert.Throws<ArgumentException>(() => HypothesisTests.TwoSampleKolmogorovSmirnov(good, new[] { 2d, 1d })).ParamName);
+            Assert.AreEqual("first", Assert.Throws<ArgumentOutOfRangeException>(() => HypothesisTests.TwoSampleKolmogorovSmirnov(new[] { 1d, double.NaN }, good)).ParamName);
+            Assert.AreEqual("second", Assert.Throws<ArgumentOutOfRangeException>(() => HypothesisTests.TwoSampleKolmogorovSmirnov(good, new[] { 1d, double.PositiveInfinity })).ParamName);
+        }
     }
 
 }

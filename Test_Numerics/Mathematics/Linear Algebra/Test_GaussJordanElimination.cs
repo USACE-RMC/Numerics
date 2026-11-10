@@ -36,8 +36,25 @@ namespace Mathematics.LinearAlgebra
             }
 
             // Recreated Gauss Jordan test in R to compare the inverted A matrices.
-            // I utilized library(matlib), gaussianElimination(), and inv() functions. Test passed.
+            // Uses the library(matlib) gaussianElimination() and inv() functions. Test passed.
         }
 
+        /// <summary>
+        /// Invalid inputs are rejected: a NaN entry (which never wins the pivot comparison), a non-square A, and a
+        /// right-hand side with the wrong number of rows.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InvalidInputs()
+        {
+            var A = new Matrix(new double[,] { { double.NaN, 1 }, { 1, 2 } });
+            Matrix B = null!;
+            Assert.ThrowsExactly<System.ArgumentException>(() => GaussJordanElimination.Solve(ref A, ref B));
+            var square = new Matrix(new double[,] { { 2, 1 }, { 1, 2 } });
+            var shortB = new Matrix(1, 1);
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => GaussJordanElimination.Solve(ref square, ref shortB));
+            var wide = new Matrix(2, 3);
+            Matrix none = null!;
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => GaussJordanElimination.Solve(ref wide, ref none));
+        }
     }
 }

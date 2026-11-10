@@ -35,7 +35,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Constructs a Pearson Type III distribution with the given moments (of log) µ, σ, and γ.
+        /// Constructs a Pearson Type III distribution with the given moments µ, σ, and γ.
         /// </summary>
         /// <param name="mean">The mean of the data.</param>
         /// <param name="standardDeviation">The standard deviation of the data.</param>
@@ -65,6 +65,9 @@ namespace Numerics.Distributions
         /// <summary>
         /// Gets and sets the Standard Deviation of the distribution.
         /// </summary>
+        /// <remarks>
+        /// Values in [0, 1E-16) are raised to 1E-16; negative values are stored as given and fail validation.
+        /// </remarks>
         public double Sigma
         {
             get { return _sigma; }
@@ -98,7 +101,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Gets and sets the scale parameter β (beta).
+        /// Gets the scale parameter β (beta).
         /// </summary>
         public double Beta
         {
@@ -106,7 +109,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Gets and sets the shape parameter α (alpha).
+        /// Gets the shape parameter α (alpha).
         /// </summary>
         public double Alpha
         {
@@ -141,6 +144,17 @@ namespace Numerics.Distributions
         /// <param name="upper"><see langword="true"/> to evaluate the survival probability; <see langword="false"/> to evaluate the cumulative probability.</param>
         /// <returns>The requested log probability, including support-endpoint limits.</returns>
         internal static double LogTail(double mu, double sigma, double gamma, double x, bool upper)
+            => LogTail(mu, sigma, gamma, x, upper, UseCenteredGammaOffset(gamma));
+
+        /// <summary>Evaluates the signed gamma tail, optionally carrying the rounding residual of the unit gamma coordinate.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="upper"><see langword="true"/> to evaluate the survival probability; <see langword="false"/> to evaluate the cumulative probability.</param>
+        /// <param name="centered"><see langword="true"/> to evaluate the gamma tail at the centered coordinate with its residual; requires absolute skew below one.</param>
+        /// <returns>The requested log probability, including support-endpoint limits.</returns>
+        private static double LogTail(double mu, double sigma, double gamma, double x, bool upper, bool centered)
         {
             if (x <= (gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity)) return upper ? 0d : double.NegativeInfinity;
             if (x >= (gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity)) return upper ? double.NegativeInfinity : 0d;
@@ -159,6 +173,18 @@ namespace Numerics.Distributions
                     + g2 * gamma * (h4 / 40d + h6 / 96d + h8 / 1296d);
                 double relative = Math.Exp(-0.5d * z2 - Math.Log(Tools.Sqrt2PI) - normal) * correction;
                 return normal + Tools.Log1p(upper ? relative : -relative);
+            }
+            if (centered)
+            {
+                double shape = Math.Pow(2d / gamma, 2d);
+                double representable = CenteredUnitGammaValue(mu, sigma, gamma, shape, x, z, out double residual);
+                bool gammaUpper = upper == (gamma > 0d);
+                double log = gammaUpper ? DistributionNumerics.GammaLogSurvival(shape, representable) : DistributionNumerics.GammaLogCDF(shape, representable);
+                if (residual == 0d || !(representable > 0d) || !Tools.IsFinite(log)) return log;
+                // First-order Taylor step from the representable coordinate to the exact sum of the shape and the centered offset.
+                double hazard = Math.Exp(DistributionNumerics.GammaLogDensity(shape, representable) - log);
+                double corrected = log + (gammaUpper ? -hazard : hazard) * residual;
+                return Tools.IsFinite(corrected) ? Math.Min(corrected, 0d) : log;
             }
             double unit = UnitGammaValue(mu, sigma, gamma, x, z);
             double alpha = Math.Pow(2d / gamma, 2d);
@@ -186,6 +212,52 @@ namespace Numerics.Distributions
                 : DistributionNumerics.Standardize(x, mu - sigma * (2d / gamma), 0.5d * sigma * gamma);
         }
 
+        /// <summary>
+        /// Absolute skew below which the gamma density and tails carry the rounding residual of the unit gamma coordinate.
+        /// </summary>
+        /// <remarks>
+        /// The unit gamma coordinate is <c>a + 2z/γ</c> with shape <c>a = 4/γ²</c>. Rounding it to a double moves it by up to
+        /// half an ulp of <c>a</c>, which perturbs the log density and log tails by about <c>ε·2|z|/|γ|</c>, growing as
+        /// 1/|γ| as the skew decreases. Below this skew the residual is carried explicitly, which keeps the log density and
+        /// log tails within about 5E-15 of 50-digit references for probabilities from 1E-6 to 1 - 1E-6, except where
+        /// |γz/2| ≥ 0.25, where both forms share the error of the gamma kernel, up to about 2E-13. At and above this skew
+        /// the rounding perturbation is below the error of the gamma kernels, and the residual no longer improves the result.
+        /// </remarks>
+        private const double CenteredGammaSkewLimit = 0.1d;
+
+        /// <summary>Selects the centered unit gamma coordinate with an explicit rounding residual.</summary>
+        /// <param name="gamma">The validated nonzero Pearson skew.</param>
+        /// <returns><see langword="true"/> when the absolute skew is below <see cref="CenteredGammaSkewLimit"/>; otherwise, <see langword="false"/>.</returns>
+        private static bool UseCenteredGammaOffset(double gamma)
+        {
+            return Math.Abs(gamma) < CenteredGammaSkewLimit;
+        }
+
+        /// <summary>Forms the unit gamma coordinate from its centered offset and returns the rounding residual exactly.</summary>
+        /// <param name="mu">The finite Pearson mean.</param>
+        /// <param name="sigma">The finite positive Pearson standard deviation.</param>
+        /// <param name="gamma">The finite nonzero Pearson skew.</param>
+        /// <param name="shape">The gamma shape <c>(2/γ)²</c>.</param>
+        /// <param name="x">The observation in physical coordinates.</param>
+        /// <param name="z">The standardized observation <c>(x-mu)/sigma</c>.</param>
+        /// <param name="residual">The exact difference between <c>shape + (2/γ)z</c> and the returned coordinate; zero at the support endpoint.</param>
+        /// <returns>The representable unit gamma coordinate nearest <c>shape + (2/γ)z</c>, or zero at the support endpoint.</returns>
+        /// <remarks>
+        /// The centered offset <c>(2/γ)z</c> is formed to relative precision, and the sum with the shape is split by the
+        /// error-free two-sum transformation (Knuth, The Art of Computer Programming, Vol. 2, 4.2.2), so the coordinate plus
+        /// the residual equals the exact sum of the shape and the offset.
+        /// </remarks>
+        private static double CenteredUnitGammaValue(double mu, double sigma, double gamma, double shape, double x, double z, out double residual)
+        {
+            residual = 0d;
+            if (x == mu - sigma * (2d / gamma)) return 0d;
+            double offset = (2d / gamma) * z;
+            double unit = shape + offset;
+            double carried = unit - shape;
+            residual = (shape - (unit - carried)) + (offset - carried);
+            return unit;
+        }
+
         /// <summary>Bounds local tail-expansion error while retaining every nonzero skew.</summary>
         /// <param name="z">The standardized observation.</param>
         /// <returns><see langword="true"/> when the configured skew and observation satisfy the local tail-expansion error bound; otherwise, <see langword="false"/>.</returns>
@@ -201,6 +273,21 @@ namespace Numerics.Distributions
             return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 1E-3;
         }
 
+        /// <summary>Largest absolute skew at which the quantile and its skew derivative use the skew series.</summary>
+        /// <remarks>
+        /// Below this skew the gamma quantile <c>(γ/2)(u - α)</c> loses about <c>2ε/|γ|</c> to the cancellation of the unit
+        /// gamma quantile <c>u</c> against the shape <c>α = 4/γ²</c>, and its skew derivative about <c>4ε/γ²</c> relative.
+        /// The order-8 series of <see cref="LocalStandardQuantile(double, double, out double)"/> agrees with 50-digit
+        /// references to about 2E-15 in the quantile and 3E-14 relative in the derivative within this skew and
+        /// <see cref="LocalQuantileProductLimit"/>.
+        /// </remarks>
+        private const double LocalQuantileSkewLimit = 0.03d;
+
+        /// <summary>Largest <c>|γ|(1 + |z|)</c> at which the quantile and its skew derivative use the skew series.</summary>
+        /// <remarks>The terms of the series grow with <c>γz</c> as well as with <c>γ</c>, so this bound keeps the omitted
+        /// order-9 term below the rounding error of the series in the far tails.</remarks>
+        private const double LocalQuantileProductLimit = 0.2d;
+
         /// <summary>Avoids cancellation in centered gamma quantiles only where the skew expansion is accurate.</summary>
         /// <param name="z">The standard Normal quantile.</param>
         /// <returns><see langword="true"/> when the configured skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
@@ -213,10 +300,11 @@ namespace Numerics.Distributions
         /// <returns><see langword="true"/> when the skew and quantile satisfy the local quantile-expansion error bound; otherwise, <see langword="false"/>.</returns>
         private static bool UseLocalQuantileExpansion(double gamma, double z)
         {
-            return Math.Abs(gamma) <= 1E-3 && Math.Abs(gamma) * Math.Pow(1d + Math.Abs(z), 3d) <= 0.02d;
+            double absGamma = Math.Abs(gamma);
+            return absGamma <= LocalQuantileSkewLimit && absGamma * (1d + Math.Abs(z)) <= LocalQuantileProductLimit;
         }
 
-        /// <summary>Evaluates the smooth gamma quantile expansion and its skew derivative through cubic order.</summary>
+        /// <summary>Evaluates the smooth gamma quantile expansion and its skew derivative through order eight.</summary>
         /// <param name="z">The standard Normal quantile.</param>
         /// <param name="derivative">The derivative of the returned standardized quantile with respect to the configured skew.</param>
         /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
@@ -228,14 +316,27 @@ namespace Numerics.Distributions
         /// <param name="z">The standard Normal quantile.</param>
         /// <param name="derivative">The derivative of the returned standardized quantile with respect to the skew.</param>
         /// <returns>The standardized Pearson quantile from the local skew expansion.</returns>
+        /// <remarks>
+        /// The standardized quantile is <c>z + Σₖ γᵏ Pₖ(z)</c> for k = 1 to 8, the Cornish-Fisher expansion of the gamma
+        /// quantile in the skew. The polynomials follow order by order from <c>ln f(q(z)) + ln q'(z) = ln φ(z)</c>, with the
+        /// standardized gamma log density <c>ln f(q) = (α - 1) ln(1 + γq/2) - 2q/γ - ln √(2π) - Σⱼ B₂ⱼ/(2j(2j - 1)) α^(1-2j)</c>,
+        /// <c>α = 4/γ²</c>, which is analytic at zero skew; each <c>Pₖ</c> is the unique polynomial solution, of degree
+        /// k + 1. The derivative is that of the same polynomial.
+        /// </remarks>
         private static double LocalStandardQuantile(double gamma, double z, out double derivative)
         {
-            double z2 = z * z;
-            double first = (z2 - 1d) / 6d;
-            double second = z * (z2 - 7d) / 144d;
-            double third = -(3d * z2 * z2 + 7d * z2 - 16d) / 6480d;
-            derivative = first + gamma * (2d * second + 3d * gamma * third);
-            return z + gamma * (first + gamma * (second + gamma * third));
+            double z2 = z * z, z4 = z2 * z2, z6 = z4 * z2, z8 = z4 * z4;
+            double p1 = (z2 - 1d) / 6d;
+            double p2 = z * (z2 - 7d) / 144d;
+            double p3 = -(3d * z4 + 7d * z2 - 16d) / 6480d;
+            double p4 = z * (9d * z4 + 256d * z2 - 433d) / 622080d;
+            double p5 = (12d * z6 - 243d * z4 - 923d * z2 + 1472d) / 6531840d;
+            double p6 = -z * (3753d * z6 + 4353d * z4 - 289517d * z2 - 289717d) / 9405849600d;
+            double p7 = (270d * z8 + 4614d * z6 - 9513d * z4 - 104989d * z2 + 35968d) / 7054387200d;
+            double p8 = -z * (5139d * z8 + 547848d * z6 + 2742210d * z4 - 7016224d * z2 - 37501325d) / 5417769369600d;
+            derivative = p1 + gamma * (2d * p2 + gamma * (3d * p3 + gamma * (4d * p4 + gamma * (5d * p5
+                + gamma * (6d * p6 + gamma * (7d * p7 + gamma * 8d * p8))))));
+            return z + gamma * (p1 + gamma * (p2 + gamma * (p3 + gamma * (p4 + gamma * (p5 + gamma * (p6 + gamma * (p7 + gamma * p8)))))));
         }
 
         /// <inheritdoc/>
@@ -452,8 +553,8 @@ namespace Numerics.Distributions
             if (gamma > 6)
             {
                 if (throwException)
-                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 6.");
-                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than 6.");
+                    throw new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than or equal to 6.");
+                return new ArgumentOutOfRangeException(nameof(Gamma), "Gamma = " + gamma + ". Gamma must be less than or equal to 6.");
             }
             if (gamma < -6)
             {
@@ -513,17 +614,10 @@ namespace Numerics.Distributions
             }
 
             double gamma = 2.0d * Math.Pow(alpha, -0.5d) * Math.Sign(T3);
-            double sigma;
-            if (alpha < 100.0d)
-            {
-                sigma = L2 * Math.Sqrt(Math.PI) * Math.Sqrt(alpha) * Mathematics.SpecialFunctions.Gamma.Function(alpha) / Mathematics.SpecialFunctions.Gamma.Function(alpha + 0.5d);
-            }
-            else
-            {
-                double inverseAlpha = 1.0d / alpha;
-                double correction = 1.0d - inverseAlpha / 8.0d + inverseAlpha * inverseAlpha / 128.0d;
-                sigma = Math.Sqrt(Math.PI) * L2 / correction;
-            }
+            // sigma = L2 sqrt(pi alpha) Gamma(alpha) / Gamma(alpha + 1/2), with the gamma ratio from ln B(alpha, 1/2),
+            // which stays finite for every shape; sqrt(alpha) Gamma(alpha) / Gamma(alpha + 1/2) tends to one as alpha grows.
+            double scaledRatio = double.IsPositiveInfinity(alpha) ? 1d : Math.Sqrt(alpha) * Mathematics.SpecialFunctions.Gamma.RatioHalf(alpha);
+            double sigma = L2 * Math.Sqrt(Math.PI) * scaledRatio;
             double mu = L1;
             return [mu, sigma, gamma];
         }
@@ -539,19 +633,11 @@ namespace Numerics.Distributions
                 return [mu, sigma / Math.Sqrt(Math.PI), 0.0d, 0.12260172d];
             }
             double alpha = 4.0d / Math.Pow(gamma, 2d);
-            double beta = 0.5d * sigma * gamma;
             double L1 = mu;
-            double L2;
-            if (alpha < 100.0d)
-            {
-                L2 = Math.Abs(beta * Mathematics.SpecialFunctions.Gamma.Function(alpha + 0.5d) / (Math.Sqrt(Math.PI) * Mathematics.SpecialFunctions.Gamma.Function(alpha)));
-            }
-            else
-            {
-                double inverseAlpha = 1.0d / alpha;
-                double correction = 1.0d - inverseAlpha / 8.0d + inverseAlpha * inverseAlpha / 128.0d;
-                L2 = sigma / Math.Sqrt(Math.PI) * correction;
-            }
+            // L2 = |beta| Gamma(alpha + 1/2) / (sqrt(pi) Gamma(alpha)) = sigma / (sqrt(pi alpha) Gamma(alpha) / Gamma(alpha + 1/2)),
+            // with the gamma ratio from ln B(alpha, 1/2), which stays finite for every shape.
+            double scaledRatio = double.IsPositiveInfinity(alpha) ? 1d : Math.Sqrt(alpha) * Mathematics.SpecialFunctions.Gamma.RatioHalf(alpha);
+            double L2 = Math.Abs(sigma) / (Math.Sqrt(Math.PI) * scaledRatio);
             // The following approximations are accurate to 10-6. 
             double A0 = 0.32573501d;
             double A1 = 0.1686915d;
@@ -695,6 +781,16 @@ namespace Numerics.Distributions
         /// <param name="x">The value at which to evaluate the density.</param>
         /// <returns>The log density, including the established support and endpoint limits.</returns>
         internal static double LogPDF(double mu, double sigma, double gamma, double x)
+            => LogPDF(mu, sigma, gamma, x, UseCenteredGammaOffset(gamma));
+
+        /// <summary>Evaluates a Pearson log density, optionally carrying the rounding residual of the unit gamma coordinate.</summary>
+        /// <param name="mu">The finite mean.</param>
+        /// <param name="sigma">The finite positive standard deviation.</param>
+        /// <param name="gamma">The finite skew in the supported interval.</param>
+        /// <param name="x">The value at which to evaluate the density.</param>
+        /// <param name="centered"><see langword="true"/> to evaluate the gamma density at the centered coordinate with its residual; requires absolute skew below one.</param>
+        /// <returns>The log density, including the established support and endpoint limits.</returns>
+        private static double LogPDF(double mu, double sigma, double gamma, double x, bool centered)
         {
             if (x < (gamma > 0d ? mu - sigma * (2d / gamma) : double.NegativeInfinity)
                 || x > (gamma < 0d ? mu - sigma * (2d / gamma) : double.PositiveInfinity)
@@ -710,6 +806,15 @@ namespace Numerics.Distributions
                     + g2 * gamma * z * z2 * (z2 / 40d - 1d / 24d)
                     + g2 * g2 * z2 * z2 * (1d / 64d - z2 / 96d);
                 return -0.5d * z2 - Math.Log(sigma) - Math.Log(Tools.Sqrt2PI) + correction;
+            }
+            if (centered)
+            {
+                double shape = Math.Pow(2d / gamma, 2d);
+                double representable = CenteredUnitGammaValue(mu, sigma, gamma, shape, x, z, out double residual);
+                double log = DistributionNumerics.GammaLogDensity(shape, representable) - Math.Log(sigma) - Math.Log(Math.Abs(gamma) / 2d);
+                if (residual == 0d || !(representable > 0d) || !Tools.IsFinite(log)) return log;
+                // First-order Taylor step using d/dy log f(y) = (shape - 1 - y)/y at the representable coordinate.
+                return log + residual * ((shape - representable) - 1d) / representable;
             }
             double unit = UnitGammaValue(mu, sigma, gamma, x, z);
             return DistributionNumerics.GammaLogDensity(Math.Pow(2d / gamma, 2d), unit) - Math.Log(sigma) - Math.Log(Math.Abs(gamma) / 2d);
@@ -744,12 +849,12 @@ namespace Numerics.Distributions
             if (gamma == 0d) return mu + sigma * z;
             if (UseLocalQuantileExpansion(gamma, z)) return mu + sigma * LocalStandardQuantile(gamma, z, out _);
             double alpha = Math.Pow(2d / gamma, 2d);
-            double unit = DistributionNumerics.GammaInverseCDF(alpha, probability, gamma < 0d);
+            double unit = Mathematics.SpecialFunctions.Gamma.InverseIncompleteRatio(alpha, probability, gamma < 0d);
             return mu + sigma * ((gamma / 2d) * (unit - alpha));
         }
 
         /// <summary>
-        /// Returns the inverse CDF using the modified Wilson-Hilferty transformation.
+        /// Returns the approximate inverse CDF using the Cornish-Fisher expansion or the modified Wilson-Hilferty transformation, depending on the skew.
         /// </summary>
         /// <param name="probability">Probability between 0 and 1.</param>
         /// <returns>The approximate Pearson type III quantile in physical coordinates.</returns>
@@ -779,11 +884,33 @@ namespace Numerics.Distributions
             return new PearsonTypeIII(Mu, Sigma, Gamma);
         }
 
+        /// <summary>
+        /// Value of <c>h = γ²/4</c> below which the maximum-likelihood skew information is evaluated by its Bernoulli series.
+        /// </summary>
+        /// <remarks>
+        /// The series of <see cref="FisherBernoulli"/> is asymptotic in <c>h</c>; through the B36 term it agrees with 50-digit
+        /// references to about 2E-15 relative below this value, and the trigamma form above it is within about 2E-14.
+        /// </remarks>
+        private const double FisherSeriesLimit = 0.15d;
+
+        /// <summary>
+        /// The Bernoulli numbers B2 through B36, the coefficients of <c>h^(2k-2)</c> in the series of the skew information
+        /// <c>a³[ψ'(a) - 1/a - 1/(2a²)]</c> with <c>a = 1/h</c>.
+        /// </summary>
+        private static readonly double[] FisherBernoulli =
+        [
+            1d / 6d, -1d / 30d, 1d / 42d, -1d / 30d, 5d / 66d, -691d / 2730d, 7d / 6d, -3617d / 510d, 43867d / 798d,
+            -174611d / 330d, 854513d / 138d, -236364091d / 2730d, 8553103d / 6d, -23749461029d / 870d,
+            8615841276005d / 14322d, -7709321041217d / 510d, 2577687858367d / 6d, -26315271553053477373d / 1919190d,
+        ];
+
         /// <inheritdoc/>
         /// <remarks>
         /// Uses the public mean, standard deviation and skew coordinates for both estimators.
         /// Regular maximum-likelihood information exists only for absolute skew below sqrt(2),
         /// including the full zero-skew limit diag(sigma^2, sigma^2/2, 6)/n.
+        /// The skew information <c>T = a³[ψ'(a) - 1/(a-1) + 1/(2(a-1)²)]</c>, <c>a = 4/γ²</c>, is the Bernoulli series of the
+        /// trigamma residual plus the exact rational term below <c>γ²/4 = 0.15</c>, and the trigamma form above it.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">The sample size is nonpositive, the parameters are invalid, or maximum-likelihood covariance is requested outside its regular domain.</exception>
         public double[,] ParameterCovariance(int sampleSize, ParameterEstimationMethod estimationMethod)
@@ -810,16 +937,16 @@ namespace Numerics.Distributions
                 // T = a^3 [trigamma(a)-1/(a-1)+1/(2(a-1)^2)], a=4/gamma^2.
                 // Expand only the cancellation-prone trigamma residual; the rational contribution is exact.
                 double t;
-                if (h < 0.05d)
+                if (h < FisherSeriesLimit)
                 {
-                    double h2 = h * h;
-                    t = 1d / 6d + h2 * (-1d / 30d + h2 * (1d / 42d + h2 * (-1d / 30d + h2 * (5d / 66d - h2 * 691d / 2730d))))
-                        + h / (2d * (1d - h) * (1d - h));
+                    double h2 = h * h, sum = 0d;
+                    for (int k = FisherBernoulli.Length - 1; k >= 0; k--) sum = sum * h2 + FisherBernoulli[k];
+                    t = sum + h / (2d * (1d - h) * (1d - h));
                 }
                 else
                 {
                     double shape = 1d / h;
-                    t = (DistributionNumerics.AccurateTrigamma(shape) - 1d / (shape - 1d) + 0.5d / Math.Pow(shape - 1d, 2d)) / (h * h * h);
+                    t = (Mathematics.SpecialFunctions.Gamma.Trigamma(shape) - 1d / (shape - 1d) + 0.5d / Math.Pow(shape - 1d, 2d)) / (h * h * h);
                 }
                 covariance[1, 1] = s2 * (0.5d + h / (4d * (1d - h) * (1d - h) * t));
                 covariance[1, 2] = covariance[2, 1] = Sigma * Gamma / (4d * (1d - h) * t * sampleSize);
@@ -842,7 +969,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
-        /// <remarks>Differentiates the actual signed-gamma quantile implicitly in public mean, SD and skew coordinates. A smooth local gamma expansion avoids cancellation at zero skew.</remarks>
+        /// <remarks>Differentiates the actual signed-gamma quantile implicitly in public mean, SD and skew coordinates. For
+        /// absolute skew at most 0.03 with <c>|γ|(1 + |z|)</c> at most 0.2, where the implicit gamma derivative loses about
+        /// <c>4ε/γ²</c> to cancellation, the derivative is that of the order-8 skew series of the quantile, which is smooth
+        /// through zero skew.</remarks>
         public double[] QuantileGradient(double probability)
         {
             DistributionNumerics.ValidateProbability(probability);
@@ -854,7 +984,7 @@ namespace Numerics.Distributions
                 double quantile = LocalStandardQuantile(z, out double derivative);
                 return [1d, quantile, Sigma * derivative];
             }
-            double unit = DistributionNumerics.GammaInverseCDF(Alpha, probability, Gamma < 0d);
+            double unit = Mathematics.SpecialFunctions.Gamma.InverseIncompleteRatio(Alpha, probability, Gamma < 0d);
             double shapeDerivative = DistributionNumerics.GammaQuantileShapeDerivative(Alpha, unit);
             double standardized = Gamma / 2d * (unit - Alpha);
             double skewDerivative = (unit + Alpha) / 2d - Alpha * shapeDerivative;
@@ -878,16 +1008,92 @@ namespace Numerics.Distributions
             return DistributionNumerics.QuantileJacobian(this, probabilities, out determinant);
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Absolute skew below which conditional moments are evaluated by the standardized boundary recurrence.
+        /// </summary>
+        /// <remarks>
+        /// Below this skew the blended truncated-gamma path loses accuracy: its Wilson-Hilferty and Normal surrogates carry
+        /// approximation error, and its raw gamma moments about zero cancel when recentered at the mean. At and above this
+        /// skew the blended path agrees with high-precision quadrature to about 1E-9 relative.
+        /// </remarks>
+        private const double StandardizedMomentSkewLimit = 0.6d;
+
+        /// <summary>
+        /// Returns the conditional mean and the conditional central moments about the unconditional mean on the interval [a, b].
+        /// </summary>
+        /// <param name="a">The lower limit of the conditioning interval.</param>
+        /// <param name="b">The upper limit of the conditioning interval.</param>
+        /// <returns>
+        /// <c>[E[X | a ≤ X ≤ b], E[(X-µ)² | a ≤ X ≤ b], E[(X-µ)³ | a ≤ X ≤ b], E[(X-µ)⁴ | a ≤ X ≤ b]]</c>, or not-a-number
+        /// values when <paramref name="a"/> is not below <paramref name="b"/> or the interval mass is at most 1E-15.
+        /// </returns>
+        /// <remarks>
+        /// For absolute skew below 0.6 the moments are computed in standardized coordinates <c>z = (x-µ)/σ</c> by the exact
+        /// recurrence <c>J(k+1) = k(γ/2)J(k) + kJ(k-1) - [zᵏ(1 + γz/2)f(z)]</c> evaluated between the standardized limits, where
+        /// <c>J(k)</c> is the integral of <c>zᵏf(z)</c> over the interval and <c>f</c> is the standardized Pearson density. It
+        /// follows from integrating the derivative of <c>zᵏ(1 + γz/2)f(z)</c> by parts, is continuous through zero skew where
+        /// it reduces to the truncated Normal recurrence, and involves no recentering of raw moments. The density and tails
+        /// at the limits are evaluated at the centered unit gamma coordinate with its rounding residual, and interval masses
+        /// with a positive standardized lower limit are differenced as survival probabilities. Larger skews use the
+        /// truncated-gamma moments.
+        /// </remarks>
         public override double[] ConditionalMoments(double a, double b)
         {
             if (a >= b)
                 return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
 
+            if (Math.Abs(Gamma) < StandardizedMomentSkewLimit)
+                return StandardizedConditionalMoments(a, b, 1e-15);
+
             var pearson = TryPearsonConditionalMoments(a, b, out var mPearson, 1e-15);
             if (!pearson.stable || !pearson.divisable) 
                 return new[] { double.NaN, double.NaN, double.NaN, double.NaN };
             return mPearson;
+        }
+
+        /// <summary>Evaluates the conditional moments by the standardized boundary recurrence.</summary>
+        /// <param name="a">The lower limit of the conditioning interval, below <paramref name="b"/>.</param>
+        /// <param name="b">The upper limit of the conditioning interval.</param>
+        /// <param name="pMin">The interval mass at or below which the moments are not-a-number.</param>
+        /// <returns><c>[E[X], m2, m3, m4]</c> with central moments about the unconditional mean, or not-a-number values.</returns>
+        private double[] StandardizedConditionalMoments(double a, double b, double pMin)
+        {
+            var undefined = new[] { double.NaN, double.NaN, double.NaN, double.NaN };
+            if (!_parametersValid) return undefined;
+            double g = Gamma;
+            double za = DistributionNumerics.Standardize(a, Mu, Sigma);
+            double zb = DistributionNumerics.Standardize(b, Mu, Sigma);
+
+            // Standardized interval mass, differenced in the tail that keeps it free of cancellation.
+            bool upperHalf = za > 0d;
+            double Tail(double z) => double.IsNegativeInfinity(z) ? (upperHalf ? 1d : 0d)
+                : double.IsPositiveInfinity(z) ? (upperHalf ? 0d : 1d)
+                : Math.Exp(LogTail(0d, 1d, g, z, upperHalf, true));
+            double mass = upperHalf ? Tail(za) - Tail(zb) : Tail(zb) - Tail(za);
+            if (!(mass > pMin)) return undefined;
+
+            // Boundary weights (1 + γz/2) f(z); they vanish at infinite limits and outside the support.
+            double h = g / 2d;
+            double Weight(double z) => double.IsInfinity(z) ? 0d : (1d + h * z) * Math.Exp(LogPDF(0d, 1d, g, z, true));
+            double wa = Weight(za), wb = Weight(zb);
+            double Boundary(double power, double weight) => weight == 0d ? 0d : power * weight;
+
+            var J = new double[5];
+            J[0] = mass;
+            J[1] = wa - wb;
+            double pa = 1d, pb = 1d;
+            for (int k = 1; k <= 3; k++)
+            {
+                pa *= za;
+                pb *= zb;
+                J[k + 1] = k * h * J[k] + k * J[k - 1] + Boundary(pa, wa) - Boundary(pb, wb);
+            }
+
+            double s = Sigma, s2 = s * s;
+            var moments = new[] { Mu + s * (J[1] / mass), s2 * (J[2] / mass), s2 * s * (J[3] / mass), s2 * s2 * (J[4] / mass) };
+            for (int i = 0; i < moments.Length; i++)
+                if (!Tools.IsFinite(moments[i])) return undefined;
+            return moments;
         }
 
         /// <summary>
@@ -1043,7 +1249,7 @@ namespace Numerics.Distributions
                     if (!(Dz > pMin) || double.IsNaN(Dz)) whOk = false;
                     else
                     {
-                        // Moments of Z we need
+                        // Required moments of Z
                         double EZ3 = EZPow(3, muZ, sigZ, Jz);
                         double EZ6 = EZPow(6, muZ, sigZ, Jz);
                         double EZ9 = EZPow(9, muZ, sigZ, Jz);

@@ -250,8 +250,8 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
-        /// Kernel density does not compose the empirical distribution — it carries its own
-        /// lookup table with hard support gates — so the empirical extrapolation property cannot
+        /// Kernel density does not compose the empirical distribution (it carries its own
+        /// lookup table with hard support gates), so the empirical extrapolation property cannot
         /// reach it: the gates and the serialized form are unchanged.
         /// </summary>
         [TestMethod]
@@ -264,9 +264,39 @@ namespace Distributions.Univariate
             Assert.DoesNotContain("Extrapolation", kde.ToXElement().ToString());
         }
 
+        /// <summary>
+        /// Mode is global: on this bimodal sample, 100 quantiles of N(-2, 0.6) and 100 of N(2, 1.2), the density has a
+        /// taller peak near -1.966 and a lower one near 1.996, and Mode returns the taller. The oracle maximizes the same
+        /// Gaussian kernel estimate (the bandwidth read from the distribution) with
+        /// scipy.optimize.minimize_scalar(method='bounded', xatol=1e-12), SciPy 1.18.1: -1.9665229445341117. The peak is
+        /// flat, so the polish tolerance of 1E-8 relative bounds the agreement.
+        /// </summary>
+        [TestMethod]
+        public void Test_ModeIsGlobalOnBimodalSample()
+        {
+            var left = new Normal(-2d, 0.6);
+            var right = new Normal(2d, 1.2);
+            var sample = new List<double>();
+            for (int i = 0; i < 100; i++) sample.Add(left.InverseCDF((i + 0.5) / 100d));
+            for (int i = 0; i < 100; i++) sample.Add(right.InverseCDF((i + 0.5) / 100d));
+            var kde = new KernelDensity(sample);
+            double mode = kde.Mode;
+            Assert.AreEqual(-1.9665229445341117, mode, 5E-8);
+            Assert.IsGreaterThan(kde.PDF(1.995840475176536), kde.PDF(mode));
+        }
 
-
-
-
+        /// <summary>
+        /// On a unimodal sample the global search returns the single peak within the polish tolerance; the sample of
+        /// 200 quantiles of N(10, 2) is symmetric about 10, so the mode is 10.
+        /// </summary>
+        [TestMethod]
+        public void Test_ModeUnimodal()
+        {
+            var normal = new Normal(10d, 2d);
+            var sample = new List<double>();
+            for (int i = 0; i < 200; i++) sample.Add(normal.InverseCDF((i + 0.5) / 200d));
+            var kde = new KernelDensity(sample);
+            Assert.AreEqual(10d, kde.Mode, 1E-6);
+        }
     }
 }

@@ -220,7 +220,8 @@ namespace Distributions.Univariate
             var U = new UniformDiscrete();
             Assert.AreEqual(0.5, U.CDF(0));
             Assert.AreEqual(1, U.CDF(1));
-            Assert.AreEqual(0.75, U.CDF(0.5));
+            // The CDF is a step function: scipy.stats.randint(0, 2).cdf(0.5) = 0.5
+            Assert.AreEqual(0.5, U.CDF(0.5));
         }
 
         /// <summary>
@@ -261,6 +262,142 @@ namespace Distributions.Univariate
             // randint(3, 8).std() = 1.4142135624  {3,...,7}
             var u5 = new UniformDiscrete(3, 7);
             Assert.AreEqual(1.4142135624, u5.StandardDeviation, 1E-6);
+        }
+
+        /// <summary>
+        /// The PMF is zero away from the integers and the CDF floors its argument, as in scipy.stats.randint.
+        /// </summary>
+        [TestMethod()]
+        public void Test_NonIntegerArguments()
+        {
+            var U = new UniformDiscrete(0, 1);
+            // scipy.stats.randint(0, 2).pmf(0.5) = 0, .cdf(0.5) = 0.5
+            Assert.AreEqual(0d, U.PDF(0.5));
+            Assert.AreEqual(0.5, U.CDF(0.5));
+            var D = new UniformDiscrete(1, 6);
+            // scipy.stats.randint(1, 7).cdf(3.5) = 0.5
+            Assert.AreEqual(0.5, D.CDF(3.5));
+            Assert.AreEqual(1d / 6d, D.PDF(3));
+            Assert.AreEqual(1d, D.CDF(double.PositiveInfinity));
+            Assert.AreEqual(0d, D.CDF(double.NegativeInfinity));
+            Assert.IsTrue(double.IsNaN(U.PDF(double.NaN)));
+            Assert.IsTrue(double.IsNaN(U.CDF(double.NaN)));
+        }
+
+        /// <summary>
+        /// The quantile is the smallest k with CDF(k) ≥ p, including where p·N is an integer.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_SmallestK()
+        {
+            // Adjacent doubles for nonnegative arguments.
+            static double NextUp(double x) => BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(x) + 1);
+            static double NextDown(double x) => BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(x) - 1);
+
+            // scipy.stats.randint(0, 2).ppf(0.5) = 0
+            Assert.AreEqual(0d, new UniformDiscrete(0, 1).InverseCDF(0.5));
+            var D = new UniformDiscrete(1, 6);
+            // scipy.stats.randint(1, 7).ppf(0.5) = 3, .ppf(1/6) = 1
+            Assert.AreEqual(3d, D.InverseCDF(0.5));
+            Assert.AreEqual(1d, D.InverseCDF(1d / 6d));
+            Assert.AreEqual(1d, D.InverseCDF(NextDown(1d / 6d)));
+            // CDF(1) = 1/6 lies one unit in the last place below p, so the smallest k with CDF(k) >= p is 2
+            // (scipy.stats.randint(1, 7).ppf returns 1 here because p*6 rounds down to exactly 1).
+            Assert.AreEqual(2d, D.InverseCDF(NextUp(1d / 6d)));
+
+            foreach (var (min, max) in new (double, double)[] { (0, 1), (1, 6), (-3, 4), (10, 109), (5, 5) })
+            {
+                var U = new UniformDiscrete(min, max);
+                double n = max - min + 1;
+                for (int j = 0; j <= n; j++)
+                {
+                    foreach (double p in new[] { j / n, NextDown(j / n), NextUp(j / n) })
+                    {
+                        if (!(p > 0 && p < 1)) continue;
+                        double k = U.InverseCDF(p);
+                        Assert.IsTrue(k >= min && k <= max);
+                        Assert.IsGreaterThanOrEqualTo(p, U.CDF(k));
+                        Assert.IsTrue(k == min || U.CDF(k - 1) < p);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Non-integer bounds are invalid; Min = Max is a valid point mass whose kurtosis is undefined.
+        /// </summary>
+        [TestMethod()]
+        public void Test_IntegerParametersAndPointMass()
+        {
+            Assert.IsFalse(new UniformDiscrete(0.5, 2.2).ParametersValid);
+            Assert.IsFalse(new UniformDiscrete(0, 2.2).ParametersValid);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new UniformDiscrete(0.5, 2).PDF(1));
+
+            var P = new UniformDiscrete(3, 3);
+            Assert.IsTrue(P.ParametersValid);
+            Assert.AreEqual(1d, P.PDF(3));
+            Assert.AreEqual(0d, P.PDF(2));
+            Assert.AreEqual(0d, P.CDF(2));
+            Assert.AreEqual(1d, P.CDF(3));
+            Assert.AreEqual(3d, P.InverseCDF(0.4));
+            Assert.AreEqual(3d, P.Mean);
+            Assert.IsTrue(double.IsNaN(P.Kurtosis));
+        }
+
+        /// <summary>
+        /// Maximum likelihood gives the sample minimum and maximum.
+        /// </summary>
+        [TestMethod()]
+        public void Test_MLE()
+        {
+            var data = new double[] { 4, 2, 9, 7, 3, 3 };
+            var U = new UniformDiscrete();
+            U.Estimate(data, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(2d, U.Min);
+            Assert.AreEqual(9d, U.Max);
+
+            var constraints = U.GetParameterConstraints(data);
+            Assert.AreEqual(2d, constraints.Item1[0]);
+            Assert.AreEqual(9d, constraints.Item1[1]);
+            Assert.AreEqual(2d, constraints.Item3[0]);
+            Assert.AreEqual(9d, constraints.Item2[1]);
+            Assert.IsTrue(constraints.Item2[0] < 2d && constraints.Item3[1] > 9d);
+
+            // A constant sample estimates a point mass.
+            U.Estimate(new double[] { 5, 5, 5 }, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.AreEqual(5d, U.Min);
+            Assert.AreEqual(5d, U.Max);
+            Assert.IsTrue(U.ParametersValid);
+
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.Estimate(new[] { 1.0, 2.5 }, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.Estimate(new double[0], ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<ArgumentNullException>(() => U.Estimate(null!, ParameterEstimationMethod.MaximumLikelihood));
+            Assert.ThrowsExactly<NotImplementedException>(() => U.Estimate(data, ParameterEstimationMethod.MethodOfMoments));
+        }
+
+        /// <summary>
+        /// The parametric bootstrap re-estimates a valid distribution from a seeded sample.
+        /// </summary>
+        [TestMethod()]
+        public void Test_Bootstrap()
+        {
+            var U = new UniformDiscrete(1, 6);
+            var b = (UniformDiscrete)U.Bootstrap(ParameterEstimationMethod.MaximumLikelihood, 200, 12345);
+            Assert.IsTrue(b.ParametersValid);
+            Assert.AreEqual(1d, b.Min);
+            Assert.AreEqual(6d, b.Max);
+        }
+
+        /// <summary>
+        /// The quantile function validates the parameters before returning the endpoints.
+        /// </summary>
+        [TestMethod()]
+        public void Test_InverseCDF_ValidatesParametersFirst()
+        {
+            var U = new UniformDiscrete(0, 1);
+            U.Min = 2;
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.InverseCDF(0));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => U.InverseCDF(1));
         }
     }
 

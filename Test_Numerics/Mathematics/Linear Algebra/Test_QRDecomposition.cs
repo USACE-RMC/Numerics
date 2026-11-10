@@ -232,5 +232,51 @@ namespace Mathematics.LinearAlgebra
             for (int i = 0; i < A.NumberOfRows; i++)
                 Assert.AreEqual(B[i, 0], AX[i, 0], 1e-10);
         }
+
+        /// <summary>
+        /// A numerically rank-deficient matrix is rejected by Solve instead of dividing by roundoff, while a
+        /// full-rank least-squares problem is unaffected.
+        /// </summary>
+        [TestMethod()]
+        public void Test_SolveRejectsRankDeficientMatrix()
+        {
+            // The second column is twice the first.
+            var deficient = new QRDecomposition(new Matrix(new double[,] { { 1, 2 }, { 2, 4 }, { 3, 6 } }));
+            Assert.ThrowsExactly<System.ArgumentException>(() => deficient.Solve(new Vector(new double[] { 1, 2, 3 })));
+            Assert.ThrowsExactly<System.ArgumentException>(() => deficient.Solve(new Matrix(3, 1)));
+
+            // y = 1 + 2x exactly at x = 0, 1, 2, 3: the least-squares fit recovers (1, 2).
+            var A = new Matrix(new double[,] { { 1, 0 }, { 1, 1 }, { 1, 2 }, { 1, 3 } });
+            var x = new QRDecomposition(A).Solve(new Vector(new double[] { 1, 3, 5, 7 }));
+            Assert.AreEqual(1d, x[0], 1E-13);
+            Assert.AreEqual(2d, x[1], 1E-13);
+        }
+
+        /// <summary>
+        /// R matches numpy.linalg.qr on the textbook matrix [[12, -51, 4], [6, 167, -68], [-4, 24, -41]], and
+        /// columns near the overflow and underflow limits are handled by the scaled norm: a column of two 1E200
+        /// entries gives a finite R[0,0], and a column of two 1E-200 entries is triangularized.
+        /// </summary>
+        [TestMethod()]
+        public void Test_RMatchesNumpyAndScaledNorm()
+        {
+            var A = new Matrix(new double[,] { { 12, -51, 4 }, { 6, 167, -68 }, { -4, 24, -41 } });
+            var R = new QRDecomposition(A).RMatrix;
+            var expected = new double[,] { { -14, -21, 14 }, { 0, -175, 70 }, { 0, 0, -35 } };
+            // R is unique up to the sign of each row; the last 1 x 1 reflection differs from LAPACK's.
+            for (int i = 0; i < 3; i++)
+            {
+                double sign = System.Math.Sign(R[i, i]) * System.Math.Sign(expected[i, i]);
+                for (int j = 0; j < 3; j++)
+                    Assert.AreEqual(expected[i, j], sign * R[i, j], 1E-12);
+            }
+
+            var big = new QRDecomposition(new Matrix(new double[,] { { 1E200 }, { 1E200 } })).RMatrix;
+            Assert.AreEqual(-System.Math.Sqrt(2d) * 1E200, big[0, 0], 1E-15 * 1E200);
+            Assert.AreEqual(0d, big[1, 0], 1E-15 * 1E200);
+            var small = new QRDecomposition(new Matrix(new double[,] { { 1E-200 }, { 1E-200 } })).RMatrix;
+            Assert.AreEqual(-System.Math.Sqrt(2d) * 1E-200, small[0, 0], 1E-15 * 1E-200);
+            Assert.AreEqual(0d, small[1, 0], 1E-15 * 1E-200);
+        }
     }
 }

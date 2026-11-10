@@ -48,11 +48,9 @@ namespace Numerics.Distributions
                 double logTerm = Math.Log(Math.Abs(covariance[i, j])) + gradientLogs[i] + gradientLogs[j];
                 double term = Math.Sign(covariance[i, j]) * Math.Sign(gradient[i]) * Math.Sign(gradient[j])
                     * Math.Exp(logTerm - largestLogTerm);
-                double next = quadratic + term;
-                correction += Math.Abs(quadratic) >= Math.Abs(term) ? (quadratic - next) + term : (term - next) + quadratic;
-                quadratic = next;
+                Tools.NeumaierAdd(ref quadratic, ref correction, term);
             }
-            quadratic += correction;
+            quadratic = Tools.NeumaierResult(quadratic, correction);
             if (!Tools.IsFinite(quadratic) || quadratic < 0)
                 throw new InvalidOperationException("The quantile variance could not be resolved as a nonnegative quadratic form.");
             if (quadratic == 0) return 0;
@@ -63,8 +61,8 @@ namespace Numerics.Distributions
         /// <param name="shape">The finite positive Gamma shape.</param>
         /// <returns>The scaled Fisher residual without subtracting rounded reciprocal leading terms.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Shape is not finite and positive.</exception>
-        /// <remarks>Uses the trigamma recurrence below shape 32 and the same Bernoulli expansion as
-        /// AccurateTrigamma after analytically removing 1/shape. Scaling before evaluation also
+        /// <remarks>Uses the trigamma recurrence below shape 32 and the Bernoulli expansion of trigamma
+        /// through the B12 term after analytically removing 1/shape. Scaling before evaluation also
         /// avoids squaring a large shape or forming an underflowed unscaled residual.</remarks>
         internal static double GammaScaledFisherResidual(double shape)
         {

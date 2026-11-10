@@ -130,7 +130,7 @@ namespace Data.Statistics
 
 
             int total = frequency.Sum();
-            int halfTotal = total / 2;
+            double halfTotal = total / 2d;
             int m = 0; int n = 0;
             // basic formula for median
             while (m < hist.NumberOfBins)
@@ -230,6 +230,24 @@ namespace Data.Statistics
             Assert.AreEqual(
                 histogram.DataCount,
                 Enumerable.Range(0, histogram.NumberOfBins).Sum(index => histogram[index].Frequency));
+        }
+
+        /// <summary>
+        /// For an odd total the median bin holds the ((n + 1) / 2)-th count: {0, 10, 10} has 4 bins of width 2.5 and
+        /// its median (numpy.median: 10) lies in the last bin [7.5, 10], whose midpoint 8.75 is returned. An even
+        /// total keeps the bin of the (n / 2)-th count: {0, 0, 10, 10} has 5 bins of width 2, and the second 0 sits in
+        /// the first bin, midpoint 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_Median_OddTotal()
+        {
+            var hist = new Histogram(new double[] { 0, 10, 10 });
+            Assert.AreEqual(4, hist.NumberOfBins);
+            Assert.AreEqual(8.75, hist.Median, 1E-12);
+
+            var even = new Histogram(new double[] { 0, 0, 10, 10 });
+            Assert.AreEqual(5, even.NumberOfBins);
+            Assert.AreEqual(1d, even.Median, 1E-12);
         }
     }
 }

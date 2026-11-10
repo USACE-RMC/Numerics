@@ -58,23 +58,25 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <summary>
         /// Computes the factorial of an integer.
         /// </summary>
+        /// <remarks>
+        /// Uses the same tabulated double values as the <see cref="Function(int)"/> overload (exact
+        /// through 22!); arguments above 170 return +∞ because the result exceeds the double range.
+        /// </remarks>
         /// <param name="x">An integer greater than 0 </param>
         /// <returns>
         /// The product of all integers less than or equal to the given x
         /// </returns>
-        public static double Function(long x) 
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when x is negative.</exception>
+        public static double Function(long x)
         {
             if (x < 0L)
             {
                 throw new ArgumentOutOfRangeException(nameof(x), "X must be non-negative.");
             }
 
-            if (x == 0L)
-                return 1.0d;
-            long r = x;
-            while (System.Threading.Interlocked.Decrement(ref x) > 1L)
-                r *= x;
-            return r;
+            if (x < _factorialCache.Length)
+                return _factorialCache[x];
+            return double.PositiveInfinity;
         }
 
         /// <summary>
@@ -106,6 +108,13 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <code>
         ///     n chose k = n! / k!(n-k)!
         /// </code>
+        /// <para>
+        /// It is evaluated with the multiplicative form r = r (n - k + i) / i for i = 1..min(k, n - k).
+        /// While the result fits in a 64-bit integer each step is exact (the common factor of r and i
+        /// is cancelled first), so every result is the correctly rounded double, and exact below 2^53.
+        /// Larger results continue in double arithmetic (relative error of order k ulps) and return +∞
+        /// on overflow. Invalid arguments (n &lt; 0, k &lt; 0 or k &gt; n) return 0.
+        /// </para>
         /// </remarks>
         /// <param name="n">An integer greater than or equal to 0 </param>
         /// <param name="k">An integer greater than or equal to 0 </param>
@@ -116,7 +125,51 @@ namespace Numerics.Mathematics.SpecialFunctions
         {
             if (k < 0 || n < 0 || k > n)
                 return 0.0d;
-            return Math.Floor(0.5d + Math.Exp(LogFactorial(n) - LogFactorial(k) - LogFactorial(n - k)));
+            if (k > n - k)
+                k = n - k;
+
+            // Exact integer phase: r = C(n - k + i, i) after step i
+            long r = 1L;
+            int i = 1;
+            for (; i <= k; i++)
+            {
+                long g = Gcd(r, i);
+                long a = r / g;
+                long b = (n - k + (long)i) / (i / g);
+                if (a > long.MaxValue / b)
+                    break;
+                r = a * b;
+            }
+
+            if (i > k)
+                return r;
+
+            // Floating-point phase once the result exceeds the 64-bit range
+            double result = r;
+            for (; i <= k; i++)
+            {
+                result = result * (n - k + (double)i) / i;
+                if (double.IsPositiveInfinity(result))
+                    break;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Greatest common divisor of two positive integers (Euclid's algorithm).
+        /// </summary>
+        /// <param name="a">A positive integer.</param>
+        /// <param name="b">A positive integer.</param>
+        /// <returns>The greatest common divisor of a and b.</returns>
+        private static long Gcd(long a, long b)
+        {
+            while (b != 0L)
+            {
+                long t = a % b;
+                a = b;
+                b = t;
+            }
+            return a;
         }
 
        
@@ -230,8 +283,8 @@ namespace Numerics.Mathematics.SpecialFunctions
         }
         /// <summary>
         /// Enumerates every non-empty subset of n items as an index tuple, in the order
-        /// <see cref="AllCombinations(int)"/> lays out its rows — subset size ascending, then
-        /// lexicographic — without materializing the n·(2^n − 1) matrix.
+        /// <see cref="AllCombinations(int)"/> lays out its rows (subset size ascending, then
+        /// lexicographic) without materializing the n·(2^n − 1) matrix.
         /// </summary>
         /// <param name="n">The overall count.</param>
         /// <returns>The index tuples, in <see cref="AllCombinations(int)"/> row order.</returns>
@@ -239,7 +292,7 @@ namespace Numerics.Mathematics.SpecialFunctions
         /// <remarks>
         /// Yields a reused buffer, as <see cref="FindCombinations(int, int)"/> does; copy it to
         /// retain it. Unlike <see cref="AllCombinations(int)"/> there is no upper bound on n, since
-        /// nothing is allocated per row — the caller decides how far to enumerate.
+        /// nothing is allocated per row; the caller decides how far to enumerate.
         /// </remarks>
         public static IEnumerable<int[]> AllCombinationsLazy(int n)
         {

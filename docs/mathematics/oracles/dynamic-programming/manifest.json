@@ -1,0 +1,24 @@
+{
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "generator": "dynamic_programming_oracle.py golden dynamic-programming-golden.csv",
+  "environment": {
+    "python": "3.14.3",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1 (installed, not used)"
+  },
+  "files": [
+    {
+      "file": "dynamic_programming_oracle.py",
+      "sha256Utf8Lf": "bbf1eb1919fa3f416fc2260e37bd41a537e5a1a9fb4e25dcbb349c5bbbd61976"
+    },
+    {
+      "file": "dynamic-programming-golden.csv",
+      "rows": 69,
+      "sha256Utf8Lf": "2a4785fe327108eec1489ba8465b7c1c5038a3cba44ecb73cebd86ae15466933",
+      "consumers": [
+        "Test_Numerics/Mathematics/Optimization/Dynamic/Test_DynamicProgramming.cs: ReservoirMatchesNumpyOracle",
+        "Test_Numerics/Mathematics/Optimization/Dynamic/Test_Knapsack.cs: MatchesNumpyOracle"
+      ]
+    }
+  ]
+}

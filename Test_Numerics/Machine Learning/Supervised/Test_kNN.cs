@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using System.Collections.Generic;
+using System.Linq;
 using Numerics;
 using Numerics.Data;
 using Numerics.Data.Statistics;
@@ -89,7 +90,7 @@ namespace MachineLearning
 
         /// <summary>
         /// Testing regression method in kNN. This test is mainly meant for demonstration.
-        /// I compare kNN regression against linear regression, and show kNN has better performance against the observed data.
+        /// Compares kNN regression against linear regression, and shows kNN has better performance against the observed data.
         /// <para>
         /// <see href="https://otexts.com/fpp3/least-squares.html"/>
         /// </para>
@@ -367,6 +368,87 @@ namespace MachineLearning
             var repeated = knn.Predict(new double[,] { { 0d, 0d } });
             Assert.IsNotNull(repeated);
             Assert.AreEqual(prediction[0], repeated[0]);
+        }
+
+        /// <summary>
+        /// Test that regression predictions, neighbor indices, bootstrap prediction intervals and
+        /// classification predictions reproduce fixed reference values exactly.
+        /// </summary>
+        [TestMethod]
+        public void Test_kNN_ReferenceValuesExact()
+        {
+            var X = MachineLearningFixtures.ReferenceFixture();
+            var y = new double[30];
+            var classes = new double[30];
+            for (int i = 0; i < 30; i++)
+            {
+                y[i] = X[i, 0] + 0.5 * X[i, 1];
+                classes[i] = i % 3;
+            }
+            var test = new double[,] { { 1.0, 2.0 }, { 5.5, 4.0 }, { 9.0, 7.5 } };
+
+            var knn = new KNearestNeighbors(X, y, 4);
+            CollectionAssert.AreEqual(new[] { 1.69560568259863, 7.382740413698639, 12.583739677207461 }, knn.Predict(test));
+            CollectionAssert.AreEqual(new[] { 13, 4, 0, 22, 23, 10, 14, 7, 26, 2, 17, 29 }, knn.GetNeighbors(test));
+            MachineLearningFixtures.AssertExact(new[] { 1.2178564669167116, 1.6992728603016563, 2.3784099610265903, 1.7396175147919681, 7.080382107935426, 7.423125281046276, 8.00252860160672, 7.488818321563226, 11.677136437133115, 12.746605533676409, 13.644245575074805, 12.708473591723461 }, knn.PredictionIntervals(test, 777, 200)!);
+
+            var classifier = new KNearestNeighbors(X, classes, 3) { IsRegression = false };
+            CollectionAssert.AreEqual(new[] { 1d, 2d, 2d }, classifier.Predict(test));
+        }
+
+        /// <summary>
+        /// Test that predictions and neighbors for a batch of queries large enough to run in parallel
+        /// reproduce fixed reference values exactly, independent of the processor count. One query in
+        /// three coincides with a training row, so the exact-match rule is exercised.
+        /// </summary>
+        [TestMethod]
+        public void Test_kNN_LargeReferenceValuesExact()
+        {
+            var X = MachineLearningFixtures.LargeFixture(6000);
+            var y = new double[6000];
+            var classes = new double[6000];
+            for (int i = 0; i < 6000; i++)
+            {
+                y[i] = X[i, 0] - X[i, 3];
+                classes[i] = i % 5;
+            }
+            var test = MachineLearningFixtures.LargeFixture(64);
+            for (int i = 0; i < 64; i++)
+                test[i, 1] += 0.37 * (i % 3);
+
+            var predictions = new KNearestNeighbors(X, y, 9).Predict(test)!;
+            CollectionAssert.AreEqual(new[] { -15.028528528528529, 7.9744744744744755, 4.9714714714714718, -12.025525525525525 }, predictions.Take(4).ToArray());
+            Assert.AreEqual(0x79CBBB868F424F56UL, MachineLearningFixtures.BitHash(predictions));
+            var neighbors = new KNearestNeighbors(X, classes, 9) { IsRegression = false }.GetNeighbors(test)!;
+            Assert.AreEqual(0x3512829D61083025UL, MachineLearningFixtures.BitHash(neighbors.Select(i => (double)i)));
+        }
+
+        /// <summary>
+        /// Test that neighbors at zero distance take all the regression weight, averaged equally.
+        /// Reference values from scikit-learn KNeighborsRegressor(weights = "distance").
+        /// </summary>
+        [TestMethod]
+        public void Test_kNN_ExactMatchesTakeAllWeight()
+        {
+            // Distant padding rows satisfy the ten-row minimum without entering any neighborhood
+            // A single exact match among closer-than-one neighbors predicts its own response
+            var single = new KNearestNeighbors(new double[] { 0.0, 0.1, 0.2, 50, 51, 52, 53, 54, 55, 56, 57 }, new double[] { 100, 0, 0, 9, 9, 9, 9, 9, 9, 9, 9 }, 3);
+            Assert.AreEqual(100d, single.Predict(new double[] { 0.0 })![0], 0d);
+
+            // Duplicated exact matches are averaged; scikit-learn returns 75
+            var duplicated = new KNearestNeighbors(new double[] { 0.0, 0.0, 0.1, 0.2, 5.0, 50, 51, 52, 53, 54 }, new double[] { 100, 50, 0, 0, 9, 9, 9, 9, 9, 9 }, 3);
+            Assert.AreEqual(75d, duplicated.Predict(new double[] { 0.0 })![0], 0d);
+
+            // Two predictors; scikit-learn returns 8
+            var X = new double[,] { { 0, 0 }, { 1, 0 }, { 0, 2 }, { 3, 3 }, { 40, 40 }, { 41, 40 }, { 42, 40 }, { 43, 40 }, { 44, 40 }, { 45, 40 } };
+            var plane = new KNearestNeighbors(X, new double[] { 4, 8, 1, 7, 2, 2, 2, 2, 2, 2 }, 2);
+            Assert.AreEqual(8d, plane.Predict(new double[,] { { 1, 0 } })![0], 0d);
+
+            // A query with no exact match keeps the inverse squared distance weights: neighbors at
+            // distances 0.25 (response 8) and 0.75 (response 4)
+            double w1 = 1 / (0.25 * 0.25), w2 = 1 / (0.75 * 0.75);
+            double expected = (w1 * 8 + w2 * 4) / (w1 + w2);
+            Assert.AreEqual(expected, plane.Predict(new double[,] { { 0.75, 0 } })![0], 1E-12);
         }
 
     }

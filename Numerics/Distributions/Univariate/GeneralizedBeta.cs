@@ -21,7 +21,7 @@ namespace Numerics.Distributions
     {
      
         /// <summary>
-        /// Constructs a Beta distribution with α and β = 2, defined in the interval (0,1).
+        /// Constructs a Generalized Beta distribution with α and β = 2, defined in the interval (0,1).
         /// </summary>
         public GeneralizedBeta()
         {
@@ -29,7 +29,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Constructs a Beta distribution with the given parameters α and β, defined in the interval (0,1).
+        /// Constructs a Generalized Beta distribution with the given parameters α and β, defined in the interval (0,1).
         /// </summary>
         /// <param name="alpha">The shape parameter α (alpha).</param>
         /// <param name="beta">The shape parameter β (beta).</param>
@@ -39,7 +39,7 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// Constructs a Beta distribution with the given parameters α, β, a and b, defined in the interval (a,b).
+        /// Constructs a Generalized Beta distribution with the given parameters α, β, a and b, defined in the interval (a,b).
         /// </summary>
         /// <param name="alpha">The shape parameter α (alpha).</param>
         /// <param name="beta">The shape parameter β (beta).</param>
@@ -237,6 +237,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When both shapes are below 1, the density is unbounded at both ends of the support and this
+        /// property returns the midpoint (Min + Max) / 2, where the density has its minimum.
+        /// </remarks>
         public override double Mode
         {
             get
@@ -326,12 +330,16 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// 
+        /// Set the distribution parameters by the method of moments, given the mean, standard deviation, and bounds.
         /// </summary>
-        /// <param name="mu"></param>
-        /// <param name="sigma"></param>
-        /// <param name="min"></param>
-        /// <param name="max"></param>
+        /// <param name="mu">The mean of the distribution, between <paramref name="min"/> and <paramref name="max"/>.</param>
+        /// <param name="sigma">The standard deviation of the distribution.</param>
+        /// <param name="min">The minimum possible value.</param>
+        /// <param name="max">The maximum possible value.</param>
+        /// <remarks>
+        /// Moments that no Generalized Beta distribution can match yield invalid shape parameters; the
+        /// parameter-validity state is updated rather than an exception being thrown.
+        /// </remarks>
         public void SetParametersFromMoments(double mu, double sigma, double min, double max)
         {
             var s2 = sigma * sigma;
@@ -385,17 +393,28 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double X)
         {
+            return Math.Exp(LogPDF(X));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated in log space with the log beta function, so large shapes keep a finite density.
+        /// The complement 1 - z is formed as (Max - X) / (Max - Min) to retain precision near the upper bound.
+        /// </remarks>
+        public override double LogPDF(double X)
+        {
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Alpha, Beta, Min, Max, true);
-            if (X < Minimum || X > Maximum) return 0.0d;
+            if (X < Minimum || X > Maximum) return double.NegativeInfinity;
 
-            if (Min == Max) return 0d;
-            double constant = 1.0d / Mathematics.SpecialFunctions.Beta.Function(Alpha, Beta);
-            double z = (X - Min) / (Max - Min);
-            double a = Math.Pow(z, Alpha - 1d);
-            double b = Math.Pow(1d - z, Beta - 1d);
-            return constant * a * b / (Max - Min);
+            if (Min == Max) return double.NegativeInfinity;
+            double range = Max - Min;
+            double logBeta = Mathematics.SpecialFunctions.Beta.LogFunction(Alpha, Beta);
+            // A unit shape contributes a factor of one, including at the matching endpoint.
+            double a = Alpha == 1d ? 0d : (Alpha - 1d) * Math.Log((X - Min) / range);
+            double b = Beta == 1d ? 0d : (Beta - 1d) * Math.Log((Max - X) / range);
+            return a + b - logBeta - Math.Log(range);
         }
 
         /// <inheritdoc/>
@@ -413,10 +432,32 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as 1 - I_z(α, β), with z = (X - Min) / (Max - Min), at or below the mean, and above
+        /// the mean as the regularized incomplete beta function with swapped shapes at the complementary
+        /// coordinate (Max - X) / (Max - Min), which resolves upper-tail probabilities below machine epsilon.
+        /// </remarks>
+        public override double CCDF(double X)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(Alpha, Beta, Min, Max, true);
+
+            if (Min == Max) return 0d;
+            if (X <= Minimum) return 1d;
+            if (X >= Maximum) return 0d;
+            double z = (X - Min) / (Max - Min);
+            if (z <= Alpha / (Alpha + Beta))
+                return 1d - Mathematics.SpecialFunctions.Beta.Incomplete(Alpha, Beta, z);
+            double w = (Max - X) / (Max - Min);
+            return Mathematics.SpecialFunctions.Beta.Incomplete(Beta, Alpha, w);
+        }
+
+        /// <inheritdoc/>
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
             if (probability == 0.0d) return Minimum;
             if (probability == 1.0d) return Maximum;

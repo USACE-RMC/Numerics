@@ -48,7 +48,7 @@ namespace Mathematics.Optimization
                     else if (action < 0.65)
                     {
                         if (model.Count == 0) continue;
-                        heap.RemoveMin(out int popped, out float poppedWeight);
+                        heap.RemoveMin(out int popped, out double poppedWeight);
                         float modelMin = float.MaxValue;
                         foreach (var entry in model)
                         {
@@ -69,7 +69,7 @@ namespace Mathematics.Optimization
 
                 while (model.Count > 0)
                 {
-                    heap.RemoveMin(out int popped, out float poppedWeight);
+                    heap.RemoveMin(out int popped, out double poppedWeight);
                     float modelMin = float.MaxValue;
                     foreach (var entry in model)
                     {
@@ -113,15 +113,95 @@ namespace Mathematics.Optimization
             }
 
             // Full drain returns ascending weights.
-            float previous = float.NegativeInfinity;
+            double previous = double.NegativeInfinity;
             for (int i = 0; i < capacity; i++)
             {
-                heap.RemoveMin(out _, out float weight);
+                heap.RemoveMin(out _, out double weight);
                 Assert.IsGreaterThanOrEqualTo(previous, weight, "The drain must be non-decreasing.");
                 previous = weight;
             }
             Assert.AreEqual(0, heap.Count);
             Assert.Throws<InvalidOperationException>(() => heap.RemoveMin(out _, out _));
+        }
+
+        /// <summary>
+        /// Fixed-seed fuzz with heavy weight ties: the indexed heap pops the same node sequence as the
+        /// swap-based public <see cref="BinaryHeap{T}"/> under the same operation sequence, so tie order is
+        /// part of the contract the shortest-path solvers rely on.
+        /// </summary>
+        [TestMethod]
+        public void IndexedHeapMatchesBinaryHeapPopOrderOnTies()
+        {
+            const int capacity = 40;
+            var randy = new MersenneTwister(97531);
+            var heap = new IndexedMinHeap(capacity);
+            var reference = new BinaryHeap<int>(capacity);
+            var present = new bool[capacity];
+
+            for (int op = 0; op < 4000; op++)
+            {
+                int node = randy.Next(0, capacity);
+                float weight = randy.Next(0, 4);
+                double action = randy.NextDouble();
+                if (action < 0.4)
+                {
+                    if (present[node]) continue;
+                    heap.Add(node, weight);
+                    reference.Add(new BinaryHeap<int>.Node(weight, node, node));
+                    present[node] = true;
+                }
+                else if (action < 0.7)
+                {
+                    if (heap.Count == 0) continue;
+                    Assert.AreEqual(reference.RemoveMin().Index, heap.MinNode);
+                    heap.RemoveMin(out int popped, out _);
+                    present[popped] = false;
+                }
+                else
+                {
+                    heap.DecreaseKey(node, weight);
+                    reference.DecreaseKey(new BinaryHeap<int>.Node(weight, node, node));
+                    present[node] = true;
+                }
+                Assert.AreEqual(reference.Count, heap.Count);
+            }
+            while (heap.Count > 0)
+            {
+                heap.RemoveMin(out int popped, out _);
+                Assert.AreEqual(reference.RemoveMin().Index, popped);
+            }
+        }
+
+        /// <summary>
+        /// The per-node record: <see cref="IndexedMinHeap.WeightOf"/> is positive infinity before a node is added,
+        /// follows decreases, keeps the removal weight afterwards, and resets on Clear.
+        /// </summary>
+        [TestMethod]
+        public void IndexedHeapWeightOfFollowsTheNode()
+        {
+            var heap = new IndexedMinHeap(4);
+            Assert.AreEqual(double.PositiveInfinity, heap.WeightOf(2));
+
+            heap.Add(2, 5d);
+            heap.Add(1, 3d);
+            heap.DecreaseKey(2, 1d);
+            heap.DecreaseKey(2, 4d); // not smaller: ignored
+            Assert.AreEqual(1d, heap.WeightOf(2));
+            Assert.AreEqual(2, heap.MinNode);
+
+            heap.RemoveMin(out int node, out double weight);
+            Assert.AreEqual(2, node);
+            Assert.AreEqual(1d, weight);
+            Assert.AreEqual(1d, heap.WeightOf(2), "The removal weight is kept.");
+
+            heap.DecreaseKey(2, 0.5d); // absent: added again
+            Assert.AreEqual(0.5d, heap.WeightOf(2));
+            Assert.AreEqual(2, heap.Count);
+
+            heap.Clear();
+            Assert.AreEqual(0, heap.Count);
+            Assert.AreEqual(double.PositiveInfinity, heap.WeightOf(2));
+            Assert.AreEqual(double.PositiveInfinity, heap.WeightOf(1));
         }
     }
 }

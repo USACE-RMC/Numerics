@@ -443,8 +443,9 @@ namespace Data.Statistics
         #region "Bias Metrics Tests"
 
         /// <summary>
-        /// Test the Percent Bias (PBIAS) method. These values were tested against R's "pbias()" function 
-        /// from the "hydroGOF" package.
+        /// Test the Percent Bias (PBIAS) method against Moriasi et al. (2007), PBIAS = 100 · Σ(O − M) / ΣO,
+        /// which is positive when the model underestimates. R's hydroGOF pbias() uses the opposite sign,
+        /// 100 · Σ(M − O) / ΣO, and gives 2.777778 for this sample.
         /// </summary>
         [TestMethod]
         public void Test_PBIAS()
@@ -453,13 +454,32 @@ namespace Data.Statistics
             var modeled = new double[] { 3.0, -0.5, 2.0, 1.5, 3.0, 2.9, 2.1, 0.8 };
             double PBIAS = GoodnessOfFit.PBIAS(observed, modeled);
 
-            // Sum of differences = (3.0-2.5) + (-0.5-0.0) + (2.0-2.1) + (1.5-1.4) + (3.0-3.2) + (2.9-2.8) + (2.1-1.9) + (0.8-0.5)
-            //                     = 0.5 - 0.5 - 0.1 + 0.1 - 0.2 + 0.1 + 0.2 + 0.3 = 0.4
-            // Sum of observed = 2.5 + 0.0 + 2.1 + 1.4 + 3.2 + 2.8 + 1.9 + 0.5 = 14.4
-            // PBIAS = 100 * 0.4 / 14.4 = 2.777778
-            double truePBIAS = 2.777778;
+            // Sum of (observed - modeled) = -0.5 + 0.5 + 0.1 - 0.1 + 0.2 - 0.1 - 0.2 - 0.3 = -0.4
+            // Sum of observed = 14.4
+            // PBIAS = 100 * -0.4 / 14.4 = -2.777778 (the model overestimates)
+            double truePBIAS = -2.777778;
 
             Assert.AreEqual(truePBIAS, PBIAS, 1E-5);
+        }
+
+        /// <summary>
+        /// PBIAS is positive when the model underestimates the observed total and negative when it overestimates.
+        /// </summary>
+        [TestMethod]
+        public void Test_PBIAS_SignConvention()
+        {
+            var observed = new double[] { 1.0, 2.0, 3.0, 4.0 };
+            Assert.AreEqual(20.0, GoodnessOfFit.PBIAS(observed, new double[] { 0.8, 1.6, 2.4, 3.2 }), 1E-12);
+            Assert.AreEqual(-20.0, GoodnessOfFit.PBIAS(observed, new double[] { 2.0, 2.0, 4.0, 4.0 }), 1E-12);
+        }
+
+        /// <summary>
+        /// PBIAS rejects observed and modeled lists of different lengths.
+        /// </summary>
+        [TestMethod]
+        public void Test_PBIAS_LengthMismatch()
+        {
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => GoodnessOfFit.PBIAS(new double[] { 1.0, 2.0 }, new double[] { 1.0 }));
         }
 
         /// <summary>
@@ -486,7 +506,7 @@ namespace Data.Statistics
             var observed = new double[] { 1.0, 2.0, 3.0, 4.0, 5.0 };
             var modeled = new double[] { 2.0, 3.0, 4.0, 5.0, 6.0 }; // All values 1 unit higher
             double PBIAS = GoodnessOfFit.PBIAS(observed, modeled);
-            double expectedPBIAS = 33.33333; // (5/15)*100
+            double expectedPBIAS = -33.33333; // -(5/15)*100, negative because the model overestimates
 
             Assert.AreEqual(expectedPBIAS, PBIAS, 1E-4);
         }
@@ -755,6 +775,41 @@ namespace Data.Statistics
             Assert.AreEqual(0.044781, result, 1E-6);
         }
 
+        /// <summary>
+        /// With dataIsSorted false, an unsorted sample gives the same statistics, bit for bit, as the sorted sample, and
+        /// the input is not modified; with dataIsSorted true, ascending input is used as given and matches the overload
+        /// without the flag.
+        /// </summary>
+        [TestMethod]
+        public void Test_KSAndAD_DataIsSorted()
+        {
+            var norm = new Normal(100, 15);
+            var sorted = new double[30];
+            for (int i = 1; i <= 30; i++)
+                sorted[i - 1] = norm.InverseCDF((double)i / 31);
+            var unsorted = new double[30];
+            for (int i = 0; i < 30; i++)
+                unsorted[i] = sorted[(i * 7) % 30];
+            var original = (double[])unsorted.Clone();
+
+            double ks = GoodnessOfFit.KolmogorovSmirnov(sorted, norm, true);
+            double ad = GoodnessOfFit.AndersonDarling(sorted, norm, true);
+            Assert.AreEqual(ks, GoodnessOfFit.KolmogorovSmirnov(sorted, norm), 0d);
+            Assert.AreEqual(ad, GoodnessOfFit.AndersonDarling(sorted, norm), 0d);
+            Assert.AreEqual(ks, GoodnessOfFit.KolmogorovSmirnov(unsorted, norm, false), 0d);
+            Assert.AreEqual(ad, GoodnessOfFit.AndersonDarling(unsorted, norm, false), 0d);
+            Assert.AreEqual(ks, GoodnessOfFit.KolmogorovSmirnov(unsorted, norm), 0d);
+            Assert.AreEqual(ad, GoodnessOfFit.AndersonDarling(unsorted, norm), 0d);
+            CollectionAssert.AreEqual(original, unsorted);
+
+            // The caller is responsible for the order when the flag is true.
+            Assert.AreNotEqual(ks, GoodnessOfFit.KolmogorovSmirnov(unsorted, norm, true));
+
+            Assert.ThrowsExactly<ArgumentNullException>(() => GoodnessOfFit.KolmogorovSmirnov(null!, norm, false));
+            Assert.ThrowsExactly<ArgumentNullException>(() => GoodnessOfFit.AndersonDarling(sorted, null!, true));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => GoodnessOfFit.AndersonDarling(new double[0], norm, false));
+        }
+
         #endregion
 
         #region "Edge Cases and Error Handling"
@@ -860,5 +915,85 @@ namespace Data.Statistics
         }
 
         #endregion
+
+        /// <summary>
+        /// The batched statistics against Uniform(0, 1), one sample per column: the Kolmogorov-Smirnov D against
+        /// scipy.stats.kstest(u, "uniform"), the Anderson-Darling A² against its definition in 50-digit mpmath, and every
+        /// column bitwise the one-sample member.
+        /// </summary>
+        [TestMethod]
+        public void Test_ColumnUniformStatistics()
+        {
+            var u = new double[,]
+            {
+                { 0.005265, 0.300166, 0.215309 },
+                { 0.225207, 0.303032, 0.278426 },
+                { 0.25487, 0.445076, 0.504548 },
+                { 0.467935, 0.821228, 0.775686 },
+                { 0.553497, 0.897214, 0.792662 },
+                { 0.622179, 0.98896, 0.797069 },
+                { 0.625095, 0.9955, 0.873553 },
+            };
+            double[] ks = { 0.37490500000000004, 0.3926565714285714, 0.34711457142857144 };
+            double[] ad = { 1.0562773559099412, 2.6612933600570794, 0.8797609734630033 };
+            var d = GoodnessOfFit.ColumnKolmogorovSmirnovUniform(u);
+            var a = GoodnessOfFit.ColumnAndersonDarlingUniform(u);
+            for (int j = 0; j < 3; j++)
+            {
+                Assert.AreEqual(ks[j], d[j], 1e-15, $"KS {j}");
+                Assert.AreEqual(ad[j], a[j], 1e-14, $"AD {j}");
+                var column = new double[7];
+                for (int i = 0; i < 7; i++) column[i] = u[i, j];
+                Assert.AreEqual(GoodnessOfFit.KolmogorovSmirnov(column, new Uniform(0, 1)), d[j], 0d);
+                Assert.AreEqual(GoodnessOfFit.AndersonDarling(column, new Uniform(0, 1)), a[j], 0d);
+            }
+
+            Assert.AreEqual(double.PositiveInfinity, GoodnessOfFit.ColumnAndersonDarlingUniform(new double[,] { { 0d }, { 0.5 } })[0]);
+            Assert.IsEmpty(GoodnessOfFit.ColumnKolmogorovSmirnovUniform(new double[3, 0]));
+            Assert.ThrowsExactly<ArgumentNullException>(() => GoodnessOfFit.ColumnKolmogorovSmirnovUniform(null!));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => GoodnessOfFit.ColumnAndersonDarlingUniform(new double[0, 2]));
+            Assert.ThrowsExactly<ArgumentException>(() => GoodnessOfFit.ColumnKolmogorovSmirnovUniform(new double[,] { { 0.5 }, { 0.25 } }));
+            Assert.ThrowsExactly<ArgumentException>(() => GoodnessOfFit.ColumnKolmogorovSmirnovUniform(new double[,] { { 0.5 }, { double.NaN } }));
+            Assert.ThrowsExactly<ArgumentException>(() => GoodnessOfFit.ColumnAndersonDarlingUniform(new double[,] { { -0.1 }, { 0.5 } }));
+            Assert.ThrowsExactly<ArgumentException>(() => GoodnessOfFit.ColumnAndersonDarlingUniform(new double[,] { { 0.5 }, { 1.5 } }));
+        }
+
+        /// <summary>
+        /// The column Kolmogorov-Smirnov and Anderson-Darling statistics are bitwise the one-sample statistics of a list of
+        /// each column both below the work threshold, where the columns run sequentially (8 × 5), and above it, where they
+        /// run in parallel (60 × 400); and with invalid entries in several columns the error names the first one in
+        /// column order, as a column-by-column scan finds it.
+        /// </summary>
+        [TestMethod]
+        public void Test_ColumnUniformStatistics_SequentialAndParallelPaths()
+        {
+            var random = new Random(17);
+            foreach (var (rows, columns) in new[] { (8, 5), (60, 400) })
+            {
+                var u = new double[rows, columns];
+                for (int j = 0; j < columns; j++)
+                {
+                    var column = new double[rows];
+                    for (int i = 0; i < rows; i++) column[i] = random.NextDouble();
+                    Array.Sort(column);
+                    for (int i = 0; i < rows; i++) u[i, j] = column[i];
+                }
+                var d = GoodnessOfFit.ColumnKolmogorovSmirnovUniform(u);
+                var a = GoodnessOfFit.ColumnAndersonDarlingUniform(u);
+                for (int j = 0; j < columns; j++)
+                {
+                    var column = new System.Collections.Generic.List<double>();
+                    for (int i = 0; i < rows; i++) column.Add(u[i, j]);
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(GoodnessOfFit.KolmogorovSmirnov(column, new Uniform(0, 1))), BitConverter.DoubleToInt64Bits(d[j]), $"{rows} x {columns} KS {j}");
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(GoodnessOfFit.AndersonDarling(column, new Uniform(0, 1))), BitConverter.DoubleToInt64Bits(a[j]), $"{rows} x {columns} AD {j}");
+                }
+
+                u[rows - 1, columns - 1] = 1.5;
+                u[2, 3] = -0.25;
+                u[1, 3] = double.NaN;
+                var error = Assert.ThrowsExactly<ArgumentException>(() => GoodnessOfFit.ColumnKolmogorovSmirnovUniform(u));
+                StringAssert.StartsWith(error.Message, "Column 3 must be ascending with every value in [0, 1]; row 1 holds ");
+            }
+        }
     }
 }

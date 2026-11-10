@@ -390,7 +390,7 @@ namespace Numerics.Utilities
             }
             catch
             {
-                // If we can't recreate it, return null
+                // If it cannot be recreated, return null
                 return null!;
             }
         }
@@ -438,7 +438,7 @@ namespace Numerics.Utilities
             }
             catch
             {
-                // If we can't get parameters, write an empty array
+                // If the parameters are unavailable, write an empty array
                 JsonSerializer.Serialize(writer, new double[0], options);
             }
 

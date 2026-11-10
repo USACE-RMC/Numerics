@@ -321,7 +321,7 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// A valid route passing through node zero is returned — zero is a real node index,
+        /// A valid route passing through node zero is returned: zero is a real node index,
         /// not an unreachable sentinel.
         /// </summary>
         [TestMethod]

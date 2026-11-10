@@ -192,6 +192,232 @@ namespace Distributions.Univariate
         }
 
         /// <summary>
+        /// The MLE rejects null, too-small, nonfinite and degenerate samples.
+        /// </summary>
+        [TestMethod]
+        public void Test_MLE_InvalidSamples()
+        {
+            var VM = new VonMises();
+            Assert.ThrowsExactly<ArgumentNullException>(() => VM.MLE(null!));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => VM.MLE(Array.Empty<double>()));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => VM.MLE(new[] { 0.7 }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => VM.MLE(new[] { 0.1, double.NaN, 0.3 }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => VM.MLE(new[] { 0.1, double.PositiveInfinity, 0.3 }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => VM.MLE(new[] { double.NegativeInfinity, 0.2, 0.3 }));
+
+            // Constant samples have no angular dispersion: R̄ = 1 and the likelihood grows without bound in κ.
+            Assert.ThrowsExactly<ArgumentException>(() => VM.MLE(new[] { 0.5, 0.5, 0.5, 0.5 }));
+            Assert.ThrowsExactly<ArgumentException>(() => VM.MLE(new[] { -2.9, -2.9 }));
+            Assert.ThrowsExactly<ArgumentException>(() => VM.Estimate(new[] { 1.1, 1.1, 1.1 }, ParameterEstimationMethod.MaximumLikelihood));
+        }
+
+        /// <summary>
+        /// A sample with zero mean resultant length gives κ = 0, up to the rounding of the trigonometric sums.
+        /// </summary>
+        [TestMethod]
+        public void Test_MLE_ZeroResultantLength()
+        {
+            var VM = new VonMises();
+            var parameters = VM.MLE(new[] { 0d, Math.PI / 2d, Math.PI, -Math.PI / 2d });
+            Assert.AreEqual(0d, parameters[1], 1E-15);
+        }
+
+        /// <summary>
+        /// The MLE matches the exact solution of A(κ) = R̄ on fixed samples.
+        /// </summary>
+        /// <remarks>
+        /// Oracle: mpmath 1.4.1 (40 digits) atan2(Σ sin, Σ cos) and findroot(besseli(1, k)/besseli(0, k) - R̄);
+        /// scipy 1.17.1 stats.vonmises.fit(sample, fscale=1) agrees (κ = 3.6654827931049607 and 1.4431177910033508).
+        /// The mean direction does not depend on the Bessel ratio and is asserted bit for bit.
+        /// </remarks>
+        [TestMethod]
+        public void Test_MLE_KnownSamples()
+        {
+            var VM = new VonMises();
+            var sample = new double[] { 0.82, 1.35, 0.47, 1.91, 1.12, 0.66, 1.58, 0.95, 2.24, 0.31, 1.07, 1.44, 0.73, 1.76, 0.18, 1.29, 0.88, 2.05, 1.18, 0.54 };
+            var parameters = VM.MLE(sample);
+            Assert.AreEqual(1.117841234661942, parameters[0], 0d);
+            Assert.AreEqual(1.1178412346619419, parameters[0], 1E-15);
+            Assert.AreEqual(3.6654827931049603, parameters[1], 1E-14 * 3.6654827931049603);
+
+            var sample2 = new double[] { -1.3860957223901167, -2.443019534443491, -1.4660779414560707, -1.7161501499710763, -3.1115876144062966, 2.7418430215623495, -0.8905788747480656, -2.1008128542337676, -3.0116976139367626, -2.929734295378788, 0.9356487978942987, -2.1965807819198453, 2.8849365389829087, -1.421790802788399, -2.9537664029979656 };
+            var parameters2 = VM.MLE(sample2);
+            Assert.AreEqual(-2.358164404828794, parameters2[0], 0d);
+            Assert.AreEqual(1.4431177910033538, parameters2[1], 1E-14 * 1.4431177910033538);
+        }
+
+        /// <summary>
+        /// A tightly concentrated sample gives a finite κ above the overflow range of I₀.
+        /// </summary>
+        [TestMethod]
+        public void Test_MLE_LargeKappa()
+        {
+            var sample = new VonMises(0.3, 2000d).GenerateRandomValues(50, 7);
+            var fitted = new VonMises();
+            fitted.Estimate(sample, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.IsTrue(fitted.ParametersValid);
+            Assert.AreEqual(0.3, fitted.Mu, 0.01);
+            Assert.AreEqual(2000d, fitted.Kappa, 800d);
+
+            // The fitted κ solves A(κ) = R̄ to double precision.
+            double sumSin = 0d, sumCos = 0d;
+            foreach (var x in sample) { sumSin += Math.Sin(x); sumCos += Math.Cos(x); }
+            double rBar = Math.Sqrt(sumSin * sumSin + sumCos * sumCos) / sample.Length;
+            Assert.AreEqual(rBar, Bessel.I1e(fitted.Kappa) / Bessel.I0e(fitted.Kappa), 1E-15);
+        }
+
+        /// <summary>
+        /// PDF, CDF, InverseCDF and StandardDeviation over κ from 0.01 to 5000.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// PDF oracle: scipy 1.17.1 stats.vonmises.pdf(x, k). The relative tolerance 1E-14 max(1, κ) reflects the
+        /// conditioning of exp(κ (cos x - 1)), whose relative error is κ times that of cos.
+        /// </para>
+        /// <para>
+        /// CDF oracle: mpmath 1.4.1 (40 digits) quad(exp(k (cos t - 1)), [-π, ..., x]) / (2π besseli(0, k) exp(-k)),
+        /// with breakpoints around the mode. scipy's vonmises.cdf uses a normal approximation for κ &gt; 50 that
+        /// differs from mpmath by up to 4E-7 (for example 0.15906007481932388 at κ = 100, x = -0.1), so it is not
+        /// used here.
+        /// </para>
+        /// <para>
+        /// InverseCDF oracle: mpmath findroot of the CDF above. The 5E-9 absolute tolerance is that of the Brent
+        /// root finder.
+        /// </para>
+        /// <para>
+        /// StandardDeviation oracle: sqrt(1 - scipy.special.i1e(k) / scipy.special.i0e(k)) at 1E-15 relative, and
+        /// mpmath sqrt(1 - besseli(1, k) / besseli(0, k)) at 1E-11 relative (the subtraction 1 - A(κ) loses about
+        /// log10(κ) digits for large κ). scipy's vonmises.std is the linear standard deviation and does not apply.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_Oracle_KappaGrid()
+        {
+            double[] kappas = { 0.01, 1.0, 10.0, 100.0, 500.0, 800.0, 5000.0 };
+            double[] xs = { -1.0, -0.1, 0.1, 0.5, 2.0 };
+            double[] ps = { 0.001, 0.1, 0.9, 0.999 };
+            // scipy.stats.vonmises.pdf(x, k)
+            double[,] pdf = { { 0.16001318783208981, 0.16074242744907072, 0.16074242744907072, 0.16055379188456195, 0.15849003875385817 },
+                              { 0.21578146511029628, 0.3400076166746798, 0.3400076166746798, 0.3023382476531484, 0.08291508547317152 },
+                              { 0.012552617230965511, 1.1843481078434028, 1.1843481078434028, 0.36603602164656857, 8.809037084481075E-07 },
+                              { 4.324613145875511E-20, 2.4176760562675517, 2.4176760562675517, 1.9223951790410252E-05, 1.252820314712858E-61 },
+                              { 1.3433848090714657E-99, 0.733592123039229, 0.733592123039229, 2.3317256797193976E-26, 2.740993760844653E-307 },
+                              { 2.1729495047091729E-159, 0.20732725444587974, 0.20732725444587974, 3.312934660253534E-42, 0.0 },
+                              { 0.0, 4.0000640763224805E-10, 4.0000640763224805E-10, 4.210124228805052E-265, 0.0 } };
+            // mpmath CDF; the value 4.38E-1001 at κ = 5000, x = -1 underflows to zero
+            double[,] cdf = { { 0.33950402171138178, 0.48392522197192228, 0.51607477802807772, 0.58034216768359747, 0.81975555369517935 },
+                              { 0.20564469256531652, 0.46588578919208413, 0.53411421080791587, 0.66407647460499303, 0.93424095588998317 },
+                              { 0.0014108017064043275, 0.37754136491149819, 0.62245863508850181, 0.93864493191090481, 0.99999989481852285 },
+                              { 5.1016782326113297E-22, 0.15906045738451988, 0.84093954261548012, 0.99999961271360566, 1.0 },
+                              { 3.1932020762915065E-102, 0.012722585013892834, 0.98727741498610717, 1.0, 1.0 },
+                              { 3.240777964596878E-162, 0.0023507385260872993, 0.9976492614739127, 1.0, 1.0 },
+                              { 0.0, 7.8622442488496296E-13, 0.99999999999921378, 1.0, 1.0 } };
+            // mpmath findroot(CDF(q) - p)
+            double[,] ppf = { { -3.1352461629871933, -2.5073605251989272, 2.5073605251989274, 3.1352461629871933 },
+                              { -3.1199706062242234, -1.6515617183319102, 1.6515617183319104, 3.1199706062242234 },
+                              { -1.0383338432211791, -0.41371903020106368, 0.41371903020106373, 1.038333843221179 },
+                              { -0.31066424322376332, -0.1284047905917765, 0.12840479059177651, 0.3106642432237633 },
+                              { -0.13834436025024223, -0.057334931460261367, 0.057334931460261374, 0.13834436025024222 },
+                              { -0.10932775946460887, -0.045320655086987514, 0.04532065508698752, 0.10932775946460886 },
+                              { -0.043707056157497312, -0.018124577294593212, 0.018124577294593214, 0.043707056157497308 } };
+            // sqrt(1 - scipy.special.i1e(k) / scipy.special.i0e(k))
+            double[] sd = { 0.9974968984908967, 0.7440497524382798, 0.22671606481490028, 0.07079990815552865, 0.03163069716490751, 0.02500391083648131, 0.010000250046898407 };
+            // mpmath sqrt(1 - besseli(1, k) / besseli(0, k))
+            double[] sdExact = { 0.99749689849089674, 0.74404975243827982, 0.22671606481490023, 0.070799908155528242, 0.031630697164907186, 0.025003910836481279, 0.010000250046889459 };
+
+            for (int i = 0; i < kappas.Length; i++)
+            {
+                var VM = new VonMises(0d, kappas[i]);
+                for (int j = 0; j < xs.Length; j++)
+                {
+                    Assert.AreEqual(pdf[i, j], VM.PDF(xs[j]), 1E-14 * Math.Max(1d, kappas[i]) * pdf[i, j], $"PDF κ={kappas[i]}, x={xs[j]}");
+                    Assert.AreEqual(cdf[i, j], VM.CDF(xs[j]), 1E-12, $"CDF κ={kappas[i]}, x={xs[j]}");
+                }
+                for (int j = 0; j < ps.Length; j++)
+                    Assert.AreEqual(ppf[i, j], VM.InverseCDF(ps[j]), 5E-9, $"InverseCDF κ={kappas[i]}, p={ps[j]}");
+                Assert.AreEqual(sd[i], VM.StandardDeviation, 1E-15 * sd[i], $"SD κ={kappas[i]}");
+                Assert.AreEqual(sdExact[i], VM.StandardDeviation, 1E-11 * sdExact[i], $"SD exact κ={kappas[i]}");
+            }
+        }
+
+        /// <summary>
+        /// The CDF is accurate with a nonzero mean direction, and its tail values keep relative accuracy.
+        /// </summary>
+        /// <remarks>
+        /// Oracle: mpmath 1.4.1 quad of exp(k (cos(t - 1) - 1)) from -π to x, split at μ = 1, divided by
+        /// 2π besseli(0, k) exp(-k); the tail values use μ = 0.
+        /// </remarks>
+        [TestMethod]
+        public void Test_CDF_NonzeroMeanAndTails()
+        {
+            var VM = new VonMises(1.0, 2.0);
+            Assert.AreEqual(0.0099712386632325323, VM.CDF(-2.5), 1E-14);
+            Assert.AreEqual(0.4620903193977252, VM.CDF(0.9), 1E-14);
+            Assert.AreEqual(0.5392802929733679, VM.CDF(1.05), 1E-14);
+            Assert.AreEqual(0.99619770517346191, VM.CDF(3.0), 1E-14);
+
+            var VM2 = new VonMises(1.0, 800.0);
+            Assert.AreEqual(0.0023507385260873051, VM2.CDF(0.9), 1E-14);
+            Assert.AreEqual(0.92129630807929995, VM2.CDF(1.05), 1E-13);
+            Assert.AreEqual(1.0, VM2.CDF(3.0), 1E-13);
+
+            Assert.AreEqual(5.1016782326113297E-22, new VonMises(0d, 100d).CDF(-1.0), 1E-12 * 5.1016782326113297E-22);
+            Assert.AreEqual(3.7585362033492754E-10, new VonMises(0d, 10d).CDF(-3.0), 1E-12 * 3.7585362033492754E-10);
+        }
+
+        /// <summary>
+        /// For κ beyond the overflow range of exp(κ) and I₀(κ), every property is finite and accurate.
+        /// </summary>
+        /// <remarks>
+        /// Unscaled exp(κ cos(x - μ)) / I₀(κ) overflows at κ = 800; the scaled evaluation keeps every property
+        /// finite. Oracle: scipy.stats.vonmises.pdf(0.1, 800) =
+        /// 0.20732725444587974; mpmath 1.4.1 for μ = -0.5, κ = 1E5: PDF(μ) = 1 / (2π besseli(0, k) exp(-k)) =
+        /// 126.15646840453545, CDF(-0.499) = 0.6240850279713659 and CDF(-0.501) = 0.3759149720286341.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LargeKappa_Finite()
+        {
+            var VM = new VonMises(0d, 800d);
+            Assert.AreEqual(0.20732725444587974, VM.PDF(0.1), 1E-12 * 0.20732725444587974);
+            Assert.AreEqual(0.025003910836481279, VM.StandardDeviation, 1E-13);
+            Assert.AreEqual(0.5, VM.CDF(0d), 1E-13);
+            Assert.AreEqual(0d, VM.InverseCDF(0.5), 1E-9);
+
+            var VM2 = new VonMises(-0.5, 1E5);
+            Assert.AreEqual(126.15646840453545, VM2.PDF(-0.5), 1E-13 * 126.15646840453545);
+            Assert.AreEqual(0.5, VM2.CDF(-0.5), 1E-11);
+            Assert.AreEqual(0.6240850279713659, VM2.CDF(-0.499), 1E-11);
+            Assert.AreEqual(0.3759149720286341, VM2.CDF(-0.501), 1E-11);
+            Assert.AreEqual(1d, VM2.CDF(0.5), 1E-11);
+            Assert.AreEqual(0d, VM2.CDF(-1.5), 1E-11);
+            Assert.AreEqual(-0.5, VM2.InverseCDF(0.5), 5E-9);
+        }
+
+        /// <summary>
+        /// The density keeps full relative accuracy at large κ.
+        /// </summary>
+        [TestMethod()]
+        public void Test_PDF_LargeKappaAccuracy()
+        {
+            // mpmath (50 digits): exp(k*(cos(x) - 1)) / (2*pi*besseli(0, k)*exp(-k))
+            Assert.AreEqual(21.969060954882484, new VonMises(0d, 5000d).PDF(0.01), 21.969060954882484 * 1E-14);
+            Assert.AreEqual(2.9736846445490933, new VonMises(0d, 5000d).PDF(0.03), 2.9736846445490933 * 1E-14);
+            Assert.AreEqual(103.28818726838194, new VonMises(0d, 1E5).PDF(0.002), 103.28818726838194 * 1E-14);
+        }
+
+        /// <summary>
+        /// For κ = 0 the distribution is uniform on [-π, π].
+        /// </summary>
+        [TestMethod]
+        public void Test_ZeroKappa_Uniform()
+        {
+            var VM = new VonMises(0.4, 0d);
+            Assert.AreEqual(1d / (2d * Math.PI), VM.PDF(-2.0), 1E-15);
+            Assert.AreEqual(0.75, VM.CDF(Math.PI / 2d), 1E-14);
+            Assert.AreEqual(1d, VM.StandardDeviation, 0d);
+        }
+
+        /// <summary>
         /// Test the circular variance.
         /// </summary>
         /// <remarks>

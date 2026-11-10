@@ -48,12 +48,12 @@ namespace Numerics.Mathematics.LinearAlgebra
             this.A = A;
             n = A.NumberOfColumns;
             m = A.NumberOfRows;
-            U = new Matrix(A.ToArray());
+            U = new Matrix(A.Array);
             V = new Matrix(n, n);
             W = new Vector(n);
             Decompose();
             Reorder();
-            Threshold = 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps; // Default threshold for nonzero singular values.
+            Threshold = DefaultThreshold(); // Default threshold for nonzero singular values.
         }
 
         private readonly double eps = Tools.DoubleMachineEpsilon;      
@@ -63,7 +63,16 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <summary>
         /// The default threshold value.
         /// </summary>
-        public double Threshold { get; private set; } 
+        public double Threshold { get; private set; }
+
+        /// <summary>
+        /// Returns the default threshold for nonzero singular values, 0.5 * sqrt(m + n + 1) * W[0] * eps, or zero
+        /// for an empty matrix.
+        /// </summary>
+        private double DefaultThreshold()
+        {
+            return W.Length > 0 ? 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps : 0d;
+        }
 
         /// <summary>
         /// Stores the input matrix A that was SV decomposed.
@@ -102,7 +111,7 @@ namespace Numerics.Mathematics.LinearAlgebra
             int j, nr = 0;
             int n = A.NumberOfColumns;
             int m = A.NumberOfRows;
-            Threshold = (threshold >= 0d ? threshold : 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps);
+            Threshold = (threshold >= 0d ? threshold : DefaultThreshold());
             for (j = 0; j < n; j++) if (W[j] > Threshold) nr++;
             return nr;
         }
@@ -115,7 +124,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         public int Nullity(double threshold = -1)
         {
             int j, nn = 0;
-            Threshold = (threshold >= 0d ? threshold : 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps);
+            Threshold = (threshold >= 0d ? threshold : DefaultThreshold());
             for (j = 0; j < n; j++) if (W[j] <= Threshold) nn++;
             return nn;
         }
@@ -181,7 +190,7 @@ namespace Numerics.Mathematics.LinearAlgebra
             {
                 throw new ArgumentOutOfRangeException(nameof(B), "The vector b must have the same number of rows as the matrix A.");
             }
-            Threshold = (threshold >= 0d ? threshold : 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps);
+            Threshold = (threshold >= 0d ? threshold : DefaultThreshold());
             for (j = 0; j < n; j++) // Calculate U^T*B
             {
                 s = 0.0;
@@ -203,22 +212,27 @@ namespace Numerics.Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Solve m sets of n equations A*X=B using the pseudoinverse of A. 
+        /// Solves A*X=B column by column using the pseudoinverse of A, where A is m by n.
         /// </summary>
-        /// <param name="B">The right-hand side matrix B [0..n-1][0..m-1].</param>
+        /// <param name="B">The right-hand side matrix B [0..m-1][0..p-1], with one row per row of A.</param>
         /// <param name="threshold">The threshold to evaluate. 
         /// If positive, the threshold is the threshold value below which singular values are considered zero. 
         /// If threshold is negative, a default based on expected roundoff error is used. 
         /// </param>
+        /// <returns>The n by p solution X; column j is <see cref="Solve(Vector, double)"/> of column j of B.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when B does not have m rows.</exception>
+        /// <remarks>
+        /// For a non-square A the least-squares (minimum-norm) solution is returned for each column.
+        /// </remarks>
         public Matrix Solve(Matrix B, double threshold = -1)
         {
             int i, j, p = B.NumberOfColumns;
             var x = new Matrix(n, p);
             var xx = new Vector(n);
             var bcol = new Vector(m);
-            if (B.NumberOfRows != n)
+            if (B.NumberOfRows != m)
             {
-                throw new ArgumentOutOfRangeException(nameof(B), "The matrix B must have the same number of rows as columns in the matrix A.");
+                throw new ArgumentOutOfRangeException(nameof(B), "The matrix B must have the same number of rows as the matrix A.");
             }
             // Copy and solve each column in turn.
             for (j = 0; j < p; j++)
@@ -359,7 +373,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                             rv1[i] = c * rv1[i];
                             if (Math.Abs(f) <= eps * anorm) break;
                             g = W[i];
-                            h = Pythag(f, g);
+                            h = Tools.Hypot(f, g);
                             W[i] = h;
                             h = 1.0 / h;
                             c = g * h;
@@ -390,7 +404,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                     g = rv1[nm];
                     h = rv1[k];
                     f = ((y - z) * (y + z) + (g - h) * (g + h)) / (2.0 * h * y);
-                    g = Pythag(f, 1.0);
+                    g = Tools.Hypot(f, 1.0);
                     f = ((x - z) * (x + z) + h * ((y / (f + Tools.Sign(g, f))) - h)) / x;
                     c = s = 1.0;
                     for (j = l; j <= nm; j++)
@@ -400,7 +414,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                         y = W[i];
                         h = s * g;
                         g = c * g;
-                        z = Pythag(f, h);
+                        z = Tools.Hypot(f, h);
                         rv1[j] = z;
                         c = f / z;
                         s = h / z;
@@ -415,7 +429,7 @@ namespace Numerics.Mathematics.LinearAlgebra
                             V[jj,j] = x * c + z * s;
                             V[jj,i] = z * c - x * s;
                         }
-                        z = Pythag(f, h);
+                        z = Tools.Hypot(f, h);
                         W[j] = z;
                         if (z != 0.0)
                         {
@@ -487,15 +501,6 @@ namespace Numerics.Mathematics.LinearAlgebra
         }
 
         /// <summary>
-        /// Computes (a^2 + b^2)^1/2 without destructive underflow or overflow.
-        /// </summary>
-        private double Pythag(double a, double b) {
-            double absa = Math.Abs(a), absb = Math.Abs(b);
-            return (absa > absb ? absa * Math.Sqrt(1.0 + Math.Pow(absb / absa, 2)) :
-                (absb == 0.0 ? 0.0 : absb * Math.Sqrt(1.0 + Math.Pow(absa / absb, 2))));
-        }
-
-        /// <summary>
         /// Takes Log determinant of the Matrix W
         /// </summary>
         public double LogDeterminant()
@@ -511,8 +516,8 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// </summary>
         /// <remarks>
         /// This overload treats a singular value as zero only when it compares exactly equal to zero.
-        /// A singular value that is numerically zero but not exactly zero — a rank-deficient matrix
-        /// commonly produces one of order 1E-16 rather than 0 — is therefore included in the sum and
+        /// A singular value that is numerically zero but not exactly zero (a rank-deficient matrix
+        /// commonly produces one of order 1E-16 rather than 0) is therefore included in the sum and
         /// contributes a large negative term. Use <see cref="LogPseudoDeterminant(double)"/> to zero
         /// singular values at the same threshold used by <see cref="Rank(double)"/> and
         /// <see cref="Solve(Vector, double)"/>.
@@ -538,11 +543,11 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <see cref="Rank(double)"/>, <see cref="Nullspace(double)"/> and
         /// <see cref="Solve(Vector, double)"/> keeps the rank, the pseudo-determinant and the
         /// pseudo-inverse in agreement about which singular values are zero, which is required when
-        /// they are combined — for example in a degenerate multivariate normal density.
+        /// they are combined, for example in a degenerate multivariate normal density.
         /// </remarks>
         public double LogPseudoDeterminant(double threshold)
         {
-            Threshold = (threshold >= 0d ? threshold : 0.5 * Math.Sqrt(m + n + 1d) * W[0] * eps);
+            Threshold = (threshold >= 0d ? threshold : DefaultThreshold());
             double det = 0;
             for (int i = 0; i < W.Length; i++)
                 if (W[i] > Threshold) det += Math.Log((double)W[i]);

@@ -44,6 +44,12 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The covariance matrix Σ (sigma) for the proposal distribution.
         /// </summary>
+        /// <remarks>
+        /// When MAP initialization succeeds, the covariance from the MAP estimate replaces this matrix
+        /// before sampling. Otherwise it must be symmetric positive-definite: <see cref="MCMCSampler.Sample"/>
+        /// throws an <see cref="ArgumentException"/> naming this property before the first iteration if it
+        /// cannot be factorized, for example when it is all zeros.
+        /// </remarks>
         public Matrix ProposalSigma { get; private set; }
 
         /// <inheritdoc/>
@@ -65,13 +71,14 @@ namespace Numerics.Sampling.MCMC
             // Set up multivariate Normal distributions for each chain. The proposal covariance is
             // fixed for the whole run, so each chain's proposal is factorized exactly once here and
             // ChainIteration then translates only the mean, keeping the factorization. A covariance
-            // that fails the factorization therefore throws here, before sampling starts, instead of
-            // from inside the first chain iteration.
+            // that fails the factorization is therefore rejected here, before sampling starts, with a
+            // settings error that names ProposalSigma.
             mvn = new MultivariateNormal[NumberOfChains];
             for (int i = 0; i < NumberOfChains; i++)
             {
                 mvn[i] = new MultivariateNormal(NumberOfParameters);
-                mvn[i].SetParameters(new double[NumberOfParameters], ProposalSigma.Array);
+                if (!mvn[i].TrySetParameters(new double[NumberOfParameters], ProposalSigma.Array))
+                    throw new ArgumentException("The proposal covariance matrix must be symmetric positive-definite.", nameof(ProposalSigma));
             }
         }
 
@@ -82,7 +89,7 @@ namespace Numerics.Sampling.MCMC
             SampleCount[index] += 1;
 
             // Get proposal vector. The proposal covariance was factorized once at initialization, so
-            // only the mean moves with the chain state — a translation changes nothing the
+            // only the mean moves with the chain state; a translation changes nothing the
             // factorization derives from the covariance.
             mvn[index].SetMean(state.Values);
             var xp = mvn[index].InverseCDF(_chainPRNGs[index].NextDoubles(NumberOfParameters));
@@ -107,7 +114,7 @@ namespace Numerics.Sampling.MCMC
 
             // Accept the proposal with probability min(1,r)
             // otherwise leave xi unchanged
-            var logU = Math.Log(_chainPRNGs[index].NextDouble());
+            var logU = Math.Log(NextPositiveUniform(_chainPRNGs[index]));
             if (logU <= logRatio)
             {
                 // The proposal is accepted

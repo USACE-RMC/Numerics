@@ -141,6 +141,17 @@ namespace Numerics
         /// <param name="random">A random number generator.</param>
         /// <param name="length">The number of samples to return.</param>
         /// <param name="dimension">The spatial dimension</param>
+        /// <returns>A <paramref name="length"/> by <paramref name="dimension"/> array of uniform draws in [0, 1).</returns>
+        /// <remarks>
+        /// Each column comes from its own child generator. Column i is seeded with the (i + 1)-th
+        /// <see cref="Random.Next()"/> of <paramref name="random"/>, so the parent advances by
+        /// <paramref name="dimension"/> draws, not by <paramref name="length"/> times
+        /// <paramref name="dimension"/>. The child is a <see cref="MersenneTwister"/> when the parent is
+        /// a <see cref="MersenneTwister"/> (or derives from it), and a <see cref="System.Random"/>
+        /// otherwise, including for other <see cref="Random"/> subclasses. Column 0 therefore differs from
+        /// <c>random.NextDoubles(length)</c>. The child streams are seeded independently, with no
+        /// guarantee that they do not overlap.
+        /// </remarks>
         public static double[,] NextDoubles(this Random random, int length, int dimension)
         {
             var values = new double[length, dimension];

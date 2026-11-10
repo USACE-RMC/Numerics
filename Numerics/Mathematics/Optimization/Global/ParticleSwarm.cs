@@ -84,9 +84,43 @@ namespace Numerics.Mathematics.Optimization
         public int PopulationSize { get; set; } = 30;
 
         /// <summary>
+        /// Determines whether the best point is refined by a local search when the global search ends. Default = false.
+        /// </summary>
+        /// <remarks>
+        /// The polish runs after convergence or after <see cref="Optimizer.MaxIterations"/>, never after the
+        /// evaluation budget is spent. Its evaluations count toward <see cref="Optimizer.FunctionEvaluations"/>
+        /// and the reported status is the global search's.
+        /// </remarks>
+        public bool Polish { get; set; }
+
+        /// <summary>
+        /// The local method used to polish: BFGS, Nelder-Mead, or Powell. Default = Nelder-Mead.
+        /// </summary>
+        public LocalMethod PolishMethod { get; set; } = LocalMethod.NelderMead;
+
+        /// <summary>
         /// The pseudo random number generator (PRNG) seed.
         /// </summary>
         public int PRNGSeed { get; set; } = 12345;
+
+        /// <summary>
+        /// Determines whether each iteration's particles are evaluated in parallel. Default = false.
+        /// </summary>
+        /// <remarks>
+        /// When true, the swarm moves synchronously: every particle is moved toward the global best of the
+        /// previous iteration, the particles are evaluated concurrently, and the personal and global bests are
+        /// then updated in index order. The random draws are made in the same order on one thread, so the
+        /// result is reproducible and does not depend on the number of threads. It differs from the default
+        /// asynchronous update, where a particle sees a global best improved earlier in the same iteration.
+        /// The objective function must be thread safe.
+        /// </remarks>
+        public bool UseParallel { get; set; }
+
+        /// <summary>
+        /// The maximum number of concurrent evaluations when <see cref="UseParallel"/> is true, or -1 for no
+        /// limit. Default = -1. The result does not depend on it.
+        /// </summary>
+        public int MaxDegreeOfParallelism { get; set; } = -1;
 
         /// <inheritdoc/>
         /// <remarks>
@@ -97,6 +131,13 @@ namespace Numerics.Mathematics.Optimization
         {
             if (PopulationSize < 1) throw new ArgumentOutOfRangeException(nameof(PopulationSize), "The population size must be greater than 0.");
 
+            if (Polish) ValidatePolishMethod(PolishMethod);
+            if (MaxDegreeOfParallelism == 0 || MaxDegreeOfParallelism < -1) throw new ArgumentOutOfRangeException(nameof(MaxDegreeOfParallelism), "The maximum degree of parallelism must be positive or -1.");
+            if (UseParallel)
+            {
+                OptimizeSynchronous();
+                return;
+            }
             int i, j, D = NumberOfParameters;
             bool cancel = false;
 
@@ -159,7 +200,7 @@ namespace Numerics.Mathematics.Optimization
                     if (cancel) return;
 
                     Xp[i].ParameterSet = new ParameterSet(u, fitness);
-                    Xp[i].Velocity = v.ToArray();
+                    Xp[i].Velocity = v;
 
                     // Update population
                     if (fitness <= Xp[i].BestParameterSet.Fitness)
@@ -174,6 +215,7 @@ namespace Numerics.Mathematics.Optimization
                 // Evaluate convergence 
                 if (Iterations >= 10 && statistics.StandardDeviation < AbsoluteTolerance + RelativeTolerance * Math.Abs(statistics.Mean))
                 {
+                    if (Polish && !PolishBestParameterSet(PolishMethod)) return;
                     UpdateStatus(OptimizationStatus.Success);
                     return;
                 }
@@ -182,7 +224,79 @@ namespace Numerics.Mathematics.Optimization
 
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
+            if (Polish && !PolishBestParameterSet(PolishMethod)) return;
+            UpdateStatus(OptimizationStatus.MaximumIterationsReached);
+        }
+
+        /// <summary>
+        /// The synchronous particle swarm with parallel evaluation of each iteration. See <see cref="UseParallel"/>.
+        /// </summary>
+        private void OptimizeSynchronous()
+        {
+            int i, j, D = NumberOfParameters, N = PopulationSize;
+            bool cancel = false;
+            double wmin = 0.4, wmax = 0.9, c1 = 2.05, c2 = 2.05;
+
+            var prng = new MersenneTwister(PRNGSeed);
+            var rnd = LatinHypercube.Random(N, D, PRNGSeed);
+            var positions = new double[N][];
+            var velocities = new double[N][];
+            var fitness = new double[N];
+            for (i = 0; i < N; i++)
+            {
+                positions[i] = new double[D];
+                velocities[i] = new double[D];
+                for (j = 0; j < D; j++)
+                {
+                    positions[i][j] = LowerBounds[j] + rnd[i, j] * (UpperBounds[j] - LowerBounds[j]);
+                    velocities[i][j] = 0.1 * (UpperBounds[j] - LowerBounds[j]) * (prng.NextDouble() - 0.5);
+                }
+            }
+            int done = EvaluateBatch(positions, N, fitness, MaxDegreeOfParallelism, ref cancel);
+            if (cancel) return;
+            var personal = new ParameterSet[N];
+            for (i = 0; i < N; i++)
+                personal[i] = new ParameterSet((double[])positions[i].Clone(), fitness[i]);
+
+            Iterations += 1;
+            var global = new double[D];
+
+            while (Iterations < MaxIterations)
+            {
+                Array.Copy(BestParameterSet.Values, global, D);
+                var w = wmax - (wmax - wmin) * Iterations / MaxIterations;
+                for (i = 0; i < N; i++)
+                {
+                    for (j = 0; j < D; j++)
+                    {
+                        velocities[i][j] = w * velocities[i][j] + c1 * prng.NextDouble() * (personal[i].Values[j] - positions[i][j])
+                                                                + c2 * prng.NextDouble() * (global[j] - positions[i][j]);
+                        positions[i][j] = RepairParameter(positions[i][j] + velocities[i][j], LowerBounds[j], UpperBounds[j]);
+                    }
+                }
+
+                done = EvaluateBatch(positions, N, fitness, MaxDegreeOfParallelism, ref cancel);
+                var statistics = new RunningStatistics();
+                for (i = 0; i < done; i++)
+                {
+                    if (fitness[i] <= personal[i].Fitness)
+                        personal[i] = new ParameterSet((double[])positions[i].Clone(), fitness[i]);
+                    statistics.Push(personal[i].Fitness);
+                }
+                if (cancel) return;
+
+                if (Iterations >= 10 && statistics.StandardDeviation < AbsoluteTolerance + RelativeTolerance * Math.Abs(statistics.Mean))
+                {
+                    if (Polish && !PolishBestParameterSet(PolishMethod)) return;
+                    UpdateStatus(OptimizationStatus.Success);
+                    return;
+                }
+
+                Iterations += 1;
+            }
+
+            if (Polish && !PolishBestParameterSet(PolishMethod)) return;
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
         }
 

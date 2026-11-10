@@ -156,8 +156,8 @@ namespace Mathematics.RootFinding
         [TestMethod()]
         public void Test_Multi_LinearSystem()
         {
-            // F([x;y]) = [3x +  y –  9
-            //             x  + 2y –  8 ]
+            // F([x;y]) = [3x +  y -  9
+            //             x  + 2y -  8 ]
             //    ⇒ root x* = [2;3]
             Func<Vector, Vector> F = v => new Vector(new[] { 3.0 * v[0] + v[1] - 9.0, v[0] + 2.0 * v[1] - 8.0 });
             Func<Vector, Matrix> J = v => new Matrix(new[,] { { 3.0, 1.0 }, { 1.0, 2.0 } } );
@@ -211,6 +211,55 @@ namespace Mathematics.RootFinding
             Assert.AreEqual(root[0], expected[0], 1E-5);
             Assert.AreEqual(root[1], expected[1], 1E-5);
 
+        }
+
+        /// <summary>
+        /// The singularity test is relative to the scale of each equation: a perfectly conditioned Jacobian of
+        /// 1E-6 * I (determinant 1E-18) does not throw, while a genuinely singular Jacobian does.
+        /// </summary>
+        [TestMethod]
+        public void Test_SingularityTestIsScaleInvariant()
+        {
+            // 1E-6 * (x - c) = 0 has the exact root c.
+            var c = new Vector(new[] { 1d, 2d, 3d });
+            Func<Vector, Vector> F = x => new Vector(new[] { 1E-6 * (x[0] - c[0]), 1E-6 * (x[1] - c[1]), 1E-6 * (x[2] - c[2]) });
+            Func<Vector, Matrix> J = x => Matrix.Identity(3) * 1E-6;
+            var root = NewtonRaphson.Solve(F, J, new Vector(new[] { 0d, 0d, 0d }));
+            for (int i = 0; i < 3; i++)
+                Assert.AreEqual(c[i], root[i], 1E-12);
+
+            Func<Vector, Matrix> singular = x => new Matrix(new[,] { { 1d, 2d }, { 2d, 4d } });
+            Func<Vector, Vector> G = x => new Vector(new[] { x[0] + 2d * x[1] - 1d, 2d * x[0] + 4d * x[1] - 3d });
+            Assert.ThrowsExactly<ArgumentException>(() => NewtonRaphson.Solve(G, singular, new Vector(new[] { 0d, 0d })));
+        }
+
+        /// <summary>
+        /// RobustSolve rejects NaN function values at the bounds and inside the bracket.
+        /// </summary>
+        [TestMethod]
+        public void Test_RobustSolveNaNFunctionValues()
+        {
+            Assert.ThrowsExactly<ArgumentException>(() => NewtonRaphson.RobustSolve(x => double.NaN, x => 1d, 0.5, 0, 1));
+            Func<double, double> f = x => x > 0.25 && x < 0.75 ? double.NaN : x - 0.6;
+            Assert.ThrowsExactly<ArgumentException>(() => NewtonRaphson.RobustSolve(f, x => 1d, 0.9, 0, 1));
+            Assert.IsTrue(double.IsNaN(NewtonRaphson.RobustSolve(f, x => 1d, 0.9, 0, 1, reportFailure: false)));
+        }
+
+        /// <summary>
+        /// The residual at each new iterate is evaluated once and reused, with results bit-identical to the
+        /// 2.2.0 reference (pinned bit patterns). That reference re-evaluates it whenever the step is small but the
+        /// residual is not yet; here that never happens, so both take 5 calls.
+        /// </summary>
+        [TestMethod]
+        public void Test_SystemEvaluatesResidualOncePerIterate()
+        {
+            int calls = 0;
+            Func<Vector, Vector> F = x => { calls++; return new Vector(new[] { x[0] * x[0] + x[1] * x[1] - 4d, Math.Exp(x[0]) + x[1] - 1d }); };
+            Func<Vector, Matrix> J = x => new Matrix(new[,] { { 2 * x[0], 2 * x[1] }, { Math.Exp(x[0]), 1d } });
+            var root = NewtonRaphson.Solve(F, J, new Vector(new[] { 1d, -1.7 }));
+            Assert.AreEqual(0x3FF011133D36A0B8, BitConverter.DoubleToInt64Bits(root[0]));
+            Assert.AreEqual(unchecked((long)0xBFFBAC9825DB7E10UL), BitConverter.DoubleToInt64Bits(root[1]));
+            Assert.AreEqual(5, calls);
         }
     }
 }

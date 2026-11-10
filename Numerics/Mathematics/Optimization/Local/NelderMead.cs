@@ -230,7 +230,7 @@ namespace Numerics.Mathematics.Optimization
 
                     // "Meaningful improvement" = NOT converged by your relative-change check
                     // between old=f0 and new=fz, *and* fz < f0.
-                    // i.e., if CheckConvergence(f0, fz) is false AND fz < f0, we found real progress.
+                    // i.e., if CheckConvergence(f0, fz) is false AND fz < f0, the step made real progress.
                     bool convergedSmallChange = CheckConvergence(f0, fz);
                     if (!convergedSmallChange && fz < f0)
                     {
@@ -249,7 +249,7 @@ namespace Numerics.Mathematics.Optimization
             // Do Nelder-Mead Loop
             while (Iterations < MaxIterations)
             {
-                // First we determine which point is the highest (worst),
+                // First determine which point is the highest (worst),
                 // next-highest, and lowest (best),
                 ilo = 1;
                 if (f[0] > f[1])
@@ -293,7 +293,7 @@ namespace Numerics.Mathematics.Optimization
 
                 // Begin a new iteration. Compute the vector average of all
                 // points except the highest, i.e. the center of the "face" of the
-                // simplex across from the high point. We will subsequently explore
+                // simplex across from the high point. The search then explores
                 // along the ray from the high point through that center. 
                 for (int i = 0; i < mpts; i++)
                 {
@@ -341,8 +341,8 @@ namespace Numerics.Mathematics.Optimization
                     }
                     else
                     {
-                        // The additional extrapolation failed, but we 
-                        // can still use the reflected point.
+                        // The additional extrapolation failed, but the
+                        // reflected point can still be used.
                         for (int j = 0; j < D; j++)
                             p[ihi, j] = pr[j];
                         f[ihi] = fpr;
@@ -400,7 +400,7 @@ namespace Numerics.Mathematics.Optimization
                 }
                 else
                 {
-                    // We arrive here if the original reflection gives a middling point.
+                    // This branch runs when the original reflection gives a middling point.
                     // Replace the old high point and continue
                     for (int j = 0; j < D; j++)
                         p[ihi, j] = pr[j];
@@ -408,7 +408,7 @@ namespace Numerics.Mathematics.Optimization
                 }
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
 
         }

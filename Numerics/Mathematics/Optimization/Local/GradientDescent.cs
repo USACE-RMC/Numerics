@@ -117,7 +117,16 @@ namespace Numerics.Mathematics.Optimization
             while (Iterations < MaxIterations)
             {
                 // Get gradient with respect to objective function
-                g = Gradient != null ? Gradient(p0) : NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p0, LowerBounds, UpperBounds);
+                if (Gradient != null)
+                {
+                    // The search minimizes functionScale * f, so a supplied gradient of f is scaled the same way.
+                    g = (double[])Gradient(p0).Clone();
+                    for (int i = 0; i < D; i++) g[i] *= functionScale;
+                }
+                else
+                {
+                    g = NumericalDerivative.Gradient((x) => Evaluate(x, ref cancel), p0, LowerBounds, UpperBounds);
+                }
                 if (cancel) return;
 
                 // Update parameters
@@ -144,7 +153,7 @@ namespace Numerics.Mathematics.Optimization
                 Iterations += 1;
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
         }
     }

@@ -2,7 +2,7 @@
 
 [← Previous: Univariate Distributions](univariate.md) | [Back to Index](../index.md) | [Next: Uncertainty Analysis →](uncertainty-analysis.md)
 
-Parameter estimation is the process of fitting probability distributions to observed data. The ***Numerics*** library provides multiple estimation methods, each with different statistical properties and appropriate use cases. The library supports Method of Moments (MOM), L-Moments (L-MOM), Maximum Likelihood Estimation (MLE), and Method of Percentiles.
+Parameter estimation is the process of fitting probability distributions to observed data. The ***Numerics*** library provides multiple estimation methods, each with different statistical properties and appropriate use cases. The library supports Method of Moments (MOM), L-Moments (L-MOM), Maximum Likelihood Estimation (MLE), and, for the PERT distribution, the Method of Percentiles.
 
 ## Estimation Methods
 
@@ -14,7 +14,7 @@ public enum ParameterEstimationMethod
     MaximumLikelihood,        // Maximum likelihood estimation
     MethodOfMoments,          // Product moments
     MethodOfLinearMoments,    // L-moments
-    MethodOfPercentiles       // Least squares / percentiles
+    MethodOfPercentiles       // Percentile matching (PERT only)
 }
 ```
 
@@ -25,9 +25,9 @@ public enum ParameterEstimationMethod
 | **L-Moments** | Robust to outliers, unbiased for small samples, efficient | Computationally intensive | **Hydrological data, small samples** |
 | **Maximum Likelihood** | Asymptotically efficient, optimal for large samples | Sensitive to outliers, can fail to converge | Large samples, well-behaved data |
 | **Method of Moments** | Simple, fast | Inefficient, biased for small samples | Quick estimates, stable parameters |
-| **Method of Percentiles** | Intuitive, robust | Less efficient | Expert judgment, special cases |
+| **Method of Percentiles** | Intuitive, robust | Less efficient; PERT only | PERT fits from expert judgment |
 
-**Recommendation for Hydrological Applications:** L-moments are recommended by USGS [[1]](#1) for flood frequency analysis due to superior performance with small samples and robustness to outliers.
+**Recommendation for Hydrological Applications:** L-moments perform well with small samples and are robust to outliers, which makes them a strong general choice for hydrological data. For US flood frequency analysis, USGS Bulletin 17C [[1]](#1) recommends fitting the Log-Pearson Type III distribution with the Expected Moments Algorithm (EMA), which is based on the moments of the base-10 logarithms of the flows.
 
 ## Using the Estimate() Method
 
@@ -62,6 +62,78 @@ The `Estimate()` method automatically:
 2. Estimates parameters using the specified method
 3. Sets the distribution parameters
 4. Validates the parameters
+
+### Supported Methods by Distribution
+
+The distributions that implement `IEstimation` accept the following methods in `Estimate()`. A method that is not listed throws `NotImplementedException`. Every distribution in the table except Deterministic also implements `IBootstrappable`, so it can be used in a `BootstrapAnalysis`. Distributions not listed do not implement `IEstimation`.
+
+| Distribution | Moments | L-Moments | Maximum Likelihood | Percentiles |
+|--------------|:-------:|:---------:|:------------------:|:-----------:|
+| Competing Risks | | | ✓ | |
+| Deterministic | ✓ | | | |
+| Exponential | ✓ | ✓ | ✓ | |
+| Gamma | ✓ | ✓ | ✓ | |
+| Generalized Extreme Value | ✓ | ✓ | ✓ | |
+| Generalized Logistic | ✓ | ✓ | ✓ | |
+| Generalized Normal | | ✓ | ✓ | |
+| Generalized Pareto | ✓ | ✓ | ✓ | |
+| Gumbel | ✓ | ✓ | ✓ | |
+| Kappa-Four | | ✓ | ✓ | |
+| Ln-Normal | ✓ | ✓ | ✓ | |
+| Log-Normal | ✓ | ✓ | ✓ | |
+| Log-Pearson Type III | ✓ | ✓ | ✓ | |
+| Logistic | ✓ | ✓ | ✓ | |
+| Mixture | | | ✓ | |
+| Noncentral t | | | ✓ | |
+| Normal | ✓ | ✓ | ✓ | |
+| Pareto | | | ✓ | |
+| Pearson Type III | ✓ | ✓ | ✓ | |
+| PERT | ✓ | | ✓ | ✓ |
+| Poisson | ✓ | | ✓ | |
+| Rayleigh | ✓ | | ✓ | |
+| Student's t | | | ✓ | |
+| Triangular | ✓ | | ✓ | |
+| Truncated Normal | ✓ | | | |
+| Uniform | ✓ | | ✓ | |
+| Uniform Discrete | | | ✓ | |
+| Von Mises | | | ✓ | |
+| Weibull | | | ✓ | |
+
+Several of these estimators have closed forms or specific sample rules:
+
+- **Normal:** the maximum likelihood estimates are the sample mean and the population standard deviation (divisor $n$); the method of moments uses divisor $n - 1$.
+- **Pareto:** $\hat{x}_m = \min x_i$ and $\hat{\alpha} = n / \sum_i \ln(x_i/\hat{x}_m)$; observations must be positive.
+- **Poisson:** both methods give $\hat{\lambda} = \bar{x}$; observations must be nonnegative integers with at least one positive count.
+- **Uniform:** maximum likelihood gives the sample minimum and maximum, the method of moments $\bar{x} \mp \sqrt{3}\,s$. **Uniform Discrete:** maximum likelihood gives the sample minimum and maximum; observations must be integers.
+- **Rayleigh:** the method of moments gives $\bar{x}/\sqrt{\pi/2}$; maximum likelihood applies the bias correction $\Gamma(n)\sqrt{n}/\Gamma(n + \tfrac{1}{2})$ to the closed-form estimate, so it is slightly larger than the plain maximum likelihood estimate.
+- **Student's t:** location, scale and degrees of freedom are fitted jointly, with $\nu$ bounded to [1, 1000]. **Noncentral t:** degrees of freedom and noncentrality are fitted jointly.
+- **Truncated Normal:** the method of moments sets the bounds to the sample extremes and solves for the parent $(\mu, \sigma)$ that reproduce the sample mean and standard deviation, with a least-squares fallback when the standard deviation cannot be reached (see [Univariate Distributions](univariate.md#truncated-distributions)).
+- **Von Mises:** $\hat{\mu}$ is the circular mean and $\hat{\kappa}$ solves $I_1(\kappa)/I_0(\kappa) = \bar{R}$ by Newton's method; the sample needs at least two finite values, and a sample with no angular dispersion throws `ArgumentException`.
+
+```cs
+double[] counts = { 3, 5, 2, 4, 6, 3, 4, 1 };
+var poisson = new Poisson();
+poisson.Estimate(counts, ParameterEstimationMethod.MaximumLikelihood);   // λ = sample mean
+Console.WriteLine($"Poisson λ = {poisson.Lambda:F4}");
+
+double[] heights = { 1.8, 2.6, 0.9, 3.1, 2.2, 1.4, 2.9, 1.7 };
+var uniform = new Uniform();
+uniform.Estimate(heights, ParameterEstimationMethod.MethodOfMoments);     // mean ∓ √3·s
+Console.WriteLine($"Uniform [{uniform.Min:F4}, {uniform.Max:F4}]");
+
+var pareto = new Pareto();
+pareto.Estimate(heights, ParameterEstimationMethod.MaximumLikelihood);   // closed form
+Console.WriteLine($"Pareto Xm = {pareto.Xm:F4}, α = {pareto.Alpha:F4}");
+
+try
+{
+    new StudentT().Estimate(heights, ParameterEstimationMethod.MethodOfMoments);
+}
+catch (NotImplementedException)
+{
+    Console.WriteLine("Student's t supports maximum likelihood only");
+}
+```
 
 ## Manual Parameter Estimation
 
@@ -235,7 +307,7 @@ L-moment diagrams plot L-skewness (τ₃) vs L-kurtosis (τ₄) to identify appr
 
 ```cs
 // Theoretical L-moment ratios for distributions
-var distributions = new (string Name, IUnivariateDistribution Dist)[]
+var distributions = new (string Name, UnivariateDistributionBase Dist)[]
 {
     ("GEV", new GeneralizedExtremeValue(1000, 200, -0.1)),
     ("Gumbel", new Gumbel(1000, 200)),
@@ -248,7 +320,7 @@ Console.WriteLine("--------------------------------------------");
 
 foreach (var (name, dist) in distributions)
 {
-    var lMom = dist.LinearMomentsFromParameters(dist.GetParameters);
+    var lMom = ((ILinearMomentEstimation)dist).LinearMomentsFromParameters(dist.GetParameters);
     Console.WriteLine($"{name,-12} | {lMom[2],11:F4} | {lMom[3],11:F4}");
 }
 
@@ -298,8 +370,10 @@ Under regularity conditions, the MLE is asymptotically normal [[5]](#5):
 This provides approximate standard errors for each parameter:
 
 ```math
-\text{SE}(\hat{\theta}_j) \approx \frac{1}{\sqrt{\mathcal{I}(\hat{\boldsymbol{\theta}})_{jj}}}
+\text{SE}(\hat{\theta}_j) \approx \sqrt{\left[\mathcal{I}(\hat{\boldsymbol{\theta}})^{-1}\right]_{jj}}
 ```
+
+that is, the square root of the $j$-th diagonal element of the inverse information matrix, in practice the inverse of the observed information (the negative Hessian of $\ell$ at $\hat{\boldsymbol{\theta}}$). Taking $1/\sqrt{\mathcal{I}_{jj}}$ instead ignores the correlation between parameter estimates and understates the standard error.
 
 **Strengths:** Asymptotically efficient (achieves the lowest possible variance among consistent estimators), asymptotically unbiased, invariant under reparameterization, provides a natural framework for model comparison via AIC and BIC.
 
@@ -422,8 +496,8 @@ var normal = new Normal();
 normal.Estimate(data, ParameterEstimationMethod.MethodOfMoments);
 
 // Or manually
-double[] params = normal.ParametersFromMoments(moments);
-normal.SetParameters(params);
+double[] momentParameters = normal.ParametersFromMoments(moments);
+normal.SetParameters(momentParameters);
 
 Console.WriteLine($"Normal Distribution (MOM):");
 Console.WriteLine($"  μ = {normal.Mu:F2}");
@@ -434,31 +508,30 @@ Console.WriteLine($"  Sample std dev = {moments[1]:F2}");
 
 ## Method of Percentiles
 
-The Method of Percentiles (also called least-squares fitting or quantile matching) estimates parameters by matching theoretical quantiles of the distribution to empirical quantiles computed from the data.
+The Method of Percentiles (quantile matching) chooses parameters so that selected percentiles of the distribution match the corresponding sample percentiles. In the ***Numerics*** library, only the PERT distribution accepts `ParameterEstimationMethod.MethodOfPercentiles` in `Estimate`; other distributions do not support it.
 
 ### Mathematical Formulation
 
-Given a sorted sample $x_{(1)} \leq x_{(2)} \leq \cdots \leq x_{(n)}$, each observation is assigned a plotting position $p_i$ that estimates $F(x_{(i)})$. A common choice is the Weibull plotting position:
+`Pert.Estimate` computes the sample 5th, 50th and 95th percentiles $\hat{x}_{0.05}$, $\hat{x}_{0.50}$ and $\hat{x}_{0.95}$. The PERT parameters $\boldsymbol{\theta}$ = (minimum, most likely, maximum) are then found by minimizing the sum of squared differences between the PERT percentiles and these targets:
 
 ```math
-p_i = \frac{i}{n + 1}
+\hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta}}{\text{argmin}} \sum_{p \in \{0.05,\, 0.50,\, 0.95\}} \left[\hat{x}_{p} - F^{-1}(p;\,\boldsymbol{\theta})\right]^2
 ```
 
-The parameters $\boldsymbol{\theta}$ are then chosen so that the theoretical quantile function (inverse CDF) matches the observed data as closely as possible. For a distribution with quantile function $F^{-1}(p;\,\boldsymbol{\theta})$, the parameters minimize the sum of squared differences:
+The same three-percentile parameterization is available directly through the `PertPercentile` distribution.
 
-```math
-\hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta}}{\text{argmin}} \sum_{i=1}^{n} \left[x_{(i)} - F^{-1}(p_i;\,\boldsymbol{\theta})\right]^2
+```cs
+double[] data = { 100, 105, 98, 110, 95, 102, 108, 97, 103, 106 };
+
+var pert = new Pert();
+pert.Estimate(data, ParameterEstimationMethod.MethodOfPercentiles);
+
+Console.WriteLine($"PERT (percentiles): min = {pert.Min:F2}, most likely = {pert.MostLikely:F2}, max = {pert.Max:F2}");
 ```
 
-For a two-parameter distribution, it is sufficient to select two percentiles (e.g., the median and the 84th percentile) and solve the resulting system of two equations:
+**Strengths:** Intuitive, always produces estimates, moderately robust to outliers in the tails, useful when expert judgment provides specific percentile targets.
 
-```math
-F^{-1}(p_j;\,\boldsymbol{\theta}) = x_{(j)}, \quad j \in \{j_1,\, j_2\}
-```
-
-**Strengths:** Intuitive and easy to visualize, always produces estimates, moderately robust to outliers in the tails, useful when expert judgment suggests specific quantile targets.
-
-**Weaknesses:** Uses only selected data points or gives equal weight to all quantiles (not statistically efficient), lower precision than MLE or L-moments for most distributions.
+**Weaknesses:** Uses only three sample percentiles (not statistically efficient), so it has lower precision than MLE or L-moments.
 
 ## Estimation Method Comparison
 
@@ -469,14 +542,14 @@ The choice of estimation method depends on sample size, data quality, and applic
 | **MOM** | Low | Fair | Low | Simple | Quick estimates, stable distributions |
 | **L-Moments** | Moderate--High | Excellent | High | Moderate | Hydrological data, small samples |
 | **MLE** | Highest (asymptotic) | Poor--Fair | Low | Complex | Large samples, model comparison |
-| **Percentiles** | Low | Fair | Moderate | Simple | Visual fitting, expert judgment |
+| **Percentiles** | Low | Fair | Moderate | Simple | PERT fits, expert judgment |
 
 ### Rules of Thumb
 
 - **n < 50:** Prefer L-moments. With small samples, robustness matters more than asymptotic efficiency, and L-moment estimates are nearly unbiased.
 - **n > 100:** MLE becomes competitive and provides standard errors via Fisher Information, enabling confidence intervals and hypothesis tests.
 - **Skewed distributions:** L-moments substantially outperform MOM, because conventional skewness estimates are highly variable for small samples.
-- **US flood frequency analysis:** L-moments are recommended by USGS Bulletin 17C [[1]](#1). The Expected Moments Algorithm (EMA) extends the framework to handle censored and historical data.
+- **US flood frequency analysis:** USGS Bulletin 17C [[1]](#1) recommends the Log-Pearson Type III distribution fitted by the Expected Moments Algorithm (EMA), which uses the moments of the base-10 logarithms of the flows and handles censored and historical data.
 - **Model selection:** When comparing candidate distributions, MLE enables the use of information criteria (AIC, BIC) for objective model ranking.
 
 ## Distribution-Specific Estimation
@@ -491,11 +564,13 @@ using Numerics.Data.Statistics;
 
 double[] annualPeaks = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };
 
-// USGS recommends L-moments with Expected Moments Algorithm (EMA) adjustments
+// Bulletin 17C recommends the Expected Moments Algorithm (EMA). For a complete systematic record
+// with no censored or historical flows, EMA corresponds to the method of moments applied to the
+// base-10 logarithms, which is fitted here. Regional skew weighting and low-outlier screening are not shown.
 var lp3 = new LogPearsonTypeIII();
-lp3.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
+lp3.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfMoments);
 
-Console.WriteLine("LP3 Parameters (Bulletin 17C method):");
+Console.WriteLine("LP3 Parameters (method of moments of log10 flows):");
 Console.WriteLine($"  μ (log-space mean): {lp3.Mu:F4}");
 Console.WriteLine($"  σ (log-space std dev): {lp3.Sigma:F4}");
 Console.WriteLine($"  γ (log-space skew): {lp3.Gamma:F4}");
@@ -579,7 +654,7 @@ See also: [`example-data/white-river-nora-floods.csv`](../example-data/white-riv
 using Numerics.Distributions;
 using Numerics.Data.Statistics;
 
-// White River near Nora, Indiana — 62 years of annual peak streamflow (cfs)
+// White River near Nora, Indiana: 62 years of annual peak streamflow (cfs)
 // Source: Rao & Hamed (2000), Table 7.1.2
 double[] annualPeaks = {
     23200, 2950, 10300, 23200, 4540, 9960, 10800, 26900, 23300, 20400,
@@ -606,7 +681,7 @@ Console.WriteLine($"  τ₃ (L-skewness): {lMoments[2]:F4}");
 Console.WriteLine($"  τ₄ (L-kurtosis): {lMoments[3]:F4}");
 
 // Step 2: Fit candidate distributions using L-moments
-var candidates = new List<(string Name, IUnivariateDistribution Dist)>
+var candidates = new List<(string Name, UnivariateDistributionBase Dist)>
 {
     ("LP3",    new LogPearsonTypeIII()),
     ("GEV",    new GeneralizedExtremeValue()),
@@ -616,7 +691,7 @@ var candidates = new List<(string Name, IUnivariateDistribution Dist)>
 
 foreach (var (name, dist) in candidates)
 {
-    dist.Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
+    ((IEstimation)dist).Estimate(annualPeaks, ParameterEstimationMethod.MethodOfLinearMoments);
     Console.WriteLine($"\n{name} fitted parameters:");
     var pNames = dist.ParameterNamesShortForm;
     var pValues = dist.GetParameters;
@@ -640,7 +715,7 @@ foreach (var method in new[] {
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"  {method}: Failed — {ex.Message}");
+        Console.WriteLine($"  {method}: Failed: {ex.Message}");
     }
 }
 
@@ -774,7 +849,7 @@ using Numerics.Data.Statistics;
 
 double[] annualPeaks = { 5, 12, 18, 180, 220, 310, 450, 520, 680, 720, 890, 1050 };
 
-// Multiple Grubbs-Beck test — returns count of low outliers
+// Multiple Grubbs-Beck test: returns count of low outliers
 int numLowOutliers = MultipleGrubbsBeckTest.Function(annualPeaks);
 
 Console.WriteLine($"Number of low outliers detected: {numLowOutliers}");
@@ -805,7 +880,7 @@ if (numLowOutliers > 0)
 
 ## References
 
-<a id="1">[1]</a> England, J. F., Jr., Cohn, T. A., Faber, B. A., Stedinger, J. R., Thomas, W. O., Jr., Veilleux, A. G., Kiang, J. E., & Mason, R. R., Jr. (2018). *Guidelines for Determining Flood Flow Frequency—Bulletin 17C* (ver. 1.1, May 2019): U.S. Geological Survey Techniques and Methods, book 4, chap. B5, 148 p.
+<a id="1">[1]</a> England, J. F., Jr., Cohn, T. A., Faber, B. A., Stedinger, J. R., Thomas, W. O., Jr., Veilleux, A. G., Kiang, J. E., & Mason, R. R., Jr. (2018). *Guidelines for Determining Flood Flow Frequency, Bulletin 17C* (ver. 1.1, May 2019): U.S. Geological Survey Techniques and Methods, book 4, chap. B5, 148 p.
 
 <a id="2">[2]</a> Hosking, J. R. M. (1990). L-moments: Analysis and estimation of distributions using linear combinations of order statistics. *Journal of the Royal Statistical Society: Series B (Methodological)*, 52(1), 105-124.
 

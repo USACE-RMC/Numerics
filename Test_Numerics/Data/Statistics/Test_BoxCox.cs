@@ -89,6 +89,50 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// TryFitLambda returns the FitLambda exponent bit for bit and reports failure instead of a silent NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_TryFitLambda()
+        {
+            var sample = new double[] { 1, 3, 59, 1, 6, 4, 9, 13, 5, 84, 35, 8, 31, 34, 9, 1, 35, 66, 1, 65, 4, 68, 46 };
+            BoxCox.FitLambda(sample, out double expected);
+            Assert.IsTrue(BoxCox.TryFitLambda(sample, out double lambda));
+            Assert.AreEqual(expected, lambda);
+            Assert.AreEqual(0.1314482, lambda, 1E-6);
+
+            foreach (var invalid in new[] { null, new double[] { 2 }, new double[] { 3, 3, 3 }, new double[] { 1, -2, 4 }, new double[] { 1, double.NaN, 4 } })
+            {
+                Assert.IsFalse(BoxCox.TryFitLambda(invalid!, out lambda));
+                Assert.IsTrue(double.IsNaN(lambda));
+            }
+        }
+
+        /// <summary>
+        /// The derivative is the closed form x^(λ − 1) (here against numpy, x ** (0.7 - 1)), 1 / x on the logarithm
+        /// branch, agrees with a central difference of the transformation, and is NaN outside the domain.
+        /// </summary>
+        [TestMethod]
+        public void Test_Derivative()
+        {
+            var x = new double[] { 0.5, 1.2, 2.0, 3.3, 4.1 };
+            var numpy = new double[] { 1.23114441, 0.94677248, 0.8122524, 0.69894953, 0.6548847 };
+            for (int i = 0; i < x.Length; i++)
+            {
+                Assert.AreEqual(numpy[i], BoxCox.Derivative(x[i], 0.7), 1E-8);
+                Assert.AreEqual(1d / x[i], BoxCox.Derivative(x[i], 0d), 1E-15);
+                foreach (double lambda in new[] { -2.5, -0.4, 0.3, 1.0, 2.0 })
+                {
+                    double h = 1E-6 * x[i];
+                    double fd = (BoxCox.Transform(x[i] + h, lambda) - BoxCox.Transform(x[i] - h, lambda)) / (2 * h);
+                    Assert.AreEqual(fd, BoxCox.Derivative(x[i], lambda), 1E-6 * System.Math.Abs(fd));
+                }
+            }
+            Assert.IsTrue(double.IsNaN(BoxCox.Derivative(0d, 0.5)));
+            Assert.IsTrue(double.IsNaN(BoxCox.Derivative(-1d, 0.5)));
+            Assert.IsTrue(double.IsNaN(BoxCox.Derivative(2d, 5.5)));
+        }
+
+        /// <summary>
         /// Test the transform and reverse transform methods
         /// </summary>
         [TestMethod()]
@@ -128,6 +172,19 @@ namespace Data.Statistics
             var revVals = BoxCox.InverseTransform(vals, 0.1314482);
             for (int i = 0; i < revVals.Count; i++)
                 Assert.AreEqual(revVals[i], sample[i], 0.001d);
+        }
+
+        /// <summary>
+        /// The log-likelihood is the full normal log-likelihood of the transformed values at the maximum likelihood
+        /// mean and variance plus the log-Jacobian: scipy 1.17.1 sum(norm.logpdf(boxcox(x, 0.25), mu, sigma)) +
+        /// (0.25 - 1) sum(log x) = -97.16918601907129, which is boxcox_llf(0.25, x) - (n / 2)(log(2 pi) + 1).
+        /// </summary>
+        [TestMethod]
+        public void Test_LogLikelihood_FullNormalConstant()
+        {
+            var sample = new double[] { 1, 3, 59, 1, 6, 4, 9, 13, 5, 84, 35, 8, 31, 34, 9, 1, 35, 66, 1, 65, 4, 68, 46 };
+            Assert.AreEqual(-97.16918601907129, BoxCox.LogLikelihood(sample, 0.25), 1E-10);
+            Assert.AreEqual(-64.53359975536381 - 11.5 * (System.Math.Log(2 * System.Math.PI) + 1), BoxCox.LogLikelihood(sample, 0.25), 1E-10);
         }
     }
 }

@@ -30,9 +30,11 @@ namespace Numerics.Mathematics.Integration
         /// <param name="function">The function to integrate.</param>
         /// <param name="min">The minimum value under which the integral must be computed.</param>
         /// <param name="max">The maximum value under which the integral must be computed.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="max"/> is not greater than <paramref name="min"/>.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="function"/> is null.</exception>
         public AdaptiveGaussLobatto(Func<double, double> function, double min, double max)
         {
-            if (max <= min) throw new ArgumentNullException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
+            if (max <= min) throw new ArgumentOutOfRangeException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
             Function = function ?? throw new ArgumentNullException(nameof(function), "The function cannot be null.");
             a = min;
             b = max;
@@ -69,6 +71,12 @@ namespace Numerics.Mathematics.Integration
         private double toler;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// If an interval with a NaN or infinite estimate would be accepted, the result cannot be finite,
+        /// so integration stops with <see cref="IntegrationStatus.Failure"/> and throws an
+        /// <see cref="ArithmeticException"/> when <see cref="Integrator.ReportFailure"/> is true. A
+        /// non-finite estimate on an interval that is subdivided further does not stop integration.
+        /// </remarks>
         public override void Integrate()
         {
             ClearResults();
@@ -114,6 +122,20 @@ namespace Numerics.Mathematics.Integration
         }
 
         /// <summary>
+        /// Returns an accepted interval estimate, or throws when it is NaN or infinite because the
+        /// composite sum can then no longer be finite.
+        /// </summary>
+        /// <param name="estimate">The accepted interval estimate.</param>
+        /// <returns>The estimate.</returns>
+        /// <exception cref="ArithmeticException">Thrown when <paramref name="estimate"/> is not finite.</exception>
+        private static double Accept(double estimate)
+        {
+            if (!Tools.IsFinite(estimate))
+                throw new ArithmeticException("The integrand produced a NaN or infinite estimate on an accepted interval, so the integral cannot be finite.");
+            return estimate;
+        }
+
+        /// <summary>
         /// Helper function for recursion.
         /// </summary>
         private double adaptlob(Func<double, double> function, double a, double b, double fa, double fb, double iS)
@@ -144,14 +166,14 @@ namespace Numerics.Mathematics.Integration
             {
                 // Terminate recursion
                 UpdateStatus(IntegrationStatus.MaximumIterationsReached);
-                return i1;
+                return Accept(i1);
             }
             // Check function evaluations
             if (FunctionEvaluations >= MaxFunctionEvaluations)
             {
                 // Terminate recursion
                 UpdateStatus(IntegrationStatus.MaximumFunctionEvaluationsReached);
-                return i1;
+                return Accept(i1);
             }
             // Check tolerance
             if (Math.Abs(i1 - i2) <= toler * iS || mll <= a || b <= mrr)
@@ -163,7 +185,7 @@ namespace Numerics.Mathematics.Integration
                 }
                 // Terminate recursion
                 UpdateStatus(IntegrationStatus.Success);
-                return i1;
+                return Accept(i1);
             }
             else
                 // Subdivide interval

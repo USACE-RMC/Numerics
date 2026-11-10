@@ -83,11 +83,11 @@ namespace Sampling.MCMC
         /// </summary>
         /// <remarks>
         /// The proposal covariance is fixed for a whole RWMH run, so each chain's proposal is
-        /// factorized once at initialization and only its mean moves with the chain state — a
+        /// factorized once at initialization and only its mean moves with the chain state; a
         /// translation changes nothing the factorization derives from the covariance, so the drawn
         /// values are identical to re-parameterizing the proposal at every step. The expected
         /// literals below are a golden master captured at seed 12345, 2 chains, 200 iterations,
-        /// 100 warmup, Randomize initialization, and every one must reproduce exactly — no
+        /// 100 warmup, Randomize initialization, and every one must reproduce exactly, with no
         /// tolerance.
         /// </remarks>
         [TestMethod]
@@ -145,6 +145,28 @@ namespace Sampling.MCMC
             Assert.AreEqual(12729.094200262518, sampler.MAP.Values[0], 0d);
             Assert.AreEqual(4543.2396366299008, sampler.MAP.Values[1], 0d);
             Assert.AreEqual(-473.59481939858011, sampler.MAP.Fitness, 0d);
+        }
+
+
+        /// <summary>
+        /// A proposal covariance that is not positive-definite is rejected before sampling with an
+        /// argument error naming ProposalSigma, and no chain transition runs.
+        /// </summary>
+        [TestMethod]
+        public void Test_RWMH_SingularProposal_ThrowsArgumentException()
+        {
+            var priors = new List<IUnivariateDistribution> { new Uniform(-10d, 10d), new Uniform(-10d, 10d) };
+            foreach (var sigma in new[] { new Matrix(2), new Matrix(new double[,] { { 1d, 2d }, { 2d, 1d } }) })
+            {
+                var sampler = new RWMH(priors, x => -0.5 * (x[0] * x[0] + x[1] * x[1]), sigma)
+                {
+                    Initialize = MCMCSampler.InitializationType.Randomize
+                };
+
+                var exception = Assert.Throws<System.ArgumentException>(() => sampler.Sample());
+                Assert.AreEqual(nameof(RWMH.ProposalSigma), exception.ParamName);
+                Assert.AreEqual(0, sampler.SampleCount[0]);
+            }
         }
 
     }

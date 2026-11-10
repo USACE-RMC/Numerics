@@ -124,6 +124,34 @@ Console.WriteLine("\n2 * A:");
 Console.WriteLine(D.ToString());
 ```
 
+#### Transpose Products and Gram Matrices
+
+`TransposeMultiply` forms $A^\top B$ without building the transpose; for a different matrix $B$ every entry is summed in the same order as `A.Transpose().Multiply(B)`, so the two give identical results. When the argument is the matrix itself, it computes the Gram matrix $A^\top A$ with a SIMD kernel over blocks of rows (in parallel for large matrices) and mirrors the upper triangle, so the result is exactly symmetric and reproducible on a given machine; its entries agree with the row-by-row sum to a few units in the last place, and the last digits can differ between processor architectures. Matrix products with eight or more result columns are vectorized across each row of the result without changing the order of the sums.
+
+```cs
+var X = new Matrix(new double[,] {
+    { 1, 2.0, 0.5 },
+    { 1, 3.5, 1.5 },
+    { 1, 5.0, 2.0 },
+    { 1, 6.5, 3.5 }
+});
+var y = new Matrix(new double[,] { { 1.2 }, { 2.3 }, { 3.1 }, { 4.8 } });
+
+var XtX = X.TransposeMultiply(X);   // 3 x 3, exactly symmetric
+var Xty = X.TransposeMultiply(y);   // 3 x 1
+
+for (int i = 0; i < 3; i++)
+    Console.WriteLine($"{XtX[i, 0],7:F2} {XtX[i, 1],7:F2} {XtX[i, 2],7:F2}   {Xty[i, 0],7:F2}");
+```
+
+Output:
+
+```
+   4.00   17.00    7.50     11.40
+  17.00   83.50   39.00     57.15
+   7.50   39.00   18.75     27.05
+```
+
 #### Matrix-Vector Multiplication
 
 ```cs
@@ -548,9 +576,11 @@ Matrix Ainv = lu.InverseA();
 | `LU` | `Matrix` | The combined L and U factors stored in a single matrix |
 | `A` | `Matrix` | A copy of the original input matrix |
 | `Solve(Vector b)` | `Vector` | Solves $Ax = b$ using forward and back substitution |
-| `Solve(Matrix B)` | `Matrix` | Solves $AX = B$ for multiple right-hand sides |
+| `Solve(Matrix B)` | `Matrix` | Solves $AX = B$ for multiple right-hand sides; returns an $n \times m$ matrix for an $n \times m$ `B` |
 | `Determinant()` | `double` | Computes $\det(A)$ from the product of diagonal elements of $U$ |
 | `InverseA()` | `Matrix` | Computes $A^{-1}$ by solving $AX = I$ |
+
+The constructor throws `ArgumentOutOfRangeException` for a non-square matrix. An exactly zero pivot is replaced by $10^{-40}$ (the Numerical Recipes convention), so a singular matrix gives a determinant near zero and a very large solution rather than an exception; test the determinant or use `SingularValueDecomposition` when singularity is possible.
 
 ### QR Decomposition
 
@@ -615,6 +645,8 @@ Vector x = qr.Solve(b);
 | `RMatrix` | `Matrix` | The $m \times n$ upper triangular matrix |
 | `Solve(Vector b)` | `Vector` | Solves $Ax = b$ in the least squares sense via back substitution on $Rx = Q^T b$ |
 | `Solve(Matrix B)` | `Matrix` | Solves $AX = B$ for multiple right-hand sides |
+
+Both `Solve` methods throw `ArgumentException` when $A$ is numerically rank-deficient, that is, when some $|R_{ii}| \le \max(m, n)\,2^{-52}\max_j |R_{jj}|$; the least-squares solution is then not unique, and `SingularValueDecomposition.Solve` gives the minimum-norm solution. Column norms and Householder vectors are computed with norms scaled by the largest entry, so entries near the overflow or underflow limits are handled. The constructor forms the full $m \times m$ matrix $Q$, so for a tall least-squares problem (many thousands of rows) it needs $O(m^2)$ memory.
 
 ### Cholesky Decomposition
 
@@ -699,6 +731,41 @@ Console.WriteLine($"log|A| = {logDet:F4}");
 | `InverseA()` | `Matrix` | Computes $A^{-1}$ using the stored decomposition |
 | `Determinant()` | `double` | Computes $\det(A) = (\prod L_{ii})^2$ |
 | `LogDeterminant()` | `double` | Computes $\log \det(A) = 2 \sum \log L_{ii}$ (numerically stable for large matrices) |
+| `TryCholesky(A, out chol, out jitter)` | `bool` | Static. Factors $A$, or $A + \delta I$ with an escalating jitter $\delta$, without throwing |
+
+**Implementation.** The factorization reads the upper triangle and diagonal of $A$ into a flat row-major lower triangle. From order 16 on it runs a blocked, right-looking algorithm (Golub and Van Loan, *Matrix Computations*, 4th ed., section 4.2): panels of 128 columns, inner products of contiguous row segments in SIMD lanes with fused multiply-adds on .NET 8 and later, and parallel trailing updates for matrices of order 384 or more. The tile boundaries depend only on the order of the matrix, so the factor does not depend on the number of threads. Below order 16 the scalar loop is faster and is used unchanged. `Solve`, `Forward`, `Backward` and `InverseA` follow the same split (from order 16 the inverse is formed as $L^{-T}L^{-1}$) and use the factor computed by the decomposition; `L` is a copy of it, so changing its entries does not change their results. On the unit tests' matrices of order 16 to 400, the blocked factor has a backward error $\lVert A - LL^T \rVert_F / \lVert A \rVert_F$ 1.05 to 1.7 times smaller than the scalar loop, and the residual $\max |AA^{-1} - I|$ of `InverseA` is 0.8 to 1.3 times that of column-by-column substitution. Gaussian process regression and Kriging use the same kernels.
+
+#### Cholesky with Diagonal Jitter
+
+Kernel and covariance matrices built from nearly coincident points are often positive-definite in exact arithmetic but rejected in floating point. The standard remedy, common in Gaussian process regression, is to factor $A + \delta I$ for a small "jitter" $\delta$. The static `CholeskyDecomposition.TryCholesky` method does this without exceptions:
+
+1. It first factors $A$ as given, with the same pivot test as the constructor. If that succeeds, the jitter is zero and the factor is identical to `new CholeskyDecomposition(A).L`.
+2. Otherwise it tries $\delta_k = s \cdot r_{\min} \cdot 10^k$ for $k = 0, 1, \ldots$ while $\delta_k \le s \cdot r_{\max}$, where $s$ is the mean of the diagonal of $A$ (or one when that mean is not positive). The defaults are $r_{\min} = 10^{-10}$ and $r_{\max} = 10^{-2}$.
+3. It returns `false`, a `null` decomposition and a NaN jitter when no attempt succeeds, or when the upper triangle of $A$ contains a non-finite entry.
+
+On success the returned decomposition is the exact factorization of the jittered matrix, which is stored in its `A` property, so `Solve`, `InverseA` and `LogDeterminant` all refer to $A + \delta I$.
+
+```cs
+// Exactly rank-deficient covariance: the third variable repeats the first
+var A = new Matrix(new double[,] {
+    { 2.0, 0.5, 2.0 },
+    { 0.5, 1.0, 0.5 },
+    { 2.0, 0.5, 2.0 }
+});
+
+if (CholeskyDecomposition.TryCholesky(A, out var chol, out double jitter))
+{
+    Console.WriteLine($"Jitter added: {jitter:E3}");                   // 1.667E-010
+    Console.WriteLine($"log|A + jitter*I| = {chol!.LogDeterminant():F4}");
+}
+
+// Custom ladder: relative jitters from 1E-8 up to 10
+var indefinite = new Matrix(new double[,] { { 1.0, 2.0 }, { 2.0, 1.0 } });
+bool ok = CholeskyDecomposition.TryCholesky(indefinite, 1E-8, 10.0, out var chol2, out double jitter2);
+Console.WriteLine($"{ok}, jitter = {jitter2:G4}");                    // True, jitter = 10
+```
+
+A large jitter changes the matrix materially, so check the returned `jitter` against what your application can tolerate. Each failed attempt costs a full $O(n^3)$ factorization. For a regularized matrix that is returned rather than factored, see `MatrixRegularization.MakeSymmetricPositiveDefinite`.
 
 ### Eigenvalue Decomposition
 
@@ -724,7 +791,7 @@ A = Q \Lambda Q^T
 
 where $Q$ is an orthogonal matrix whose columns are the eigenvectors and $\Lambda = \text{diag}(\lambda_1, \lambda_2, \ldots, \lambda_n)$ is a diagonal matrix of eigenvalues.
 
-The ***Numerics*** library computes this decomposition using the **Jacobi rotation method**, which is an iterative algorithm that applies a sequence of plane rotations to systematically zero out off-diagonal elements. Each rotation is chosen to eliminate the largest remaining off-diagonal entry. The method converges when all off-diagonal elements are smaller than a tolerance ($10^{-12}$). The Jacobi method is robust and highly accurate for small to medium-sized symmetric matrices.
+The ***Numerics*** library computes this decomposition using the **cyclic Jacobi method**, an iterative algorithm that applies a sequence of plane rotations to systematically zero out off-diagonal elements. Each sweep visits the off-diagonal elements row by row and rotates every one whose magnitude exceeds the tolerance, $10^{-12}$ times the largest entry of the matrix; the method has converged when a sweep finds none. Each sweep costs $O(n^3)$ work, and ill-conditioned matrices, such as spectra graded down to $10^{-12}$ of the largest eigenvalue, take more sweeps than well-separated ones. The number of rotations is limited to $\max(2000, 50n^2)$, about 100 sweeps. On random Gram matrices and on matrices with evenly spaced or graded known spectra, for $n$ = 10 to 300, the tests measure an eigenpair residual $\lVert Av - \lambda v \rVert_2 / \lVert A \rVert_F$ of $2 \times 10^{-13}$ to $3 \times 10^{-12}$, eigenvectors orthonormal to $1.5 \times 10^{-14}$, and eigenvalues within $10^{-14}$ of the largest eigenvalue of the known spectrum, or $1.2 \times 10^{-12}$ for a spectrum graded down to $10^{-12}$. The eigenvalues are returned in diagonal order, not sorted.
 
 **Applications:**
 
@@ -742,7 +809,7 @@ A large condition number indicates that the matrix is nearly singular and that s
 
 #### API Reference
 
-The `EigenValueDecomposition` class accepts a **symmetric** matrix and computes all eigenvalues and eigenvectors using the Jacobi rotation method. The constructor validates that the input matrix is both square and symmetric.
+The `EigenValueDecomposition` class accepts a **symmetric** matrix and computes all eigenvalues and eigenvectors, by the cyclic Jacobi method unless the QL method is requested. The constructor validates that the input matrix is square, finite and symmetric; `Matrix.IsSymmetric` accepts $|A_{ij} - A_{ji}| \le 10^{-12} \max |A_{kl}|$, a tolerance relative to the largest entry.
 
 ```cs
 var A = new Matrix(new double[,] {
@@ -769,7 +836,35 @@ Matrix V = eigen.EigenVectors;
 | `EigenValues` | `Vector` | The eigenvalues $\lambda_1, \ldots, \lambda_n$ |
 | `EigenVectors` | `Matrix` | Orthogonal matrix whose columns are the corresponding eigenvectors |
 | `A` | `Matrix` | A copy of the original input matrix |
+| `IsConverged` | `bool` | `true` if every off-diagonal element fell below the tolerance within the rotation limit |
 | `EffectiveSampleSize()` | `double` | Returns the effective sample size based on Dutilleul's method, computed as $(\sum \lambda_i)^2 / \sum \lambda_i^2$ |
+
+**Jacobi or QL.** `new EigenValueDecomposition(A, EigenSolverMethod.QL)` reduces the matrix to tridiagonal form by Householder reflections [[4]](#4) and diagonalizes it by implicit QL iterations [[5]](#5), at about $9n^3$ flops. Its eigenvalues are in ascending order, as `numpy.linalg.eigh` returns them, with eigenvector $i$ in column $i$. It throws `ArithmeticException` if an eigenvalue does not converge within 60 iterations, and otherwise `IsConverged` is `true`. The one-argument constructor, and `EigenSolverMethod.Jacobi`, use the Jacobi method and leave the eigenvalues in diagonal order. The two procedures are those of EISPACK (tred2 and tql2) in the form given by JAMA. Their loops run lane-wise in SIMD registers, and the rotations of each QL sweep are logged and applied to the eigenvectors in batches, a block of columns at a time; every element keeps the operations and the order of operations of the sequential procedures, so the results are bitwise those of the sequential procedures on every SIMD width. From $n$ = 128 the logged rotations are applied by parallel tasks, each on its own block of columns, while the next sweeps are computed; this changes no bits either, and smaller matrices run on one thread. Jacobi took 2.2 ms at $n$ = 50, 165 ms at $n$ = 200 and 3.3 s at $n$ = 500. The table gives the QL times on random Gram matrices (.NET 10, best of repeated runs, parallel rotations from $n$ = 128) and `numpy.linalg.eigh` (NumPy 2.5.4 with OpenBLAS 0.3.34, LAPACK dsyevd) on the same machine, with one BLAS thread and with its default thread count:
+
+| $n$ | QL | eigh, one thread | eigh, default threads |
+|---:|---:|---:|---:|
+| 10 | 0.006 ms | 0.012-0.014 ms | 0.011 ms |
+| 50 | 0.16-0.18 ms | 0.16-0.18 ms | 0.80-0.83 ms |
+| 100 | 0.76-0.89 ms | 0.56-0.68 ms | 1.7-2.2 ms |
+| 200 | 3.4-3.7 ms | 2.7-3.3 ms | 5.8-7.1 ms |
+| 300 | 9.8-10.8 ms | 6.7-7.8 ms | 22-23 ms |
+| 500 | 47-49 ms | 24-28 ms | 196-214 ms |
+
+The QL eigenvalues agree with 40-digit mpmath to 4.5E-16 ‖A‖ at $n$ = 10 and 2.1E-15 ‖A‖ at $n$ = 50 (eigh: 2.7E-16 and 3.6E-16), and the eigenvectors are orthonormal to 1.4E-15 at $n$ = 10, 2.0E-14 at $n$ = 200 and 6.8E-14 at $n$ = 500 (eigh: 7.9E-16, 3.8E-15 and 2.7E-15). This orthogonality is the accuracy of the cited EISPACK procedures, which are implemented without modification; LAPACK's divide-and-conquer dsyevd is a different algorithm:
+
+```cs
+var ql = new EigenValueDecomposition(A, EigenSolverMethod.QL);
+double smallest = ql.EigenValues[0];          // 1.3820 for the 2 × 2 matrix above
+double[] first = ql.EigenVectors.Column(0);   // its unit eigenvector
+```
+
+**Rotation limit and cost.** Each sweep costs $O(n^3)$ and is at most $n(n-1)/2$ rotations. The decomposition stops after $\max(2000, 50n^2)$ rotations; the test matrices up to $n$ = 300, including spectra graded down to $10^{-12}$, converge within it, and `IsConverged` reports whether the limit was reached. For a symmetric positive semi-definite matrix, `SingularValueDecomposition` is an alternative (its singular values are the eigenvalues).
+
+```cs
+var eigen = new EigenValueDecomposition(A);
+if (!eigen.IsConverged)
+    Console.WriteLine("Jacobi rotation limit reached; results may be inaccurate.");
+```
 
 ### Singular Value Decomposition (SVD)
 
@@ -874,7 +969,7 @@ Console.WriteLine($"Least squares solution: {x.ToString()}");
 | `Range(threshold)` | `Matrix` | Orthonormal basis for the column space of $A$ |
 | `Nullspace(threshold)` | `Matrix` | Orthonormal basis for the null space of $A$ |
 | `Solve(Vector b, threshold)` | `Vector` | Solves $Ax = b$ using the pseudoinverse |
-| `Solve(Matrix B, threshold)` | `Matrix` | Solves $AX = B$ for multiple right-hand sides |
+| `Solve(Matrix B, threshold)` | `Matrix` | Solves $AX = B$ for multiple right-hand sides; $B$ has the $m$ rows of $A$, and a rectangular $A$ gives the least-squares solution of each column |
 | `LogDeterminant()` | `double` | Computes $\sum \log \sigma_i$ |
 | `LogPseudoDeterminant()` | `double` | Computes $\sum \log \sigma_i$ for nonzero $\sigma_i$ only |
 
@@ -958,7 +1053,7 @@ Selecting the right decomposition depends on the structure of your matrix and th
 | Solve $Ax = b$ (SPD) | Symmetric positive-definite | **Cholesky** | Half the cost of LU; exploits symmetry |
 | Least squares $\min \|Ax - b\|_2$ | Overdetermined ($m > n$), full rank | **QR** | Numerically stable; avoids squaring the condition number |
 | Least squares (rank-deficient) | Any shape, possibly rank-deficient | **SVD** | Provides minimum-norm solution even when $A$ is rank-deficient |
-| Eigenvalues/eigenvectors | Symmetric | **Eigenvalue** | Spectral decomposition via Jacobi rotation |
+| Eigenvalues/eigenvectors | Symmetric | **Eigenvalue** | Spectral decomposition via cyclic Jacobi rotation |
 | Condition number, numerical rank | Any | **SVD** | Singular values directly give $\kappa(A)$ and rank |
 | Monte Carlo sampling | Covariance matrix (SPD) | **Cholesky** | $x = \mu + Lz$ generates correlated samples |
 | Determinant | Square | **LU** or **Cholesky** | Product of diagonal elements (or their squares for Cholesky) |
@@ -977,6 +1072,7 @@ Selecting the right decomposition depends on the structure of your matrix and th
 |-----------|--------|------------|
 | Matrix multiplication | `A.Multiply(B)` or `A * B` | O(n³) |
 | Transpose | `A.Transpose()` | O(n²) |
+| Transpose product, Gram matrix | `A.TransposeMultiply(B)`, `A.TransposeMultiply(A)` | O(mnp), O(mn²/2) |
 | Inverse | `A.Inverse()` | O(n³) |
 | Determinant | `A.Determinant()` | O(n³) |
 | Vector norm | `v.Norm()` | O(n) |
@@ -984,8 +1080,10 @@ Selecting the right decomposition depends on the structure of your matrix and th
 | LU factorization | `new LUDecomposition(A)` | O(n³/3) |
 | QR factorization | `new QRDecomposition(A)` | O(2mn² - 2n³/3) |
 | Cholesky factorization | `new CholeskyDecomposition(A)` | O(n³/6) |
+| Cholesky with jitter | `CholeskyDecomposition.TryCholesky(A, out chol, out jitter)` | O(n³/6) per attempt |
 | SVD | `new SingularValueDecomposition(A)` | O(min(mn², m²n)) |
-| Eigenvalue (symmetric) | `new EigenValueDecomposition(A)` | O(n³) iterative |
+| Eigenvalue (symmetric) | `new EigenValueDecomposition(A)` | O(n³) per sweep, typically 6 to 10 sweeps |
+| Eigenvalue (symmetric, ascending) | `new EigenValueDecomposition(A, EigenSolverMethod.QL)` | about 9n³ |
 
 ---
 
@@ -996,6 +1094,10 @@ Selecting the right decomposition depends on the structure of your matrix and th
 <a id="2">[2]</a> Trefethen, L. N., & Bau, D. (1997). *Numerical Linear Algebra*. SIAM.
 
 <a id="3">[3]</a> Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P. (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
+
+<a id="4">[4]</a> Martin, R. S., Reinsch, C., & Wilkinson, J. H. (1968). Householder's tridiagonalization of a symmetric matrix. *Numerische Mathematik*, 11(3), 181-195. https://doi.org/10.1007/BF02161841
+
+<a id="5">[5]</a> Bowdler, H., Martin, R. S., Reinsch, C., & Wilkinson, J. H. (1968). The QR and QL algorithms for symmetric matrices. *Numerische Mathematik*, 11(4), 293-306. https://doi.org/10.1007/BF02166681
 
 ---
 

@@ -78,6 +78,10 @@ namespace Numerics.Sampling.MCMC
         /// <summary>
         /// The autocorrelation function for each parameter. This is averaged across each chain.
         /// </summary>
+        /// <remarks>
+        /// Set from the averaged autocorrelation output of <see cref="MCMCDiagnostics"/>.EffectiveSampleSize:
+        /// 51 rows, with the lag (0 to 50) in column 0 and the averaged autocorrelation in column 1.
+        /// </remarks>
         public double[,] Autocorrelation { get; set; } = new double[0, 0];
 
     }

@@ -71,7 +71,7 @@ namespace Numerics.Data
             var c = new double[mm];
             var d = new double[mm];
             dif = Math.Abs(x - xa[0]);
-            // Here we find the index ns of the closest table entry
+            // Find the index ns of the closest table entry
             for (int i = 0; i < mm; i++)
             {
                 if ((dift = Math.Abs(x - xa[i])) < dif)
@@ -86,7 +86,7 @@ namespace Numerics.Data
             // This is the initial approximation to y.
             y = ya[ns--];
             // For each column in the tableau, 
-            // we loop over the current c's and d's and update them.
+            // Loop over the current c's and d's and update them.
             for (int m = 1; m < mm; m++)
             {
                 for (int i = 0; i < mm - m; i++)
@@ -101,11 +101,11 @@ namespace Numerics.Data
                     c[i] = ho * den;
                 }
                 y += (Error = (2 * (ns + 1) < (mm - m) ? c[ns + 1] : d[ns--]));
-                // After each column in the tableau is completed, we decide which correction, c or d, we
-                // want to add to our accumulating value of y, i.e., which path to take through the tableau
-                // - forking up or down. TWe do this in such a way as to take the most "straight line"
+                // After each column in the tableau is completed, the next correction, c or d, is chosen
+                // to add to the accumulating value of y, i.e., which path to take through the tableau
+                // - forking up or down. The choice is made so as to take the most "straight line"
                 // route through the tableau to its apex, updating ns accordingly to keep track of where
-                // we are. This route keeps the partial approximations centered (insofar as possible) on 
+                // the path is. This route keeps the partial approximations centered (insofar as possible) on 
                 // the target x. The last dy added is thus the error indication. 
             }
             return y;

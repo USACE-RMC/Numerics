@@ -454,6 +454,10 @@ namespace Numerics.Distributions
         /// <summary>
         /// The relative tolerance for convergence. Default = 1E-8.
         /// </summary>
+        /// <remarks>
+        /// The EM iterations stop when the relative change in the log-likelihood between successive E-steps is
+        /// less than this value. See <see cref="MLE(IList{double})"/>.
+        /// </remarks>
         public double Tolerance { get; set; } = 1E-8;
 
         /// <summary>
@@ -646,13 +650,50 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// A mixture density can have several local maxima, so the density is maximized from several starts: Brent's
+        /// method on [InverseCDF(0.001), InverseCDF(0.999)], and Brent's method on a bracket about each component with
+        /// positive weight, centered at the component mode (its median when the mode is undefined) and extending two
+        /// interquartile ranges of the component on either side, within the mixture support. The point with the
+        /// largest density is returned; a local search replaces the first result only when its density is strictly larger.
+        /// </para>
+        /// <para>
+        /// For a zero-inflated mixture the component searches are restricted to positive values, so the result is a
+        /// maximum of the continuous density above zero; the zero atom is not compared with densities.
+        /// </para>
+        /// </remarks>
         public override double Mode
         {
             get
             {
                 var brent = new BrentSearch(PDF, InverseCDF(0.001), InverseCDF(0.999));
                 brent.Maximize();
-                return brent.BestParameterSet.Values[0];
+                double mode = brent.BestParameterSet.Values[0];
+                double density = PDF(mode);
+                double minimum = Minimum, maximum = Maximum;
+                if (IsZeroInflated) minimum = Math.Max(minimum, double.Epsilon);
+                for (int i = 0; i < Distributions.Length; i++)
+                {
+                    if (!(Weights[i] > 0)) continue;
+                    var component = Distributions[i];
+                    double start = component.Mode;
+                    if (!Tools.IsFinite(start)) start = component.InverseCDF(0.5d);
+                    double width = component.InverseCDF(0.75d) - component.InverseCDF(0.25d);
+                    if (!Tools.IsFinite(start) || !Tools.IsFinite(width) || !(width > 0)) continue;
+                    double lower = Math.Max(start - 2d * width, minimum), upper = Math.Min(start + 2d * width, maximum);
+                    if (!(upper > lower)) continue;
+                    var local = new BrentSearch(PDF, lower, upper);
+                    local.Maximize();
+                    double candidate = local.BestParameterSet.Values[0];
+                    double candidateDensity = PDF(candidate);
+                    if (candidateDensity > density)
+                    {
+                        mode = candidate;
+                        density = candidateDensity;
+                    }
+                }
+                return mode;
             }
         }
 
@@ -731,12 +772,15 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Aligned with <see cref="GetParameters"/>: one entry per component weight followed by the component parameter
+        /// bounds. <see cref="ZeroWeight"/> is not part of the parameter vector, so it has no entry.
+        /// </remarks>
         public override double[] MinimumOfParameters
-        { 
-            get 
+        {
+            get
             {
                 var result = new List<double>();
-                if (IsZeroInflated) { result.Add(0.0); }
                 for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.Add(0.0);
@@ -750,12 +794,15 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Aligned with <see cref="GetParameters"/>: one entry per component weight followed by the component parameter
+        /// bounds. <see cref="ZeroWeight"/> is not part of the parameter vector, so it has no entry.
+        /// </remarks>
         public override double[] MaximumOfParameters
         {
             get
             {
                 var result = new List<double>();
-                if (IsZeroInflated) { result.Add(1.0); }
                 for (int i = 0; i < Distributions.Length; i++)
                 {
                     result.Add(1.0);
@@ -1043,6 +1090,19 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// Uses an Expectation Maximization (EM) scheme. Each iteration computes the component responsibilities and
+        /// the log-likelihood at the current estimates (E-step). If the relative change in the log-likelihood is
+        /// less than <see cref="Tolerance"/>, the iterations stop. Otherwise, the weights are set to the summed
+        /// responsibilities, rescaled to sum to 1 (or 1 - <see cref="ZeroWeight"/> for a zero-inflated mixture), and the component
+        /// parameters are found by maximizing the mixture log-likelihood with Nelder-Mead at those fixed weights.
+        /// </para>
+        /// <para>
+        /// Reaching <see cref="MaxIterations"/> without meeting <see cref="Tolerance"/> is not reported as an error;
+        /// the latest estimates are returned and <see cref="Iterations"/> equals MaxIterations + 1.
+        /// </para>
+        /// </remarks>
         public double[] MLE(IList<double> sample)
         {
             ValidateParameters(GetParameters, true);

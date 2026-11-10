@@ -101,6 +101,21 @@ namespace Numerics.Mathematics.Optimization
         protected override double[]? ParameterUpperBounds => UpperBounds;
 
         /// <summary>
+        /// Determines whether the best point is refined by a local search when the global search ends. Default = false.
+        /// </summary>
+        /// <remarks>
+        /// The polish runs after convergence or after <see cref="Optimizer.MaxIterations"/>, never after the
+        /// evaluation budget is spent. Its evaluations count toward <see cref="Optimizer.FunctionEvaluations"/>
+        /// and the reported status is the global search's.
+        /// </remarks>
+        public bool Polish { get; set; }
+
+        /// <summary>
+        /// The local method used to polish: BFGS, Nelder-Mead, or Powell. Default = Nelder-Mead.
+        /// </summary>
+        public LocalMethod PolishMethod { get; set; } = LocalMethod.NelderMead;
+
+        /// <summary>
         /// The pseudo random number generator (PRNG) seed.
         /// </summary>
         public int PRNGSeed { get; set; } = 12345;
@@ -127,6 +142,7 @@ namespace Numerics.Mathematics.Optimization
             if (CCEIterations < 1) throw new ArgumentOutOfRangeException(nameof(CCEIterations), "The number of CCE iterations must be greater than 0.");
             if (ToleranceSteps < 1) throw new ArgumentOutOfRangeException(nameof(ToleranceSteps), "The number of tolerance steps must be greater than 0.");
 
+            if (Polish) ValidatePolishMethod(PolishMethod);
             int i, j, D = NumberOfParameters;
             bool cancel = false;
             int populationSize = Complexes * CCEIterations; 
@@ -205,6 +221,7 @@ namespace Numerics.Mathematics.Optimization
 
                     if (converge >= ToleranceSteps)
                     {
+                        if (Polish && !PolishBestParameterSet(PolishMethod)) return;
                         UpdateStatus(OptimizationStatus.Success);
                         return;
                     }
@@ -220,7 +237,8 @@ namespace Numerics.Mathematics.Optimization
                 Iterations += 1;
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
+            if (Polish && !PolishBestParameterSet(PolishMethod)) return;
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
         }
 
@@ -236,7 +254,9 @@ namespace Numerics.Mathematics.Optimization
         private void EvolveComplex(int alpha, ref List<PointFitness> Acomplex, double[] cdf, Random prng, ref bool cancel)
         {
             int beta = Acomplex.Count;
-            int q = NumberOfParameters + 1;
+            // The sub-complex holds q distinct members of the complex (Duan et al. 1994).
+            int q = Math.Min(NumberOfParameters + 1, beta);
+            var chosen = new bool[beta];
             int i, j, k;
             var g = new double[NumberOfParameters]; // centroid g
             var p = new double[NumberOfParameters];
@@ -246,13 +266,20 @@ namespace Numerics.Mathematics.Optimization
             for (i = 0; i < beta; i++)
             {
 
-                // Select parents by randomly choosing q distinct points from A complex
+                // Select parents by randomly choosing q distinct points from A complex with the
+                // trapezoidal probabilities, redrawing any point already chosen.
                 var B = new List<PointFitness>();
+                Array.Clear(chosen, 0, beta);
                 for (j = 1; j <= q; j++)
                 {
-                    double rnd = prng.NextDouble();
-                    var rndi = Array.FindIndex(cdf, p => rnd <= p);
-                    if (rndi == -1) rndi = cdf.Length - 1;
+                    int rndi;
+                    do
+                    {
+                        double rnd = prng.NextDouble();
+                        rndi = Array.FindIndex(cdf, p => rnd <= p);
+                        if (rndi == -1) rndi = cdf.Length - 1;
+                    } while (chosen[rndi]);
+                    chosen[rndi] = true;
 
                     B.Add(Acomplex[rndi].Clone());
                     B.Last().Index = rndi;
@@ -287,7 +314,7 @@ namespace Numerics.Mathematics.Optimization
                     // Now, either replace worst point with better point
                     if (fitness < B.Last().ParameterSet.Fitness)
                     {
-                        B.Last().ParameterSet = new ParameterSet(p, fitness);
+                        B.Last().ParameterSet = new ParameterSet((double[])p.Clone(), fitness);
                     }
                     else
                     {
@@ -299,7 +326,7 @@ namespace Numerics.Mathematics.Optimization
                         // If better than worst point replace worst point
                         if (fitness < B.Last().ParameterSet.Fitness)
                         {
-                            B.Last().ParameterSet = new ParameterSet(p, fitness);
+                            B.Last().ParameterSet = new ParameterSet((double[])p.Clone(), fitness);
                         }
                         else
                         {
@@ -309,21 +336,17 @@ namespace Numerics.Mathematics.Optimization
                             fitness = Evaluate(p, ref cancel);
                             if (cancel) return;
                             // Replace worst point with new point regardless of its value
-                            B.Last().ParameterSet = new ParameterSet(p, fitness);
+                            B.Last().ParameterSet = new ParameterSet((double[])p.Clone(), fitness);
                         }
                     }
                 }
 
-                // Replace B into A according to L And sort A in order of increasing function value
-                for (j = 0; j < Acomplex.Count; j++)
+                // Replace B into A at the positions L it was drawn from, unconditionally, so that a
+                // mutation replaces the worst point whatever its value (Duan et al. 1994), and sort A in
+                // order of increasing function value.
+                for (k = 0; k < q; k++)
                 {
-                    for (k = 0; k < q; k++)
-                    {
-                        if (B[k].Index == j && B[k].ParameterSet.Fitness < Acomplex[j].ParameterSet.Fitness)
-                        {
-                            Acomplex[j].ParameterSet = B[k].ParameterSet.Clone();
-                        }
-                    }
+                    Acomplex[B[k].Index].ParameterSet = B[k].ParameterSet.Clone();
                 }
 
                 Acomplex.Sort((x, y) => { int c = x.ParameterSet.Fitness.CompareTo(y.ParameterSet.Fitness); return c != 0 ? c : x.Index.CompareTo(y.Index); });

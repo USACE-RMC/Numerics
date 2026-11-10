@@ -1,6 +1,7 @@
 using System;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Distributions;
 using Numerics.Distributions.Copulas;
 
 namespace Distributions.BivariateCopulas
@@ -59,7 +60,7 @@ namespace Distributions.BivariateCopulas
         /// Test that ToXElement followed by CreateCopula round-trips every family bitwise:
         /// parameters are written as pipe-delimited invariant-culture "G17" strings, which
         /// round-trip IEEE doubles exactly, so the reconstructed parameters must be
-        /// bit-identical — asserted on deliberately irrational parameter values.
+        /// bit-identical, asserted on deliberately irrational parameter values.
         /// </summary>
         [TestMethod]
         public void Test_ToXElement_RoundTrip_Bitwise()
@@ -162,6 +163,56 @@ namespace Distributions.BivariateCopulas
             outOfDomain.SetAttributeValue("Type", nameof(CopulaType.Gumbel));
             outOfDomain.SetAttributeValue("Parameters", "0.5");
             Assert.Throws<ArgumentException>(() => CopulaFactory.CreateCopula(outOfDomain));
+        }
+
+        /// <summary>
+        /// Verifies that <see cref="BivariateCopula.ToXElement(bool)"/> with marginals round-trips through
+        /// <see cref="CopulaFactory.CreateCopula(XElement, bool)"/>: copula parameters and marginal
+        /// parameters bit-identical, an unattached marginal omitted.
+        /// </summary>
+        [TestMethod]
+        public void Test_CreateCopula_RoundTripsMarginals()
+        {
+            var copula = new StudentTCopula(0.35d, 7.25d, new Normal(10d, 2.5d), new GeneralizedExtremeValue(100d, 20d, -0.1d));
+            var element = copula.ToXElement(true);
+            Assert.IsNotNull(element.Element("MarginalDistributionX"));
+            Assert.IsNotNull(element.Element("MarginalDistributionY"));
+
+            var restored = CopulaFactory.CreateCopula(element, true);
+            Assert.AreEqual(CopulaType.StudentT, restored.Type);
+            CollectionAssert.AreEqual(copula.GetCopulaParameters, restored.GetCopulaParameters);
+            var x = (Normal)restored.MarginalDistributionX!;
+            Assert.AreEqual(10d, x.Mu, 0d);
+            Assert.AreEqual(2.5d, x.Sigma, 0d);
+            var y = (GeneralizedExtremeValue)restored.MarginalDistributionY!;
+            Assert.AreEqual(100d, y.Xi, 0d);
+            Assert.AreEqual(20d, y.Alpha, 0d);
+            Assert.AreEqual(-0.1d, y.Kappa, 0d);
+
+            // The overload without marginals leaves them unattached, and false writes the bare element.
+            Assert.IsNull(CopulaFactory.CreateCopula(element, false).MarginalDistributionX);
+            Assert.IsNull(CopulaFactory.CreateCopula(element).MarginalDistributionX);
+            Assert.IsTrue(XNode.DeepEquals(copula.ToXElement(), copula.ToXElement(false)));
+
+            // An unattached marginal is omitted and restores as null.
+            var partial = new ClaytonCopula(2d) { MarginalDistributionX = new Normal(1d, 1d) };
+            var partialElement = partial.ToXElement(true);
+            Assert.IsNull(partialElement.Element("MarginalDistributionY"));
+            var partialRestored = CopulaFactory.CreateCopula(partialElement, true);
+            Assert.IsNotNull(partialRestored.MarginalDistributionX);
+            Assert.IsNull(partialRestored.MarginalDistributionY);
+        }
+
+        /// <summary>
+        /// Verifies that an empty marginal container is rejected.
+        /// </summary>
+        [TestMethod]
+        public void Test_CreateCopula_EmptyMarginalThrows()
+        {
+            var element = new ClaytonCopula(2d).ToXElement();
+            element.Add(new XElement("MarginalDistributionX"));
+            Assert.Throws<ArgumentException>(() => CopulaFactory.CreateCopula(element, true));
+            Assert.IsNull(CopulaFactory.CreateCopula(element, false).MarginalDistributionX);
         }
     }
 }

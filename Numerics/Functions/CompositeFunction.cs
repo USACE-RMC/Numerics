@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Numerics.Functions
@@ -20,7 +21,7 @@ namespace Numerics.Functions
     /// This is the shared math behind composite (e.g., day/night exposure) risk input
     /// functions. Weights must be non-negative and sum to one. The mixture mode is driven by
     /// one uniform: with confidence level u, the child i with cumulative weight bracketing u is
-    /// selected and evaluated at the re-scaled remainder (u − Σ w₍&lt;i₎)/wᵢ — deterministic
+    /// selected and evaluated at the re-scaled remainder (u − Σ w₍&lt;i₎)/wᵢ: deterministic
     /// composition sampling with no internal random source, so the same u always reproduces the
     /// same curve. Outside [0, 1] (the mean convention shared by the other function types),
     /// both modes evaluate the weighted average of each child evaluated at its own configured
@@ -96,6 +97,13 @@ namespace Numerics.Functions
         private readonly IReadOnlyList<IUnivariateFunction> _functionsView;
         private readonly IReadOnlyList<double> _weightsView;
         private static readonly ConditionalWeakTable<IUnivariateFunction, object> ChildLocks = new ConditionalWeakTable<IUnivariateFunction, object>();
+
+        /// <summary>
+        /// Per-child lock objects resolved once from <see cref="ChildLocks"/>, so an evaluation
+        /// takes the shared lock without a table lookup. Rebuilt lazily after deserialization.
+        /// </summary>
+        [NonSerialized]
+        private object[]? _childLocks;
 
         /// <summary>
         /// The combination mode. Default = weighted average.
@@ -470,7 +478,7 @@ namespace Numerics.Functions
             if (child.IsDeterministic)
                 return child.Function(x);
 
-            object syncRoot = ChildLocks.GetValue(child, key => new object());
+            object syncRoot = GetChildLock(index);
             lock (syncRoot)
             {
                 return child.Function(x);
@@ -491,7 +499,7 @@ namespace Numerics.Functions
             if (child.IsDeterministic)
                 return child.Function(x);
 
-            object syncRoot = ChildLocks.GetValue(child, key => new object());
+            object syncRoot = GetChildLock(index);
             lock (syncRoot)
             {
                 double restore = child.ConfidenceLevel;
@@ -521,7 +529,7 @@ namespace Numerics.Functions
             if (child.IsDeterministic)
                 return child.InverseFunction(y);
 
-            object syncRoot = ChildLocks.GetValue(child, key => new object());
+            object syncRoot = GetChildLock(index);
             lock (syncRoot)
             {
                 double restore = child.ConfidenceLevel;
@@ -535,6 +543,29 @@ namespace Numerics.Functions
                     child.ConfidenceLevel = restore;
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns the lock object shared by every composite that holds the indexed child.
+        /// </summary>
+        /// <param name="index">The child index.</param>
+        /// <returns>The child's lock object from <see cref="ChildLocks"/>.</returns>
+        /// <remarks>
+        /// The objects are resolved from the static table once per composite, so two composites
+        /// over the same child still take the same lock. Concurrent first calls may both build
+        /// the cache; they resolve identical objects, so either result is correct.
+        /// </remarks>
+        private object GetChildLock(int index)
+        {
+            var locks = Volatile.Read(ref _childLocks);
+            if (locks == null)
+            {
+                locks = new object[_functions.Length];
+                for (int i = 0; i < locks.Length; i++)
+                    locks[i] = ChildLocks.GetValue(_functions[i], key => new object());
+                Volatile.Write(ref _childLocks, locks);
+            }
+            return locks[index];
         }
 
         /// <summary>

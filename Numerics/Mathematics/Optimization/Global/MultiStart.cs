@@ -19,7 +19,7 @@ namespace Numerics.Mathematics.Optimization
     /// <para>
     /// <b> Description: </b>
     ///     With the Multi-Start (MS) approach, a local search procedure P is applied to each point in the random sample; 
-    ///     the best local minimum found in this way is our candidate for the global minimum
+    ///     the best local minimum found in this way is the candidate for the global minimum
     /// <list type="number">
     /// <item><description>
     ///     Draw a point from the uniform distribution over S.
@@ -170,21 +170,24 @@ namespace Numerics.Mathematics.Optimization
                 // Step 2. Apply P to the new sample point.
                 solver = GetLocalOptimizer(values, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
                 solver.Minimize();
-                if (cancel) return;
+                // The local search stops on this optimizer's evaluation budget; so does this loop.
+                if (cancel || FunctionEvaluations >= MaxFunctionEvaluations || CancellationToken.IsCancellationRequested) return;
 
                 Iterations += 1;
             }
 
-            // Polish the final result
+            // Polish the final result. Completing every start is the normal end, so the run reports
+            // the polish status, or success without a polish.
             if (Polish)
             {
                 solver = GetLocalOptimizer(BestParameterSet.Values, RelativeTolerance, AbsoluteTolerance, ref cancel);
                 solver.Minimize();
-                if (cancel) return;
+                if (cancel || FunctionEvaluations >= MaxFunctionEvaluations || CancellationToken.IsCancellationRequested) return;
+                UpdateStatus(solver.Status);
+                return;
             }
 
-            // If we made it to here, the maximum iterations were reached.
-            UpdateStatus(OptimizationStatus.MaximumIterationsReached);
+            UpdateStatus(OptimizationStatus.Success);
 
         }
 
@@ -208,17 +211,35 @@ namespace Numerics.Mathematics.Optimization
             for (int i = 0; i < NumberOfParameters; i++)
                 repaired[i] = RepairParameter(initialValues[i], LowerBounds[i], UpperBounds[i]);
 
+            // A local solver needs at least 10 evaluations. With fewer left, this optimizer's own cap in
+            // Evaluate still stops the search, which then ends with MaximumFunctionEvaluationsReached.
+            int localBudget = Math.Max(10, MaxFunctionEvaluations - FunctionEvaluations);
+            // Evaluate throws at the cap only when ReportFailure is true; otherwise it sets localCancel. Every
+            // later call then stops the local search, as the cap would, so no evaluation exceeds the cap.
+            Func<double[], double> objective = x =>
+            {
+                if (localCancel) throw new ArgumentException("The maximum number of function evaluations has been reached.", nameof(MaxFunctionEvaluations));
+                return Evaluate(x, ref localCancel);
+            };
+
+            // The local solver keeps no trace and computes no Hessian of its own: every evaluation
+            // already reaches this optimizer's trace through Evaluate, only the local best point is
+            // read, and this optimizer computes the Hessian of the final result.
             if (Method == LocalMethod.BFGS)
             {
-                solver = new BFGS((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new BFGS(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
             }
             else if (Method == LocalMethod.NelderMead)
             {
-                solver = new NelderMead((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new NelderMead(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
             }
             else if (Method == LocalMethod.Powell)
             {
-                solver = new Powell((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new Powell(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
+            }
+            else if (Method == LocalMethod.LBFGSB)
+            {
+                solver = new LBFGSB(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
             }
             else
             {

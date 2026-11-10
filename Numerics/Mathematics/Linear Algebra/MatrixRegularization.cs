@@ -1,4 +1,6 @@
-﻿namespace Numerics.Mathematics.LinearAlgebra
+﻿using Numerics.Data.Statistics;
+
+namespace Numerics.Mathematics.LinearAlgebra
 {
     /// <summary>
     /// A class for performing Matrix regularization.
@@ -39,7 +41,7 @@
             double floor = eps * (trace > 0.0 ? trace / p : 1.0);
 
             // Median of eigenvalues (copy -> sort)
-            double median = MedianFromVector(w);
+            double median = Statistics.Median(w.Array);
             double cap = capMult * median;
 
             // Floor and cap eigenvalues
@@ -87,20 +89,6 @@
                 }
             }
             return S;
-        }
-
-        /// <summary>
-        /// Returns the median value from the vector.
-        /// </summary>
-        /// <param name="v">The vector to evaluate.</param>
-        private static double MedianFromVector(Vector v)
-        {
-            int n = v.Length;
-            var arr = new double[n];
-            for (int i = 0; i < n; i++) arr[i] = v[i];
-            Array.Sort(arr);
-            if ((n & 1) == 1) return arr[n / 2];
-            return 0.5 * (arr[n / 2 - 1] + arr[n / 2]);
         }
 
         /// <summary>

@@ -44,14 +44,16 @@ namespace Numerics.Mathematics.RootFinding
         /// Use the bisection method to find the solution of the equation where f(x)=0. 
         /// </summary>
         /// <param name="f">The function to solve.</param>
-        /// <param name="firstGuess">This is the first guess at the root.</param>
+        /// <param name="firstGuess">This is the first guess at the root. It must lie within the bounds but does not affect the
+        /// search, which halves the whole bracket starting from the endpoint where f is negative.</param>
         /// <param name="lowerBound">The lower bound of the interval containing the root.</param>
         /// <param name="upperBound">The upper bound of the interval containing the root.</param>
-        /// <param name="tolerance">Optional. Desired tolerance for both the root and the function value at the root.
+        /// <param name="tolerance">Optional. Desired tolerance on the step between successive root estimates; an exact zero of the function also stops the search.
         /// The root will be refined until the tolerance is achieved or the maximum number of iterations is reached. Default = 1e-8.</param>
         /// <param name="maxIterations">Optional. Maximum number of iterations. Default = 1000.</param>
         /// <param name="reportFailure">Optional. If set to true, an exception will be thrown if the routine fails to converge.
-        /// If set to false, the root from the last iteration will be returned if the routine fails to converge. Default = True.</param>
+        /// If set to false, the root from the last iteration will be returned if the routine fails to converge, or NaN if the
+        /// function returned NaN inside the bracket. Default = True.</param>
         /// <returns>
         /// The root to the equation f(x)=0 given the specified tolerance.
         /// </returns>
@@ -80,23 +82,39 @@ namespace Numerics.Mathematics.RootFinding
             {
                 throw new ArgumentOutOfRangeException(nameof(firstGuess), "The first guess must be between the upper and lower bound.");
             }
+            // A NaN at one bound (a function undefined at the edge of its domain) is tolerated: the other
+            // bound sets the orientation. NaN at both bounds cannot be bracketed.
+            if (double.IsNaN(fl) && double.IsNaN(fmid))
+            {
+                throw new ArgumentException("Bisection method failed because the function is NaN at both bounds.");
+            }
             if (fl * fmid >=0.0)
             {
                 throw new ArgumentException("Bisection method failed because the root is not bracketed.");
             }
-            if (fl < 0d)
+            // Orient the search so that f>0 lies at X+DX, starting from the bracket endpoint where f<0
+            // (Numerical Recipes rtbis); the first guess does not affect the search.
+            bool lowerIsNegative = double.IsNaN(fl) ? fmid > 0d : fl < 0d;
+            if (lowerIsNegative)
             {
-                // Orient the search so that f>0 lies at X+DX
+                root = xl;
                 dx = xh - xl;
             }
             else
             {
+                root = xh;
                 dx = xl - xh;
             }
             // Bisection loop
             for (int i = 1; i <= maxIterations; i++)
             {
                 fmid = f(xmid = root + (dx *= 0.5));
+                if (double.IsNaN(fmid))
+                {
+                    if (reportFailure)
+                        throw new ArgumentException("Bisection method failed because the function returned NaN.");
+                    return double.NaN;
+                }
                 if (fmid <= 0) root = xmid;
                 // check if the solution meets required tolerance
                 if (Math.Abs(dx) <= tolerance || fmid == 0.0)

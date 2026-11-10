@@ -160,7 +160,7 @@ namespace Numerics.Distributions.Copulas
 
         /// <summary>
         /// The maximum likelihood estimation method. Jointly estimates copula parameters and marginal
-        /// distribution parameters using NelderMead optimization.
+        /// distribution parameters using NelderMead optimization, restarted once from its first solution.
         /// </summary>
         /// <param name="copula">The copula to estimate.</param>
         /// <param name="sampleDataX">The sample data for the X variable.</param>
@@ -251,19 +251,26 @@ namespace Numerics.Distributions.Copulas
             var solver = new NelderMead(logLH, totalParams, initials, lowers, uppers);
             solver.Maximize();
 
+            // Restart once from the converged point with a fresh simplex; Nelder-Mead can stop short of the optimum
+            // when its simplex collapses along a ridge of the joint likelihood.
+            var restart = new NelderMead(logLH, totalParams, solver.BestParameterSet.Values, lowers, uppers);
+            restart.Maximize();
+            // Maximization reports negated fitness, so the smaller fitness is the larger likelihood.
+            var best = restart.BestParameterSet.Fitness <= solver.BestParameterSet.Fitness ? restart.BestParameterSet : solver.BestParameterSet;
+
             // Set copula parameters
             var bestCopula = new double[nCopula];
-            Array.Copy(solver.BestParameterSet.Values, 0, bestCopula, 0, nCopula);
+            Array.Copy(best.Values, 0, bestCopula, 0, nCopula);
             copula.SetCopulaParameters(bestCopula);
 
             // Set marginal 1 parameters
             var par1 = new double[np1];
-            Array.Copy(solver.BestParameterSet.Values, nCopula, par1, 0, np1);
+            Array.Copy(best.Values, nCopula, par1, 0, np1);
             copula.MarginalDistributionX!.SetParameters(par1);
 
             // Set marginal 2 parameters
             var par2 = new double[np2];
-            Array.Copy(solver.BestParameterSet.Values, nCopula + np1, par2, 0, np2);
+            Array.Copy(best.Values, nCopula + np1, par2, 0, np2);
             copula.MarginalDistributionY!.SetParameters(par2);
         }
 

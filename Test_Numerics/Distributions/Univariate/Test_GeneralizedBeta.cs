@@ -271,7 +271,7 @@ namespace Distributions.Univariate
             var b2 = new GeneralizedBeta(9, 1);
             Assert.AreEqual(0, b2.PDF(0), 1E-4);
             Assert.AreEqual(0.035156, b2.PDF(0.5), 1e-04);
-            Assert.AreEqual(8.9999, b2.PDF(1), 1e-04);
+            Assert.AreEqual(9.0, b2.PDF(1), 1e-04);
             Assert.AreEqual(0, b2.PDF(-1), 1E-4);
             Assert.AreEqual(0, b2.PDF(2), 1E-4);
         }
@@ -353,6 +353,59 @@ namespace Distributions.Univariate
 
             var uShaped = new GeneralizedBeta(0.5d, 0.5d, -10.0d, 20.0d);
             Assert.AreEqual(5.0d, uShaped.Mode);
+        }
+
+        /// <summary>
+        /// Verifies the log-space density at large shapes.
+        /// Reference values from scipy.stats.beta.pdf and scipy.stats.beta.logpdf with loc and scale, and mpmath at 30 digits.
+        /// </summary>
+        [TestMethod]
+        public void Test_LogPDF_LargeShapes()
+        {
+            var unit = new GeneralizedBeta(1000, 1000, 0, 1);
+            Assert.AreEqual(35.678022291708641, unit.PDF(0.5), 35.678022291708641 * 1E-12);
+
+            var shifted = new GeneralizedBeta(1000, 1000, 2, 5);
+            Assert.AreEqual(11.892674097236214, shifted.PDF(3.5), 11.892674097236214 * 1E-12);
+            Assert.AreEqual(2.4759225884634124, shifted.LogPDF(3.5), 1E-12);
+            Assert.AreEqual(double.NegativeInfinity, shifted.LogPDF(1.9));
+            Assert.AreEqual(double.NegativeInfinity, shifted.LogPDF(5.1));
+            Assert.AreEqual(0.0, shifted.PDF(2));
+        }
+
+        /// <summary>
+        /// Verifies the upper tail is resolved below machine epsilon.
+        /// Reference value from scipy.stats.beta.cdf with swapped shapes at the complementary coordinate (20 - x) / 10.
+        /// </summary>
+        [TestMethod]
+        public void Test_CCDF_UpperTail()
+        {
+            var b = new GeneralizedBeta(2, 3, 10, 20);
+            Assert.AreEqual(3.9999969995457065E-18, b.CCDF(19.99999), 3.9999969995457065E-18 * 1E-10);
+            Assert.AreEqual(1d, b.CCDF(10));
+            Assert.AreEqual(0d, b.CCDF(20));
+        }
+
+        /// <summary>
+        /// Verifies the lower tail of the CCDF keeps a small X that the complementary coordinate would round away.
+        /// Reference values from scipy.stats.beta.sf (SciPy 1.17.1).
+        /// </summary>
+        [TestMethod]
+        public void Test_CCDF_LowerTail()
+        {
+            var b = new GeneralizedBeta(0.3, 0.4, 0, 1);
+            Assert.AreEqual(0.999999, b.CCDF(4.159739860874255E-20), 1E-15);
+            Assert.AreEqual(0.9999000121244137, b.CCDF(1.93E-13), 1E-15);
+        }
+
+        /// <summary>
+        /// Verifies a not-a-number probability is rejected by the inverse CDF.
+        /// </summary>
+        [TestMethod]
+        public void Test_InverseCDF_NaNProbability()
+        {
+            var b = new GeneralizedBeta(2, 3, 10, 20);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => b.InverseCDF(double.NaN));
         }
     }
 }

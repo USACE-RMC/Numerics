@@ -47,10 +47,20 @@ namespace Numerics.Distributions
             SetParameters(deterministicValue);
         }
        
+        private double _value;
+
         /// <summary>
         /// Gets and sets the point value estimate.
         /// </summary>
-        public double Value { get; set; }
+        public double Value
+        {
+            get { return _value; }
+            set
+            {
+                _parametersValid = ValidateParameters([value], false) is null;
+                _value = value;
+            }
+        }
 
         /// <inheritdoc/>
         public override int NumberOfParameters
@@ -129,7 +139,7 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double StandardDeviation
         {
-            get { return double.NaN; }
+            get { return 0.0d; }
         }
 
         /// <inheritdoc/>
@@ -232,6 +242,9 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double PDF(double X)
         {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Value], true);
             if (X != Value) return 0.0;
             return 1d;
         }
@@ -239,6 +252,9 @@ namespace Numerics.Distributions
         /// <inheritdoc/>
         public override double CDF(double X)
         {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Value], true);
             if (X < Value) return 0;
             return 1d;
         }
@@ -247,8 +263,11 @@ namespace Numerics.Distributions
         public override double InverseCDF(double probability)
         {
             // Validate probability
-            if (probability < 0.0d || probability > 1.0d)
+            if (!(probability >= 0.0d && probability <= 1.0d))
                 throw new ArgumentOutOfRangeException("probability", "Probability must be between 0 and 1.");
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters([Value], true);
             return Value;
         }
 

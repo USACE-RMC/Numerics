@@ -76,7 +76,7 @@ namespace Sampling.MCMC
             sampler.NumberOfChains = 3;
             sampler.ThinningInterval = 7;
 
-            // 10001 / 3 = 3333.667, so ceil gives 3334 — one more than truncation would.
+            // 10001 / 3 = 3333.667, so ceil gives 3334, one more than truncation would.
             // (1000 + 3334) * 7 = 4334 * 7 = 30,338.
             Assert.AreEqual(30338L, sampler.TransitionCount);
             Assert.AreEqual(91014L, sampler.TotalTransitionCount);

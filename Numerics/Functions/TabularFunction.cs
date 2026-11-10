@@ -50,7 +50,7 @@ namespace Numerics.Functions
 
         /// <summary>
         /// The extrapolation policy applied to out-of-range lookups. Default = None, which
-        /// reproduces the historical endpoint hold exactly.
+        /// holds the endpoint value exactly.
         /// </summary>
         /// <remarks>
         /// One policy governs both lookup directions of the same extended boundary segments:

@@ -22,7 +22,7 @@ namespace Numerics.Distributions
     /// </para>
     /// </remarks>
     [Serializable]
-    public sealed class Rayleigh : UnivariateDistributionBase, IEstimation
+    public sealed class Rayleigh : UnivariateDistributionBase, IEstimation, IBootstrappable
     {
        
         /// <summary>
@@ -176,8 +176,25 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// The method of moments sets σ = mean(x) / √(π/2).
+        /// </para>
+        /// <para>
+        /// Maximum likelihood first forms the closed-form estimator σ̂ = √(Σxᵢ² / (2n)) and then multiplies it by
+        /// the bias correction Γ(n)·√n / Γ(n + 1/2), which makes the estimate of σ unbiased for a sample of size n
+        /// (see the Rayleigh distribution reference above). The corrected value is therefore slightly larger than the
+        /// plain maximum likelihood estimate returned by, for example, scipy.stats.rayleigh.fit with the location
+        /// fixed at zero; the two agree as n grows.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is empty, contains a nonfinite or negative value,
+        /// or has no positive value.</exception>
+        /// <exception cref="NotImplementedException"><paramref name="estimationMethod"/> is not supported.</exception>
         public void Estimate(IList<double> sample, ParameterEstimationMethod estimationMethod)
         {
+            ValidateSample(sample);
             if (estimationMethod == ParameterEstimationMethod.MethodOfMoments)
             {
                 SetParameters(Statistics.Mean(sample) / Math.Sqrt(Math.PI / 2.0d));
@@ -207,6 +224,42 @@ namespace Numerics.Distributions
             {
                 throw new NotImplementedException();
             }
+        }
+
+        /// <summary>
+        /// Checks that a sample can be used to estimate the scale parameter.
+        /// </summary>
+        /// <param name="sample">The observations to validate.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="sample"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The sample is empty, contains a nonfinite or negative value,
+        /// or has no positive value.</exception>
+        /// <remarks>
+        /// The support is [0, ∞). A single observation, or a constant sample, still determines σ, so neither is
+        /// rejected; an all-zero sample would give σ = 0 and is rejected.
+        /// </remarks>
+        private static void ValidateSample(IList<double> sample)
+        {
+            if (sample == null) throw new ArgumentNullException(nameof(sample));
+            if (sample.Count < 1) throw new ArgumentOutOfRangeException(nameof(sample), "Insufficient observations to initialize the distribution.");
+            bool positive = false;
+            for (int i = 0; i < sample.Count; i++)
+            {
+                if (!Tools.IsFinite(sample[i]) || sample[i] < 0d)
+                    throw new ArgumentOutOfRangeException(nameof(sample), "Observations must be finite and nonnegative.");
+                positive |= sample[i] > 0d;
+            }
+            if (!positive) throw new ArgumentOutOfRangeException(nameof(sample), "At least one observation must be positive.");
+        }
+
+        /// <inheritdoc/>
+        public IUnivariateDistribution Bootstrap(ParameterEstimationMethod estimationMethod, int sampleSize, int seed = -1)
+        {
+            var newDistribution = new Rayleigh(Sigma);
+            var sample = newDistribution.GenerateRandomValues(sampleSize, seed);
+            newDistribution.Estimate(sample, estimationMethod);
+            if (newDistribution.ParametersValid == false)
+                throw new Exception("Bootstrapped distribution parameters are invalid.");
+            return newDistribution;
         }
 
         /// <summary>
@@ -247,16 +300,37 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated through z = x/σ as (z/σ)·exp(−z²/2), so σ² is never formed and cannot overflow.
+        /// </remarks>
         public override double PDF(double x)
         {
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Sigma, true);
-            if (x < Minimum) return 0.0d;
-            return x / (Sigma * Sigma) * Math.Exp(-x * x / (2.0d * Sigma * Sigma));
+            if (x < Minimum || double.IsPositiveInfinity(x)) return 0.0d;
+            double z = x / Sigma;
+            return z / Sigma * Math.Exp(-0.5d * z * z);
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as ln(x) − 2·ln(σ) − (x/σ)²/2, which stays finite after the density underflows.
+        /// </remarks>
+        public override double LogPDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(Sigma, true);
+            if (x < Minimum || double.IsPositiveInfinity(x)) return double.NegativeInfinity;
+            double z = x / Sigma;
+            return Math.Log(x) - 2.0d * Math.Log(Sigma) - 0.5d * z * z;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as −expm1(−(x/σ)²/2), which keeps full relative precision for small x.
+        /// </remarks>
         public override double CDF(double x)
         {
             // Validate parameters
@@ -264,10 +338,44 @@ namespace Numerics.Distributions
                 ValidateParameters(Sigma, true);
             if (x <= Minimum)
                 return 0d;
-            return 1.0d - Math.Exp(-x * x / (2.0d * Sigma * Sigma));
+            double z = x / Sigma;
+            return -Tools.Expm1(-0.5d * z * z);
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated directly as exp(−(x/σ)²/2), so upper-tail probabilities are not lost to the subtraction 1 − CDF.
+        /// </remarks>
+        public override double CCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(Sigma, true);
+            if (x <= Minimum)
+                return 1d;
+            double z = x / Sigma;
+            return Math.Exp(-0.5d * z * z);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as −(x/σ)²/2, which stays finite after the survival probability underflows.
+        /// </remarks>
+        public override double LogCCDF(double x)
+        {
+            // Validate parameters
+            if (_parametersValid == false)
+                ValidateParameters(Sigma, true);
+            if (x <= Minimum)
+                return 0d;
+            double z = x / Sigma;
+            return -0.5d * z * z;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Evaluated as σ·√(−2·log1p(−p)), which keeps full relative precision for small p.
+        /// </remarks>
         public override double InverseCDF(double probability)
         {
             // Validate probability
@@ -280,7 +388,7 @@ namespace Numerics.Distributions
             // Validate parameters
             if (_parametersValid == false)
                 ValidateParameters(Sigma, true);
-            return Sigma * Math.Sqrt(-2 * Math.Log(1d - probability));
+            return Sigma * Math.Sqrt(-2d * Tools.Log1p(-probability));
         }
 
         /// <inheritdoc/>

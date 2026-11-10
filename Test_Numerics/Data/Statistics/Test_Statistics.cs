@@ -57,6 +57,24 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// The extremes of samples made only of infinities are those infinities (R min() and max() agree); empty
+        /// samples and samples with NaN give NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_MinimumMaximum_Infinities()
+        {
+            var plus = new[] { double.PositiveInfinity, double.PositiveInfinity };
+            var minus = new[] { double.NegativeInfinity };
+            Assert.AreEqual(double.PositiveInfinity, Numerics.Data.Statistics.Statistics.Minimum(plus));
+            Assert.AreEqual(double.PositiveInfinity, Numerics.Data.Statistics.Statistics.Maximum(plus));
+            Assert.AreEqual(double.NegativeInfinity, Numerics.Data.Statistics.Statistics.Minimum(minus));
+            Assert.AreEqual(double.NegativeInfinity, Numerics.Data.Statistics.Statistics.Maximum(minus));
+            Assert.AreEqual(-1d, Numerics.Data.Statistics.Statistics.Minimum(new[] { double.PositiveInfinity, -1d }));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Minimum(new double[0])));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Maximum(new[] { 1d, double.NaN })));
+        }
+
+        /// <summary>
         /// Test the Mean method against R's "mean()" method from the "base" package.
         /// </summary>
         [TestMethod]
@@ -92,7 +110,7 @@ namespace Data.Statistics
         /// <remarks>
         /// The summation tree depends only on the sample length, never on the processor count.
         /// Samples below the fixed sequential threshold fall through to the sequential mean, so
-        /// the two must agree exactly on a magnitude-spanning sample, not merely to a tolerance —
+        /// the two must agree exactly on a magnitude-spanning sample, not merely to a tolerance:
         /// a partition-ordered parallel reduction would differ in the last bits.
         /// </remarks>
         [TestMethod]
@@ -116,8 +134,8 @@ namespace Data.Statistics
         /// fixed-chunk summation order exactly.
         /// </summary>
         /// <remarks>
-        /// Above the sequential threshold the mean is computed over a fixed number of chunks —
-        /// never derived from the processor count — each summed sequentially and merged serially
+        /// Above the sequential threshold the mean is computed over a fixed number of chunks,
+        /// never derived from the processor count, each summed sequentially and merged serially
         /// in chunk order, the same deterministic reduction the bootstrap's jackknife accumulation
         /// uses. This test recomputes that exact summation tree sequentially and requires bitwise
         /// agreement, which proves the parallel result is independent of the scheduler: a
@@ -136,7 +154,7 @@ namespace Data.Statistics
             }
 
             // The fixed-chunk reference: 64 chunks with balanced ranges, summed sequentially and
-            // merged in chunk order — the summation tree ParallelMean must reproduce.
+            // merged in chunk order: the summation tree ParallelMean must reproduce.
             const int chunks = 64;
             var chunkSums = new double[chunks];
             for (int c = 0; c < chunks; c++)
@@ -202,6 +220,39 @@ namespace Data.Statistics
             double val = Numerics.Data.Statistics.Statistics.Variance(_sample1);
             double trueVal = 2300.31616368286d;
             Assert.AreEqual(trueVal, val, 1E-10);
+        }
+
+        /// <summary>
+        /// Variance, covariance and the weighted variance stay accurate when the mean is large relative to the spread
+        /// and when the first value is an outlier. Reference values are exact rational sums of the same doubles (Python
+        /// fractions.Fraction) rounded once. On the offset sample the variance is 5.5E-14 relative off (a running sum of
+        /// squares was 2.5E-7 off), the covariance 3.1E-15 and the weighted variance 2.1E-14; with the outlier first the
+        /// variance is 9.8E-15 off.
+        /// </summary>
+        [TestMethod]
+        public void Test_Variance_LargeOffsetAndOutlier_ExactOracle()
+        {
+            const int n = 28317;
+            var x = new double[n];
+            var y = new double[n];
+            var w = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                x[i] = 1E6 + (i % 997) * 1E-6;
+                y[i] = 2E6 - (i % 991) * 1E-6;
+                w[i] = i % 3 + 1;
+            }
+            Assert.AreEqual(8.309342647272428E-08, Numerics.Data.Statistics.Statistics.Variance(x), 1E-12 * 8.309342647272428E-08);
+            Assert.AreEqual(8.309049207195891E-08, Numerics.Data.Statistics.Statistics.PopulationVariance(x), 1E-12 * 8.309049207195891E-08);
+            Assert.AreEqual(Math.Sqrt(8.309342647272428E-08), Numerics.Data.Statistics.Statistics.StandardDeviation(x), 1E-12 * Math.Sqrt(8.309342647272428E-08));
+            Assert.AreEqual(-4.473168504528379E-08, Numerics.Data.Statistics.Statistics.Covariance(x, y), 1E-12 * 4.473168504528379E-08);
+            Assert.AreEqual(-4.473010536929251E-08, Numerics.Data.Statistics.Statistics.PopulationCovariance(x, y), 1E-12 * 4.473010536929251E-08);
+            Assert.AreEqual(8.308913029845813E-08, Numerics.Data.Statistics.Statistics.Variance(x, w), 1E-12 * 8.308913029845813E-08);
+
+            var outlier = new double[10000];
+            outlier[0] = 1E8;
+            for (int i = 1; i < outlier.Length; i++) outlier[i] = 1E6 + ((i - 1) % 1009) * 1E-3;
+            Assert.AreEqual(980099990103.5946, Numerics.Data.Statistics.Statistics.Variance(outlier), 2E-14 * 980099990103.5946);
         }
 
         /// <summary>
@@ -351,6 +402,21 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Kurtosis at and above n = 1,293, where (n-1)(n-2)(n-3) no longer fits an int, against
+        /// scipy.stats.kurtosis(fisher=True, bias=False) 1.17.1 on x_i = sin(0.7 i) + (i mod 7).
+        /// </summary>
+        [TestMethod]
+        public void Test_Kurtosis_LargeSample()
+        {
+            foreach (var (n, scipy) in new[] { (1293, -1.0083652175929907), (2000, -1.0059360738984824) })
+            {
+                var data = new double[n];
+                for (int i = 0; i < n; i++) data[i] = Math.Sin(i * 0.7) + i % 7;
+                Assert.AreEqual(scipy, Numerics.Data.Statistics.Statistics.Kurtosis(data), 1E-12);
+            }
+        }
+
+        /// <summary>
         /// Test the Covariance method against R's "cov()" method from the "base" package.
         /// </summary>
         [TestMethod]
@@ -456,6 +522,23 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// The L-CV is λ2 / λ1 of LinearMoments bit for bit; against R 4.4.3 (sample PWMs b0, b1 by direct
+        /// sums, (2 b1 − b0) / b0) on the samlmu fixture: 0.083840379812050572.
+        /// </summary>
+        [TestMethod]
+        public void Test_LinearCoefficientOfVariation()
+        {
+            var data = new double[] { 1953d, 1939d, 1677d, 1692d, 2051d, 2371d, 2022d, 1521d, 1448d, 1825d, 1363d, 1760d, 1672d, 1603d, 1244d, 1521d, 1783d, 1560d, 1357d, 1673d, 1625d, 1425d, 1688d, 1577d, 1736d, 1640d, 1584d, 1293d, 1277d, 1742d, 1491d };
+            var lmoms = Numerics.Data.Statistics.Statistics.LinearMoments(data);
+            double lcv = Numerics.Data.Statistics.Statistics.LinearCoefficientOfVariation(data);
+            Assert.AreEqual(lmoms[1] / lmoms[0], lcv);
+            Assert.AreEqual(0.083840379812050572, lcv, 1E-15);
+
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.LinearCoefficientOfVariation(new double[] { 1, 2, 3 })));
+            Assert.ThrowsExactly<System.ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.LinearCoefficientOfVariation(null!));
+        }
+
+        /// <summary>
         /// Test that the LinearMoments probability weighted moment numerators do not overflow for large samples.
         /// </summary>
         /// <remarks>
@@ -507,7 +590,7 @@ namespace Data.Statistics
         /// <para>
         /// <b>The oracle.</b> Computed in exact rational arithmetic, where overflow is impossible by
         /// construction, via the textbook binomial probability-weighted-moment form
-        /// b_r = (1/n) · Σᵢ C(i−1, r) / C(n−1, r) · x₍ᵢ₎ — a different arithmetic route than the
+        /// b_r = (1/n) · Σᵢ C(i−1, r) / C(n−1, r) · x₍ᵢ₎, a different arithmetic route than the
         /// falling-factorial form the library uses. The values also agree with closed-form theory: this sample
         /// is a systematic enumeration of a squared uniform, and for the quantile function Q(p) = p² theory
         /// gives λ₁/λ₂ = 2, τ₃ = 0.2 and τ₄ = 0 exactly. The oracle returns 2.0013, 0.19955 and −2.2E−05,
@@ -516,13 +599,13 @@ namespace Data.Statistics
         /// </para>
         /// <para>
         /// <b>The tolerance, and why τ₄ needs an absolute floor.</b> The oracle values are exact, so the only
-        /// error present is the library's own double accumulation — but that error is absolute, not relative,
+        /// error present is the library's own double accumulation, but that error is absolute, not relative,
         /// and τ₄ is the one moment small enough for the difference to matter. τ₄ is recovered as
         /// 5·(2·(2·b₃ − 3·b₂) + b₀)/λ₂ + 6, an O(1) quantity plus 6, so a τ₄ near zero is the residue of
         /// cancelling two numbers of order six. Its accuracy is therefore floored near the roundoff of six
         /// accumulated across n terms, independent of how small τ₄ itself is. Measured against the exact
         /// oracle, the library agrees to 0 ulp on λ₁, 1.1E-15 relative on λ₂ and 2.5E-14 relative on τ₃, but
-        /// only to 1.9E-14 and 2.7E-14 <i>absolute</i> on τ₄ — which at τ₄ ≈ 2.2E-05 is 8.5E-10 in relative
+        /// only to 1.9E-14 and 2.7E-14 <i>absolute</i> on τ₄, which at τ₄ ≈ 2.2E-05 is 8.5E-10 in relative
         /// terms. The deviation is accumulation arithmetic, not a defect: an independent double-precision
         /// evaluation of the same formula reproduces the returned value digit for digit. The tolerance
         /// below is therefore relative 1E-12 with an absolute floor of 1E-13, roughly four times the worst
@@ -591,6 +674,63 @@ namespace Data.Statistics
         }
 
         /// <summary>
+        /// Test the Median method against numpy.median for odd and even counts, the correctly rounded midpoint of the
+        /// two middle values, the sorted flag, and invalid input.
+        /// </summary>
+        [TestMethod]
+        public void Test_Median()
+        {
+            // numpy.median: the 69 values give 183.0; the first 60 (an even count) give 182.5.
+            Assert.AreEqual(183.0d, Numerics.Data.Statistics.Statistics.Median(_sample1), 0d);
+            var even = _sample1.Take(60).ToArray();
+            Assert.AreEqual(182.5d, Numerics.Data.Statistics.Statistics.Median(even), 0d);
+            Assert.AreEqual(7d, Numerics.Data.Statistics.Statistics.Median(new[] { 7d }), 0d);
+
+            // The midpoint 0.5 (a + b) is correctly rounded (exact value 1.44423362936818325...), while the Type 7
+            // percentile a + 0.5 (b - a) rounds up by one ulp; numpy.median also gives 1.4442336293681832.
+            double a = 0.4453871940548014, b = 2.443080064681565;
+            var pair = new[] { b, 10d, a, -1d };
+            Assert.AreEqual(1.4442336293681832d, Numerics.Data.Statistics.Statistics.Median(pair), 0d);
+            Assert.AreEqual(1.4442336293681834d, Numerics.Data.Statistics.Statistics.Percentile(pair, 0.5), 0d);
+
+            var sorted = new[] { -1d, a, b, 10d };
+            Assert.AreEqual(1.4442336293681832d, Numerics.Data.Statistics.Statistics.Median(sorted, dataIsSorted: true), 0d);
+            Assert.AreEqual(b, pair[0], 0d, "the input is not reordered");
+
+            var buffer = new[] { 5d, 1d, 4d, 2d, 99d };
+            Assert.AreEqual(3d, Numerics.Data.Statistics.Statistics.MedianInPlace(buffer, 4), 0d);
+            Assert.AreEqual(99d, buffer[4], 0d, "values past the count are untouched");
+
+            Assert.ThrowsExactly<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.Median(null!));
+            Assert.ThrowsExactly<ArgumentException>(() => Numerics.Data.Statistics.Statistics.Median(new double[0]));
+        }
+
+        /// <summary>
+        /// The median of two finite values is finite even when their sum overflows, the halved sum is kept for subnormal
+        /// values, and any NaN entry gives NaN, as numpy.median does.
+        /// </summary>
+        [TestMethod]
+        public void Test_Median_OverflowAndNaN()
+        {
+            Assert.AreEqual(1e308, Numerics.Data.Statistics.Statistics.Median(new[] { 1e308, 1e308 }), 0d);
+            Assert.AreEqual(double.MaxValue, Numerics.Data.Statistics.Statistics.Median(new[] { double.MaxValue, double.MaxValue }), 0d);
+            Assert.AreEqual(-double.MaxValue, Numerics.Data.Statistics.Statistics.Median(new[] { -double.MaxValue, -double.MaxValue }), 0d);
+            // Exact midpoint 1.3e308, correctly rounded (fractions.Fraction).
+            Assert.AreEqual(1.3e308, Numerics.Data.Statistics.Statistics.Median(new[] { double.MaxValue, 1.6e308, -1d, 1e308 }), 0d);
+            Assert.AreEqual(1.3e308, Numerics.Data.Statistics.Statistics.Median(new[] { -1d, 1e308, 1.6e308, double.MaxValue }, dataIsSorted: true), 0d);
+            // Halving the subnormal values first would round 2.5e-324 to zero.
+            Assert.AreEqual(double.Epsilon, Numerics.Data.Statistics.Statistics.Median(new[] { double.Epsilon, double.Epsilon }), 0d);
+            Assert.AreEqual(double.PositiveInfinity, Numerics.Data.Statistics.Statistics.Median(new[] { 1d, double.PositiveInfinity }), 0d);
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Median(new[] { double.NegativeInfinity, double.PositiveInfinity })));
+
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Median(new[] { 1d, double.NaN, 3d })));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Median(new[] { double.NaN })));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Median(new[] { 1d, 2d, 3d, double.NaN }, dataIsSorted: true)));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.MedianInPlace(new[] { 4d, double.NaN, 1d }, 3)));
+            Assert.AreEqual(2.5d, Numerics.Data.Statistics.Statistics.MedianInPlace(new[] { 4d, 1d, 3d, 2d, double.NaN }, 4), 0d);
+        }
+
+        /// <summary>
         /// Test the Percentile method against R's "quantile()" method from the "stats" package.
         /// </summary>
         [TestMethod]
@@ -640,8 +780,8 @@ namespace Data.Statistics
         /// Every comparison against NaN is false, so a NaN percentile must be rejected explicitly: without
         /// the explicit test it passes the range check and reaches the interpolation index, where the
         /// float-to-int conversion produces an out-of-range index whose failure surfaces as an indexer
-        /// exception — also an <see cref="ArgumentOutOfRangeException"/>, but with <c>ParamName</c>
-        /// "index". The assertions therefore check <c>ParamName</c> as well as the exception type, which
+        /// exception (also an <see cref="ArgumentOutOfRangeException"/>, but with <c>ParamName</c>
+        /// "index"). The assertions therefore check <c>ParamName</c> as well as the exception type, which
         /// is what distinguishes the contract rejection from the accidental one. Both infinities are
         /// rejected by the range check alone.
         /// </remarks>
@@ -766,6 +906,27 @@ namespace Data.Statistics
             {
                 Assert.AreEqual(validTies[i], ties[i]);
             }
+        }
+
+        /// <summary>
+        /// Both RanksInPlace overloads tie exactly equal values, infinities included, and only those, against
+        /// scipy.stats.rankdata 1.17.1: (+inf, +inf, 1) gives (2.5, 2.5, 1), and (1, 1 + 2^-52, 3, 1) gives
+        /// (1.5, 3, 4, 1.5).
+        /// </summary>
+        [TestMethod]
+        public void Test_RanksInPlace_ExactTies()
+        {
+            var infinities = new[] { double.PositiveInfinity, double.PositiveInfinity, 1d };
+            var expectedInf = new[] { 2.5, 2.5, 1d };
+            CollectionAssert.AreEqual(expectedInf, Numerics.Data.Statistics.Statistics.RanksInPlace((double[])infinities.Clone()));
+            CollectionAssert.AreEqual(expectedInf, Numerics.Data.Statistics.Statistics.RanksInPlace((double[])infinities.Clone(), out var infTies));
+            CollectionAssert.AreEqual(new[] { 0d, 0d, 1d }, infTies);
+
+            var nearTie = new[] { 1d, 1.0000000000000002, 3d, 1d };
+            var expectedNear = new[] { 1.5, 3d, 4d, 1.5 };
+            CollectionAssert.AreEqual(expectedNear, Numerics.Data.Statistics.Statistics.RanksInPlace((double[])nearTie.Clone()));
+            CollectionAssert.AreEqual(expectedNear, Numerics.Data.Statistics.Statistics.RanksInPlace((double[])nearTie.Clone(), out var nearTies));
+            CollectionAssert.AreEqual(new[] { 0d, 1d, 0d, 0d }, nearTies);
         }
 
         /// <summary>
@@ -1079,6 +1240,69 @@ namespace Data.Statistics
             Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, 1.1d, weights));
             Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.Percentile(data, new double[] { 0.5d, 2d }, weights));
             Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.Mean(new double[] { 1d, double.NaN }, weights)));
+        }
+
+        /// <summary>
+        /// The Kish effective sample size (sum w)^2 / sum(w^2): closed-form values, the count at equal weights,
+        /// scale invariance, and the sequential-sum reference vectors (numpy default_rng(14).random(20) weights;
+        /// numpy's pairwise sums give the same bits here, and for 1000 lognormal weights they differ by 4 ulp).
+        /// </summary>
+        [TestMethod]
+        public void Test_EffectiveSampleSize_KnownValues()
+        {
+            Assert.AreEqual(0x4005555555555555L, BitConverter.DoubleToInt64Bits(Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 1d, 1d, 2d })));
+            Assert.AreEqual(1d, Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 0.37d }), 0d);
+            Assert.AreEqual(5d, Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 0.25d, 0.25d, 0.25d, 0.25d, 0.25d }), 0d);
+            // Zero weights carry no information: two equal positive weights among zeros give two.
+            Assert.AreEqual(2d, Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 0d, 3d, 0d, 3d, 0d }), 0d);
+            // (1 + 2 + 3 + 4)^2 / (1 + 4 + 9 + 16) = 100 / 30, and multiplying every weight by 8 keeps the bits.
+            Assert.AreEqual(100d / 30d, Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 1d, 2d, 3d, 4d }), 0d);
+            Assert.AreEqual(100d / 30d, Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new List<double> { 8d, 16d, 24d, 32d }), 0d);
+
+            var uniform20 = new[]
+            {
+                0x3FEA976A5444CF09L, 0x3FD719C00C69D052L, 0x3FE67CD723E2D66FL, 0x3FEB8617D56B2397L, 0x3FE485AC3CCAD327L,
+                0x3FE18C310005D984L, 0x3FE864DF1E625883L, 0x3FE6EC0C23E2FD2AL, 0x3FDDE617C5F0A6D0L, 0x3FE25195683983EEL,
+                0x3FE7E1DF6E1BB3F9L, 0x3FB045B999E88F78L, 0x3FE4B33563000434L, 0x3FE78DC7B5972E73L, 0x3FD98543D1B42CD8L,
+                0x3FE03AD6DB9AC0E9L, 0x3FCD46B7B0152A58L, 0x3FE4CE6406D938D0L, 0x3FEF14C2BCBB8FE5L, 0x3FD31E1D7C71E7F8L
+            }.Select(BitConverter.Int64BitsToDouble).ToArray();
+            Assert.AreEqual(0x403177139D037EEDL, BitConverter.DoubleToInt64Bits(Numerics.Data.Statistics.Statistics.EffectiveSampleSize(uniform20)));
+
+            // Unscaled weights whose squares underflow give 0 / 0.
+            var tiny = Enumerable.Repeat(1E-200, 10).ToArray();
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.EffectiveSampleSize(tiny)));
+            Assert.IsTrue(double.IsNaN(Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[0])));
+        }
+
+        /// <summary>
+        /// The effective sample size equals the reliability-weighted variance correction: the reliability
+        /// variance denominator W - S/W equals W (1 - 1/n_eff).
+        /// </summary>
+        [TestMethod]
+        public void Test_EffectiveSampleSize_MatchesReliabilityVariance()
+        {
+            var data = new double[] { 2.1d, 3.4d, 1.9d, 5.5d, 4.2d, 3.3d };
+            var weights = new double[] { 0.5d, 1.5d, 2d, 0.25d, 1d, 3d };
+            double total = weights.Sum();
+            double neff = Numerics.Data.Statistics.Statistics.EffectiveSampleSize(weights);
+            double mean = data.Zip(weights, (x, w) => x * w).Sum() / total;
+            double s2 = data.Zip(weights, (x, w) => w * (x - mean) * (x - mean)).Sum();
+            double expected = s2 / (total * (1d - 1d / neff));
+            double actual = Numerics.Data.Statistics.Statistics.Variance(data, weights, Numerics.Data.Statistics.WeightType.Reliability);
+            Assert.AreEqual(expected, actual, 1E-13 * expected);
+        }
+
+        /// <summary>
+        /// Null, negative, non-finite and all-zero weights throw the documented exceptions naming the argument.
+        /// </summary>
+        [TestMethod]
+        public void Test_EffectiveSampleSize_InvalidInputs()
+        {
+            Assert.AreEqual("weights", Assert.Throws<ArgumentNullException>(() => Numerics.Data.Statistics.Statistics.EffectiveSampleSize(null!)).ParamName);
+            Assert.AreEqual("weights", Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 1d, -0.5d })).ParamName);
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 1d, double.NaN }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 1d, double.PositiveInfinity }));
+            Assert.AreEqual("weights", Assert.Throws<ArgumentException>(() => Numerics.Data.Statistics.Statistics.EffectiveSampleSize(new double[] { 0d, 0d, 0d })).ParamName);
         }
     }
 }

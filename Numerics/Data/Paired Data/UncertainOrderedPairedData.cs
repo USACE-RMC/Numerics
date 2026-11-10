@@ -29,6 +29,7 @@ namespace Numerics.Data
         private SortOrder _orderY;
         private bool _isValid = true;
         private bool _allowDifferentDistributionTypes = false;
+        private double _validationTailProbability = double.NaN;
 
         /// <summary>
         /// Gets or sets whether to allow different distribution types in the list. 
@@ -43,6 +44,28 @@ namespace Numerics.Data
                     _allowDifferentDistributionTypes = value;
                     Validate();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets an additional tail probability p at which <see cref="Validate"/> also checks each pair of neighboring
+        /// ordinates, at p and 1 - p. NaN (the default) adds no probes.
+        /// </summary>
+        /// <remarks>
+        /// The standard test probes the lower percentile (1E-5, or 0.05 for PERT percentile distributions), the mean and
+        /// the upper percentile. Set this when curves will be sampled deeper in the tails, for example p = 1E-12, so that
+        /// a valid collection also gives monotone curves at those depths. Changing the value re-validates the collection.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is not NaN and not in (0, 0.5).</exception>
+        public double ValidationTailProbability
+        {
+            get { return _validationTailProbability; }
+            set
+            {
+                UncertainOrdinate.ValidateTailProbability(value);
+                if (_validationTailProbability.Equals(value)) return;
+                _validationTailProbability = value;
+                Validate();
             }
         }
 
@@ -282,7 +305,13 @@ namespace Numerics.Data
                 Enum.TryParse(distributionAttr.Value, out argresult);
                 Distribution = argresult;
             }
-            // new prop
+            // Optional tail probe, written only when set
+            var tailAttr = el.Attribute(nameof(ValidationTailProbability));
+            if (tailAttr != null && double.TryParse(tailAttr.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double tail))
+            {
+                UncertainOrdinate.ValidateTailProbability(tail);
+                _validationTailProbability = tail;
+            }
 
             var allowDiffAttr = el.Attribute(nameof(AllowDifferentDistributionTypes));
             if (allowDiffAttr != null)
@@ -381,12 +410,21 @@ namespace Numerics.Data
         /// <returns>Deep clone of target UncertainOrderedPairedData collection.</returns>
         public UncertainOrderedPairedData Clone()
         {
-            return new UncertainOrderedPairedData(_uncertainOrdinates, StrictX, OrderX, StrictY, OrderY, Distribution, _isValid);
+            var clone = new UncertainOrderedPairedData(_uncertainOrdinates, StrictX, OrderX, StrictY, OrderY, Distribution, _isValid);
+            clone._validationTailProbability = _validationTailProbability;
+            clone._allowDifferentDistributionTypes = _allowDifferentDistributionTypes;
+            return clone;
         }
 
         /// <summary>
         /// Method to determine validity of all ordinates in the collection.
         /// </summary>
+        /// <remarks>
+        /// Does nothing while <see cref="SuppressCollectionChanged"/> is true, so <see cref="IsValid"/> keeps its previous
+        /// value through suppressed edits; call this method after clearing the flag. Each pair of neighboring ordinates is
+        /// checked at the lower (1E-5), mean and upper (1 - 1E-5) curves (0.05 and 0.95 for PERT percentile distributions),
+        /// so curves sampled deeper in the tails are not covered.
+        /// </remarks>
         public void Validate()
         {
             if (SuppressCollectionChanged == true) return;
@@ -412,16 +450,20 @@ namespace Numerics.Data
         {
             if (index < 0 || index > _uncertainOrdinates.Count - 1)
                 return false;
+            // The ordinate itself must be valid. The neighbor comparisons check this too, but a single ordinate or the
+            // last ordinate of a forward-only pass has no neighbor to compare with.
+            if (_uncertainOrdinates[index].IsValid == false)
+                return false;
             // Look backward
             if (lookBackward == true & index > 0)
             {
-                if (_uncertainOrdinates[index].OrdinateValid(_uncertainOrdinates[index - 1], StrictX, StrictY, OrderX, OrderY, false, AllowDifferentDistributionTypes) == false)
+                if (_uncertainOrdinates[index].OrdinateValid(_uncertainOrdinates[index - 1], StrictX, StrictY, OrderX, OrderY, false, AllowDifferentDistributionTypes, _validationTailProbability) == false)
                     return false;
             }
             // Look forward
             if (index < _uncertainOrdinates.Count - 1)
             {
-                if (_uncertainOrdinates[index].OrdinateValid(_uncertainOrdinates[index + 1], StrictX, StrictY, OrderX, OrderY, true, AllowDifferentDistributionTypes) == false)
+                if (_uncertainOrdinates[index].OrdinateValid(_uncertainOrdinates[index + 1], StrictX, StrictY, OrderX, OrderY, true, AllowDifferentDistributionTypes, _validationTailProbability) == false)
                     return false;
             }
             // Passed the test
@@ -439,7 +481,7 @@ namespace Numerics.Data
                 return result;
             for (int i = 0; i < _uncertainOrdinates.Count - 1; i++)
                 // Look forward
-                result.AddRange(_uncertainOrdinates[i].OrdinateErrors(_uncertainOrdinates[i + 1], StrictX, StrictY, OrderX, OrderY, true, AllowDifferentDistributionTypes));
+                result.AddRange(_uncertainOrdinates[i].OrdinateErrors(_uncertainOrdinates[i + 1], StrictX, StrictY, OrderX, OrderY, true, AllowDifferentDistributionTypes, _validationTailProbability));
             result.AddRange(_uncertainOrdinates.Last().OrdinateErrors());
             return result;
         }
@@ -805,6 +847,8 @@ namespace Numerics.Data
             // Distribution type
             result.SetAttributeValue("Distribution", Distribution.ToString());
             result.SetAttributeValue(nameof(AllowDifferentDistributionTypes), AllowDifferentDistributionTypes.ToString());
+            if (!double.IsNaN(_validationTailProbability))
+                result.SetAttributeValue(nameof(ValidationTailProbability), _validationTailProbability.ToString("G17", CultureInfo.InvariantCulture));
             // 
             var curveElement = new XElement("Ordinates");
             for (int i = 0; i < Count; i++) { curveElement.Add(this[i].ToXElement()); }

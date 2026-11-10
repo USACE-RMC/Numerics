@@ -52,8 +52,8 @@ namespace Numerics.Data
         /// Computed from the collection size on every read as the Numerical Recipes N^0.25 hunt
         /// heuristic, matching the Interpolater's window: the window scales as Count^0.25 with a
         /// floor of 1, so consecutive nearby lookups take the hunt path in
-        /// <see cref="SearchX(double)"/>. The value affects only which search path runs — hunt and bisection return the same
-        /// bracket for the same input — so it is a performance characteristic rather than a
+        /// <see cref="SearchX(double)"/>. The value affects only which search path runs (hunt and bisection return the same
+        /// bracket for the same input), so it is a performance characteristic rather than a
         /// correctness one. <see cref="XSearchStart"/> and <see cref="UseSmartSearch"/> are public and
         /// settable, so a consumer can steer the search directly.
         /// </remarks>
@@ -110,6 +110,10 @@ namespace Numerics.Data
         /// Represents if the paired dataset has valid ordinates and order.
         /// </summary>
         /// <returns>boolean representing data validity.</returns>
+        /// <remarks>
+        /// Every ordinate must be finite and each pair of neighbors must satisfy the strictness and sort order settings.
+        /// A non-finite last ordinate, or a single non-finite ordinate, also makes the data invalid.
+        /// </remarks>
         public bool IsValid { get; private set; }
 
         /// <summary>
@@ -329,7 +333,8 @@ namespace Numerics.Data
             get { return _ordinates[index]; }
             set
             {
-                if (_ordinates[index] != value)
+                // Compare the bits: Ordinate equality treats NaN as equal to any value, which would skip replacing a NaN.
+                if (!SameBits(_ordinates[index], value))
                 {
                     var oldValue = _ordinates[index];
                     _ordinates[index] = value;
@@ -347,6 +352,17 @@ namespace Numerics.Data
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Determines whether two ordinates hold the same X and Y bits.
+        /// </summary>
+        /// <param name="a">The first ordinate.</param>
+        /// <param name="b">The second ordinate.</param>
+        private static bool SameBits(Ordinate a, Ordinate b)
+        {
+            return BitConverter.DoubleToInt64Bits(a.X) == BitConverter.DoubleToInt64Bits(b.X) &&
+                   BitConverter.DoubleToInt64Bits(a.Y) == BitConverter.DoubleToInt64Bits(b.Y);
         }
 
         /// <summary>
@@ -402,6 +418,10 @@ namespace Numerics.Data
         {
             if (index < 0 || index > _ordinates.Count - 1)
                 return true;
+            // The ordinate itself must be valid. The neighbor comparisons check this too, but the last ordinate
+            // of a forward-only pass has no neighbor to compare with.
+            if (_ordinates[index].IsValid == false)
+                return false;
             // Look backward
             if (lookBackward == true & index > 0)
             {
@@ -554,6 +574,41 @@ namespace Numerics.Data
         public OrderedPairedData Clone()
         {
             return new OrderedPairedData(_ordinates, StrictX, OrderX, StrictY, OrderY);
+        }
+
+        /// <summary>
+        /// Clones the object to a new object without validating the ordinates again.
+        /// </summary>
+        /// <returns>A copy with the same ordinates, order settings and <see cref="IsValid"/> state as this collection.</returns>
+        /// <remarks>
+        /// <para>
+        /// Intended for fan-out of an already validated curve, for example one copy per Monte Carlo worker. The ordinates
+        /// are copied as they are, in one array copy, and <see cref="IsValid"/> is taken from this collection instead of
+        /// being recomputed. As with <see cref="Clone"/>, event handlers are not copied and the search state starts fresh.
+        /// </para>
+        /// <para>
+        /// For ordinates built with the <see cref="Ordinate(double, double)"/> constructor the copy equals <see cref="Clone"/>.
+        /// <see cref="Clone"/> rebuilds each ordinate, which recomputes <see cref="Ordinate.IsValid"/>, and validates the
+        /// whole collection, so it can differ when an ordinate's fields were set directly.
+        /// </para>
+        /// </remarks>
+        public OrderedPairedData CloneWithoutValidation()
+        {
+            return new OrderedPairedData(this);
+        }
+
+        /// <summary>
+        /// Creates a copy of the ordinates and settings of another collection without validation.
+        /// </summary>
+        /// <param name="source">The collection to copy.</param>
+        private OrderedPairedData(OrderedPairedData source)
+        {
+            _strictX = source._strictX;
+            _strictY = source._strictY;
+            _orderX = source._orderX;
+            _orderY = source._orderY;
+            _ordinates = new List<Ordinate>(source._ordinates);
+            IsValid = source.IsValid;
         }
 
         /// <summary>
@@ -750,6 +805,47 @@ namespace Numerics.Data
         #region Interpolation
 
         /// <summary>
+        /// Returns the limit of the linear interpolation b1 + (a − a1)/(a2 − a1)·(b2 − b1), in transform space, where an
+        /// infinite segment end makes the formula NaN.
+        /// </summary>
+        /// <param name="a">The lookup coordinate.</param>
+        /// <param name="a1">The lookup coordinate at the segment start.</param>
+        /// <param name="a2">The lookup coordinate at the segment end.</param>
+        /// <param name="b1">The interpolated coordinate at the segment start.</param>
+        /// <param name="b2">The interpolated coordinate at the segment end.</param>
+        /// <returns>The limit, or NaN where it is not defined.</returns>
+        /// <remarks>
+        /// The fraction f = (a − a1)/(a2 − a1) is 0 at a1 and 1 at a2; for a finite a it tends to 1 when a1 is infinite
+        /// and a2 finite, and to 0 in the mirror case. The result is then b1 at f = 0 and b2 at f = 1, and inside the
+        /// segment the infinite end when exactly one of b1 and b2 is infinite, as the linear form tends to it for every
+        /// interior f. Outside the segment (f &lt; 0 or f > 1, an extrapolation), a segment that is infinite at both ends of
+        /// either coordinate with opposite signs, and a NaN input have no single limit and stay NaN. Of the transforms only
+        /// NormalZ produces an infinity, at a probability of 1 (StandardZ(1) is +∞); StandardZ(0) is finite, about −38.5,
+        /// and Log10 clamps its argument to 1E-16, so next to a probability of 0 the interpolation stays finite (about
+        /// 1E-86 inside the segment).
+        /// </remarks>
+        internal static double InfiniteEndpointLimit(double a, double a1, double a2, double b1, double b2)
+        {
+            if (double.IsNaN(a) || double.IsNaN(a1) || double.IsNaN(a2) || double.IsNaN(b1) || double.IsNaN(b2)) return double.NaN;
+            double f;
+            if (a == a1) f = 0d;
+            else if (a == a2) f = 1d;
+            else if (double.IsInfinity(a1) && double.IsInfinity(a2)) return double.NaN;
+            else if (double.IsInfinity(a1)) f = double.IsInfinity(a) ? 0d : 1d;
+            else if (double.IsInfinity(a2)) f = double.IsInfinity(a) ? 1d : 0d;
+            else f = (a - a1) / (a2 - a1);
+            // Outside the segment (extrapolation) the limit can take either sign, so it is left undefined.
+            if (!(f >= 0d && f <= 1d)) return double.NaN;
+            if (f == 0d) return b1;
+            if (f == 1d) return b2;
+            bool infinite1 = double.IsInfinity(b1), infinite2 = double.IsInfinity(b2);
+            if (infinite1 && infinite2) return b1 == b2 ? b1 : double.NaN;
+            if (infinite1) return b1;
+            if (infinite2) return b2;
+            return b1 + f * (b2 - b1);
+        }
+
+        /// <summary>
         /// Given a value (x or y) returns the interpolated value (y or x).
         /// </summary>
         /// <param name="value"> The value to be interpolated. </param>
@@ -760,6 +856,8 @@ namespace Numerics.Data
         /// <returns> The interpolated value.</returns>
         private double BaseInterpolate(double value, int index, bool givenX = true, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
         {
+            // The NormalZ transform sends a probability of 1 to +∞ (StandardZ(0) and Log10(0) stay finite);
+            // InfiniteEndpointLimit then replaces the NaN of the linear formula by its limit inside the segment.
 
             double x = givenX ? value : 0, y = givenX ? 0 : value, x1 = 0, x2 = 0, y1 = 0, y2 = 0;
             int lo = index, hi = index + 1;
@@ -814,6 +912,7 @@ namespace Numerics.Data
                 {
                     y = y1 + (x - x1) / (x2 - x1) * (y2 - y1);
                 }
+                if (double.IsNaN(y)) y = InfiniteEndpointLimit(x, x1, x2, y1, y2);
                 //
                 if (yTransform == Transform.None)
                 {
@@ -839,6 +938,7 @@ namespace Numerics.Data
                 {
                     x = x1 + (y - y1) / (y2 - y1) * (x2 - x1);
                 }
+                if (double.IsNaN(x)) x = InfiniteEndpointLimit(y, y1, y2, x1, x2);
                 //
                 if (xTransform == Transform.None)
                 {
@@ -854,7 +954,7 @@ namespace Numerics.Data
                 }
             }
 
-            // return NaN if we get to here
+            // return NaN if this point is reached
             return double.NaN;
 
         }
@@ -884,7 +984,7 @@ namespace Numerics.Data
         /// <param name="extrapolation">
         /// The sides of the x-range on which an out-of-range lookup extends the boundary segment
         /// linearly in the configured transform space rather than holding the boundary ordinate.
-        /// None reproduces the historical endpoint hold.
+        /// None holds the endpoint value.
         /// </param>
         /// <returns> The interpolated value.</returns>
         /// <remarks>
@@ -940,7 +1040,10 @@ namespace Numerics.Data
         /// <returns> The interpolated value.</returns>
         /// <remarks>
         /// Out-of-range lookups hold the boundary ordinate; the four-argument overload can
-        /// extrapolate instead.
+        /// extrapolate instead. When y equals the value of a flat stretch (tied y values) the
+        /// result is not unique: the smart search returns the last x of an interior stretch but
+        /// the first x of a stretch at the start of the table, and the sequential search can
+        /// return a different end depending on <see cref="YSearchStart"/>.
         /// </remarks>
         public double GetXFromY(double y, Transform xTransform = Transform.None, Transform yTransform = Transform.None)
         {
@@ -956,7 +1059,7 @@ namespace Numerics.Data
         /// <param name="extrapolation">
         /// The sides of the y-range on which an out-of-range lookup extends the boundary segment
         /// linearly in the configured transform space rather than holding the boundary ordinate.
-        /// None reproduces the historical endpoint hold.
+        /// None holds the endpoint value.
         /// </param>
         /// <returns> The interpolated value.</returns>
         /// <remarks>
@@ -1020,7 +1123,7 @@ namespace Numerics.Data
         /// <param name="xValues">The list of x-values.</param>
         /// <param name="xTransform">Transform for the x values.</param>
         /// <param name="yTransform">Transform for the y values.</param>
-        /// <param name="extrapolation">The sides of the x-range on which out-of-range lookups extrapolate. None reproduces the historical endpoint hold.</param>
+        /// <param name="extrapolation">The sides of the x-range on which out-of-range lookups extrapolate. None holds the endpoint value.</param>
         /// <returns>An array of interpolated values.</returns>
         /// <remarks>
         /// Each element is looked up with the scalar
@@ -1053,7 +1156,7 @@ namespace Numerics.Data
         /// <param name="yValues">The list of y-values.</param>
         /// <param name="xTransform">Transform for the x values.</param>
         /// <param name="yTransform">Transform for the y values.</param>
-        /// <param name="extrapolation">The sides of the y-range on which out-of-range lookups extrapolate. None reproduces the historical endpoint hold.</param>
+        /// <param name="extrapolation">The sides of the y-range on which out-of-range lookups extrapolate. None holds the endpoint value.</param>
         /// <returns>An array of interpolated values.</returns>
         /// <remarks>
         /// Each element is looked up with the scalar
@@ -1549,7 +1652,6 @@ namespace Numerics.Data
 
         /// <summary>
         /// The Visvaligam-Whyatt algorithm that decimates a curve composed of line segments to a similar curve with fewer points.
-        /// This method will be improved when we implement the priority queue in .NET 8.
         /// </summary>
         /// <remarks>
         /// <b> Reference: </b>

@@ -174,5 +174,45 @@ namespace Sampling.MCMC
             }
             return chains;
         }
+        /// <summary>
+        /// The averaged autocorrelation output holds the lags 0 to 50 in column 0 for every parameter, and the
+        /// chain average of each chain's autocorrelation in column 1.
+        /// </summary>
+        [TestMethod]
+        public void Test_EffectiveSampleSize_AverageAcfHasLagColumn()
+        {
+            List<List<ParameterSet>> chains = CreateModuloFixture();
+            MCMCDiagnostics.EffectiveSampleSize(chains, out double[][,] averageAcf);
+            var expected = new double[51];
+            foreach (var chain in chains)
+            {
+                var values = new double[chain.Count];
+                for (int i = 0; i < values.Length; i++) values[i] = chain[i].Values[0];
+                var acf = Numerics.Mathematics.Fourier.Autocorrelation(values, 50)!;
+                for (int lag = 0; lag < acf.GetLength(0); lag++) expected[lag] += acf[lag, 1] / chains.Count;
+            }
+            for (int lag = 0; lag <= 50; lag++)
+            {
+                Assert.AreEqual((double)lag, averageAcf[0][lag, 0]);
+                Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(expected[lag]), System.BitConverter.DoubleToInt64Bits(averageAcf[0][lag, 1]));
+            }
+
+            // Chains shorter than 51 draws keep every lag label; the autocorrelation past the chain is zero.
+            var shortChains = new List<List<ParameterSet>>();
+            for (int c = 0; c < 2; c++)
+            {
+                var chain = new List<ParameterSet>();
+                for (int i = 0; i < 10; i++) chain.Add(new ParameterSet(new[] { (i * 7 + c) % 5 * 1d, i * 0.5 }, 0d));
+                shortChains.Add(chain);
+            }
+            MCMCDiagnostics.EffectiveSampleSize(shortChains, out double[][,] shortAcf);
+            Assert.HasCount(2, shortAcf);
+            foreach (var matrix in shortAcf)
+            {
+                for (int lag = 0; lag <= 50; lag++) Assert.AreEqual((double)lag, matrix[lag, 0]);
+                for (int lag = 10; lag <= 50; lag++) Assert.AreEqual(0d, matrix[lag, 1]);
+            }
+        }
+
     }
 }

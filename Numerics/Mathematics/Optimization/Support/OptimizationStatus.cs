@@ -43,5 +43,11 @@ namespace Numerics.Mathematics.Optimization
         /// The optimization method stopped because its line search could not find an acceptable step.
         /// </summary>
         LineSearchFailed,
+
+        /// <summary>
+        /// The optimization method was stopped through <see cref="Optimizer.CancellationToken"/>. The best
+        /// parameter set found so far is kept.
+        /// </summary>
+        Cancelled,
     }
 }

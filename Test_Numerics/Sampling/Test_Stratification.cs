@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data;
 using Numerics.Sampling;
@@ -315,5 +317,29 @@ namespace Sampling
             // Check weights sum to 1.0
             Assert.AreEqual(1.0d, weights, 1E-8);
         }
+        /// <summary>
+        /// CompareTo returns 0 for identical bins (including a bin and itself), orders adjacent bins, and still
+        /// rejects distinct overlapping bins.
+        /// </summary>
+        [TestMethod]
+        public void Test_StratificationBin_CompareTo()
+        {
+            var low = new StratificationBin(0.0, 0.25);
+            var high = new StratificationBin(0.25, 0.5);
+            Assert.AreEqual(0, low.CompareTo(low));
+            Assert.AreEqual(0, low.CompareTo(new StratificationBin(0.0, 0.25, 0.9)));
+            Assert.AreEqual(-1, low.CompareTo(high));
+            Assert.AreEqual(1, high.CompareTo(low));
+            Assert.AreEqual(1, low.CompareTo(null));
+            Assert.Throws<ArgumentException>(() => low.CompareTo(new StratificationBin(0.1, 0.3)));
+            Assert.Throws<ArgumentException>(() => low.CompareTo(new StratificationBin(0.0, 0.2)));
+
+            // A list holding a bin twice sorts, and binary search finds an identical bin.
+            var bins = new List<StratificationBin> { high, low, new StratificationBin(0.5, 1.0), low };
+            bins.Sort();
+            CollectionAssert.AreEqual(new[] { 0.0, 0.0, 0.25, 0.5 }, bins.Select(b => b.LowerBound).ToArray());
+            Assert.AreEqual(2, bins.BinarySearch(new StratificationBin(0.25, 0.5)));
+        }
+
     }
 }

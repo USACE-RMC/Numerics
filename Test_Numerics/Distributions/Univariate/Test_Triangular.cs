@@ -298,5 +298,42 @@ namespace Distributions.Univariate
             Assert.AreEqual(0.31622, T.InverseCDF(0.2), 1e-04);
             Assert.AreEqual(0.5, T.InverseCDF(0.5));
         }
+
+        /// <summary>
+        /// MLE succeeds when the sample minimum is exactly zero, where the established bounds collapse to zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_Triangular_MLE_ZeroSampleMinimum()
+        {
+            var sample = new double[] { 0, 1, 2, 2.5, 3, 4, 5, 6, 8, 9 };
+            var constraints = new Triangular().GetParameterConstraints(sample);
+            // S = max(|0|, |9|, 9) = 9, bound = 10^(ceil(log10 9) + 1) = 100
+            CollectionAssert.AreEqual(new double[] { -100, 0, 9 }, constraints.Item2);
+            CollectionAssert.AreEqual(new double[] { 0, 9, 100 }, constraints.Item3);
+
+            var fit = new Triangular();
+            fit.Estimate(sample, ParameterEstimationMethod.MaximumLikelihood);
+            Assert.IsTrue(fit.ParametersValid);
+            // Multi-start optimum from scipy.optimize.minimize(Nelder-Mead, 200 starts) of the negative
+            // log-likelihood sum(log(scipy.stats.triang((c-a)/(b-a), loc=a, scale=b-a).pdf(x))):
+            // a = 0, c = 0, b = 11.2239153, log-likelihood -22.762864272955646.
+            Assert.AreEqual(-22.762864272955646, fit.LogLikelihood(sample), 1E-6);
+            Assert.AreEqual(0d, fit.Min, 1E-6);
+            Assert.AreEqual(11.2239153, fit.Max, 1E-2);
+        }
+
+        /// <summary>
+        /// Samples whose established bounds contain the initial values keep exactly those constraints.
+        /// </summary>
+        [TestMethod]
+        public void Test_Triangular_ParameterConstraints_NonZeroSampleMatchesFormula()
+        {
+            var sample = new double[] { 1, 2, 3, 3.5, 4, 5, 6, 7, 9, 10 };
+            double min = 1, max = 10, mean = Numerics.Tools.Mean(sample);
+            var constraints = new Triangular().GetParameterConstraints(sample);
+            CollectionAssert.AreEqual(new double[] { min - Numerics.Tools.DoubleMachineEpsilon, mean * 3 - max - min, max + Numerics.Tools.DoubleMachineEpsilon }, constraints.Item1);
+            CollectionAssert.AreEqual(new double[] { -Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(min)) + 1d)), min, max }, constraints.Item2);
+            CollectionAssert.AreEqual(new double[] { min, max, Math.Pow(10d, Math.Ceiling(Math.Log10(Math.Abs(max)) + 1d)) }, constraints.Item3);
+        }
     }
 }

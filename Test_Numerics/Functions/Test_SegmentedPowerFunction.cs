@@ -28,7 +28,7 @@ namespace Functions
             Assert.AreEqual(0d, oneSegment.Function(0.5), 0d, "Discharge is zero at and below the cease-to-flow stage h₁.");
             Assert.AreEqual(505.9644256269407, oneSegment.Function(5), 1E-10);
 
-            // 2 segments: [1, 1.5, 2, 3, 1.2, 1.5, 0.1] — below and above the second activation.
+            // 2 segments: [1, 1.5, 2, 3, 1.2, 1.5, 0.1], below and above the second activation.
             var twoSegments = new SegmentedPowerFunction(new[] { 1d, 1.5d, 2d, 3d, 1.2d, 1.5d, 0.1d }) { IsDeterministic = true };
             Assert.AreEqual(71.15124735378853, twoSegments.Function(2.5), 1E-10, "Only the first control is active below h₂.");
             Assert.AreEqual(550.7919745807667, twoSegments.Function(5), 1E-10, "Both controls add above h₂.");

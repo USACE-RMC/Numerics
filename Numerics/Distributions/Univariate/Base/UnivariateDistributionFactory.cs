@@ -164,10 +164,37 @@ namespace Numerics.Distributions
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="xElement"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when the type or parameter data is missing or malformed.</exception>
         /// <exception cref="NotSupportedException">Thrown when the serialized type requires a user-provided implementation.</exception>
+        /// <remarks>The optional non-parameter settings written by <see cref="UnivariateDistributionBase.ToXElement"/>,
+        /// such as a logarithm base, are restored when present; elements without them keep the family defaults. An element
+        /// with the <c>TruncationMin</c> and <c>TruncationMax</c> attributes written by
+        /// <see cref="TruncatedDistribution.ToXElement"/> is restored as a <see cref="TruncatedDistribution"/> of the
+        /// described distribution.</remarks>
         public static UnivariateDistributionBase CreateDistribution(XElement xElement)
         {
             if (xElement == null) throw new ArgumentNullException(nameof(xElement));
 
+            var distribution = CreateBaseDistribution(xElement);
+            var minAttribute = xElement.Attribute(TruncatedDistribution.TruncationMinAttribute);
+            var maxAttribute = xElement.Attribute(TruncatedDistribution.TruncationMaxAttribute);
+            if (minAttribute == null && maxAttribute == null) return distribution;
+            if (minAttribute == null || maxAttribute == null
+                || !double.TryParse(minAttribute.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double min)
+                || !double.TryParse(maxAttribute.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double max))
+                throw new ArgumentException("The serialized truncation bounds are missing or invalid.", nameof(xElement));
+            var truncated = new TruncatedDistribution(distribution, min, max);
+            if (!truncated.ParametersValid)
+                throw new ArgumentException("The serialized truncation bounds do not define a valid distribution.", nameof(xElement));
+            return truncated;
+        }
+
+        /// <summary>
+        /// Creates the distribution an XElement describes, without the truncation bounds of a truncated distribution.
+        /// </summary>
+        /// <param name="xElement">The XElement to deserialize.</param>
+        /// <returns>The deserialized distribution.</returns>
+        /// <exception cref="ArgumentException">Thrown when the type or a parameter is missing or invalid.</exception>
+        private static UnivariateDistributionBase CreateBaseDistribution(XElement xElement)
+        {
             var typeAttribute = xElement.Attribute(nameof(UnivariateDistributionBase.Type));
             if (typeAttribute == null
                 || !Enum.TryParse(typeAttribute.Value, out UnivariateDistributionType type)
@@ -205,6 +232,7 @@ namespace Numerics.Distributions
 
             distribution.ValidateParameters(values, true);
             distribution.SetParameters(values);
+            DistributionNumerics.ReadConfigurationAttributes(xElement, distribution);
             if (!distribution.ParametersValid)
                 throw new ArgumentException("The serialized parameters do not define a valid distribution.", nameof(xElement));
             return distribution;

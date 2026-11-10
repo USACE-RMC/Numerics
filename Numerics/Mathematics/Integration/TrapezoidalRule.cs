@@ -33,10 +33,12 @@ namespace Numerics.Mathematics.Integration
         /// <param name="function">The function to integrate.</param>
         /// <param name="min">The minimum value under which the integral must be computed.</param>
         /// <param name="max">The maximum value under which the integral must be computed.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="function"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="max"/> is not greater than <paramref name="min"/>.</exception>
         public TrapezoidalRule(Func<double, double> function, double min, double max)
         {
             if (function == null) throw new ArgumentNullException(nameof(function), "The function cannot be null.");
-            if (max <= min) throw new ArgumentNullException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
+            if (max <= min) throw new ArgumentOutOfRangeException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
 
             Function = function;
             a = min;
@@ -63,11 +65,17 @@ namespace Numerics.Mathematics.Integration
         public double Max => b;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When the iteration or evaluation limit is reached, or the integrand throws, <see cref="Integrator.Result"/>
+        /// holds the latest trapezoidal refinement (NaN if none was completed).
+        /// </remarks>
         public override void Integrate()
         {
             ClearResults();
             Validate();
 
+            // The latest refinement, reported on every exit that does not converge.
+            double best = double.NaN;
             try
             {
                 // Integrate
@@ -75,10 +83,12 @@ namespace Numerics.Mathematics.Integration
                 for (int i = 0; i < MaxIterations; i++)
                 {
                     s0 = Next();
+                    best = s0;
 
                     // Check function evaluations
                     if (FunctionEvaluations >= MaxFunctionEvaluations)
                     {
+                        Result = best;
                         UpdateStatus(IntegrationStatus.MaximumFunctionEvaluationsReached);
                         return;
                     }
@@ -95,11 +105,13 @@ namespace Numerics.Mathematics.Integration
                     }
                     s1 = s0;
                 }
-                // If we get to here, then the maximum number of steps were reached before converging. 
+                // Reaching this point means the maximum number of steps were reached before converging. 
+                Result = best;
                 UpdateStatus(IntegrationStatus.MaximumIterationsReached);
             }
             catch (Exception ex)
             {
+                Result = best;
                 UpdateStatus(IntegrationStatus.Failure, ex);
             }       
         }

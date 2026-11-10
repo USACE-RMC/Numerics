@@ -6,9 +6,11 @@ using Numerics.Data.Statistics;
 using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.RootFinding;
 using Numerics.Mathematics.SpecialFunctions;
 using Numerics.Sampling;
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 
@@ -1158,7 +1160,7 @@ namespace Distributions.Univariate
             }
 
             cr.CreateEmpiricalCDF();
-            // 1 - 1E-17 rounds to exactly 1.0, which takes the container's own support guard —
+            // 1 - 1E-17 rounds to exactly 1.0, which takes the container's own support guard,
             // so the far-tail hold is probed at the guard floor and the last double below one.
             double low = cr.InverseCDF(1E-17);
             double high = cr.InverseCDF(1d - 1E-16);
@@ -1167,5 +1169,215 @@ namespace Distributions.Univariate
             Assert.AreEqual(low, cr.InverseCDF(1E-16), 0d);
             Assert.DoesNotContain("Extrapolation", cr.ToXElement().ToString());
         }
+
+        #region Component Validation and Evaluation Equivalence
+
+        /// <summary>
+        /// A null component is reported by the component validation error from the constructors and from
+        /// SetParameters, and a rejected array leaves the existing components in place.
+        /// </summary>
+        [TestMethod]
+        public void Test_CompetingRisks_NullComponent_ThrowsValidationError()
+        {
+            var error = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new CompetingRisks(new UnivariateDistributionBase[] { new Normal(), null! }));
+            Assert.AreEqual("Distributions", error.ParamName);
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new CompetingRisks(new IUnivariateDistribution[] { null!, new Normal() }));
+
+            var risks = new CompetingRisks(new UnivariateDistributionBase[] { new Normal(), new Normal(1d, 2d) });
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => risks.SetParameters(new UnivariateDistributionBase[] { null! }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => risks.SetParameters(new IUnivariateDistribution[] { new Normal(), null! }));
+            Assert.HasCount(2, risks.Distributions);
+            Assert.IsTrue(risks.ParametersValid);
+        }
+
+        /// <summary>
+        /// Independent log-probabilities, log-density, inverse CDF, parameter accessors, and support bounds equal
+        /// the expressions evaluated over the public component collection, bit for bit, for both selection rules.
+        /// </summary>
+        [TestMethod]
+        public void Test_CompetingRisks_IndependentEvaluation_MatchesCollectionExpressions()
+        {
+            foreach (bool minimum in new[] { true, false })
+            {
+                var risks = new CompetingRisks(new UnivariateDistributionBase[] { new Weibull(5d, 1.4d), new GeneralizedExtremeValue(8d, 2d, 0.1d), new Normal(9d, 3d) })
+                { MinimumOfRandomVariables = minimum };
+                var components = risks.Distributions;
+
+                Assert.AreEqual(components.Sum(c => c.NumberOfParameters), risks.NumberOfParameters);
+                CollectionAssert.AreEqual(components.SelectMany(c => c.GetParameters).ToArray(), risks.GetParameters);
+                Assert.AreEqual(Bits(minimum ? components.Min(c => c.Minimum) : components.Max(c => c.Minimum)), Bits(risks.Minimum));
+                Assert.AreEqual(Bits(minimum ? components.Min(c => c.Maximum) : components.Max(c => c.Maximum)), Bits(risks.Maximum));
+                foreach (double x in new[] { -1d, 0d, 0.5d, 3d, 8d, 15d, 40d, double.PositiveInfinity })
+                {
+                    Assert.AreEqual(Bits(CollectionLogCDF(risks, x)), Bits(risks.LogCDF(x)), $"LogCDF({x})");
+                    Assert.AreEqual(Bits(CollectionLogCCDF(risks, x)), Bits(risks.LogCCDF(x)), $"LogCCDF({x})");
+                    Assert.AreEqual(Bits(CollectionLogPDF(risks, x)), Bits(risks.LogPDF(x)), $"LogPDF({x})");
+                }
+                foreach (double p in new[] { 1E-12, 0.001, 0.1, 0.5, 0.9, 0.999, 1d - 1E-12 })
+                    Assert.AreEqual(Bits(CollectionInverseCDF(risks, p)), Bits(risks.InverseCDF(p)), $"InverseCDF({p})");
+            }
+        }
+
+        /// <summary>
+        /// Correlated CDFs equal the product-of-conditional-marginals expressions with a freshly built all-ones
+        /// indicator array, bit for bit, on repeated evaluation for both selection rules.
+        /// </summary>
+        [TestMethod]
+        public void Test_CompetingRisks_CorrelatedCDF_MatchesPCMExpressions()
+        {
+            var correlation = new[,] { { 1d, 0.3d, 0.1d }, { 0.3d, 1d, 0.2d }, { 0.1d, 0.2d, 1d } };
+            foreach (bool minimum in new[] { true, false })
+            {
+                var risks = new CompetingRisks(new UnivariateDistributionBase[] { new Weibull(5d, 1.4d), new Weibull(8d, 2d), new Weibull(9d, 3d) })
+                { Dependency = Probability.DependencyType.CorrelationMatrix, CorrelationMatrix = correlation, MinimumOfRandomVariables = minimum };
+                for (int round = 0; round < 2; round++)
+                {
+                    foreach (double x in new[] { 0.5d, 3d, 8d, 15d })
+                    {
+                        var cdf = risks.Distributions.Select(c => c.CDF(x)).ToArray();
+                        double p = minimum ? Probability.UnionPCM(cdf, correlation) : Probability.JointProbability(cdf, new[] { 1, 1, 1 }, correlation);
+                        double expected = p < 0d ? 0d : p > 1d ? 1d : p;
+                        Assert.AreEqual(Bits(expected), Bits(risks.CDF(x)), $"CDF({x})");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Support bounds reproduce Enumerable.Min and Enumerable.Max over the component bounds bit for bit,
+        /// including not-a-number, signed-zero, and infinite bounds in every position.
+        /// </summary>
+        [TestMethod]
+        public void Test_CompetingRisks_SupportBounds_MatchEnumerableSemantics()
+        {
+            var values = new[] { double.NaN, -0d, 0d, double.NegativeInfinity, double.PositiveInfinity, 1d, 2d };
+            foreach (double a in values)
+                foreach (double b in values)
+                    foreach (double c in values)
+                        foreach (bool minimum in new[] { true, false })
+                        {
+                            var components = new UnivariateDistributionBase[] { new BoundedWeibull(a, c), new BoundedWeibull(b, a), new BoundedWeibull(c, b) };
+                            var risks = new CompetingRisks(components) { MinimumOfRandomVariables = minimum };
+                            double expectedMinimum = minimum ? components.Min(d => d.Minimum) : components.Max(d => d.Minimum);
+                            double expectedMaximum = minimum ? components.Min(d => d.Maximum) : components.Max(d => d.Maximum);
+                            Assert.AreEqual(Bits(expectedMinimum), Bits(risks.Minimum), $"Minimum {a},{b},{c},{minimum}");
+                            Assert.AreEqual(Bits(expectedMaximum), Bits(risks.Maximum), $"Maximum {a},{b},{c},{minimum}");
+                        }
+            var single = new CompetingRisks(new UnivariateDistributionBase[] { new BoundedWeibull(double.NaN, -0d) });
+            Assert.AreEqual(Bits(double.NaN), Bits(single.Minimum));
+            Assert.AreEqual(Bits(-0d), Bits(single.Maximum));
+            Assert.ThrowsExactly<InvalidOperationException>(() => new CompetingRisks(new UnivariateDistributionBase[0]).Minimum);
+        }
+
+        /// <summary>The raw bits of a double, so that signed zeros and not-a-number payloads compare exactly.</summary>
+        /// <param name="value">The value.</param>
+        /// <returns>The 64-bit representation.</returns>
+        private static long Bits(double value) => BitConverter.DoubleToInt64Bits(value);
+
+        /// <summary>The independent log CDF summed over the public component collection.</summary>
+        /// <param name="risks">The competing-risks distribution.</param>
+        /// <param name="x">The evaluation point.</param>
+        /// <returns>The log CDF.</returns>
+        private static double CollectionLogCDF(CompetingRisks risks, double x)
+        {
+            if (!risks.MinimumOfRandomVariables) return risks.Distributions.Sum(d => d.LogCDF(x));
+            double union = double.NegativeInfinity, precedingSurvival = 0;
+            foreach (var distribution in risks.Distributions)
+            {
+                union = DistributionNumerics.LogSum(union, precedingSurvival + distribution.LogCDF(x));
+                precedingSurvival += distribution.LogCCDF(x);
+            }
+            return union;
+        }
+
+        /// <summary>The independent log survival function summed over the public component collection.</summary>
+        /// <param name="risks">The competing-risks distribution.</param>
+        /// <param name="x">The evaluation point.</param>
+        /// <returns>The log survival probability.</returns>
+        private static double CollectionLogCCDF(CompetingRisks risks, double x)
+        {
+            if (risks.MinimumOfRandomVariables) return risks.Distributions.Sum(d => d.LogCCDF(x));
+            double union = double.NegativeInfinity, precedingCDF = 0;
+            foreach (var distribution in risks.Distributions)
+            {
+                union = DistributionNumerics.LogSum(union, precedingCDF + distribution.LogCCDF(x));
+                precedingCDF += distribution.LogCDF(x);
+            }
+            return union;
+        }
+
+        /// <summary>The independent log density formed over the public component collection, away from endpoint limits.</summary>
+        /// <param name="risks">The competing-risks distribution.</param>
+        /// <param name="x">The evaluation point.</param>
+        /// <returns>The log density.</returns>
+        private static double CollectionLogPDF(CompetingRisks risks, double x)
+        {
+            if (x < risks.Minimum || x > risks.Maximum || double.IsInfinity(x)) return double.NegativeInfinity;
+            double total = double.NegativeInfinity;
+            for (int i = 0; i < risks.Distributions.Count; i++)
+            {
+                double product = 0;
+                for (int j = 0; j < risks.Distributions.Count; j++)
+                    if (j != i) product += risks.MinimumOfRandomVariables ? risks.Distributions[j].LogCCDF(x) : risks.Distributions[j].LogCDF(x);
+                double logDensity = risks.Distributions[i].LogPDF(x);
+                if (double.IsNegativeInfinity(product))
+                {
+                    Assert.IsFalse(double.IsPositiveInfinity(logDensity), "The fixture must avoid the endpoint-limit branch.");
+                    continue;
+                }
+                total = DistributionNumerics.LogSum(total, logDensity + product);
+            }
+            return total;
+        }
+
+        /// <summary>The root-solved inverse CDF with component quantiles enumerated from the public collection.</summary>
+        /// <param name="risks">The competing-risks distribution, with no interpolated CDF table.</param>
+        /// <param name="probability">The interior non-exceedance probability.</param>
+        /// <returns>The quantile.</returns>
+        private static double CollectionInverseCDF(CompetingRisks risks, double probability)
+        {
+            var xVals = risks.Distributions.Select(d => d.InverseCDF(probability));
+            double minX = xVals.Min();
+            double maxX = xVals.Max();
+            double reference = minX / 2 + maxX / 2;
+            double scale = maxX / 2 - minX / 2;
+            if (!(scale > 0) || !Tools.IsFinite(scale))
+                scale = risks.Distributions.Select(d => d.InverseCDF(.75) - d.InverseCDF(.25))
+                    .Where(width => width > 0 && Tools.IsFinite(width)).DefaultIfEmpty(1).Min();
+            double Argument(double t)
+            {
+                double value = reference + scale * t;
+                if (double.IsInfinity(value) && Tools.IsFinite(t)) value = scale * (reference / scale + t);
+                return Math.Max(risks.Minimum, Math.Min(risks.Maximum, value));
+            }
+            double Residual(double t) => probability <= .5 ? risks.LogCDF(Argument(t)) - Math.Log(probability)
+                : risks.LogCCDF(Argument(t)) - Tools.Log1p(-probability);
+            double lower = -1, upper = 1;
+            Brent.Bracket(Residual, ref lower, ref upper, out _, out _);
+            double x = Argument(Brent.Solve(Residual, lower, upper, 1E-6 / Math.Max(1, scale), 100, true));
+            return x < risks.Minimum ? risks.Minimum : x > risks.Maximum ? risks.Maximum : x;
+        }
+
+        /// <summary>A Weibull reporting fixed support bounds, for exercising bound combination rules.</summary>
+        private sealed class BoundedWeibull : Weibull
+        {
+            private readonly double _minimum, _maximum;
+
+            /// <summary>Initializes the fixture with the bounds to report.</summary>
+            /// <param name="minimum">The reported lower bound.</param>
+            /// <param name="maximum">The reported upper bound.</param>
+            internal BoundedWeibull(double minimum, double maximum) : base(5d, 1.4d) { _minimum = minimum; _maximum = maximum; }
+
+            /// <inheritdoc/>
+            public override double Minimum => _minimum;
+
+            /// <inheritdoc/>
+            public override double Maximum => _maximum;
+
+            /// <inheritdoc/>
+            public override UnivariateDistributionBase Clone() => new BoundedWeibull(_minimum, _maximum);
+        }
+
+        #endregion
     }
 }

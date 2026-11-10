@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics;
+using Utilities;
 
 namespace Mathematics.Differentiation
 {
@@ -421,6 +422,43 @@ namespace Mathematics.Differentiation
         }
 
         /// <summary>
+        /// When the default step leaves the domain of f, the step is halved until the tableau is finite.
+        /// </summary>
+        [TestMethod]
+        public void Test_RiddersMethod_DefaultStepOutsideDomain_FallsBack()
+        {
+            // The default step 0.1 (1 + |x|) exceeds x, so log and sqrt are NaN at x - h.
+            Assert.AreEqual(20.0, NumericalDerivative.RiddersMethod(Math.Log, 0.05, out double errLog), 1E-12 * 20.0);
+            Assert.IsLessThan(1E-10, errLog);
+            Assert.AreEqual(5.0, NumericalDerivative.RiddersMethod(Math.Sqrt, 0.01, out _), 1E-12 * 5.0);
+            Assert.AreEqual(1E6, NumericalDerivative.RiddersMethod(Math.Log, 1E-6, out _), 1E-12 * 1E6);
+            // A function that is never finite keeps the result of the default step.
+            Assert.AreEqual(0.0, NumericalDerivative.RiddersMethod(x => double.NaN, 1.0, out double errNaN), 0.0);
+            Assert.AreEqual(double.MaxValue, errNaN);
+            // A given step is used as it is.
+            Assert.AreEqual(20.000000037611226, NumericalDerivative.RiddersMethod(Math.Log, 0.05, out _, 0.1), 0.0);
+        }
+
+        /// <summary>
+        /// A tableau that is finite throughout returns the plain Ridders extrapolation, pinned bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The exp reference was recorded on Windows and is exact there. On Linux the C library rounds some of the
+        /// tableau's Math.Exp evaluations differently and the extrapolation amplifies the difference: the measured distance
+        /// is 36 ulp, which the tolerance on other platforms covers (see <see cref="CLibraryRounding"/>). The sin and log
+        /// results measured the same bits on Linux, and the cubic uses no math library, so they are exact everywhere.
+        /// </remarks>
+        [TestMethod]
+        public void Test_RiddersMethod_FiniteTableau_Unchanged()
+        {
+            CLibraryRounding.AreEqual(BitConverter.Int64BitsToDouble(0x40001C2A61268970L), NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out _), 36, "exp");
+            Assert.AreEqual(0x3FD11EB3682A4BEDL, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(Math.Sin, 1.3, out _)));
+            Assert.AreEqual(0x3FDFFFFFFFFFFFBEL, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(Math.Log, 2.0, out _)));
+            Assert.AreEqual(0x403AFFFFFFFFFFF4L, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(x => x * x * x, -3.0, out _)));
+            Assert.ThrowsExactly<ArgumentNullException>(() => NumericalDerivative.RiddersMethod((Func<double, double>)null, 1.0, out _));
+        }
+
+        /// <summary>
         /// Test that Ridders' method is more accurate than central difference.
         /// </summary>
         [TestMethod]
@@ -441,6 +479,31 @@ namespace Mathematics.Differentiation
             // For smooth transcendental functions, Ridders should be significantly better
             // Expect at least 10× improvement (often 100-1000× for exponentials)
             Assert.IsLessThan(errorCentral * 0.5, errorRidders);
+        }
+
+        /// <summary>
+        /// The default initial step is the large step 0.1 (1 + |x|) of Press et al. (2007, section 5.7): the derivative of
+        /// exp at 0.7 is accurate to about 1E-15 relative (about 1E-8 from the small step CalculateStepSize), and an explicit
+        /// step still overrides it.
+        /// </summary>
+        [TestMethod]
+        public void Test_RiddersMethod_DefaultLargeStep()
+        {
+            double expected = Math.Exp(0.7);
+            double ridders = NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out double err);
+            Assert.AreEqual(expected, ridders, 2E-14 * expected);
+            Assert.IsLessThan(1E-13, err);
+
+            // Further smooth cases: sin at 1.3, ln at 2.5 and x³ at -4.
+            Assert.AreEqual(Math.Cos(1.3), NumericalDerivative.RiddersMethod(Math.Sin, 1.3, out _), 1E-13);
+            Assert.AreEqual(0.4, NumericalDerivative.RiddersMethod(Math.Log, 2.5, out _), 1E-14);
+            Assert.AreEqual(48.0, NumericalDerivative.RiddersMethod(x => x * x * x, -4.0, out _), 1E-12);
+
+            // A zero or negative step selects the default; a positive step is used as given.
+            Assert.AreEqual(ridders, NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out _, 0.0), 0.0);
+            Assert.AreEqual(ridders, NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out _, 0.1 * (1.0 + 0.7)), 0.0);
+            double small = NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out _, NumericalDerivative.CalculateStepSize(0.7));
+            Assert.IsGreaterThan(Math.Abs(ridders - expected), Math.Abs(small - expected));
         }
 
         /// <summary>

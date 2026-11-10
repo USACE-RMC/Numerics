@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Xml.Linq;
+using Numerics.Mathematics;
+using Numerics.Mathematics.Integration;
 using Numerics.Mathematics.Optimization;
 
 namespace Numerics.Distributions
@@ -20,11 +22,18 @@ namespace Numerics.Distributions
     /// </para>
     /// <para>
     ///     In probability and statistics, the PERT distribution is a family of continuous probability distributions
-    ///     defined by the minimum (a), most likely (b) and maximum (c) values that a variable can take.
+    ///     defined by the minimum (a), most likely (c) and maximum (b) values that a variable can take.
     ///     It is a transformation of the four-parameter Beta distribution.
     /// </para>
     /// <para>
     ///     This version of the PERT is parameterized using the 5th, 50th, and 95th percentiles.
+    /// </para>
+    /// <para>
+    ///     <see cref="MinAllowableValue"/> and <see cref="MaxAllowableValue"/> censor the PERT: values below the minimum
+    ///     allowable value are set to it, and values above the maximum allowable value are set to it, so the bounds carry
+    ///     point masses equal to the PERT probability beyond them. The quantile function, the CDF, the density on the
+    ///     interval between the bounds, and the moments all describe this censored variable, and the percentiles
+    ///     inside the bounds are unchanged.
     /// </para>
     /// <para>
     /// <b> References: </b>
@@ -117,13 +126,21 @@ namespace Numerics.Distributions
         }
 
         /// <summary>
-        /// The minimum allowable value that can be sampled.
+        /// The minimum allowable value that can be sampled. Default = negative infinity.
         /// </summary>
+        /// <remarks>
+        /// Values of the PERT below this bound are censored to it, so the bound carries a point mass equal to the PERT
+        /// CDF at the bound. A finite value is written to and read from the XML representation.
+        /// </remarks>
         public double MinAllowableValue { get; set; } = double.NegativeInfinity;
 
         /// <summary>
-        /// The maximum allowable value that can be sampled.
+        /// The maximum allowable value that can be sampled. Default = positive infinity.
         /// </summary>
+        /// <remarks>
+        /// Values of the PERT above this bound are censored to it, so the bound carries a point mass equal to the PERT
+        /// exceedance probability at the bound. A finite value is written to and read from the XML representation.
+        /// </remarks>
         public double MaxAllowableValue { get; set; } = double.PositiveInfinity;
 
 
@@ -186,63 +203,113 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When an allowable bound lies inside the PERT support, this is the mean of the censored variable, including the
+        /// point masses at the bounds.
+        /// </remarks>
         public override double Mean
         {
             get 
             {
+                if (_parametersSolved == false) SolveParameters();
                 if (_beta.Min.AlmostEquals(_beta.Max)) return _beta.Min;
+                if (BoundsCensor()) return CensoredMoments()[0];
                 return _beta.Mean < MinAllowableValue ? MinAllowableValue : _beta.Mean > MaxAllowableValue ? MaxAllowableValue : _beta.Mean;  
             }
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Censoring is monotone, so the median is the PERT median clamped to the allowable bounds.
+        /// </remarks>
         public override double Median
         {
             get 
             {
+                if (_parametersSolved == false) SolveParameters();
                 if (_beta.Min.AlmostEquals(_beta.Max)) return _beta.Min;
                 return _beta.Median < MinAllowableValue ? MinAllowableValue : _beta.Median > MaxAllowableValue ? MaxAllowableValue : _beta.Median; 
             }
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The mode of the PERT density, clamped to the allowable bounds. The point masses at censoring bounds are not
+        /// compared against the density.
+        /// </remarks>
         public override double Mode
         {
             get 
             {
+                if (_parametersSolved == false) SolveParameters();
                 if (_beta.Min.AlmostEquals(_beta.Max)) return _beta.Min;
                 return _beta.Mode < MinAllowableValue ? MinAllowableValue : _beta.Mode > MaxAllowableValue ? MaxAllowableValue : _beta.Mode; 
             }
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When an allowable bound lies inside the PERT support, this is the moment of the censored variable, including
+        /// the point masses at the bounds.
+        /// </remarks>
         public override double StandardDeviation
         {
-            get { return _beta.StandardDeviation; }
+            get
+            {
+                if (_parametersSolved == false) SolveParameters();
+                if (BoundsCensor()) return CensoredMoments()[1];
+                return _beta.StandardDeviation;
+            }
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When an allowable bound lies inside the PERT support, this is the moment of the censored variable, including
+        /// the point masses at the bounds.
+        /// </remarks>
         public override double Skewness
         {
-            get { return _beta.Skewness; }
+            get
+            {
+                if (_parametersSolved == false) SolveParameters();
+                if (BoundsCensor()) return CensoredMoments()[2];
+                return _beta.Skewness;
+            }
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// When an allowable bound lies inside the PERT support, this is the moment of the censored variable, including
+        /// the point masses at the bounds.
+        /// </remarks>
         public override double Kurtosis
         {
-            get { return _beta.Kurtosis; }
+            get
+            {
+                if (_parametersSolved == false) SolveParameters();
+                if (BoundsCensor()) return CensoredMoments()[3];
+                return _beta.Kurtosis;
+            }
         }
 
         /// <inheritdoc/>
         public override double Minimum
         {
-            get { return Math.Max(_beta.Minimum, MinAllowableValue); }
+            get
+            {
+                if (_parametersSolved == false) SolveParameters();
+                return Math.Max(_beta.Minimum, MinAllowableValue);
+            }
         }
 
         /// <inheritdoc/>
         public override double Maximum
         {
-            get { return Math.Min(_beta.Maximum, MaxAllowableValue); }
+            get
+            {
+                if (_parametersSolved == false) SolveParameters();
+                return Math.Min(_beta.Maximum, MaxAllowableValue);
+            }
         }
 
         /// <inheritdoc/>
@@ -368,6 +435,10 @@ namespace Numerics.Distributions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Below <see cref="MinAllowableValue"/> and above <see cref="MaxAllowableValue"/> the density is zero. The point
+        /// masses that censoring places on the bounds are not represented by the density.
+        /// </remarks>
         public override double PDF(double x)
         {
             if (_parametersValid == false) ValidateParameters(Percentile5th, Percentile50th, Percentile95th, true);
@@ -377,12 +448,15 @@ namespace Numerics.Distributions
             if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return 0.0d;
             if (double.IsNaN(_beta.Mode)) return 0.0d;
             //
-            if (x < MinAllowableValue) x = MinAllowableValue;
-            if (x > MaxAllowableValue) x = MaxAllowableValue;
+            if (x < MinAllowableValue || x > MaxAllowableValue) return 0.0d;
             return _beta.PDF(x);
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The CDF of the censored variable: zero below <see cref="MinAllowableValue"/>, the PERT CDF between the bounds,
+        /// and one at and above <see cref="MaxAllowableValue"/>.
+        /// </remarks>
         public override double CDF(double x)
         {
             if (_parametersValid == false) ValidateParameters(Percentile5th, Percentile50th, Percentile95th, true);
@@ -392,8 +466,8 @@ namespace Numerics.Distributions
             if (_beta.Min.AlmostEquals(_beta.Max) && _beta.Min.AlmostEquals(_beta.Mode)) return 1d;
             if (double.IsNaN(_beta.Mode)) return 1d;
             //
-            if (x < MinAllowableValue) x = MinAllowableValue;
-            if (x > MaxAllowableValue) x = MaxAllowableValue;
+            if (x < MinAllowableValue) return 0d;
+            if (x >= MaxAllowableValue) return 1d;
             return _beta.CDF(x);
         }
 
@@ -426,6 +500,55 @@ namespace Numerics.Distributions
             return x;
         }
 
+        /// <summary>
+        /// Determines whether an allowable bound lies strictly inside the solved PERT support, so that censoring moves
+        /// probability onto the bound.
+        /// </summary>
+        /// <returns>True when at least one bound censors part of the PERT support.</returns>
+        private bool BoundsCensor()
+        {
+            return MinAllowableValue > _beta.Min || MaxAllowableValue < _beta.Max;
+        }
+
+        /// <summary>
+        /// Computes the mean, standard deviation, skewness and kurtosis of the censored variable.
+        /// </summary>
+        /// <returns>The mean, standard deviation, skewness and kurtosis.</returns>
+        /// <remarks>
+        /// The moments combine the point masses F(L) at the lower bound L and 1 - F(U) at the upper bound U with the
+        /// PERT density integrated over the uncensored interval by <see cref="AdaptiveGaussKronrod"/> at relative and
+        /// absolute tolerances of 1E-12 and 1E-15. The central moments are taken about the censored mean.
+        /// </remarks>
+        private double[] CensoredMoments()
+        {
+            double lower = Math.Max(_beta.Min, MinAllowableValue);
+            double upper = Math.Min(_beta.Max, MaxAllowableValue);
+            double lowerMass = MinAllowableValue > _beta.Min ? _beta.CDF(MinAllowableValue) : 0d;
+            double upperMass = MaxAllowableValue < _beta.Max ? _beta.CCDF(MaxAllowableValue) : 0d;
+            double Expectation(Func<double, double> h)
+            {
+                double result = lowerMass * h(lower) + upperMass * h(upper);
+                if (upper > lower)
+                {
+                    var agk = new AdaptiveGaussKronrod(x => h(x) * _beta.PDF(x), lower, upper)
+                    {
+                        RelativeTolerance = 1E-12,
+                        AbsoluteTolerance = 1E-15,
+                        ReportFailure = false
+                    };
+                    agk.Integrate();
+                    result += agk.Status != IntegrationStatus.Failure ? agk.Result : double.NaN;
+                }
+                return result;
+            }
+            double mean = Expectation(x => x);
+            double sd = Math.Sqrt(Expectation(x => (x - mean) * (x - mean)));
+            if (!(sd > 0d)) return [mean, 0d, double.NaN, double.NaN];
+            double skew = Expectation(x => Math.Pow((x - mean) / sd, 3d));
+            double kurt = Expectation(x => Math.Pow((x - mean) / sd, 4d));
+            return [mean, sd, skew, kurt];
+        }
+
         /// <inheritdoc/>
         public override UnivariateDistributionBase Clone()
         {
@@ -439,8 +562,12 @@ namespace Numerics.Distributions
         /// <summary>
         /// Return the Pert-Percentile as a Pert distribution.
         /// </summary>
+        /// <returns>The PERT distribution with the solved min, mode and max. When the 5th and 95th percentiles are equal,
+        /// this is the fixed-value PERT whose min, mode and max all equal that percentile.</returns>
         public Pert ToPert()
         {
+            if (_parametersSolved == false) SolveParameters();
+            if (_parametersValid && Percentile5th == Percentile95th) return new Pert(Percentile5th, Percentile5th, Percentile5th);
             return new Pert(_beta.Min, _beta.Mode, _beta.Max);
         }
 
@@ -466,14 +593,34 @@ namespace Numerics.Distributions
                 parmStrings[i] = parms[i].ToString("G17", CultureInfo.InvariantCulture);
             }
             result.SetAttributeValue("BetaParameters", String.Join("|", parmStrings));
+            // Censoring bounds, written only when finite
+            if (Tools.IsFinite(MinAllowableValue))
+                result.SetAttributeValue(nameof(MinAllowableValue), MinAllowableValue.ToString("G17", CultureInfo.InvariantCulture));
+            if (Tools.IsFinite(MaxAllowableValue))
+                result.SetAttributeValue(nameof(MaxAllowableValue), MaxAllowableValue.ToString("G17", CultureInfo.InvariantCulture));
             return result;
+        }
+
+        /// <summary>
+        /// Reads an optional censoring bound attribute.
+        /// </summary>
+        /// <param name="xElement">The XElement to read.</param>
+        /// <param name="name">The attribute name.</param>
+        /// <param name="defaultValue">The value used when the attribute is absent or unreadable.</param>
+        /// <returns>The bound.</returns>
+        private static double ReadBound(XElement xElement, string name, double defaultValue)
+        {
+            var attribute = xElement.Attribute(name);
+            if (attribute != null && double.TryParse(attribute.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
+                return value;
+            return defaultValue;
         }
 
         /// <summary>
         /// Create a Pert-Percentile distribution from XElement.
         /// </summary>
         /// <param name="xElement">The XElement to deserialize.</param>
-        /// <returns>A new mixture distribution.</returns>
+        /// <returns>A new PERT-Percentile distribution, or null if the element cannot be read.</returns>
         public static PertPercentile? FromXElement(XElement xElement)
         {
             UnivariateDistributionType type = UnivariateDistributionType.Deterministic;
@@ -541,6 +688,9 @@ namespace Numerics.Distributions
                     _5th = _5th,
                     _50th = _50th,
                     _95th = _95th };
+                pert._parametersValid = pert.ValidateParameters(_5th, _50th, _95th, false) is null;
+                pert.MinAllowableValue = ReadBound(xElement, nameof(MinAllowableValue), double.NegativeInfinity);
+                pert.MaxAllowableValue = ReadBound(xElement, nameof(MaxAllowableValue), double.PositiveInfinity);
 
                 return pert;
             }

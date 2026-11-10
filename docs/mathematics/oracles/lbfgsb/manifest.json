@@ -1,0 +1,46 @@
+{
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "environment": {
+    "python": "3.14.3",
+    "numpy": "2.4.2",
+    "scipy": "1.17.1"
+  },
+  "generators": [
+    {
+      "script": "lbfgsb_scipy_oracle.py",
+      "writes": [
+        "lbfgsb-scipy.json"
+      ],
+      "reference": "scipy.optimize.minimize(method='L-BFGS-B'), maxcor=10, gtol=1e-5, ftol=2.220446049250313e-9, maxls=20, analytic gradients"
+    },
+    {
+      "script": "lbfgsb_scipy_timing.py",
+      "writes": [
+        "lbfgsb-scipy-timings.json"
+      ],
+      "reference": "wall time of scipy.optimize.minimize(method='L-BFGS-B') on the Benchmarks_Numerics LBFGSBBenchmarks problems; median of 21 runs after one warm-up"
+    }
+  ],
+  "consumers": [
+    "Test_Numerics/Mathematics/Optimization/Local/Test_LBFGSB.cs (inline fixtures)",
+    "Benchmarks_Numerics/Optimization/LBFGSBBenchmarks.cs"
+  ],
+  "files": [
+    {
+      "file": "lbfgsb_scipy_oracle.py",
+      "sha256Utf8Lf": "84b42689723aad81b1596f67b0a19ec6272f019b20ed302e067d863dc9907cc7"
+    },
+    {
+      "file": "lbfgsb-scipy.json",
+      "sha256Utf8Lf": "99bed2a45cd86e1618d55d726f070a34e7fe519e00d2dbad26140b97fd7045b3"
+    },
+    {
+      "file": "lbfgsb_scipy_timing.py",
+      "sha256Utf8Lf": "8407617ea721411d4676bc092d90c0a92eef1db912c323a84f3d3a50b71d13b8"
+    },
+    {
+      "file": "lbfgsb-scipy-timings.json",
+      "sha256Utf8Lf": "0cf4258b101062fde2e2b88a19015ee8c97773b40f18d3219ea3f3c2f8aaaecf"
+    }
+  ]
+}

@@ -523,5 +523,81 @@ namespace Mathematics.LinearAlgebra
             double result = A.Determinant();
             Assert.AreEqual(result, true_result);
         }
+
+        /// <summary>
+        /// Matrix multiplication is bit-identical to the direct i-j-k triple loop it replaced,
+        /// including rectangular shapes, empty inner dimensions and special values.
+        /// </summary>
+        [TestMethod()]
+        public void Test_MultiplyMatchesDirectTripleLoop()
+        {
+            var rng = new System.Random(42);
+            int[][] shapes = { new[] { 1, 1, 1 }, new[] { 3, 4, 2 }, new[] { 7, 1, 5 }, new[] { 5, 0, 3 }, new[] { 17, 23, 11 }, new[] { 64, 64, 64 } };
+            foreach (var shape in shapes)
+            {
+                var A = new Matrix(shape[0], shape[1]);
+                var B = new Matrix(shape[1], shape[2]);
+                for (int i = 0; i < A.NumberOfRows; i++)
+                    for (int j = 0; j < A.NumberOfColumns; j++)
+                        A[i, j] = (rng.NextDouble() - 0.5) * System.Math.Pow(10d, rng.Next(-8, 9));
+                for (int i = 0; i < B.NumberOfRows; i++)
+                    for (int j = 0; j < B.NumberOfColumns; j++)
+                        B[i, j] = (rng.NextDouble() - 0.5) * System.Math.Pow(10d, rng.Next(-8, 9));
+                AssertBitIdentical(DirectProduct(A, B), A * B);
+            }
+
+            var special = new Matrix(new[,] { { double.NaN, 1d, -0d }, { double.PositiveInfinity, double.Epsilon, 1E308 }, { -0d, -0d, 2d } });
+            var other = new Matrix(new[,] { { 1d, -0d, 3d }, { 1E308, 0d, -1d }, { -0d, double.NegativeInfinity, 0.5d } });
+            AssertBitIdentical(DirectProduct(special, other), special * other);
+            AssertBitIdentical(DirectProduct(other, special), other.Multiply(special));
+            AssertBitIdentical(DirectProduct(special, special), special * special);
+        }
+
+        /// <summary>
+        /// The direct i-j-k matrix product, the reference for the vectorized product.
+        /// </summary>
+        private static Matrix DirectProduct(Matrix A, Matrix B)
+        {
+            var result = new Matrix(A.NumberOfRows, B.NumberOfColumns);
+            for (int i = 0; i < A.NumberOfRows; i++)
+            {
+                for (int j = 0; j < B.NumberOfColumns; j++)
+                {
+                    double sum = 0.0d;
+                    for (int k = 0; k < A.NumberOfColumns; k++)
+                        sum += A[i, k] * B[k, j];
+                    result[i, j] = sum;
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Asserts two matrices have the same shape and the same bit pattern in every entry.
+        /// </summary>
+        private static void AssertBitIdentical(Matrix expected, Matrix actual)
+        {
+            Assert.AreEqual(expected.NumberOfRows, actual.NumberOfRows);
+            Assert.AreEqual(expected.NumberOfColumns, actual.NumberOfColumns);
+            for (int i = 0; i < expected.NumberOfRows; i++)
+                for (int j = 0; j < expected.NumberOfColumns; j++)
+                    Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(expected[i, j]), System.BitConverter.DoubleToInt64Bits(actual[i, j]));
+        }
+
+        /// <summary>
+        /// IsSymmetric uses a tolerance relative to the largest entry, so it rejects [[1E-13, 0.5E-13], [0.6E-13, 1E-13]]
+        /// (which an absolute 1E-12 tolerance accepts) and accepts large matrices with tiny relative asymmetry.
+        /// </summary>
+        [TestMethod()]
+        public void Test_IsSymmetricIsScaleInvariant()
+        {
+            Assert.IsFalse(new Matrix(new double[,] { { 1E-13, 0.5E-13 }, { 0.6E-13, 1E-13 } }).IsSymmetric);
+            Assert.IsTrue(new Matrix(new double[,] { { 1E6, 1E6 + 1E-7 }, { 1E6, 2E6 } }).IsSymmetric);
+            Assert.IsFalse(new Matrix(new double[,] { { 1, 0.5 }, { 0.5 + 1E-9, 1 } }).IsSymmetric);
+            Assert.IsTrue(new Matrix(new double[,] { { 1, 0.5 }, { 0.5 + 1E-13, 1 } }).IsSymmetric);
+            Assert.IsTrue(new Matrix(2).IsSymmetric);
+            Assert.IsFalse(new Matrix(new double[,] { { 1, double.NaN }, { double.NaN, 1 } }).IsSymmetric);
+            Assert.IsFalse(new Matrix(2, 3).IsSymmetric);
+        }
     }
 }

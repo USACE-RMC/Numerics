@@ -136,7 +136,7 @@ namespace Numerics.Data.Statistics
             if (!Tools.IsFinite(sigmaSq) || sigmaSq <= 0)
                 return double.NegativeInfinity;
 
-            double logLikelihood = -n / 2.0 * Tools.LogSqrt2PI - n / 2.0 * Math.Log(sigmaSq) - sse / (2.0 * sigmaSq) + logJacobianSum;
+            double logLikelihood = -n * Tools.LogSqrt2PI - n / 2.0 * Math.Log(sigmaSq) - sse / (2.0 * sigmaSq) + logJacobianSum;
 
             return Tools.IsFinite(logLikelihood) ? logLikelihood : double.NegativeInfinity;
         }

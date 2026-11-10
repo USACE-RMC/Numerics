@@ -586,5 +586,29 @@ namespace Sampling
                 return new System.Xml.Linq.XElement(nameof(LinearScaleLink));
             }
         }
+        /// <summary>
+        /// A serial pivotal run gives the same bits as the default parallel run.
+        /// </summary>
+        [TestMethod]
+        public void RunPivotalBootstrap_SerialMatchesParallelBits()
+        {
+            Bootstrap<double[]> parallel = CreateSeededNormalPivotalBootstrap();
+            Bootstrap<double[]> serial = CreateSeededNormalPivotalBootstrap();
+            serial.UseParallel = false;
+
+            parallel.RunPivotalBootstrap();
+            serial.RunPivotalBootstrap();
+
+            Assert.HasCount(parallel.BootstrapParameterSets.Length, serial.BootstrapParameterSets);
+            Assert.AreEqual(parallel.FailedReplicates, serial.FailedReplicates);
+            for (int i = 0; i < parallel.BootstrapParameterSets.Length; i++)
+            {
+                var a = parallel.BootstrapParameterSets[i].Values;
+                var b = serial.BootstrapParameterSets[i].Values;
+                for (int j = 0; j < a.Length; j++)
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(a[j]), BitConverter.DoubleToInt64Bits(b[j]));
+            }
+        }
+
     }
 }

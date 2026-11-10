@@ -87,7 +87,7 @@ namespace Functions
             Assert.AreEqual(5d, composite.InverseFunction(105d), 1E-12);
 
             // The re-scaled remainder drives the selected child's own draw: with equal-weight
-            // uncertain children, u = 0.75 selects child 2 at remainder 0.5 — its median.
+            // uncertain children, u = 0.75 selects child 2 at remainder 0.5, its median.
             var uncertain = new CompositeFunction(
                 new IUnivariateFunction[] { new LinearFunction(0, 1, 2), new LinearFunction(0, 1, 2) },
                 new[] { 0.5d, 0.5d })
@@ -344,5 +344,86 @@ namespace Functions
                 return ConfidenceLevel;
             }
         }
+
+        /// <summary>Builds the three-child fixture used by the cached-lock regression tests.</summary>
+        private static CompositeFunction BuildLockFixture(List<IUnivariateFunction> children)
+        {
+            return new CompositeFunction(children, new[] { 0.2, 0.5, 0.3 });
+        }
+
+        /// <summary>Builds the shared non-deterministic children of the cached-lock fixture.</summary>
+        private static List<IUnivariateFunction> BuildLockChildren()
+        {
+            return new List<IUnivariateFunction>
+            {
+                new LinearFunction(1.0, 0.5, 0.2) { IsDeterministic = false },
+                new PowerFunction(2.0, 1.5, 0.0, 0.1) { IsDeterministic = false },
+                new LinearFunction(-0.5, 1.25, 0.3) { IsDeterministic = false }
+            };
+        }
+
+        /// <summary>
+        /// Test that composite evaluation reproduces fixed reference values exactly, in both
+        /// modes, at the mean sentinel and at two draws, together with the inverse.
+        /// </summary>
+        [TestMethod]
+        public void Test_CachedChildLocks_MatchReferenceValuesExactly()
+        {
+            var composite = BuildLockFixture(BuildLockChildren());
+            var xs = new[] { 0.5, 1.0, 2.5, 4.0 };
+            var cases = new (CompositeFunctionMode Mode, double Level, double[] Expected)[]
+            {
+                (CompositeFunctionMode.WeightedAverage, -1, new[] { 0.6410533905932737, 1.525, 5.190347075210474, 9.95 }),
+                (CompositeFunctionMode.Mixture, -1, new[] { 0.6410533905932737, 1.525, 5.190347075210474, 9.95 }),
+                (CompositeFunctionMode.WeightedAverage, 0.3, new[] { 0.5548187073790324, 1.4057391387195495, 4.920228816135511, 9.473117576320714 }),
+                (CompositeFunctionMode.Mixture, 0.3, new[] { 0.6500306823200084, 1.8385644137911852, 7.267563965640547, 14.70851531032948 }),
+                (CompositeFunctionMode.WeightedAverage, 0.85, new[] { 0.8143994494211085, 1.7689411148518965, 5.756753188210139, 10.958374534375825 }),
+                (CompositeFunctionMode.Mixture, 0.85, new[] { 0.12500000000000008, 0.7500000000000001, 2.625, 4.5 }),
+            };
+            foreach (var c in cases)
+            {
+                composite.Mode = c.Mode;
+                composite.ConfidenceLevel = c.Level;
+                for (int i = 0; i < xs.Length; i++)
+                    Assert.AreEqual(c.Expected[i], composite.Function(xs[i]), 0d, c.Mode + " at " + c.Level);
+            }
+            composite.Mode = CompositeFunctionMode.Mixture;
+            composite.ConfidenceLevel = 0.85;
+            Assert.AreEqual(2.8, composite.InverseFunction(3.0), 0d);
+            composite.Mode = CompositeFunctionMode.WeightedAverage;
+            composite.ConfidenceLevel = 0.3;
+            Assert.AreEqual(1.7458256714995033, composite.InverseFunction(3.0), 0d);
+        }
+
+        /// <summary>
+        /// Test that two composites sharing children serialize on the shared child locks:
+        /// concurrent draw-path and mean-path evaluations return exactly the sequential values
+        /// and leave each child's configured level unchanged.
+        /// </summary>
+        [TestMethod]
+        public void Test_CachedChildLocks_SharedChildrenAcrossComposites()
+        {
+            var children = BuildLockChildren();
+            var drawing = BuildLockFixture(children);
+            var meanPath = BuildLockFixture(children);
+            drawing.ConfidenceLevel = 0.3;
+            var xs = new[] { 0.5, 1.0, 2.5, 4.0 };
+            var expectedDraw = new[] { 0.5548187073790324, 1.4057391387195495, 4.920228816135511, 9.473117576320714 };
+            var expectedMean = new[] { 0.6410533905932737, 1.525, 5.190347075210474, 9.95 };
+
+            int mismatches = 0;
+            Parallel.For(0, 20000, i =>
+            {
+                int j = i % xs.Length;
+                bool draw = (i & 1) == 0;
+                double value = draw ? drawing.Function(xs[j]) : meanPath.Function(xs[j]);
+                double expected = draw ? expectedDraw[j] : expectedMean[j];
+                if (value != expected) Interlocked.Increment(ref mismatches);
+            });
+            Assert.AreEqual(0, mismatches);
+            foreach (var child in children)
+                Assert.AreEqual(-1d, child.ConfidenceLevel, 0d);
+        }
+
     }
 }

@@ -60,6 +60,25 @@ namespace Numerics.Data.Statistics
         }
 
         /// <summary>
+        /// Fits the transformation exponent by maximum likelihood and reports whether the fit succeeded.
+        /// </summary>
+        /// <param name="values">The list of values to transform.</param>
+        /// <param name="lambda">Output. The transformation exponent in [-5, 5], or NaN when the fit fails.</param>
+        /// <returns>
+        /// True when a finite exponent was found; false when the sample cannot support a fit (null, fewer than
+        /// two values, a non-positive or non-finite value, or every value equal) or the search did not converge.
+        /// </returns>
+        /// <remarks>
+        /// The exponent is exactly that of <see cref="FitLambda(IList{double}, out double)"/>, which returns NaN
+        /// on failure without saying so.
+        /// </remarks>
+        public static bool TryFitLambda(IList<double> values, out double lambda)
+        {
+            FitLambda(values, out lambda);
+            return !double.IsNaN(lambda);
+        }
+
+        /// <summary>
         /// The log-likelihood function. The transformed observations are assumed to come from a
         /// normal distribution. The change of variable formula is used to write the log-likelihood function.
         /// </summary>
@@ -100,7 +119,7 @@ namespace Numerics.Data.Statistics
             if (!Tools.IsFinite(sigma) || sigma <= 0d)
                 return double.NegativeInfinity;
 
-            double ll = -n / 2.0d * Tools.LogSqrt2PI - n / 2.0d * Math.Log(sigma * sigma) - 1.0d / (2d * sigma * sigma) * sse + (lambda1 - 1d) * sumX;
+            double ll = -n * Tools.LogSqrt2PI - n / 2.0d * Math.Log(sigma * sigma) - 1.0d / (2d * sigma * sigma) * sse + (lambda1 - 1d) * sumX;
             return Tools.IsFinite(ll) ? ll : double.NegativeInfinity;
         }
 
@@ -140,6 +159,23 @@ namespace Numerics.Data.Statistics
             if (Math.Abs(lambda) > 5d) return double.NaN;
             if (Math.Abs(lambda) < 1e-8) return Math.Log(value);
             return (Math.Pow(value, lambda) - 1.0d) / lambda;
+        }
+
+        /// <summary>
+        /// Returns the derivative of the Box-Cox transformation with respect to the original value.
+        /// </summary>
+        /// <param name="value">The value at which to evaluate the derivative.</param>
+        /// <param name="lambda">The transformation exponent. Range -5 to +5.</param>
+        /// <returns>
+        /// x^(λ − 1), or 1 / x where <see cref="Transform(double, double)"/> uses the logarithm (|λ| &lt; 1E-8);
+        /// NaN for a non-positive value or |λ| &gt; 5, as for the transformation.
+        /// </returns>
+        public static double Derivative(double value, double lambda)
+        {
+            if (value <= 0) return double.NaN;
+            if (Math.Abs(lambda) > 5d) return double.NaN;
+            if (Math.Abs(lambda) < 1e-8) return 1.0d / value;
+            return Math.Pow(value, lambda - 1.0d);
         }
 
         /// <summary>

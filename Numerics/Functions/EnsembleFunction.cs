@@ -1,7 +1,9 @@
 ﻿using Numerics.Mathematics.Optimization;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Numerics.Functions
@@ -19,13 +21,15 @@ namespace Numerics.Functions
     /// Every sample is a new clone of the template configured with one parameter set, so
     /// concurrent samples do not share mutable function state. The constructor stores a
     /// serialized template snapshot, and each sample is reconstructed through
-    /// <see cref="UnivariateFunctionFactory.CreateFromXElement(XElement)"/>.
+    /// <see cref="UnivariateFunctionFactory.CreateFromXElement(XElement)"/>. The snapshot is
+    /// parsed once and the parsed elements are pooled, so a draw pays only the reconstruction;
+    /// each parsed element is used by one thread at a time.
     /// <see cref="TabularFunction"/> is not supported because its uncertain paired data cannot
     /// be configured through a reusable parameter vector.
     /// </para>
     /// <para>
     /// Percentile sampling maps u ∈ [0, 1] onto the index ladder as
-    /// min(⌊u·N⌋, N − 1) — the standard posterior-lookup convention.
+    /// min(⌊u·N⌋, N − 1), the standard posterior-lookup convention.
     /// </para>
     /// </remarks>
     [Serializable]
@@ -49,6 +53,7 @@ namespace Numerics.Functions
                 throw new NotSupportedException("TabularFunction templates cannot be configured from ensemble parameter sets.");
 
             _templateXml = SerializeTemplate(template).ToString(SaveOptions.DisableFormatting);
+            var templateElement = XElement.Parse(_templateXml);
 
             int expectedLength = template.NumberOfParameters;
             _parameterSets = new ParameterSet[parameterSets.Count];
@@ -62,18 +67,25 @@ namespace Numerics.Functions
                         throw new ArgumentException("Parameter set " + i + " contains a non-finite value.", nameof(parameterSets));
                 }
 
-                var validationFunction = UnivariateFunctionFactory.CreateFromXElement(XElement.Parse(_templateXml));
+                var validationFunction = UnivariateFunctionFactory.CreateFromXElement(templateElement);
                 var validationError = validationFunction.ValidateParameters(parameterSets[i].Values, false);
                 if (validationError != null)
                     throw new ArgumentException("Parameter set " + i + " is invalid for the template function.", nameof(parameterSets), validationError);
                 _parameterSets[i] = parameterSets[i].Clone();
             }
-
+            ReturnTemplate(templateElement);
         }
 
 
         private readonly string _templateXml;
         private readonly ParameterSet[] _parameterSets;
+
+        /// <summary>
+        /// Parsed copies of <see cref="_templateXml"/> that are not in use. Rebuilt lazily after
+        /// deserialization.
+        /// </summary>
+        [NonSerialized]
+        private ConcurrentBag<XElement>? _templatePool;
 
         /// <summary>
         /// The number of posterior parameter sets.
@@ -104,7 +116,16 @@ namespace Numerics.Functions
         {
             if (index < 0 || index >= _parameterSets.Length)
                 throw new ArgumentOutOfRangeException(nameof(index), "The posterior index must be within [0, Count).");
-            var clone = UnivariateFunctionFactory.CreateFromXElement(XElement.Parse(_templateXml));
+            var templateElement = RentTemplate();
+            IUnivariateFunction clone;
+            try
+            {
+                clone = UnivariateFunctionFactory.CreateFromXElement(templateElement);
+            }
+            finally
+            {
+                ReturnTemplate(templateElement);
+            }
             clone.SetParameters(_parameterSets[index].Values);
             if (!clone.ParametersValid)
                 clone.ValidateParameters(_parameterSets[index].Values, true);
@@ -175,6 +196,34 @@ namespace Numerics.Functions
                 throw new ArgumentException("The serialized ensemble function carries no parameter sets.", nameof(xElement));
 
             return new EnsembleFunction(UnivariateFunctionFactory.CreateFromXElement(template), sets);
+        }
+
+        /// <summary>
+        /// Takes a parsed template element from the pool, parsing a new one when the pool is empty.
+        /// </summary>
+        /// <returns>A parsed template element owned by the caller until it is returned.</returns>
+        private XElement RentTemplate()
+        {
+            var pool = _templatePool;
+            if (pool != null && pool.TryTake(out XElement? element))
+                return element!;
+            return XElement.Parse(_templateXml);
+        }
+
+        /// <summary>
+        /// Returns a parsed template element to the pool. Callers only read the element, so it is
+        /// unchanged and reusable.
+        /// </summary>
+        /// <param name="element">The element to return.</param>
+        private void ReturnTemplate(XElement element)
+        {
+            var pool = _templatePool;
+            if (pool == null)
+            {
+                Interlocked.CompareExchange(ref _templatePool, new ConcurrentBag<XElement>(), null);
+                pool = _templatePool!;
+            }
+            pool.Add(element);
         }
 
         /// <summary>

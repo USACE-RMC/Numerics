@@ -69,6 +69,34 @@ namespace Distributions.Univariate
             AssertCanonicalInvalidation(risks, () => risks.CorrelationMatrix = null);
         }
 
+        /// <summary>
+        /// A changed logarithm base and a changed Ln-Normal moment surface change the canonical state and invalidate
+        /// the cached moments. Reference means from scipy: the minimum of two log-Pearson Type III variables with
+        /// log-space (mu, sigma, skew) = (1, 0.2, 0.1) and (1.1, 0.2, 0.1), integrated as the survival product with
+        /// scipy.integrate.quad over scipy.stats.pearson3.sf.
+        /// </summary>
+        [TestMethod]
+        public void Configuration_ObservesLogarithmBaseAndMomentSurface()
+        {
+            var risks = new CompetingRisks(new UnivariateDistributionBase[] { new LogPearsonTypeIII(1d, 0.2d, 0.1d), new LogPearsonTypeIII(1.1d, 0.2d, 0.1d) });
+            Assert.AreEqual(9.143861296524994, risks.Mean, 1E-6);
+            foreach (var component in risks.Distributions) ((LogPearsonTypeIII)component).Base = Math.E;
+            Assert.AreEqual(2.5694814604421174, risks.Mean, 1E-6);
+            Assert.AreEqual(risks.Clone().Mean, risks.Mean, 0d);
+
+            var logNormal = new CompetingRisks(new UnivariateDistributionBase[] { new LogNormal(1d, 0.2d), new LogNormal(1.1d, 0.2d) })
+                { Dependency = Probability.DependencyType.PerfectlyPositive };
+            string before = DistributionNumerics.ConfigurationState(logNormal);
+            AssertCanonicalInvalidation(logNormal, () => ((LogNormal)logNormal.Distributions[1]).Base = Math.E);
+            Assert.AreNotEqual(before, CachedConfiguration(logNormal));
+
+            var lnNormal = new CompetingRisks(new UnivariateDistributionBase[] { new LnNormal(10d, 2d), new LnNormal(12d, 3d) })
+                { Dependency = Probability.DependencyType.PerfectlyPositive };
+            before = DistributionNumerics.ConfigurationState(lnNormal);
+            AssertCanonicalInvalidation(lnNormal, () => { var component = (LnNormal)lnNormal.Distributions[0]; component.Mu = component.Mu; });
+            Assert.AreNotEqual(before, CachedConfiguration(lnNormal));
+        }
+
         /// <summary>Matrix lower bounds do not add an invalidation distinction absent from the original canonical state.</summary>
         [TestMethod]
         public void Configuration_RetainsMatrixEnumerationSemantics()
