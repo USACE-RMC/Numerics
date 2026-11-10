@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
 
@@ -238,6 +239,92 @@ namespace Mathematics.Optimization
             Assert.AreEqual(1d, solver.BestParameterSet.Values[0]);
             Assert.AreEqual(1, solver.Iterations);
             Assert.IsNotNull(solver.Hessian);
+        }
+
+        /// <summary>
+        /// Default runs are reproducible bit for bit, with analytic and finite-difference gradients.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the exact search path; see <see cref="OptimizerFingerprint"/>. The
+        /// strings pin the default path, with <see cref="BFGS.ScaleInitialInverseHessian"/> off.
+        /// </remarks>
+        [TestMethod]
+        public void Test_DefaultRunFingerprint()
+        {
+            var lower = new[] { -5d, -5d, -5d, -5d };
+            var upper = new[] { 5d, 5d, 5d, 5d };
+            var analytic = new BFGS(OptimizerFingerprint.Rosenbrock, 4, new[] { -1.2, 1d, -1.2, 1d }, lower, upper, RosenbrockGradient) { ComputeHessian = false };
+            analytic.Minimize();
+            Assert.AreEqual("x=3FF0000000000190,3FF00000000002AC,3FF0000000000379,3FF000000000070E|f=3AF8977A50000000|it=53|fe=70|st=Success|trace=70:657805CBE3843D64", OptimizerFingerprint.Of(analytic));
+            var numeric = new BFGS(OptimizerFingerprint.Rosenbrock, 4, new[] { -1.2, 1d, -1.2, 1d }, lower, upper) { ComputeHessian = false };
+            numeric.Minimize();
+            Assert.AreEqual("x=3FEFFFFFF196B322,3FEFFFFFE351D592,3FEFFFFFC6C8337C,3FEFFFFF8D9067EA|f=3D10D4349B4ECA6A|it=53|fe=601|st=Success|trace=601:E91216A032522E8B", OptimizerFingerprint.Of(numeric));
+        }
+
+
+        /// <summary>
+        /// The scaled initial metric is off by default and reaches the Rosenbrock minimum when enabled.
+        /// </summary>
+        [TestMethod]
+        public void Test_ScaledInitialMetricConverges()
+        {
+            Assert.IsFalse(new BFGS(OptimizerFingerprint.Rosenbrock, 2, new[] { -1.2, 1d }, new[] { -5d, -5d }, new[] { 5d, 5d }).ScaleInitialInverseHessian);
+            var unscaled = ScaledRosenbrock(1d, false);
+            var scaled = ScaledRosenbrock(1d, true);
+            Assert.AreEqual(OptimizationStatus.Success, scaled.Status);
+            for (int i = 0; i < 4; i++) Assert.AreEqual(1d, scaled.BestParameterSet.Values[i], 1E-8);
+            Assert.IsLessThan(unscaled.FunctionEvaluations, scaled.FunctionEvaluations);
+        }
+
+        /// <summary>
+        /// On a badly scaled objective the scaled initial metric converges in fewer evaluations than the unit metric.
+        /// </summary>
+        /// <remarks>
+        /// Multiplying Rosenbrock by 2^-20 shrinks the gradient, so the unit metric takes short steps until the
+        /// updates rebuild the curvature. The y's / y'y factor restores it after the first accepted step.
+        /// </remarks>
+        [TestMethod]
+        public void Test_ScaledInitialMetricHandlesSmallObjectiveScale()
+        {
+            double c = 1d / 1048576d;
+            var unscaled = ScaledRosenbrock(c, false);
+            var scaled = ScaledRosenbrock(c, true);
+            Assert.AreEqual(OptimizationStatus.Success, unscaled.Status);
+            Assert.AreEqual(OptimizationStatus.Success, scaled.Status);
+            for (int i = 0; i < 4; i++) Assert.AreEqual(1d, scaled.BestParameterSet.Values[i], 1E-8);
+            Assert.IsLessThan(unscaled.FunctionEvaluations, scaled.FunctionEvaluations);
+        }
+
+        /// <summary>
+        /// Minimizes the 4-D Rosenbrock function multiplied by a constant, with the gradient tolerance scaled to match.
+        /// </summary>
+        /// <param name="c">The objective scale.</param>
+        /// <param name="scale">Whether to scale the initial inverse Hessian.</param>
+        /// <returns>The finished optimizer.</returns>
+        private static BFGS ScaledRosenbrock(double c, bool scale)
+        {
+            var solver = new BFGS(x => c * OptimizerFingerprint.Rosenbrock(x), 4, new[] { -1.2, 1d, -1.2, 1d },
+                new[] { -5d, -5d, -5d, -5d }, new[] { 5d, 5d, 5d, 5d }, x => RosenbrockGradient(x).Select(v => c * v).ToArray())
+            { ComputeHessian = false, ScaleInitialInverseHessian = scale, AbsoluteTolerance = 1E-8 * c };
+            solver.Minimize();
+            return solver;
+        }
+
+        /// <summary>
+        /// The analytic Rosenbrock gradient written with products only.
+        /// </summary>
+        /// <param name="x">The point.</param>
+        /// <returns>The gradient.</returns>
+        private static double[] RosenbrockGradient(double[] x)
+        {
+            var g = new double[x.Length];
+            for (int i = 0; i < x.Length - 1; i++)
+            {
+                double a = x[i + 1] - x[i] * x[i];
+                g[i] += -400 * x[i] * a - 2 * (1 - x[i]);
+                g[i + 1] += 200 * a;
+            }
+            return g;
         }
     }
 }

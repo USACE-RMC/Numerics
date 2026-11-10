@@ -1,0 +1,134 @@
+"""Pareto-front oracle fixtures for Test_Numerics/Mathematics/Optimization/MultiObjective.
+
+Generates small point sets (seeded random sets with ties, and sampled ZDT1 and DTLZ2
+fronts), evaluates them with pymoo 0.6.2 (which delegates to moocore), and prints the
+C# fixture region of Test_ParetoFront.cs to stdout. Inputs are rounded to a few
+decimals before evaluation so the C# literals are exact.
+
+Definitions checked against the pymoo source:
+- NonDominatedSorting().do(F): fronts from moocore.pareto_rank; cross-checked here against
+  pymoo's own fast_non_dominated_sort (Deb et al. 2002).
+- Crowding distance: pymoo calc_crowding_distance divides the Deb sum by the number of
+  objectives; the fixture stores pymoo's value times M (the Numerics definition).
+- HV(ref_point=r): moocore.hypervolume, minimization, points not strictly inside r ignored.
+- GD(pf), IGD(pf): mean nearest Euclidean distance, no normalization.
+
+Run: python generate-pareto-oracles.py > fixtures.cs.txt
+"""
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import scipy
+import pymoo
+import moocore
+from pymoo.indicators.gd import GD
+from pymoo.indicators.hv import HV
+from pymoo.indicators.igd import IGD
+from pymoo.operators.survival.rank_and_crowding.metrics import get_crowding_function
+from pymoo.problems import get_problem
+from pymoo.util.nds.fast_non_dominated_sort import fast_non_dominated_sort
+from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
+from pymoo.util.ref_dirs import get_reference_directions
+
+rng = np.random.default_rng(20261105)
+out = []
+
+
+def lit(a):
+    """C# literal of a 2-D array as double[][] with round-trip doubles."""
+    rows = ", ".join("new[] { " + ", ".join(repr(float(v)) for v in row) + " }" for row in a)
+    return "new double[][] { " + rows + " }"
+
+
+def vec(v):
+    return "new double[] { " + ", ".join("double.PositiveInfinity" if np.isinf(x) else repr(float(x)) for x in v) + " }"
+
+
+def fronts_lit(fronts):
+    return "new int[][] { " + ", ".join("new[] { " + ", ".join(str(int(i)) for i in sorted(f)) + " }" for f in fronts) + " }"
+
+
+def emit(name, csharp):
+    out.append(f"        private static readonly {csharp[0]} {name} = {csharp[1]};")
+
+
+def nds(F, label):
+    fronts = NonDominatedSorting().do(F)
+    deb = fast_non_dominated_sort(F)
+    assert [sorted(f) for f in fronts] == [sorted(f) for f in deb], label
+    return fronts
+
+
+def crowding(F):
+    return get_crowding_function("cd").do(F) * F.shape[1]
+
+
+# Random sets with ties (one decimal) for sorting.
+sets = {
+    "Sort2": np.round(rng.random((20, 2)), 1),
+    "Sort3": np.round(rng.random((25, 3)), 1),
+    "Sort4": np.round(rng.random((20, 4)), 1),
+}
+for name, F in sets.items():
+    emit(name, ("double[][]", lit(F)))
+    emit(name + "Fronts", ("int[][]", fronts_lit(nds(F, name))))
+
+# Sampled true fronts.
+zdt1 = np.round(get_problem("zdt1").pareto_front(n_pareto_points=50), 6)
+dtlz2_3 = np.round(get_problem("dtlz2", n_obj=3).pareto_front(get_reference_directions("das-dennis", 3, n_partitions=6)), 6)
+dtlz2_5 = np.round(get_problem("dtlz2", n_obj=5).pareto_front(get_reference_directions("das-dennis", 5, n_partitions=3)), 6)
+emit("Zdt1Front", ("double[][]", lit(zdt1)))
+emit("Dtlz2Front3", ("double[][]", lit(dtlz2_3)))
+emit("Dtlz2Front5", ("double[][]", lit(dtlz2_5)))
+
+# Crowding distance.
+crowd_sets = {
+    "Zdt1Sub": zdt1[::5],
+    "Dtlz2Sub": dtlz2_3[::2],
+    "CrowdTies": np.round(rng.random((8, 3)), 1),
+}
+for name, F in crowd_sets.items():
+    emit(name, ("double[][]", lit(F)))
+    emit(name + "Crowding", ("double[]", vec(crowding(F))))
+
+# Hypervolume.
+hv_sets = {
+    "Hv2": (np.round(rng.random((30, 2)), 3), np.array([1.1, 1.1])),
+    "Hv3": (np.round(rng.random((30, 3)), 3), np.array([1.1, 1.1, 1.1])),
+    "Hv4": (np.round(rng.random((25, 4)), 3), np.array([1.1, 1.1, 1.1, 1.1])),
+    "Hv5": (np.round(rng.random((20, 5)), 3), np.array([1.0, 1.0, 1.0, 1.0, 1.0])),
+    "HvZdt1": (zdt1, np.array([1.1, 1.1])),
+    "HvDtlz2Front3": (dtlz2_3, np.array([1.1, 1.1, 1.1])),
+    "HvDtlz2Front5": (dtlz2_5, np.array([1.1, 1.1, 1.1, 1.1, 1.1])),
+}
+for name, (F, r) in hv_sets.items():
+    if not name.startswith("HvZdt1") and not name.startswith("HvDtlz2"):
+        emit(name, ("double[][]", lit(F)))
+    emit(name + "Ref", ("double[]", vec(r)))
+    out.append(f"        private const double {name}Value = {repr(float(HV(ref_point=r)(F)))};")
+
+# GD and IGD: perturbed subsets of the true fronts.
+approx_zdt1 = np.round(zdt1[::4] + 0.05 * rng.random((len(zdt1[::4]), 2)), 6)
+approx_dtlz2 = np.round(dtlz2_3[::3] * (1 + 0.1 * rng.random((len(dtlz2_3[::3]), 1))), 6)
+for name, A, P in [("ApproxZdt1", approx_zdt1, zdt1), ("ApproxDtlz2", approx_dtlz2, dtlz2_3)]:
+    emit(name, ("double[][]", lit(A)))
+    out.append(f"        private const double {name}GD = {repr(float(GD(P)(A)))};")
+    out.append(f"        private const double {name}IGD = {repr(float(IGD(P)(A)))};")
+
+print("        // Generated by docs/mathematics/oracles/pareto/generate-pareto-oracles.py")
+print(f"        // pymoo {pymoo.__version__}, moocore {moocore.__version__}, numpy {np.__version__}, scipy {scipy.__version__}")
+print("\n".join(out))
+
+manifest = {
+    "generator": "generate-pareto-oracles.py",
+    "seed": 20261105,
+    "python": sys.version.split()[0],
+    "pymoo": pymoo.__version__,
+    "moocore": moocore.__version__,
+    "numpy": np.__version__,
+    "scipy": scipy.__version__,
+    "consumer": "Test_Numerics/Mathematics/Optimization/MultiObjective/Test_ParetoFront.cs",
+}
+Path(__file__).with_name("manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

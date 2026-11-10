@@ -98,5 +98,25 @@ namespace Mathematics.RootFinding
                     out double f2);
             });
         }
+
+        /// <summary>
+        /// The endpoint produced by the final expansion step is tested. For x - 2 on [0, 1] one step moves the
+        /// upper bound to 2.6, which brackets the root; ignoring that endpoint would make Bracket return false here.
+        /// </summary>
+        [TestMethod()]
+        public void Test_FinalStepIsTested()
+        {
+            double lower = 0, upper = 1;
+            Assert.IsTrue(Brent.Bracket(x => x - 2d, ref lower, ref upper, out double f1, out double f2, 1));
+            Assert.AreEqual(0d, lower);
+            Assert.AreEqual(2.6, upper, 1E-15);
+            Assert.IsLessThan(0d, f1 * f2);
+
+            lower = 0;
+            upper = 1;
+            Assert.IsFalse(Brent.Bracket(x => x - 100d, ref lower, ref upper, out _, out _, 1));
+            lower = upper = 1;
+            Assert.ThrowsExactly<ArgumentException>(() => Brent.Bracket(x => x, ref lower, ref upper, out _, out _));
+        }
     }
 }

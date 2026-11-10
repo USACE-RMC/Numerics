@@ -82,6 +82,21 @@ namespace Numerics.Mathematics.Optimization
         protected override double[]? ParameterUpperBounds => UpperBounds;
 
         /// <summary>
+        /// Determines whether the best point is refined by a local search when the global search ends. Default = true.
+        /// </summary>
+        /// <remarks>
+        /// The polish runs after convergence or after <see cref="Optimizer.MaxIterations"/>, never after the
+        /// evaluation budget is spent. Its evaluations count toward <see cref="Optimizer.FunctionEvaluations"/>
+        /// and the reported status is the global search's.
+        /// </remarks>
+        public bool Polish { get; set; } = true;
+
+        /// <summary>
+        /// The local method used to polish: BFGS, Nelder-Mead, or Powell. Default = Nelder-Mead.
+        /// </summary>
+        public LocalMethod PolishMethod { get; set; } = LocalMethod.NelderMead;
+
+        /// <summary>
         /// The pseudo random number generator (PRNG) seed.
         /// </summary>
         public int PRNGSeed { get; set; } = 12345;
@@ -114,11 +129,17 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The number of successive temperature reductions to test for termination. Default = 20.
         /// </summary>
+        /// <remarks>
+        /// The search stops with <see cref="OptimizationStatus.Success"/> when the best fitness has changed by
+        /// no more than the tolerances (<see cref="Optimizer.CheckConvergence"/>) over this many successive
+        /// temperature reductions. The best point is then polished when <see cref="Polish"/> is true.
+        /// </remarks>
         public int ToleranceSteps { get; set; } = 20;
 
         /// <inheritdoc/>
         protected override void Optimize()
         {
+            if (Polish) ValidatePolishMethod(PolishMethod);
             int i, j, k, D = NumberOfParameters;
 
             // Validate
@@ -132,6 +153,7 @@ namespace Numerics.Mathematics.Optimization
             bool cancel = false;
             var x = new Vector(D);
             var xp = new Vector(D);
+            var trial = new double[D];
             var fitness = new List<double>();
             var prng = new MersenneTwister(PRNGSeed);
 
@@ -166,18 +188,18 @@ namespace Numerics.Mathematics.Optimization
                         // Record the optimum point reached so far.             
                         for (k = 0; k < D; k++)
                         {
-                            // Create basis vector
-                            var basis = new Vector(D, 0);
-                            basis[k] = 1;
-
-                            // Create proposal vector
-                            xp = x + basis * v[k] * (prng.NextDouble() * 2d - 1d);
+                            // Create the proposal x + e_k * v[k] * u in place, element by element.
+                            double step = prng.NextDouble() * 2d - 1d;
+                            for (int m = 0; m < D; m++)
+                                xp[m] = x[m] + (m == k ? 1d : 0d) * v[k] * step;
 
                             // If XP is out of bounds, continue
                             if (xp[k] < LowerBounds[k] || xp[k] > UpperBounds[k]) continue;
                                 
                             // Evaluate proposal vector
-                            fxp = Evaluate(xp.ToArray(), ref cancel);
+                            // The objective gets its own copy, so it cannot alter the proposal.
+                            Array.Copy(xp.Array, trial, D);
+                            fxp = Evaluate(trial, ref cancel);
                             if (cancel) return;
                             df = fxp - fx;
 
@@ -186,7 +208,7 @@ namespace Numerics.Mathematics.Optimization
                             {
                                 // Accept proposal
                                 acceptances[k] += 1;
-                                x = xp.Clone();
+                                Array.Copy(xp.Array, x.Array, D);
                                 fx = fxp;
 
                             }
@@ -213,14 +235,31 @@ namespace Numerics.Mathematics.Optimization
 
                 Iterations += 1;
 
+                // Stop when the best value has not changed, within the tolerances, over the last
+                // ToleranceSteps temperature reductions, then polish the best point.
+                fitness.Add(BestParameterSet.Fitness);
+                if (fitness.Count > ToleranceSteps)
+                {
+                    bool stalled = true;
+                    for (int u = 1; u <= ToleranceSteps && stalled; u++)
+                        stalled = CheckConvergence(fitness[fitness.Count - 1 - u], BestParameterSet.Fitness);
+                    if (stalled)
+                    {
+                        if (Polish && !PolishBestParameterSet(PolishMethod)) return;
+                        UpdateStatus(OptimizationStatus.Success);
+                        return;
+                    }
+                }
 
                 // Set current point to the optimum.           
-                x = new Vector(BestParameterSet.Values);
+                // Copied, because x is updated in place.
+                Array.Copy(BestParameterSet.Values, x.Array, D);
                 fx = BestParameterSet.Fitness;
 
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
+            if (Polish && !PolishBestParameterSet(PolishMethod)) return;
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
         }
 

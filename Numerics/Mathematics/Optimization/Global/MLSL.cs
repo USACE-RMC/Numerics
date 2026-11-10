@@ -146,6 +146,11 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The scale parameter for determining the critical distance. Default = 2.0. 
         /// </summary>
+        /// <remarks>
+        /// The critical distance at iteration k is
+        /// r_k = pi^(-1/2) (Gamma(1 + D/2) sigma ln(kN) / (kN))^(1/D), measured in the box scaled to the
+        /// unit cube (Rinnooy Kan and Timmer 1987, Part II). Larger values start fewer local searches.
+        /// </remarks>
         public double Sigma { get; set; } = 2.0;
 
         /// <summary>
@@ -192,10 +197,10 @@ namespace Numerics.Mathematics.Optimization
             for (int i = 0; i < D; i++)
                 uniformDists.Add(new Uniform(LowerBounds[i], UpperBounds[i]));
 
-            // Critical distance
-            double rkfactor = Math.Sqrt(Math.PI) * Math.Pow(SpecialFunctions.Gamma.Function(D) * Sigma, 1.0 / D);
-            for (int i = 0; i < D; i++)
-                rkfactor *= Math.Pow(UpperBounds[i] - LowerBounds[i], 1.0 / D);
+            // Critical distance (Rinnooy Kan and Timmer 1987, Part II):
+            // r_k = pi^(-1/2) * (Gamma(1 + D/2) * m(S) * sigma * ln(kN) / kN)^(1/D).
+            // Distances are measured after scaling the box to the unit cube, so m(S) = 1.
+            double rkfactor = Math.Pow(SpecialFunctions.Gamma.Function(1.0 + D / 2.0) * Sigma, 1.0 / D) / Math.Sqrt(Math.PI);
      
             // Create lists for sample points
             SampledPoints = new List<SamplePoint>();
@@ -221,7 +226,8 @@ namespace Numerics.Mathematics.Optimization
                     // Perform local minimizations from initial values
                     solver = GetLocalOptimizer(initial, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
                     solver.Minimize();
-                    if (cancel) return;
+                    // The local search stops on this optimizer's evaluation budget; so does this loop.
+                    if (cancel || FunctionEvaluations >= MaxFunctionEvaluations || CancellationToken.IsCancellationRequested) return;
 
                     LocalMinimums.Add(new SamplePoint { ParameterSet = solver.BestParameterSet.Clone(), Minimized = true });
                 }
@@ -308,7 +314,7 @@ namespace Numerics.Mathematics.Optimization
                         // Perform local minimizations from all start points
                         solver = GetLocalOptimizer(point.ParameterSet.Values, LocalRelativeTolerance, LocalAbsoluteTolerance, ref cancel);
                         solver.Minimize();
-                        if (cancel) return;
+                        if (cancel || FunctionEvaluations >= MaxFunctionEvaluations || CancellationToken.IsCancellationRequested) return;
 
                         point.Minimized = true;
                         LocalMinimums.Add(new SamplePoint { ParameterSet = solver.BestParameterSet.Clone(), Minimized = true });
@@ -341,6 +347,7 @@ namespace Numerics.Mathematics.Optimization
                     {
                         solver = GetLocalOptimizer(BestParameterSet.Values, RelativeTolerance, AbsoluteTolerance, ref cancel);
                         solver.Minimize();
+                        if (cancel || FunctionEvaluations >= MaxFunctionEvaluations || CancellationToken.IsCancellationRequested) return;
                         UpdateStatus(solver.Status);
                         return;
                     }
@@ -354,7 +361,7 @@ namespace Numerics.Mathematics.Optimization
                 Iterations += 1;
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
 
         }
@@ -373,24 +380,42 @@ namespace Numerics.Mathematics.Optimization
             Optimizer? solver = null;
 
             // Make sure the parameters are within the bounds, repairing into a local copy rather than
-            // through the argument: the caller may pass the live array inside a recorded ParameterSet —
-            // the best parameter set on the polish path, or a published sample point — whose Fitness
+            // through the argument: the caller may pass the live array inside a recorded ParameterSet
+            // (the best parameter set on the polish path, or a published sample point) whose Fitness
             // would not follow an in-place repair of its Values.
             var repaired = new double[NumberOfParameters];
             for (int i = 0; i < NumberOfParameters; i++)
                 repaired[i] = RepairParameter(initialValues[i], LowerBounds[i], UpperBounds[i]);
 
+            // A local solver needs at least 10 evaluations. With fewer left, this optimizer's own cap in
+            // Evaluate still stops the search, which then ends with MaximumFunctionEvaluationsReached.
+            int localBudget = Math.Max(10, MaxFunctionEvaluations - FunctionEvaluations);
+            // Evaluate throws at the cap only when ReportFailure is true; otherwise it sets localCancel. Every
+            // later call then stops the local search, as the cap would, so no evaluation exceeds the cap.
+            Func<double[], double> objective = x =>
+            {
+                if (localCancel) throw new ArgumentException("The maximum number of function evaluations has been reached.", nameof(MaxFunctionEvaluations));
+                return Evaluate(x, ref localCancel);
+            };
+
+            // The local solver keeps no trace and computes no Hessian of its own: every evaluation
+            // already reaches this optimizer's trace through Evaluate, only the local best point is
+            // read, and this optimizer computes the Hessian of the final result.
             if (Method == LocalMethod.BFGS)
             {
-                solver = new BFGS((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new BFGS(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
             }
             else if (Method == LocalMethod.NelderMead)
             {
-                solver = new NelderMead((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new NelderMead(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
             }
             else if (Method == LocalMethod.Powell)
             {
-                solver = new Powell((x) => Evaluate(x, ref localCancel), NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations };
+                solver = new Powell(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
+            }
+            else if (Method == LocalMethod.LBFGSB)
+            {
+                solver = new LBFGSB(objective, NumberOfParameters, repaired, LowerBounds, UpperBounds) { RelativeTolerance = relativeTolerance, AbsoluteTolerance = absoluteTolerance, MaxFunctionEvaluations = localBudget, RecordTraces = false, ComputeHessian = false };
             }
             else
             {

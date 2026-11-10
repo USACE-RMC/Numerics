@@ -541,21 +541,73 @@ namespace Mathematics.Optimization
         }
 
         /// <summary>
-        /// Negative, NaN, and positive-infinity weights pass through without rejection: a
-        /// negative weight computes, a NaN weight never relaxes its edge, and an infinite
-        /// weight is impassable.
+        /// NaN and positive-infinity weights pass through without rejection: a NaN weight never relaxes its edge, and
+        /// an infinite weight is impassable. A negative zero weight is not negative and is accepted.
         /// </summary>
         [TestMethod]
-        public void NegativeNaNAndInfinityWeightsAreAccepted()
+        public void NaNAndInfinityWeightsAreAccepted()
         {
-            var negative = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, -5, 0) }, 1, 2);
-            Assert.AreEqual(-5f, negative[0, 2]);
+            var negativeZero = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, -0f, 0) }, 1, 2);
+            Assert.AreEqual(0f, negativeZero[0, 2]);
 
             var nan = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, float.NaN, 0) }, 1, 2);
             Assert.IsTrue(float.IsPositiveInfinity(nan[0, 2]), "A NaN weight never relaxes, severing its edge.");
 
             var infinite = Dijkstra.Solve(new List<Edge> { new Edge(0, 1, float.PositiveInfinity, 0) }, 1, 2);
             Assert.IsTrue(float.IsPositiveInfinity(infinite[0, 2]), "An infinite weight is impassable.");
+        }
+
+        /// <summary>
+        /// A single negative edge weight makes every edge-list solver throw at entry, naming the edge's position,
+        /// including when the caller supplies the per-node incoming-edge lists.
+        /// </summary>
+        [TestMethod]
+        public void NegativeWeightThrowsInEveryEdgeListSolver()
+        {
+            var edges = new List<Edge> { new Edge(0, 1, 2f, 0), new Edge(1, 2, -5f, 1) };
+            var ex = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, 2, 3));
+            StringAssert.Contains(ex.Message, "The weight of the edge at position 1 must be non-negative.");
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, new[] { 2 }, 3));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.SolveNearest(edges, new[] { 2 }, 3));
+
+            var incoming = new List<Edge>[] { new List<Edge>(), new List<Edge> { edges[0] }, new List<Edge> { edges[1] } };
+            ex = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, 2, 3, incoming));
+            StringAssert.Contains(ex.Message, "The weight of an incoming edge of node 2 must be non-negative.");
+        }
+
+        /// <summary>
+        /// A graph with a negative cycle (0 -> 1 -> 0 with total weight -1) throws at entry instead of relaxing
+        /// around the cycle, in the static solvers and in every network method that would search with the weights.
+        /// The network itself is still constructed, since its methods with custom weights do not use the constructor's.
+        /// </summary>
+        [TestMethod]
+        public void NegativeCycleThrowsQuickly()
+        {
+            var edges = new[] { new Edge(0, 1, 1f, 0), new Edge(1, 0, -2f, 1), new Edge(1, 2, 1f, 2) };
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, 2, 3));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.Solve(edges, new[] { 0, 2 }, 3));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.SolveNearest(edges, new[] { 2 }, 3));
+
+            var network = new Network(edges, new[] { 2 });
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.Solve(2));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.Solve(new[] { 2 }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.SolveNearest());
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.GetPath(new int[0], 0));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.GetPath(new int[0], 0, new float[3, 3]));
+
+            var negativeWeights = new[] { 1f, -2f, 1f };
+            var table = new float[3, 3];
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.Solve(negativeWeights));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.Solve(negativeWeights, table));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.SolveNearest(negativeWeights, table));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => network.GetPath(new int[0], 0, table, negativeWeights));
+            Assert.IsLessThan(5000L, watch.ElapsedMilliseconds, "Every call must throw at entry.");
+
+            // Custom non-negative weights still solve on the same network.
+            network.SolveNearest(new[] { 1f, 2f, 1f }, table);
+            Assert.AreEqual(1f, table[1, 2]);
+            Assert.AreEqual(2f, table[0, 2]);
         }
 
         /// <summary>
@@ -848,6 +900,225 @@ namespace Mathematics.Optimization
                 if (!changed) break;
             }
             return dist;
+        }
+
+        /// <summary>The decimal-weight network of the scipy.sparse.csgraph.dijkstra oracle cases (weights rounded to float32).</summary>
+        private static List<Edge> DecimalWeightEdges()
+        {
+            var e = new (int From, int To, float W)[]
+            {
+                (0, 1, 0.1f), (1, 2, 0.2f), (0, 2, 0.3f), (2, 3, 0.7f), (1, 3, 0.9f), (3, 4, 0.1f), (2, 4, 0.8f),
+                (4, 5, 0.3f), (0, 5, 1.4f), (5, 6, 0.6f), (6, 7, 0.1f), (3, 7, 1.0f), (7, 0, 2.5f), (8, 7, 0.2f),
+            };
+            var edges = new List<Edge>();
+            for (int i = 0; i < e.Length; i++) edges.Add(new Edge(e[i].From, e[i].To, e[i].W, i));
+            return edges;
+        }
+
+        /// <summary>
+        /// The single-precision tables are float32 of the double-precision distances of
+        /// scipy.sparse.csgraph.dijkstra (SciPy 1.18.1) on the reversed graph, bitwise, for one and for
+        /// two destinations, through every float signature.
+        /// </summary>
+        [TestMethod]
+        public void FloatTablesMatchScipyDoubleDistances()
+        {
+            var edges = DecimalWeightEdges();
+            float[] toSeven = { (float)2.0, (float)1.899999976158142, (float)1.7000000476837158, (float)1.0, (float)1.0,
+                (float)0.7000000476837158, (float)0.10000000149011612, 0f, (float)0.20000000298023224, float.PositiveInfinity };
+            float[] toSevenOrFour = { (float)1.100000023841858, (float)1.0, (float)0.800000011920929, (float)0.10000000149011612, 0f,
+                (float)0.7000000476837158, (float)0.10000000149011612, 0f, (float)0.20000000298023224, float.PositiveInfinity };
+
+            AssertCosts(toSeven, Dijkstra.Solve(edges, 7, 10));
+            AssertCosts(toSeven, new Network(edges.ToArray(), new[] { 7 }).Solve(7));
+            AssertCosts(toSevenOrFour, Dijkstra.Solve(edges, new[] { 7, 4 }, 10));
+            AssertCosts(toSevenOrFour, Dijkstra.SolveNearest(edges, new[] { 7, 4 }, 10));
+            var network = new Network(edges.ToArray(), new[] { 7, 4 });
+            AssertCosts(toSevenOrFour, network.SolveNearest());
+            var weights = new float[edges.Count];
+            for (int i = 0; i < weights.Length; i++) weights[i] = edges[i].Weight;
+            AssertCosts(toSevenOrFour, network.Solve(weights));
+            var table = new float[network.NodeCount, 3];
+            network.SolveNearest(weights, table);
+            AssertCosts(toSevenOrFour, table);
+        }
+
+        private static void AssertCosts(float[] expected, float[,] table)
+        {
+            // A network derives its node count from the edges, so its table omits the isolated node 9.
+            for (int i = 0; i < table.GetLength(0); i++)
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(expected[i]), BitConverter.DoubleToInt64Bits(table[i, 2]), $"node {i}: expected {expected[i]:R}, actual {table[i, 2]:R}");
+        }
+
+        /// <summary>
+        /// A finite double cost beyond single-precision range is written as an unreachable row, (-1, -1, +inf), so the
+        /// table keeps its contract; a cost within range is kept.
+        /// </summary>
+        [TestMethod]
+        public void CostBeyondFloatRangeIsAnUnreachableRow()
+        {
+            var edges = new List<Edge> { new Edge(0, 1, 3E38f, 0), new Edge(1, 2, 3E38f, 1) };
+            float[,] table = Dijkstra.Solve(edges, 2, 3);
+            Assert.AreEqual(2f, table[1, 0]);
+            Assert.AreEqual(1f, table[1, 1]);
+            Assert.AreEqual(3E38f, table[1, 2]);
+            Assert.AreEqual(-1f, table[0, 0]);
+            Assert.AreEqual(-1f, table[0, 1]);
+            Assert.IsTrue(float.IsPositiveInfinity(table[0, 2]));
+            Assert.IsFalse(Dijkstra.PathExists(table, 0));
+            Assert.IsNull(Dijkstra.GetPath(table, 0));
+            float[,] nearest = new Network(edges.ToArray(), new[] { 2 }).SolveNearest();
+            Assert.AreEqual(-1f, nearest[0, 0]);
+            Assert.IsTrue(float.IsPositiveInfinity(nearest[0, 2]));
+        }
+
+        /// <summary>The CSR graph of the scipy.sparse.csgraph.dijkstra oracle cases.</summary>
+        private static readonly int[] CsrRowStart = { 0, 2, 4, 5, 7, 7, 8 };
+        private static readonly int[] CsrToNode = { 1, 2, 2, 3, 4, 4, 5, 0 };
+        private static readonly double[] CsrWeight = { 0.1, 0.3, 0.2, 0.9, 0.7, 0.1, 2.0, 0.4 };
+
+        /// <summary>
+        /// Distances, predecessors and nearest sources equal scipy.sparse.csgraph.dijkstra(min_only=True,
+        /// return_predecessors=True) (SciPy 1.18.1) bitwise, with -1 where SciPy reports -9999, for one and two sources.
+        /// </summary>
+        [TestMethod]
+        public void ShortestDistancesMatchesScipy()
+        {
+            var predecessors = new int[6];
+            var nearest = new int[6];
+            double[] d = Dijkstra.ShortestDistances(6, CsrRowStart, CsrToNode, CsrWeight, new[] { 0 }, double.PositiveInfinity, predecessors, nearest);
+            CollectionAssert.AreEqual(new[] { 0.0, 0.1, 0.3, 1.0, 1.0, 3.0 }, d);
+            CollectionAssert.AreEqual(new[] { -1, 0, 0, 1, 2, 3 }, predecessors);
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 0, 0, 0 }, nearest);
+
+            d = Dijkstra.ShortestDistances(6, CsrRowStart, CsrToNode, CsrWeight, new List<int> { 0, 3, 3 }, double.PositiveInfinity, predecessors, nearest);
+            CollectionAssert.AreEqual(new[] { 0.0, 0.1, 0.3, 0.0, 0.1, 2.0 }, d);
+            CollectionAssert.AreEqual(new[] { -1, 0, 0, -1, 3, 3 }, predecessors);
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 3, 3, 3 }, nearest);
+
+            // Without the optional outputs the distances are the same.
+            CollectionAssert.AreEqual(d, Dijkstra.ShortestDistances(6, CsrRowStart, CsrToNode, CsrWeight, new[] { 0, 3 }));
+        }
+
+        /// <summary>
+        /// Tie routing regression on a 4 x 4 grid with unit weights in both directions and sources 0 and 15, where
+        /// most nodes have several equal-cost predecessors and the two sources tie along the anti-diagonal. The
+        /// predecessors and nearest sources pin the heap's settle order among equal distances.
+        /// </summary>
+        [TestMethod]
+        public void ShortestDistancesTieRoutingIsPinned()
+        {
+            int[] rowStart = { 0, 2, 5, 8, 10, 13, 17, 21, 24, 27, 31, 35, 38, 40, 43, 46, 48 };
+            int[] toNode = { 1, 4, 2, 5, 0, 3, 6, 1, 7, 2, 5, 8, 0, 6, 9, 4, 1, 7, 10, 5, 2, 11, 6, 3,
+                9, 12, 4, 10, 13, 8, 5, 11, 14, 9, 6, 15, 10, 7, 13, 8, 14, 12, 9, 15, 13, 10, 14, 11 };
+            var weight = new double[toNode.Length];
+            for (int k = 0; k < weight.Length; k++) weight[k] = 1d;
+            var predecessors = new int[16];
+            var nearest = new int[16];
+            double[] d = Dijkstra.ShortestDistances(16, rowStart, toNode, weight, new[] { 0, 15 }, double.PositiveInfinity, predecessors, nearest);
+            CollectionAssert.AreEqual(new[] { 0.0, 1, 2, 3, 1, 2, 3, 2, 2, 3, 2, 1, 3, 2, 1, 0 }, d);
+            CollectionAssert.AreEqual(new[] { -1, 0, 1, 2, 0, 4, 2, 11, 4, 13, 11, 15, 13, 14, 15, -1 }, predecessors);
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, 0, 0, 0, 0, 15, 0, 15, 15, 15, 15, 15, 15, 15 }, nearest);
+        }
+
+        /// <summary>
+        /// A limit leaves every node beyond it unreached, as scipy.sparse.csgraph.dijkstra(limit=0.35) does, and
+        /// an empty source list leaves every node unreached.
+        /// </summary>
+        [TestMethod]
+        public void ShortestDistancesLimitAndEmptySources()
+        {
+            var predecessors = new int[6];
+            var nearest = new int[6];
+            double inf = double.PositiveInfinity;
+            double[] d = Dijkstra.ShortestDistances(6, CsrRowStart, CsrToNode, CsrWeight, new[] { 0 }, 0.35, predecessors, nearest);
+            CollectionAssert.AreEqual(new[] { 0.0, 0.1, 0.3, inf, inf, inf }, d);
+            CollectionAssert.AreEqual(new[] { -1, 0, 0, -1, -1, -1 }, predecessors);
+            CollectionAssert.AreEqual(new[] { 0, 0, 0, -1, -1, -1 }, nearest);
+
+            d = Dijkstra.ShortestDistances(6, CsrRowStart, CsrToNode, CsrWeight, new int[0], inf, predecessors, nearest);
+            CollectionAssert.AreEqual(new[] { inf, inf, inf, inf, inf, inf }, d);
+            CollectionAssert.AreEqual(new[] { -1, -1, -1, -1, -1, -1 }, nearest);
+
+            // An infinite weight is impassable.
+            d = Dijkstra.ShortestDistances(2, new[] { 0, 1, 1 }, new[] { 1 }, new[] { inf }, new[] { 0 });
+            CollectionAssert.AreEqual(new[] { 0.0, inf }, d);
+        }
+
+        /// <summary>
+        /// On random graphs every finite distance is reached through its predecessor with the exact
+        /// double-precision sum, and agrees with an independent Bellman-Ford relaxation to 1E-14 relative.
+        /// </summary>
+        [TestMethod]
+        public void ShortestDistancesIsSelfConsistentOnRandomGraphs()
+        {
+            var random = new Random(20261108);
+            for (int trial = 0; trial < 20; trial++)
+            {
+                int n = 50, m = 300;
+                var from = new int[m];
+                var to = new int[m];
+                var w = new double[m];
+                for (int k = 0; k < m; k++) { from[k] = random.Next(n); to[k] = random.Next(n); w[k] = random.NextDouble(); }
+                // Counting sort into CSR by start node.
+                var rowStart = new int[n + 1];
+                for (int k = 0; k < m; k++) rowStart[from[k] + 1]++;
+                for (int i = 0; i < n; i++) rowStart[i + 1] += rowStart[i];
+                var cursor = (int[])rowStart.Clone();
+                var toNode = new int[m];
+                var weight = new double[m];
+                for (int k = 0; k < m; k++) { int slot = cursor[from[k]]++; toNode[slot] = to[k]; weight[slot] = w[k]; }
+
+                var sources = new[] { random.Next(n), random.Next(n) };
+                var predecessors = new int[n];
+                var nearest = new int[n];
+                double[] d = Dijkstra.ShortestDistances(n, rowStart, toNode, weight, sources, double.PositiveInfinity, predecessors, nearest);
+
+                var bellman = new double[n];
+                for (int i = 0; i < n; i++) bellman[i] = double.PositiveInfinity;
+                foreach (int s in sources) bellman[s] = 0d;
+                for (int pass = 0; pass < n; pass++)
+                    for (int k = 0; k < m; k++)
+                        if (bellman[from[k]] + w[k] < bellman[to[k]]) bellman[to[k]] = bellman[from[k]] + w[k];
+
+                for (int v = 0; v < n; v++)
+                {
+                    if (double.IsPositiveInfinity(bellman[v])) { Assert.IsTrue(double.IsPositiveInfinity(d[v])); Assert.AreEqual(-1, nearest[v]); continue; }
+                    Assert.AreEqual(bellman[v], d[v], 1E-14 * Math.Max(1d, bellman[v]));
+                    if (predecessors[v] < 0) { Assert.AreEqual(0d, d[v]); Assert.AreEqual(v, nearest[v]); continue; }
+                    int u = predecessors[v];
+                    double best = double.PositiveInfinity;
+                    for (int k = rowStart[u]; k < rowStart[u + 1]; k++) if (toNode[k] == v) best = Math.Min(best, d[u] + weight[k]);
+                    Assert.AreEqual(d[v], best, 0d);
+                    Assert.AreEqual(nearest[u], nearest[v]);
+                }
+            }
+        }
+
+        /// <summary>Invalid CSR arrays, sources, weights, limits and output arrays throw.</summary>
+        [TestMethod]
+        public void ShortestDistancesValidationThrows()
+        {
+            int[] r = CsrRowStart, t = CsrToNode;
+            double[] w = CsrWeight;
+            var s = new[] { 0 };
+            Assert.ThrowsExactly<ArgumentNullException>(() => Dijkstra.ShortestDistances(6, null!, t, w, s));
+            Assert.ThrowsExactly<ArgumentNullException>(() => Dijkstra.ShortestDistances(6, r, null!, w, s));
+            Assert.ThrowsExactly<ArgumentNullException>(() => Dijkstra.ShortestDistances(6, r, t, null!, s));
+            Assert.ThrowsExactly<ArgumentNullException>(() => Dijkstra.ShortestDistances(6, r, t, w, null!));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(0, new[] { 0 }, new int[0], new double[0], new int[0]));
+            Assert.ThrowsExactly<ArgumentException>(() => Dijkstra.ShortestDistances(5, r, t, w, s));
+            Assert.ThrowsExactly<ArgumentException>(() => Dijkstra.ShortestDistances(6, r, t, new double[7], s));
+            Assert.ThrowsExactly<ArgumentException>(() => Dijkstra.ShortestDistances(6, new[] { 0, 2, 1, 5, 7, 7, 8 }, t, w, s));
+            Assert.ThrowsExactly<ArgumentException>(() => Dijkstra.ShortestDistances(6, new[] { 1, 2, 4, 5, 7, 7, 8 }, t, w, s));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(6, r, new[] { 1, 2, 2, 3, 4, 4, 6, 0 }, w, s));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(6, r, t, new[] { 0.1, 0.3, 0.2, -0.9, 0.7, 0.1, 2.0, 0.4 }, s));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(6, r, t, new[] { 0.1, 0.3, 0.2, double.NaN, 0.7, 0.1, 2.0, 0.4 }, s));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(6, r, t, w, new[] { 6 }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(6, r, t, w, new[] { -1 }));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Dijkstra.ShortestDistances(6, r, t, w, s, double.NaN));
+            Assert.ThrowsExactly<ArgumentException>(() => Dijkstra.ShortestDistances(6, r, t, w, s, double.PositiveInfinity, new int[5]));
+            Assert.ThrowsExactly<ArgumentException>(() => Dijkstra.ShortestDistances(6, r, t, w, s, double.PositiveInfinity, null, new int[7]));
         }
     }
 }

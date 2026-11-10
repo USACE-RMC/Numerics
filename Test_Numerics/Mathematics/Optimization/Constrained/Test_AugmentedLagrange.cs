@@ -307,5 +307,32 @@ namespace Mathematics.Optimization
             Assert.AreEqual(-func(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness, 1E-3,
                 "While maximizing, the stored fitness is the negated objective at the stored point.");
         }
+
+        /// <summary>
+        /// An inequality active at the optimum is handled with the max(0, c + mu/rho) term:
+        /// minimize (x - 2)^2 + (y - 1)^2 subject to x + y &lt;= 2, whose solution is (1.5, 0.5) with
+        /// multiplier 1. The returned point is feasible with either inner solver.
+        /// </summary>
+        [TestMethod]
+        public void Test_ActiveInequality()
+        {
+            Func<double[], double> f = x => (x[0] - 2) * (x[0] - 2) + (x[1] - 1) * (x[1] - 1);
+            var constraint = new Constraint(x => x[0] + x[1], 2, 2d, ConstraintType.LesserThanOrEqualTo);
+
+            var bfgs = new BFGS(f, 2, new[] { 0d, 0d }, new[] { -10d, -10d }, new[] { 10d, 10d });
+            var al = new AugmentedLagrange(f, bfgs, new IConstraint[] { constraint });
+            al.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, al.Status);
+            Assert.AreEqual(1.5, al.BestParameterSet.Values[0], 1E-6);
+            Assert.AreEqual(0.5, al.BestParameterSet.Values[1], 1E-6);
+            Assert.AreEqual(1d, al.Mu[0], 1E-4);
+
+            var nm = new NelderMead(f, 2, new[] { 0d, 0d }, new[] { -10d, -10d }, new[] { 10d, 10d });
+            var al2 = new AugmentedLagrange(f, nm, new IConstraint[] { constraint });
+            al2.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, al2.Status);
+            Assert.IsLessThanOrEqualTo(2d + 1E-8, al2.BestParameterSet.Values[0] + al2.BestParameterSet.Values[1]);
+            Assert.AreEqual(0.5, al2.BestParameterSet.Fitness, 1E-4);
+        }
     }
 }

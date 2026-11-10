@@ -1,0 +1,20 @@
+{
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "generator": "generate-dds-oracles.py golden (fixtures); generate-dds-oracles.py spotpy OUT.json (statistical comparison)",
+  "reference": "Tolson, B. A., and C. A. Shoemaker (2007), Water Resources Research, 43, W01413, doi:10.1029/2005WR004723, Figure 1 and paragraph 18",
+  "environment": {
+    "python": "3.14.3",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "spotpy": "1.6.7"
+  },
+  "files": [
+    {
+      "file": "generate-dds-oracles.py",
+      "sha256Utf8Lf": "b06aca68300c6279f79c7d0f98e694c16c9d56e3e55f57af3b643e41fd018ca9",
+      "consumers": [
+        "Test_Numerics/Mathematics/Optimization/Global/Test_DynamicallyDimensionedSearch.cs: Test_MatchesOracle_RandomStart, Test_MatchesOracle_InitialPoint, Test_MatchesOracle_Reflection"
+      ]
+    }
+  ]
+}

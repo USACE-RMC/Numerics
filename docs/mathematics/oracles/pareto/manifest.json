@@ -1,0 +1,10 @@
+{
+  "generator": "generate-pareto-oracles.py",
+  "seed": 20261105,
+  "python": "3.14.3",
+  "pymoo": "0.6.2",
+  "moocore": "0.3.2",
+  "numpy": "2.5.4",
+  "scipy": "1.18.1",
+  "consumer": "Test_Numerics/Mathematics/Optimization/MultiObjective/Test_ParetoFront.cs"
+}

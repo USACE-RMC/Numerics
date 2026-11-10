@@ -517,6 +517,8 @@ namespace Mathematics.Optimization
         [DataRow(LocalMethod.NelderMead, false)]
         [DataRow(LocalMethod.Powell, true)]
         [DataRow(LocalMethod.Powell, false)]
+        [DataRow(LocalMethod.LBFGSB, true)]
+        [DataRow(LocalMethod.LBFGSB, false)]
         public void Test_SupportedLocalMethodReturnsAFeasibleAndConsistentSolution(LocalMethod method, bool polish)
         {
             var initial = new double[] { 0.5d, 0.5d };
@@ -584,6 +586,7 @@ namespace Mathematics.Optimization
         [DataRow(LocalMethod.BFGS)]
         [DataRow(LocalMethod.NelderMead)]
         [DataRow(LocalMethod.Powell)]
+        [DataRow(LocalMethod.LBFGSB)]
         public void Test_MaximizeStoresTheNegatedObjective(LocalMethod method)
         {
             var initial = new double[] { 0.5d, 0.5d };
@@ -601,6 +604,105 @@ namespace Mathematics.Optimization
             Assert.AreEqual(0.3d, solution[0], 1E-3);
             Assert.AreEqual(0.4d, solution[1], 1E-3);
             Assert.AreEqual(-peak(solution), solver.BestParameterSet.Fitness, "While maximizing, the stored fitness is the negated objective at the stored point.");
+        }
+
+        /// <summary>
+        /// Seeded runs with Nelder-Mead and Powell local searches are reproducible bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the exact search path; see <see cref="OptimizerFingerprint"/>. A different
+        /// fingerprint means different results.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SeededRunFingerprint()
+        {
+            var a = new MultiStart(OptimizerFingerprint.SixHumpCamel, 2, new[] { 1d, 1d }, new[] { -3d, -2d }, new[] { 3d, 2d }, LocalMethod.NelderMead) { MaxIterations = 10, ReportFailure = false, ComputeHessian = false };
+            a.Minimize();
+            Assert.AreEqual("x=BFB7019491425294,3FE6CE0AC7BDBD28|f=BFF0818CD58D6B55|it=10|fe=884|st=Success|trace=884:2A20AAD904B2F617", OptimizerFingerprint.Of(a));
+            var b = new MultiStart(OptimizerFingerprint.SixHumpCamel, 2, new[] { 1d, 1d }, new[] { -3d, -2d }, new[] { 3d, 2d }, LocalMethod.Powell) { MaxIterations = 10, ReportFailure = false, ComputeHessian = false };
+            b.Minimize();
+            Assert.AreEqual("x=3FB6FFE2D4D130E2,BFE6CE14CD6483CF|f=BFF0818CD655CB15|it=10|fe=2347|st=Success|trace=2347:3357740C55648D6E", OptimizerFingerprint.Of(b));
+        }
+
+        /// <summary>
+        /// A completed run reports the polish status and returns a Hessian, and the search
+        /// stops at the evaluation budget.
+        /// </summary>
+        [TestMethod]
+        public void Test_StatusHessianAndBudget()
+        {
+            var solver = new MultiStart(OptimizerFingerprint.SixHumpCamel, 2, new[] { 1d, 1d }, new[] { -3d, -2d }, new[] { 3d, 2d }) { MaxIterations = 10 };
+            solver.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            Assert.IsNotNull(solver.Hessian);
+            Assert.AreEqual(-1.031628453489877, solver.BestParameterSet.Fitness, 1E-8);
+
+            // Nelder-Mead local searches stop exactly at the budget. (With BFGS, the finite-difference
+            // gradient retries a few evaluations after the budget is reached.)
+            var budget = new MultiStart(OptimizerFingerprint.SixHumpCamel, 2, new[] { 1d, 1d }, new[] { -3d, -2d }, new[] { 3d, 2d }, LocalMethod.NelderMead) { MaxFunctionEvaluations = 200 };
+            budget.Minimize();
+            Assert.AreEqual(OptimizationStatus.MaximumFunctionEvaluationsReached, budget.Status);
+            Assert.AreEqual(200, budget.FunctionEvaluations);
+        }
+
+        /// <summary>
+        /// L-BFGS-B local searches keep a bound-active coordinate exactly on its bound and are reproducible bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The minimum of (x - 2)² + (y - 0.3)² on the unit square is (1, 0.3): x is held at its upper bound and y is
+        /// interior. The fingerprint pins the seeded search path; see <see cref="OptimizerFingerprint"/>.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LBFGSBLocalSearchWithActiveBound()
+        {
+            double f(double[] p) => (p[0] - 2) * (p[0] - 2) + (p[1] - 0.3) * (p[1] - 0.3);
+            var solver = new MultiStart(f, 2, new[] { 0.5, 0.5 }, new[] { 0d, 0d }, new[] { 1d, 1d }, LocalMethod.LBFGSB) { MaxIterations = 10, ReportFailure = false, ComputeHessian = false };
+            solver.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            Assert.AreEqual(1d, solver.BestParameterSet.Values[0]);
+            Assert.AreEqual(0.3, solver.BestParameterSet.Values[1], 1E-6);
+            Assert.AreEqual(f(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness);
+            Assert.AreEqual("x=3FF0000000000000,3FD3333333337FDE|f=3FF0000000000000|it=10|fe=211|st=Success|trace=211:D280F2AC3DA103F4", OptimizerFingerprint.Of(solver));
+        }
+
+        /// <summary>
+        /// When fewer than 10 evaluations remain for a local search, the local solver still gets its minimum
+        /// budget and this optimizer's evaluation cap stops the run, which ends with
+        /// <see cref="OptimizationStatus.MaximumFunctionEvaluationsReached"/>, never with <see cref="OptimizationStatus.None"/>.
+        /// The budgets are ones where the last local search starts with fewer than 10 evaluations left. The cap is
+        /// exact whether or not <see cref="Optimizer.ReportFailure"/> is set.
+        /// </summary>
+        [TestMethod]
+        public void Test_LocalSearchWithNearlySpentBudget()
+        {
+            static double Rosenbrock(double[] x) => 100 * (x[1] - x[0] * x[0]) * (x[1] - x[0] * x[0]) + (1 - x[0]) * (1 - x[0]);
+            foreach (bool reportFailure in new[] { true, false })
+            {
+                foreach (int budget in new[] { 190, 194, 198 })
+                {
+                    var solver = new MultiStart(Rosenbrock, 2, new[] { 0.1, 0.1 }, new[] { -5d, -5d }, new[] { 5d, 5d }, LocalMethod.NelderMead) { MaxFunctionEvaluations = budget, ReportFailure = reportFailure };
+                    solver.Minimize();
+                    Assert.AreEqual(OptimizationStatus.MaximumFunctionEvaluationsReached, solver.Status, $"MaxFunctionEvaluations {budget}, ReportFailure {reportFailure}");
+                    Assert.AreEqual(budget, solver.FunctionEvaluations, $"MaxFunctionEvaluations {budget}, ReportFailure {reportFailure}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// A Powell local search whose first line-search evaluation meets this optimizer's evaluation cap ends
+        /// the run as a budget stop rather than failing with a missing line minimum.
+        /// </summary>
+        [TestMethod]
+        public void Test_PowellLocalSearchAtEvaluationCap()
+        {
+            static double Rosenbrock(double[] x) => 100 * (x[1] - x[0] * x[0]) * (x[1] - x[0] * x[0]) + (1 - x[0]) * (1 - x[0]);
+            foreach (bool reportFailure in new[] { true, false })
+            {
+                var solver = new MultiStart(Rosenbrock, 2, new[] { 0.1, 0.1 }, new[] { -5d, -5d }, new[] { 5d, 5d }, LocalMethod.Powell) { MaxFunctionEvaluations = 272, ReportFailure = reportFailure };
+                solver.Minimize();
+                Assert.AreEqual(OptimizationStatus.MaximumFunctionEvaluationsReached, solver.Status, $"ReportFailure {reportFailure}");
+                Assert.IsLessThanOrEqualTo(272, solver.FunctionEvaluations, $"ReportFailure {reportFailure}");
+            }
         }
     }
 }

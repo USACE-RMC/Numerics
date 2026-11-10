@@ -51,12 +51,12 @@ namespace Numerics.Mathematics.RootFinding
         /// <para>
         /// Remarks:
         /// </para>
-        /// The basic algorithm aborts immediately if the root leaves the bound interval.
+        /// The basic algorithm is unbounded; use RobustSolve to keep the iterates within a bracketing interval.
         /// </remarks>
         /// <param name="f">The function to find roots from.</param>
         /// <param name="df">The first derivative of the function to find roots from.</param>
         /// <param name="firstGuess">This is the first guess at the root (c).</param>
-        /// <param name="tolerance">Optional. Desired tolerance for both the root and the function value at the root.
+        /// <param name="tolerance">Optional. Desired tolerance on the step between successive root estimates.
         /// The root will be refined until the tolerance is achieved or the maximum number of iterations is reached. Default = 1e-8.</param>
         /// <param name="maxIterations">Optional. Maximum number of iterations. Default = 1000.</param>
         /// <param name="reportFailure">Optional. If set to true, an exception will be thrown if the routine fails to converge.
@@ -123,7 +123,7 @@ namespace Numerics.Mathematics.RootFinding
         /// <param name="firstGuess">This is the first guess at the root.</param>
         /// <param name="lowerBound">The lower bound of the interval containing the root. Aborts if it leaves the interval.</param>
         /// <param name="upperBound">The upper bound of the interval containing the root. Aborts if it leaves the interval.</param>
-        /// <param name="tolerance">Optional. Desired tolerance for both the root and the function value at the root.
+        /// <param name="tolerance">Optional. Desired tolerance on the step between successive root estimates.
         /// The root will be refined until the tolerance is achieved or the maximum number of iterations is reached. Default = 1e-8.</param>
         /// <param name="maxIterations">Optional. Maximum number of iterations. Default = 1000.</param>
         /// <param name="reportFailure">Optional. If set to true, an exception will be thrown if the routine fails to converge.
@@ -151,12 +151,17 @@ namespace Numerics.Mathematics.RootFinding
             {
                 throw new ArgumentOutOfRangeException(nameof(firstGuess), "The first guess must be between the upper and lower bound.");
             }
+            // A NaN at one bound is tolerated (the other bound sets the orientation); NaN at both cannot be bracketed.
+            if (double.IsNaN(fl) && double.IsNaN(fh))
+            {
+                throw new ArgumentException("Robust Newton-Raphson method failed because the function is NaN at both bounds.");
+            }
             if (fl * fh >= 0d)
             {
                 throw new ArgumentException("Robust Newton-Raphson method failed because the root is not bracketed.");
             }
 
-            if (fl < 0d)
+            if (double.IsNaN(fl) ? fh > 0d : fl < 0d)
             {
                 // Orient the search so that f(lowerBound)<0
                 xl = lowerBound;
@@ -212,6 +217,12 @@ namespace Numerics.Mathematics.RootFinding
                 // The one new function evaluation per iteration.
                 F = f(root);
                 dF = df(root);
+                if (double.IsNaN(F) || double.IsNaN(dF))
+                {
+                    if (reportFailure)
+                        throw new ArgumentException("Robust Newton-Raphson method failed because the function or its derivative returned NaN.");
+                    return double.NaN;
+                }
                 // Maintain the bracket on the root.
                 if (F < 0.0)
                     xl = root;
@@ -300,13 +311,26 @@ namespace Numerics.Mathematics.RootFinding
             bool converged = false;
             double eps = Tools.DoubleMachineEpsilon;
 
+            // f is evaluated once per iterate: the residual at the new point serves both the convergence
+            // test and the next step.
+            Vector fx = f(x);
             for (int iter = 1; iter <= maxIterations; iter++)
             {
-                Vector fx = f(x);
                 Matrix J = df(x);
 
-                // Check for near-singular Jacobian
-                if (Math.Abs(J.Determinant()) < eps)
+                // Check for near-singular Jacobian. The determinant is measured against the product of the
+                // largest absolute entry of each row, which bounds it (up to n^(n/2)) and makes the test
+                // invariant to the scaling of each equation.
+                double rowScale = 1d;
+                for (int i = 0; i < J.NumberOfRows; i++)
+                {
+                    double rowMax = 0d;
+                    for (int j = 0; j < J.NumberOfColumns; j++)
+                        rowMax = Math.Max(rowMax, Math.Abs(J[i, j]));
+                    rowScale *= rowMax;
+                }
+                double determinant = J.Determinant();
+                if (rowScale == 0d || double.IsNaN(determinant) || Math.Abs(determinant) < eps * rowScale)
                 {
                     if (reportFailure)
                         throw new ArgumentException("Jacobian is singular or nearly singular.");
@@ -320,7 +344,8 @@ namespace Numerics.Mathematics.RootFinding
                 Vector xNew = x - deltaX;
 
                 // Check convergence: step size and residual
-                if (deltaX.Norm() < tolerance && f(xNew).Norm() < tolerance)
+                Vector fNew = f(xNew);
+                if (deltaX.Norm() < tolerance && fNew.Norm() < tolerance)
                 {
                     x = xNew;
                     converged = true;
@@ -328,6 +353,7 @@ namespace Numerics.Mathematics.RootFinding
                 }
 
                 x = xNew;
+                fx = fNew;
             }
 
             if (!converged && reportFailure)

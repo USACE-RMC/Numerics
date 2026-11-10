@@ -99,6 +99,18 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         public Func<double[], double[]>? Gradient;
 
+        /// <summary>
+        /// Gets or sets whether an identity inverse Hessian is scaled by y's / y'y before it is updated.
+        /// Default = false.
+        /// </summary>
+        /// <remarks>
+        /// The scaling of Nocedal and Wright (2006), eq. (6.20), gives the first quasi-Newton step the
+        /// curvature measured along the first accepted step instead of a unit metric. It applies before the
+        /// first update and again after each metric restart. It helps when the curvature of the objective is
+        /// far from one, for example a log-likelihood summed over many observations.
+        /// </remarks>
+        public bool ScaleInitialInverseHessian { get; set; }
+
         /// <inheritdoc/>
         protected override void Optimize()
         {
@@ -113,6 +125,7 @@ namespace Numerics.Mathematics.Optimization
             if (cancel) return;
 
             var inverseHessian = Matrix.Identity(n);
+            bool identityMetric = true;
             var projected = new double[n];
             var direction = new double[n];
             double stpmax = 100 * Math.Max(Math.Sqrt(Tools.SumProduct(x, x)), n);
@@ -143,6 +156,7 @@ namespace Numerics.Mathematics.Optimization
                 if (!Tools.IsFinite(slope) || slope >= 0)
                 {
                     inverseHessian = Matrix.Identity(n);
+                    identityMetric = true;
                     for (int i = 0; i < n; i++) direction[i] = -projected[i];
                 }
 
@@ -155,6 +169,7 @@ namespace Numerics.Mathematics.Optimization
                     // classical BFGS implementations (for example R's vmmin), restart the metric
                     // once at this point. Both searches use the same acceptance conditions.
                     inverseHessian = Matrix.Identity(n);
+                    identityMetric = true;
                     for (int i = 0; i < n; i++) direction[i] = -projected[i];
                     accepted = LineSearch(x, f, g, direction, stpmax, out nextX, out nextF, out nextG, ref cancel);
                 }
@@ -173,7 +188,7 @@ namespace Numerics.Mathematics.Optimization
                     step[i] = nextX[i] - x[i];
                     change[i] = nextG[i] - g[i];
                 }
-                UpdateInverseHessian(ref inverseHessian, step, change);
+                UpdateInverseHessian(ref inverseHessian, step, change, ScaleInitialInverseHessian, ref identityMetric);
                 x = nextX;
                 f = nextF;
                 g = nextG;
@@ -255,8 +270,11 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="h">The inverse Hessian, reset if arithmetic becomes non-finite.</param>
         /// <param name="s">The accepted parameter step.</param>
         /// <param name="y">The change in gradients.</param>
-        /// <remarks>Uses the existing Numerical Recipes symmetric BFGS formula with positive-curvature guards.</remarks>
-        private static void UpdateInverseHessian(ref Matrix h, double[] s, double[] y)
+        /// <param name="scale">Whether an identity metric is first scaled by y's / y'y.</param>
+        /// <param name="identity">Whether h is the identity; cleared by an update and set by a reset.</param>
+        /// <remarks>Uses the existing Numerical Recipes symmetric BFGS formula with positive-curvature guards.
+        /// The optional scaling is Nocedal and Wright (2006), eq. (6.20).</remarks>
+        private static void UpdateInverseHessian(ref Matrix h, double[] s, double[] y, bool scale, ref bool identity)
         {
             int n = s.Length;
             var hy = new double[n];
@@ -265,6 +283,14 @@ namespace Numerics.Mathematics.Optimization
             double ys = Tools.SumProduct(y, s), yhy = Tools.SumProduct(y, hy);
             double floor = Math.Sqrt(Tools.DoubleMachineEpsilon) * Math.Sqrt(Tools.SumProduct(y, y)) * Math.Sqrt(Tools.SumProduct(s, s));
             if (!Tools.IsFinite(ys) || !Tools.IsFinite(yhy) || yhy <= 0 || ys <= floor) return;
+            if (scale && identity)
+            {
+                double gamma = ys / Tools.SumProduct(y, y);
+                h = Matrix.Identity(n) * gamma;
+                for (int i = 0; i < n; i++) hy[i] = gamma * y[i];
+                yhy = Tools.SumProduct(y, hy);
+            }
+            identity = false;
             var v = new double[n];
             for (int i = 0; i < n; i++) v[i] = s[i] / ys - hy[i] / yhy;
             for (int i = 0; i < n; i++)
@@ -274,6 +300,7 @@ namespace Numerics.Mathematics.Optimization
                     if (!Tools.IsFinite(value))
                     {
                         h = Matrix.Identity(n);
+                        identity = true;
                         return;
                     }
                     h[i, j] = h[j, i] = value;

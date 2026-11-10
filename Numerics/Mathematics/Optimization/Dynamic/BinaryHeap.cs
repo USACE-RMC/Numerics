@@ -17,7 +17,7 @@ namespace Numerics.Mathematics.Optimization
     /// <para>
     /// <b> Description: </b>
     /// The heap has a fixed capacity set at construction; adding past the capacity throws. Node
-    /// weights may be any finite ordering value, including negatives — the heap orders by weight
+    /// weights may be any finite ordering value, including negatives; the heap orders by weight
     /// and imposes no algorithmic precondition of its own. The keyed operations
     /// (<see cref="DecreaseKey"/> and <see cref="Replace"/>) address nodes by their
     /// <see cref="Node.Index"/> and assume at most one live node per index; behavior with

@@ -539,7 +539,7 @@ namespace Mathematics.Optimization
             // Reference identity is the assertion that discriminates here. The value comparisons above
             // are blind to aliasing: the constructor rejects out-of-bounds initial values, the local
             // solver repairs bounds into a private copy rather than its argument, and the first sampled
-            // point is added with Minimized = true, which the local-search loop skips — so an aliased
+            // point is added with Minimized = true, which the local-search loop skips, so an aliased
             // array would still hold the right values, and only the aliasing itself is observable.
             //
             // The whole collection is searched rather than element zero, because the run sorts
@@ -582,8 +582,8 @@ namespace Mathematics.Optimization
         /// </summary>
         /// <remarks>
         /// The local-search entry point receives the live array inside a recorded
-        /// <see cref="ParameterSet"/> — the first sampled point, a reduced-sample point, or the best
-        /// parameter set on the polish path — and must not write its bounds repair through it, because the
+        /// <see cref="ParameterSet"/> (the first sampled point, a reduced-sample point, or the best
+        /// parameter set on the polish path) and must not write its bounds repair through it, because the
         /// recorded fitness would keep describing the unrepaired point. A repair that changes its input is
         /// unreachable for a legally constructed solver, whose initial values and samples are already
         /// inside the box, so the repair is forced here through an override that perturbs every value it
@@ -652,6 +652,8 @@ namespace Mathematics.Optimization
         [DataRow(LocalMethod.NelderMead, false)]
         [DataRow(LocalMethod.Powell, true)]
         [DataRow(LocalMethod.Powell, false)]
+        [DataRow(LocalMethod.LBFGSB, true)]
+        [DataRow(LocalMethod.LBFGSB, false)]
         public void Test_SupportedLocalMethodReturnsAFeasibleAndConsistentSolution(LocalMethod method, bool polish)
         {
             var initial = new double[] { 0.5d, 0.5d };
@@ -717,6 +719,7 @@ namespace Mathematics.Optimization
         [DataRow(LocalMethod.BFGS)]
         [DataRow(LocalMethod.NelderMead)]
         [DataRow(LocalMethod.Powell)]
+        [DataRow(LocalMethod.LBFGSB)]
         public void Test_MaximizeStoresTheNegatedObjective(LocalMethod method)
         {
             var initial = new double[] { 0.5d, 0.5d };
@@ -734,6 +737,83 @@ namespace Mathematics.Optimization
             Assert.AreEqual(0.3d, solution[0], 1E-3);
             Assert.AreEqual(0.4d, solution[1], 1E-3);
             Assert.AreEqual(-peak(solution), solver.BestParameterSet.Fitness, "While maximizing, the stored fitness is the negated objective at the stored point.");
+        }
+
+        /// <summary>
+        /// A seeded run with Nelder-Mead local searches is reproducible bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the exact search path; see <see cref="OptimizerFingerprint"/>. A different
+        /// fingerprint means different results.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SeededRunFingerprint()
+        {
+            var solver = new MLSL(OptimizerFingerprint.SixHumpCamel, 2, new[] { 1d, 1d }, new[] { -3d, -2d }, new[] { 3d, 2d }, LocalMethod.NelderMead) { ReportFailure = false, ComputeHessian = false };
+            solver.Minimize();
+            Assert.AreEqual("x=BFB70111C74D341E,3FE6CDF3B4EC5D9F|f=BFF0818CD55EBD58|it=5|fe=367|st=Success|trace=367:20D144B6410105F9", OptimizerFingerprint.Of(solver));
+        }
+
+        /// <summary>
+        /// The critical distance follows Rinnooy Kan and Timmer (1987). With Nelder-Mead local searches,
+        /// the 5-D Rosenbrock minimum is found from every tested seed. A critical distance that covers the
+        /// whole box would start one search per iteration and leave the search in the curved valley.
+        /// </summary>
+        [TestMethod]
+        public void Test_CriticalDistance_FindsRosenbrock5()
+        {
+            var lower = new[] { -5d, -5d, -5d, -5d, -5d };
+            var upper = new[] { 10d, 10d, 10d, 10d, 10d };
+            var initial = new[] { 5.95, 5.95, 5.95, 5.95, 5.95 };
+            foreach (int seed in new[] { 12345, 7, 99 })
+            {
+                var solver = new MLSL(OptimizerFingerprint.Rosenbrock, 5, initial, lower, upper, LocalMethod.NelderMead) { PRNGSeed = seed, ComputeHessian = false, ReportFailure = false };
+                solver.Minimize();
+                Assert.IsLessThan(1E-6, solver.BestParameterSet.Fitness);
+            }
+        }
+
+        /// <summary>
+        /// L-BFGS-B local searches keep a bound-active coordinate exactly on its bound and are reproducible bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The minimum of (x - 2)² + (y - 0.3)² on the unit square is (1, 0.3): x is held at its upper bound and y is
+        /// interior. The fingerprint pins the seeded search path; see <see cref="OptimizerFingerprint"/>.
+        /// </remarks>
+        [TestMethod]
+        public void Test_LBFGSBLocalSearchWithActiveBound()
+        {
+            double f(double[] p) => (p[0] - 2) * (p[0] - 2) + (p[1] - 0.3) * (p[1] - 0.3);
+            var solver = new MLSL(f, 2, new[] { 0.5, 0.5 }, new[] { 0d, 0d }, new[] { 1d, 1d }, LocalMethod.LBFGSB) { ReportFailure = false, ComputeHessian = false };
+            solver.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            Assert.AreEqual(1d, solver.BestParameterSet.Values[0]);
+            Assert.AreEqual(0.3, solver.BestParameterSet.Values[1], 1E-6);
+            Assert.AreEqual(f(solver.BestParameterSet.Values), solver.BestParameterSet.Fitness);
+            Assert.AreEqual("x=3FF0000000000000,3FD3333333337C2E|f=3FF0000000000000|it=5|fe=268|st=Success|trace=268:90D62B75173B6F80", OptimizerFingerprint.Of(solver));
+        }
+
+        /// <summary>
+        /// When fewer than 10 evaluations remain for a local search, the local solver still gets its minimum
+        /// budget and this optimizer's evaluation cap stops the run, which ends with
+        /// <see cref="OptimizationStatus.MaximumFunctionEvaluationsReached"/>, never with <see cref="OptimizationStatus.None"/>.
+        /// The budgets are ones where the last local search starts with fewer than 10 evaluations left. The cap is
+        /// exact whether or not <see cref="Optimizer.ReportFailure"/> is set.
+        /// </summary>
+        [TestMethod]
+        public void Test_LocalSearchWithNearlySpentBudget()
+        {
+            static double Rosenbrock(double[] x) => 100 * (x[1] - x[0] * x[0]) * (x[1] - x[0] * x[0]) + (1 - x[0]) * (1 - x[0]);
+            foreach (bool reportFailure in new[] { true, false })
+            {
+                foreach (int budget in new[] { 280 })
+                {
+                    var solver = new MLSL(Rosenbrock, 2, new[] { 0.1, 0.1 }, new[] { -5d, -5d }, new[] { 5d, 5d }, LocalMethod.NelderMead) { MaxFunctionEvaluations = budget, ReportFailure = reportFailure };
+                    solver.Minimize();
+                    Assert.AreEqual(OptimizationStatus.MaximumFunctionEvaluationsReached, solver.Status, $"MaxFunctionEvaluations {budget}, ReportFailure {reportFailure}");
+                    Assert.AreEqual(budget, solver.FunctionEvaluations, $"MaxFunctionEvaluations {budget}, ReportFailure {reportFailure}");
+                }
+            }
         }
     }
 }

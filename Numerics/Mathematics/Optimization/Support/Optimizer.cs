@@ -1,5 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Numerics.Mathematics.LinearAlgebra;
 
 namespace Numerics.Mathematics.Optimization
@@ -53,8 +56,15 @@ namespace Numerics.Mathematics.Optimization
         public double RelativeTolerance { get; set; } = 1E-8;
 
         /// <summary>
-        /// Determines if an exception will be thrown if the optimization solver fails to converge.
+        /// Determines whether an exception that stops the solver is rethrown to the caller. Default = true.
         /// </summary>
+        /// <remarks>
+        /// Reaching <see cref="MaxIterations"/> or <see cref="MaxFunctionEvaluations"/> never throws from
+        /// <see cref="Minimize"/> or <see cref="Maximize"/>: it is reported through <see cref="Status"/> only,
+        /// whatever this setting. When true, any other exception raised by the objective function or the
+        /// algorithm propagates after <see cref="Status"/> is set to <see cref="OptimizationStatus.Failure"/>;
+        /// when false, it is recorded as that status and the call returns.
+        /// </remarks>
         public bool ReportFailure { get; set; } = true;
 
         /// <summary>
@@ -67,6 +77,32 @@ namespace Numerics.Mathematics.Optimization
         /// or a line search failed after producing a usable best parameter set.
         /// </summary>
         public bool ComputeHessian { get; set; } = true;
+
+        /// <summary>
+        /// A token that stops the run early. Default = none.
+        /// </summary>
+        /// <remarks>
+        /// The token is checked at every function evaluation, including those of a local search run inside a
+        /// global one. A cancelled run stops without throwing, keeps the best parameter set found so far, and
+        /// ends with <see cref="OptimizationStatus.Cancelled"/>; no Hessian is computed. A token that is never
+        /// cancelled does not change the results.
+        /// </remarks>
+        public CancellationToken CancellationToken { get; set; }
+
+        /// <summary>
+        /// Receives a snapshot of the run every <see cref="ProgressInterval"/> function evaluations and once
+        /// when the run ends. Default = none.
+        /// </summary>
+        /// <remarks>
+        /// Reports are made on the optimizer's thread; the snapshot holds a copy of the best values. Reporting
+        /// does not change the results.
+        /// </remarks>
+        public IProgress<OptimizationProgress>? Progress { get; set; }
+
+        /// <summary>
+        /// The number of function evaluations between <see cref="Progress"/> reports. Default = 100.
+        /// </summary>
+        public int ProgressInterval { get; set; } = 100;
 
         /// <summary>
         /// The objective function to evaluate. 
@@ -135,6 +171,11 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The optimal point, or parameter set. 
         /// </summary>
+        /// <remarks>
+        /// <see cref="ParameterSet.Fitness"/> is the value the solver minimized. After <see cref="Maximize"/>
+        /// that is the negated objective, so the maximum of the objective is <c>-BestParameterSet.Fitness</c>.
+        /// The same holds for every entry of <see cref="ParameterSetTrace"/>.
+        /// </remarks>
         public ParameterSet BestParameterSet { get; protected set; } = new ParameterSet();
 
         /// <summary>
@@ -153,8 +194,13 @@ namespace Numerics.Mathematics.Optimization
         public OptimizationStatus Status { get; protected set; } = OptimizationStatus.None;
 
         /// <summary>
-        /// The numerically differentiated Hessian matrix. This is only computed when the optimization is successful.
+        /// The numerically differentiated Hessian matrix of the objective function at the best parameter set.
         /// </summary>
+        /// <remarks>
+        /// It is computed when <see cref="ComputeHessian"/> is true and the run ends with
+        /// <see cref="OptimizationStatus.Success"/> or <see cref="OptimizationStatus.LineSearchFailed"/>;
+        /// otherwise it is null. It is not negated after <see cref="Maximize"/>.
+        /// </remarks>
         public Matrix? Hessian { get; protected set; }
 
         #endregion
@@ -181,6 +227,7 @@ namespace Numerics.Mathematics.Optimization
             if (MaxFunctionEvaluations < 10) throw new ArgumentOutOfRangeException(nameof(MaxFunctionEvaluations), "The maximum number of function evaluations must be greater than 10.");
             if (RelativeTolerance <= 0 || RelativeTolerance > 1) throw new ArgumentOutOfRangeException(nameof(RelativeTolerance), "The relative tolerance must be between 0 and 1.");
             if (AbsoluteTolerance <= 0 || AbsoluteTolerance > 1) throw new ArgumentOutOfRangeException(nameof(AbsoluteTolerance), "The absolute tolerance must be between 0 and 1.");
+            if (ProgressInterval < 1) throw new ArgumentOutOfRangeException(nameof(ProgressInterval), "The progress interval must be at least one evaluation.");
         }
 
         /// <summary>
@@ -204,21 +251,33 @@ namespace Numerics.Mathematics.Optimization
                     Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values, ParameterLowerBounds!, ParameterUpperBounds!));
                 }
             }
+            catch (OperationCanceledException) when (CancellationToken.IsCancellationRequested)
+            {
+                Status = OptimizationStatus.Cancelled;
+            }
             catch (ArgumentException ex)
             {
-                if (ex.ParamName != nameof(MaxIterations) && ex.ParamName != nameof(MaxFunctionEvaluations))
+                if (CancellationToken.IsCancellationRequested) Status = OptimizationStatus.Cancelled;
+                else if (ex.ParamName != nameof(MaxIterations) && ex.ParamName != nameof(MaxFunctionEvaluations))
                     UpdateStatus(OptimizationStatus.Failure, ex);
             }
             catch (Exception ex)
             {
-                UpdateStatus(OptimizationStatus.Failure, ex);
+                // Once cancellation is requested, a later failure is a consequence of the stop, not an error.
+                if (CancellationToken.IsCancellationRequested) Status = OptimizationStatus.Cancelled;
+                else UpdateStatus(OptimizationStatus.Failure, ex);
             }
+            ReportProgress();
 
         }
 
         /// <summary>
         /// Finds the parameter set that maximizes the objective function.
         /// </summary>
+        /// <remarks>
+        /// The solver minimizes the negated objective, so the fitness values it reports are negated; see
+        /// <see cref="BestParameterSet"/>. The <see cref="Hessian"/> is that of the objective itself.
+        /// </remarks>
         public virtual void Maximize()
         {
             Validate();
@@ -232,15 +291,23 @@ namespace Numerics.Mathematics.Optimization
                     Hessian = new Matrix(NumericalDerivative.Hessian((x) => { return ObjectiveFunction(x); }, BestParameterSet.Values, ParameterLowerBounds!, ParameterUpperBounds!));
                 }
             }
+            catch (OperationCanceledException) when (CancellationToken.IsCancellationRequested)
+            {
+                Status = OptimizationStatus.Cancelled;
+            }
             catch (ArgumentException ex)
             {
-                if (ex.ParamName != nameof(MaxIterations) && ex.ParamName != nameof(MaxFunctionEvaluations))
+                if (CancellationToken.IsCancellationRequested) Status = OptimizationStatus.Cancelled;
+                else if (ex.ParamName != nameof(MaxIterations) && ex.ParamName != nameof(MaxFunctionEvaluations))
                     UpdateStatus(OptimizationStatus.Failure, ex);
             }
             catch (Exception ex)
             {
-                UpdateStatus(OptimizationStatus.Failure, ex);
+                // Once cancellation is requested, a later failure is a consequence of the stop, not an error.
+                if (CancellationToken.IsCancellationRequested) Status = OptimizationStatus.Cancelled;
+                else UpdateStatus(OptimizationStatus.Failure, ex);
             }
+            ReportProgress();
         }
 
         /// <summary>
@@ -248,9 +315,34 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         /// <param name="values">The parameter values to evaluate.</param>
         /// <param name="cancel">By ref. Determines if the solver should be canceled.</param>
+        /// <returns>The scaled fitness. A NaN objective value is returned as positive infinity, the worst fitness.</returns>
         protected virtual double Evaluate(double[] values, ref bool cancel)
-        {        
-            double fitness = functionScale * ObjectiveFunction(values);
+        {
+            // Stop on cancellation before spending another evaluation. The exception unwinds nested local
+            // searches too; Minimize and Maximize turn it into the Cancelled status.
+            if (CancellationToken.IsCancellationRequested)
+            {
+                cancel = true;
+                Status = OptimizationStatus.Cancelled;
+                throw new OperationCanceledException(CancellationToken);
+            }
+
+            return RecordEvaluation(values, ObjectiveFunction(values), ref cancel);
+        }
+
+        /// <summary>
+        /// Records one objective value: scales it, keeps the best parameter set, updates the trace and the
+        /// evaluation counter, and checks the evaluation budget.
+        /// </summary>
+        /// <param name="values">The evaluated parameter values.</param>
+        /// <param name="objective">The unscaled objective value at <paramref name="values"/>.</param>
+        /// <param name="cancel">By ref. Set when the evaluation budget is reached.</param>
+        /// <returns>The scaled fitness. A NaN objective value is returned as positive infinity, the worst fitness.</returns>
+        private double RecordEvaluation(double[] values, double objective, ref bool cancel)
+        {
+            double fitness = functionScale * objective;
+            // A NaN fails every comparison, so it would never be replaced. Rank it as the worst value.
+            if (double.IsNaN(fitness)) fitness = double.PositiveInfinity;
 
             // keep track of best fit parameter set
             if (BestParameterSet.Values == null || fitness <= BestParameterSet.Fitness)
@@ -262,6 +354,7 @@ namespace Numerics.Mathematics.Optimization
 
             // update evaluation counter
             FunctionEvaluations += 1;
+            if (Progress != null && FunctionEvaluations % ProgressInterval == 0) ReportProgress();
             if (FunctionEvaluations >= MaxFunctionEvaluations)
             {
                 cancel = true;
@@ -269,6 +362,113 @@ namespace Numerics.Mathematics.Optimization
             }
 
             return fitness;
+        }
+
+        /// <summary>
+        /// Evaluates a batch of points in parallel and records the results in index order.
+        /// </summary>
+        /// <param name="points">The points to evaluate; the first <paramref name="count"/> are used.</param>
+        /// <param name="count">The number of points.</param>
+        /// <param name="fitness">Receives the scaled fitness of each evaluated point.</param>
+        /// <param name="maxDegreeOfParallelism">The maximum number of concurrent evaluations, or -1 for no limit.</param>
+        /// <param name="cancel">By ref. Set when the evaluation budget is reached.</param>
+        /// <returns>The number of points evaluated: <paramref name="count"/>, or fewer when the budget runs out.</returns>
+        /// <remarks>
+        /// The objective is called concurrently and must be thread safe. The results are recorded exactly as
+        /// <see cref="Evaluate"/> would record them one after the other, in index order, so the best point,
+        /// the trace and the counters do not depend on the number of threads. Only as many points as the
+        /// remaining evaluation budget allows are evaluated.
+        /// </remarks>
+        protected int EvaluateBatch(double[][] points, int count, double[] fitness, int maxDegreeOfParallelism, ref bool cancel)
+        {
+            if (CancellationToken.IsCancellationRequested)
+            {
+                cancel = true;
+                Status = OptimizationStatus.Cancelled;
+                throw new OperationCanceledException(CancellationToken);
+            }
+            int n = Math.Min(count, MaxFunctionEvaluations - FunctionEvaluations);
+            var options = new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = CancellationToken };
+            // Each point's exception is kept, so that the first failing index, not the first thread to fail,
+            // decides what is thrown: the earlier points are recorded first, as in a sequential run.
+            var errors = new ExceptionDispatchInfo?[n];
+            Parallel.For(0, n, options, k =>
+            {
+                try
+                {
+                    fitness[k] = ObjectiveFunction(points[k]);
+                }
+                catch (Exception ex)
+                {
+                    errors[k] = ExceptionDispatchInfo.Capture(ex);
+                }
+            });
+            for (int k = 0; k < n; k++)
+            {
+                errors[k]?.Throw();
+                fitness[k] = RecordEvaluation(points[k], fitness[k], ref cancel);
+                if (cancel) return k + 1;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Reports the current state to <see cref="Progress"/>, when set.
+        /// </summary>
+        protected void ReportProgress()
+        {
+            if (Progress == null || BestParameterSet.Values == null) return;
+            Progress.Report(new OptimizationProgress(Iterations, FunctionEvaluations, BestParameterSet.Fitness, (double[])BestParameterSet.Values.Clone()));
+        }
+
+        /// <summary>
+        /// Throws when a local method cannot be used to polish a global search.
+        /// </summary>
+        /// <param name="method">The local method.</param>
+        /// <exception cref="NotSupportedException"><paramref name="method"/> is not BFGS, Nelder-Mead, or Powell.</exception>
+        protected static void ValidatePolishMethod(LocalMethod method)
+        {
+            if (method != LocalMethod.BFGS && method != LocalMethod.NelderMead && method != LocalMethod.Powell)
+                throw new NotSupportedException("The polishing method must be BFGS, Nelder-Mead, or Powell.");
+        }
+
+        /// <summary>
+        /// Refines the best parameter set with a bounded local search, the polish step of a global search.
+        /// </summary>
+        /// <param name="method">The local method: BFGS, Nelder-Mead, or Powell.</param>
+        /// <returns>False when the evaluation budget is spent or the run is cancelled, so the caller must stop.</returns>
+        /// <remarks>
+        /// The local search starts at <see cref="BestParameterSet"/>, uses this optimizer's tolerances and its
+        /// remaining evaluation budget, and evaluates through <see cref="Evaluate"/>, so every evaluation is
+        /// counted, traced, and can improve <see cref="BestParameterSet"/>. It keeps no trace or Hessian of
+        /// its own. The caller's status is not changed by the polish. A local search needs at least 10
+        /// evaluations, so the polish is skipped when fewer remain in the budget.
+        /// </remarks>
+        protected bool PolishBestParameterSet(LocalMethod method)
+        {
+            ValidatePolishMethod(method);
+            if (MaxFunctionEvaluations - FunctionEvaluations < 10) return FunctionEvaluations < MaxFunctionEvaluations && !CancellationToken.IsCancellationRequested;
+            var lower = ParameterLowerBounds!;
+            var upper = ParameterUpperBounds!;
+            var start = new double[NumberOfParameters];
+            for (int i = 0; i < NumberOfParameters; i++)
+                start[i] = RepairParameter(BestParameterSet.Values[i], lower[i], upper[i]);
+
+            bool localCancel = false;
+            Func<double[], double> objective = x => Evaluate(x, ref localCancel);
+            Optimizer solver = method == LocalMethod.BFGS ? new BFGS(objective, NumberOfParameters, start, lower, upper)
+                : method == LocalMethod.NelderMead ? new NelderMead(objective, NumberOfParameters, start, lower, upper)
+                : new Powell(objective, NumberOfParameters, start, lower, upper);
+            solver.RelativeTolerance = RelativeTolerance;
+            solver.AbsoluteTolerance = AbsoluteTolerance;
+            solver.MaxFunctionEvaluations = MaxFunctionEvaluations - FunctionEvaluations;
+            solver.RecordTraces = false;
+            solver.ComputeHessian = false;
+            // An exception from the objective propagates as it would from the global search; reaching the
+            // local limits never throws and leaves the global search's status unchanged.
+            solver.ReportFailure = ReportFailure;
+            solver.Minimize();
+            return !localCancel && FunctionEvaluations < MaxFunctionEvaluations && !CancellationToken.IsCancellationRequested;
         }
 
         /// <summary>
@@ -303,7 +503,7 @@ namespace Numerics.Mathematics.Optimization
             }
             else if (status == OptimizationStatus.Failure)
             {
-              if (ReportFailure && exception != null) throw exception;
+              if (ReportFailure && exception != null) ExceptionDispatchInfo.Capture(exception).Throw();
             }
 
         }

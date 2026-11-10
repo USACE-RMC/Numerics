@@ -13,14 +13,15 @@ namespace Numerics.Mathematics.Optimization
     /// </para>
     /// <para>
     /// <b> Description: </b>
-    /// The network compiles its topology once at construction — the node count, the incoming and
-    /// outgoing adjacency, and the destination set are fixed for the instance's lifetime — so
+    /// The network compiles its topology once at construction (the node count, the incoming and
+    /// outgoing adjacency, and the destination set are fixed for the instance's lifetime), so
     /// repeated solves pay only the solve itself, and custom-weight solves overlay a positional
     /// weight vector with no rebuild. The solve and path methods that return their results
     /// allocate them per call and are safe for concurrent use; the overloads that write into a
     /// caller-supplied table reuse instance scratch buffers and are not thread safe. Weights follow the
-    /// <see cref="Dijkstra"/> conventions: non-negative weights are the correctness
-    /// precondition, positive infinity is impassable, and NaN severs its edge.
+    /// <see cref="Dijkstra"/> conventions: every solve and path method throws
+    /// <see cref="ArgumentOutOfRangeException"/> at entry when a weight it would use is negative,
+    /// positive infinity is impassable, and NaN severs its edge.
     /// </para>
     /// </remarks>
     public class Network
@@ -49,6 +50,9 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>Marks the destination nodes for O(1) membership tests.</summary>
         private readonly bool[] _isDestination;
 
+        /// <summary>The position of the first constructor edge with a negative weight; -1 when there is none.</summary>
+        private readonly int _firstNegativeWeight = -1;
+
         /// <summary>Lazily allocated scratch for the table-reuse solves (not thread safe).</summary>
         private int[]? _scratchNext;
 
@@ -56,10 +60,7 @@ namespace Numerics.Mathematics.Optimization
         private int[]? _scratchEdge;
 
         /// <summary>Scratch per-node costs for the table-reuse solves.</summary>
-        private float[]? _scratchDist;
-
-        /// <summary>Scratch per-node states for the table-reuse solves.</summary>
-        private int[]? _scratchState;
+        private double[]? _scratchDist;
 
         /// <summary>Scratch heap for the table-reuse solves.</summary>
         private IndexedMinHeap? _scratchHeap;
@@ -71,7 +72,10 @@ namespace Numerics.Mathematics.Optimization
         private int[]? _scratchBestEdge;
 
         /// <summary>Scratch merged costs for the table-reuse multi-destination solve.</summary>
-        private float[]? _scratchBestDist;
+        private double[]? _scratchBestDist;
+
+        /// <summary>Scratch per-slot weights for the reuse solves: the custom weights in incoming slot order.</summary>
+        private double[]? _scratchWeights;
 
         /// <summary>
         /// The destination node indices for shortest path computation.
@@ -139,6 +143,15 @@ namespace Numerics.Mathematics.Optimization
 
             _incomingEdges = MaterializeLists(_incomingAdjacency);
             _outgoingEdges = MaterializeLists(_outgoingAdjacency);
+
+            for (int i = 0; i < _edges.Length; i++)
+            {
+                if (_edges[i].Weight < 0f)
+                {
+                    _firstNegativeWeight = i;
+                    break;
+                }
+            }
         }
 
         /// <summary>
@@ -146,16 +159,17 @@ namespace Numerics.Mathematics.Optimization
         /// </summary>
         /// <param name="destinationIndex">The destination node index.</param>
         /// <returns>A result table with the next node, edge index, and cumulative weight for each node.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the destination index is outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the destination index is outside the network, or a constructor edge weight is negative.</exception>
         public float[,] Solve(int destinationIndex)
         {
+            ValidateConstructorWeights();
             if (destinationIndex < 0 || destinationIndex >= _nodeCount)
                 throw new ArgumentOutOfRangeException(nameof(destinationIndex), $"The destination index must be within [0, {_nodeCount}).");
 
             var next = new int[_nodeCount];
             var edgeIndexes = new int[_nodeCount];
-            var dist = new float[_nodeCount];
-            Dijkstra.SolveCore(_incomingAdjacency, null, destinationIndex, next, edgeIndexes, dist, new int[_nodeCount], new IndexedMinHeap(_nodeCount));
+            var dist = new double[_nodeCount];
+            Dijkstra.SolveCore(_incomingAdjacency, _incomingAdjacency.Weight, destinationIndex, next, edgeIndexes, dist, new IndexedMinHeap(_nodeCount));
             return Dijkstra.WriteTable(next, edgeIndexes, dist);
         }
 
@@ -167,19 +181,20 @@ namespace Numerics.Mathematics.Optimization
         /// <remarks>
         /// Each destination is solved independently and the tables merge per node by strictly
         /// smaller cost in destination order, so on an exact cost tie the earlier destination
-        /// wins — the same semantics as the static multi-destination solver. An empty
+        /// wins, the same semantics as the static multi-destination solver. An empty
         /// destination array returns an all-unreachable table.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the destination indices are null.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when a destination index is outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a destination index is outside the network, or a constructor edge weight is negative.</exception>
         public float[,] Solve(int[] destinationIndices)
         {
+            ValidateConstructorWeights();
             ValidateDestinations(destinationIndices);
             var bestNext = new int[_nodeCount];
             var bestEdge = new int[_nodeCount];
-            var bestDist = new float[_nodeCount];
-            Dijkstra.SolveMergedCore(_incomingAdjacency, null, destinationIndices,
-                new int[_nodeCount], new int[_nodeCount], new float[_nodeCount], new int[_nodeCount], new IndexedMinHeap(_nodeCount),
+            var bestDist = new double[_nodeCount];
+            Dijkstra.SolveMergedCore(_incomingAdjacency, _incomingAdjacency.Weight, destinationIndices,
+                new int[_nodeCount], new int[_nodeCount], new double[_nodeCount], new IndexedMinHeap(_nodeCount),
                 bestNext, bestEdge, bestDist);
             return Dijkstra.WriteTable(bestNext, bestEdge, bestDist);
         }
@@ -190,20 +205,23 @@ namespace Numerics.Mathematics.Optimization
         /// <param name="edgeWeights">Custom weights, one per edge, positional with the constructor's edge array.</param>
         /// <returns>A result table with the next node, edge index, and cumulative weight for each node.</returns>
         /// <remarks>
-        /// The weights overlay the compiled topology positionally — nothing is rebuilt. The
+        /// The weights overlay the compiled topology positionally; nothing is rebuilt. The
         /// destinations are the constructor's, merged in destination order exactly like
         /// <see cref="Solve(int[])"/>.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the weights are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the weight count does not equal the edge count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative.</exception>
         public float[,] Solve(float[] edgeWeights)
         {
             ValidateWeights(edgeWeights);
             var bestNext = new int[_nodeCount];
             var bestEdge = new int[_nodeCount];
-            var bestDist = new float[_nodeCount];
-            Dijkstra.SolveMergedCore(_incomingAdjacency, edgeWeights, _destinationIndices,
-                new int[_nodeCount], new int[_nodeCount], new float[_nodeCount], new int[_nodeCount], new IndexedMinHeap(_nodeCount),
+            var bestDist = new double[_nodeCount];
+            var slotWeights = new double[_edges.Length];
+            _incomingAdjacency.OverlayWeights(edgeWeights, slotWeights);
+            Dijkstra.SolveMergedCore(_incomingAdjacency, slotWeights, _destinationIndices,
+                new int[_nodeCount], new int[_nodeCount], new double[_nodeCount], new IndexedMinHeap(_nodeCount),
                 bestNext, bestEdge, bestDist);
             return Dijkstra.WriteTable(bestNext, bestEdge, bestDist);
         }
@@ -216,35 +234,39 @@ namespace Numerics.Mathematics.Optimization
         /// <remarks>
         /// Costs match <see cref="Solve(int[])"/> over the network's destinations exactly; the
         /// routed next node and edge can differ from it wherever two routes have exactly equal
-        /// cost — whether to the same or to different destinations — where this method resolves
+        /// cost (whether to the same or to different destinations), where this method resolves
         /// the tie by deterministic heap order rather than destination array order. One pass
         /// replaces one pass per destination.
         /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a constructor edge weight is negative.</exception>
         public float[,] SolveNearest()
         {
+            ValidateConstructorWeights();
             var next = new int[_nodeCount];
             var edgeIndexes = new int[_nodeCount];
-            var dist = new float[_nodeCount];
-            Dijkstra.SolveNearestCore(_incomingAdjacency, null, _destinationIndices, next, edgeIndexes, dist, new int[_nodeCount], new IndexedMinHeap(_nodeCount));
+            var dist = new double[_nodeCount];
+            Dijkstra.SolveNearestCore(_incomingAdjacency, _incomingAdjacency.Weight, _destinationIndices, next, edgeIndexes, dist, new IndexedMinHeap(_nodeCount));
             return Dijkstra.WriteTable(next, edgeIndexes, dist);
         }
 
         /// <summary>
         /// Solves the shortest path to the network's destinations using custom edge weights,
-        /// writing the results into a caller-supplied table. Reuses instance scratch buffers —
-        /// zero allocation per call at steady state — and is therefore not thread safe.
+        /// writing the results into a caller-supplied table. Reuses instance scratch buffers
+        /// (zero allocation per call at steady state) and is therefore not thread safe.
         /// </summary>
         /// <param name="edgeWeights">Custom weights, one per edge, positional with the constructor's edge array.</param>
         /// <param name="resultTable">The table to fill; its dimensions must be [<see cref="NodeCount"/>, 3].</param>
         /// <exception cref="ArgumentNullException">Thrown when the weights or table are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the weight count or table dimensions are wrong.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative.</exception>
         public void Solve(float[] edgeWeights, float[,] resultTable)
         {
             ValidateWeights(edgeWeights);
             ValidateResultTable(resultTable);
             EnsureScratch();
-            Dijkstra.SolveMergedCore(_incomingAdjacency, edgeWeights, _destinationIndices,
-                _scratchNext!, _scratchEdge!, _scratchDist!, _scratchState!, _scratchHeap!,
+            _incomingAdjacency.OverlayWeights(edgeWeights, _scratchWeights!);
+            Dijkstra.SolveMergedCore(_incomingAdjacency, _scratchWeights!, _destinationIndices,
+                _scratchNext!, _scratchEdge!, _scratchDist!, _scratchHeap!,
                 _scratchBestNext!, _scratchBestEdge!, _scratchBestDist!);
             Dijkstra.WriteTable(_scratchBestNext!, _scratchBestEdge!, _scratchBestDist!, resultTable);
         }
@@ -252,20 +274,22 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// Solves the shortest path from every node to its nearest network destination using
         /// custom edge weights, writing the results into a caller-supplied table. Reuses
-        /// instance scratch buffers — zero allocation per call at steady state — and is
+        /// instance scratch buffers (zero allocation per call at steady state) and is
         /// therefore not thread safe.
         /// </summary>
         /// <param name="edgeWeights">Custom weights, one per edge, positional with the constructor's edge array.</param>
         /// <param name="resultTable">The table to fill; its dimensions must be [<see cref="NodeCount"/>, 3].</param>
         /// <exception cref="ArgumentNullException">Thrown when the weights or table are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the weight count or table dimensions are wrong.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative.</exception>
         public void SolveNearest(float[] edgeWeights, float[,] resultTable)
         {
             ValidateWeights(edgeWeights);
             ValidateResultTable(resultTable);
             EnsureScratch();
-            Dijkstra.SolveNearestCore(_incomingAdjacency, edgeWeights, _destinationIndices,
-                _scratchNext!, _scratchEdge!, _scratchDist!, _scratchState!, _scratchHeap!);
+            _incomingAdjacency.OverlayWeights(edgeWeights, _scratchWeights!);
+            Dijkstra.SolveNearestCore(_incomingAdjacency, _scratchWeights!, _destinationIndices,
+                _scratchNext!, _scratchEdge!, _scratchDist!, _scratchHeap!);
             Dijkstra.WriteTable(_scratchNext!, _scratchEdge!, _scratchDist!, resultTable);
         }
 
@@ -285,7 +309,7 @@ namespace Numerics.Mathematics.Optimization
                 var list = new List<Edge>(end - start);
                 for (int k = start; k < end; k++)
                 {
-                    list.Add(new Edge(adjacency.FromNode[k], adjacency.ToNode[k], adjacency.Weight[k], adjacency.EdgeIndex[k]));
+                    list.Add(new Edge(adjacency.FromNode[k], adjacency.ToNode[k], (float)adjacency.Weight[k], adjacency.EdgeIndex[k]));
                 }
                 lists[n] = list;
             }
@@ -309,16 +333,31 @@ namespace Numerics.Mathematics.Optimization
         }
 
         /// <summary>
-        /// Validates a positional custom-weight vector against the network's edge count.
+        /// Validates a positional custom-weight vector against the network's edge count and the
+        /// non-negative weight requirement.
         /// </summary>
         /// <param name="edgeWeights">The custom weights.</param>
         /// <exception cref="ArgumentNullException">Thrown when the weights are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the weight count does not equal the edge count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a weight is negative.</exception>
         private void ValidateWeights(float[] edgeWeights)
         {
             if (edgeWeights == null) throw new ArgumentNullException(nameof(edgeWeights));
             if (edgeWeights.Length != _edges.Length)
                 throw new ArgumentException($"The weight count ({edgeWeights.Length}) must equal the edge count ({_edges.Length}).", nameof(edgeWeights));
+            for (int i = 0; i < edgeWeights.Length; i++)
+                Dijkstra.ValidateWeight(edgeWeights[i], allowNaN: true, "the edge at position", i, nameof(edgeWeights));
+        }
+
+        /// <summary>
+        /// Validates the constructor's edge weights, which the solve and path methods without
+        /// custom weights use, against the non-negative weight requirement.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a constructor edge weight is negative.</exception>
+        private void ValidateConstructorWeights()
+        {
+            if (_firstNegativeWeight >= 0)
+                Dijkstra.ValidateWeight(_edges[_firstNegativeWeight].Weight, allowNaN: true, "the edge at position", _firstNegativeWeight, "edges");
         }
 
         /// <summary>
@@ -342,12 +381,12 @@ namespace Numerics.Mathematics.Optimization
             if (_scratchNext != null) return;
             _scratchNext = new int[_nodeCount];
             _scratchEdge = new int[_nodeCount];
-            _scratchDist = new float[_nodeCount];
-            _scratchState = new int[_nodeCount];
+            _scratchDist = new double[_nodeCount];
             _scratchHeap = new IndexedMinHeap(_nodeCount);
             _scratchBestNext = new int[_nodeCount];
             _scratchBestEdge = new int[_nodeCount];
-            _scratchBestDist = new float[_nodeCount];
+            _scratchBestDist = new double[_nodeCount];
+            _scratchWeights = new double[_edges.Length];
         }
 
         /// <summary>
@@ -361,10 +400,11 @@ namespace Numerics.Mathematics.Optimization
         /// destination; null if no path exists.
         /// </returns>
         /// <exception cref="ArgumentNullException">Thrown when the edge indices are null.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network, or a constructor edge weight is negative.</exception>
         public List<int>? GetPath(int[] edgesToRemove, int startNodeIndex)
         {
             if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
+            ValidateConstructorWeights();
             if (startNodeIndex < 0 || startNodeIndex >= _nodeCount)
                 throw new ArgumentOutOfRangeException(nameof(startNodeIndex), $"The start node index must be within [0, {_nodeCount}).");
 
@@ -388,18 +428,19 @@ namespace Numerics.Mathematics.Optimization
         /// </returns>
         /// <remarks>
         /// When the table's recorded route from the start node avoids every excluded edge it is
-        /// returned directly — exclusions only remove paths, so a surviving unexcluded optimum
+        /// returned directly: exclusions only remove paths, so a surviving unexcluded optimum
         /// stays optimal. Otherwise the path is re-solved with the exclusions applied using the
         /// edge weights supplied to the constructor. Use the four-argument overload when
         /// <paramref name="existingResultsTable"/> was solved with custom weights.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the edge indices or table are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the table dimensions are not [<see cref="NodeCount"/>, 3].</exception>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network, or a constructor edge weight is negative.</exception>
         public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable)
         {
             if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
             ValidateResultTable(existingResultsTable);
+            ValidateConstructorWeights();
             if (startNodeIndex < 0 || startNodeIndex >= _nodeCount)
                 throw new ArgumentOutOfRangeException(nameof(startNodeIndex), $"The start node index must be within [0, {_nodeCount}).");
 
@@ -446,7 +487,7 @@ namespace Numerics.Mathematics.Optimization
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when the edge indices, table, or weights are null.</exception>
         /// <exception cref="ArgumentException">Thrown when the table dimensions are not [<see cref="NodeCount"/>, 3] or the weight count does not equal the edge count.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the start node is outside the network, or a weight is negative.</exception>
         public List<int> GetPath(int[] edgesToRemove, int startNodeIndex, float[,] existingResultsTable, float[] edgeWeights)
         {
             if (edgesToRemove == null) throw new ArgumentNullException(nameof(edgesToRemove));
@@ -491,31 +532,31 @@ namespace Numerics.Mathematics.Optimization
         {
             if (_isDestination[startNodeIndex]) return new List<int>();
 
-            var dist = new float[_nodeCount];
+            var dist = new double[_nodeCount];
             var state = new int[_nodeCount];
             var previousSlot = new int[_nodeCount];
             for (int i = 0; i < _nodeCount; i++)
             {
-                dist[i] = float.PositiveInfinity;
+                dist[i] = double.PositiveInfinity;
                 state[i] = 0;
                 previousSlot[i] = -1;
             }
             var heap = new IndexedMinHeap(_nodeCount);
 
-            dist[startNodeIndex] = 0f;
-            heap.Add(startNodeIndex, 0f);
+            dist[startNodeIndex] = 0d;
+            heap.Add(startNodeIndex, 0d);
             state[startNodeIndex] = 2;
 
             int[] rowStart = _outgoingAdjacency.RowStart;
             int[] toNodes = _outgoingAdjacency.ToNode;
-            float[] weights = _outgoingAdjacency.Weight;
+            double[] weights = _outgoingAdjacency.Weight;
             int[] edgeIndexes = _outgoingAdjacency.EdgeIndex;
             int[]? sourcePositions = _outgoingAdjacency.SourcePosition;
 
             int reachedDestination = -1;
             while (heap.Count > 0)
             {
-                heap.RemoveMin(out int current, out float cost);
+                heap.RemoveMin(out int current, out double cost);
                 if (state[current] == 1) continue;
                 state[current] = 1;
 
@@ -530,8 +571,8 @@ namespace Numerics.Mathematics.Optimization
                 {
                     if (removed.Contains(edgeIndexes[k])) continue;
                     int to = toNodes[k];
-                    float weight = edgeWeights == null ? weights[k] : edgeWeights[sourcePositions![k]];
-                    float newCost = cost + weight;
+                    double weight = edgeWeights == null ? weights[k] : edgeWeights[sourcePositions![k]];
+                    double newCost = cost + weight;
                     if (newCost < dist[to])
                     {
                         dist[to] = newCost;

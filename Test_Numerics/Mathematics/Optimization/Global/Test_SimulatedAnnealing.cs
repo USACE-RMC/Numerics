@@ -325,5 +325,41 @@ namespace Mathematics.Optimization
             Assert.IsTrue(match1 || match2);
         }
       
+
+        /// <summary>
+        /// A seeded run, including its Nelder-Mead polish, is reproducible bit for bit.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the exact search path; see <see cref="OptimizerFingerprint"/>. A different
+        /// fingerprint means different results.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SeededRunFingerprint()
+        {
+            var solver = new SimulatedAnnealing(OptimizerFingerprint.Rosenbrock, 3, new[] { -5d, -5d, -5d }, new[] { 5d, 5d, 5d }) { MaxIterations = 30, ReportFailure = false };
+            solver.Minimize();
+            Assert.AreEqual("x=3FF0000000712C98,3FF0000000D85370,3FF0000001B39714|f=3C71371A26ACB800|it=30|fe=3813|st=MaximumIterationsReached|trace=3813:23DAD742FEFEDBF3", OptimizerFingerprint.Of(solver));
+        }
+
+        /// <summary>
+        /// The search stops when the best value stalls over ToleranceSteps reductions and polishes the best
+        /// point: it ends with Success and a Hessian, in a small fraction of
+        /// the MaxIterations x 40 x D evaluations of a full schedule.
+        /// </summary>
+        [TestMethod]
+        public void Test_StallStopAndPolish()
+        {
+            var solver = new SimulatedAnnealing(OptimizerFingerprint.Rosenbrock, 3, new[] { -5d, -5d, -5d }, new[] { 5d, 5d, 5d });
+            solver.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, solver.Status);
+            Assert.IsNotNull(solver.Hessian);
+            Assert.IsLessThan(1E-10, solver.BestParameterSet.Fitness);
+            Assert.IsLessThan(100000, solver.FunctionEvaluations);
+
+            var unpolished = new SimulatedAnnealing(OptimizerFingerprint.Rosenbrock, 3, new[] { -5d, -5d, -5d }, new[] { 5d, 5d, 5d }) { Polish = false };
+            unpolished.Minimize();
+            Assert.AreEqual(OptimizationStatus.Success, unpolished.Status);
+            Assert.IsGreaterThan(solver.BestParameterSet.Fitness, unpolished.BestParameterSet.Fitness);
+        }
     }
 }

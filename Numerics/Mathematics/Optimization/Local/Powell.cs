@@ -185,7 +185,7 @@ namespace Numerics.Mathematics.Optimization
                 Iterations += 1;
             }
 
-            // If we made it to here, the maximum iterations were reached.
+            // Reaching this point means the maximum iterations were reached.
             UpdateStatus(OptimizationStatus.MaximumIterationsReached);
 
         }
@@ -251,10 +251,10 @@ namespace Numerics.Mathematics.Optimization
         /// when some direction did decrease.
         /// </para>
         /// <para>
-        /// Both zero-progress paths — a feasible interval collapsed to the single point zero, which
+        /// Both zero-progress paths (a feasible interval collapsed to the single point zero, which
         /// happens when the direction is identically zero or when the iterate sits on a bound with the
         /// direction pointing out of the box in every constrained coordinate, and a search that failed to
-        /// strictly improve on the current point — return the zero-step value and leave the point and the
+        /// strictly improve on the current point) return the zero-step value and leave the point and the
         /// direction untouched. A blocked direction is therefore retained in the direction set and can be
         /// retried from a later iterate; scaling it by the zero step would instead store a zero direction
         /// that no later iteration could use.
@@ -283,10 +283,11 @@ namespace Numerics.Mathematics.Optimization
             // feasible in either sense. Report the value at the current point instead of searching.
             if (alphaMin == 0d && alphaMax == 0d) return zeroStep;
 
+            // One trial buffer for the whole line search: Evaluate copies any point it keeps.
+            var x = new double[D];
             double func(double alpha)
             {
                 double step = alpha < alphaMin ? alphaMin : (alpha > alphaMax ? alphaMax : alpha);
-                var x = new double[D];
                 for (int i = 0; i < D; i++)
                     x[i] = RepairParameter(startPoint[i] + step * direction[i], LowerBounds[i], UpperBounds[i]);
                 return Evaluate(x, ref c);
@@ -296,17 +297,26 @@ namespace Numerics.Mathematics.Optimization
             // run past an endpoint of the feasible interval, where the objective above is constant. That
             // constant is what stops the expansion, but the interval it reports must be trimmed back to the
             // feasible interval before the minimization runs over it. See the remarks on this method.
-            var bracketing = new BrentSearch(func, 0d, 1d) { RelativeTolerance = RelativeTolerance, AbsoluteTolerance = AbsoluteTolerance };
+            var bracketing = new BrentSearch(func, 0d, 1d) { RelativeTolerance = RelativeTolerance };
             bracketing.Bracket(GetBracketingStep(alphaMin, alphaMax));
             cancel = c;
             if (cancel) return double.NaN;
             double lower = bracketing.LowerBound < alphaMin ? alphaMin : (bracketing.LowerBound > alphaMax ? alphaMax : bracketing.LowerBound);
             double upper = bracketing.UpperBound < alphaMin ? alphaMin : (bracketing.UpperBound > alphaMax ? alphaMax : bracketing.UpperBound);
 
-            var brent = new BrentSearch(func, lower, upper) { RelativeTolerance = RelativeTolerance, AbsoluteTolerance = AbsoluteTolerance };
+            // The inner search keeps no trace and no Hessian: only its best point is read.
+            var brent = new BrentSearch(func, lower, upper) { RelativeTolerance = RelativeTolerance, RecordTraces = false, ComputeHessian = false };
             brent.Minimize();
             cancel = c;
             if (cancel) return double.NaN;
+            // The inner search treats a budget stop raised by the objective as its own and returns quietly.
+            // When that happened before any of its evaluations completed it has no best point, so the stop
+            // is passed on to this optimizer, which ends the run as its normal budget stop.
+            if (brent.BestParameterSet.Values == null)
+            {
+                CancellationToken.ThrowIfCancellationRequested();
+                throw new ArgumentException("The maximum number of function evaluations has been reached.", nameof(MaxFunctionEvaluations));
+            }
             double xmin = brent.BestParameterSet.Values[0];
             double fmin = brent.BestParameterSet.Fitness;
 

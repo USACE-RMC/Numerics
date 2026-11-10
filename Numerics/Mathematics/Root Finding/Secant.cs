@@ -47,7 +47,7 @@ namespace Numerics.Mathematics.RootFinding
         /// <param name="f">The function to solve.</param>
         /// <param name="lowerBound">The lower bound (a) of the interval containing the root.</param>
         /// <param name="upperBound">The upper bound (b) of the interval containing the root.</param>
-        /// <param name="tolerance">Optional. Desired tolerance for both the root and the function value at the root.
+        /// <param name="tolerance">Optional. Desired tolerance on the step between successive root estimates; an exact zero of the function also stops the search.
         /// The root will be refined until the tolerance is achieved or the maximum number of iterations is reached. Default = 1e-8.</param>
         /// <param name="maxIterations">Optional. Maximum number of iterations. Default = 1000.</param>
         /// <param name="reportFailure">Optional. If set to true, an exception will be thrown if the routine fails to converge.

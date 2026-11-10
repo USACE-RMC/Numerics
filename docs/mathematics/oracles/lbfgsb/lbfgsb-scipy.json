@@ -1,0 +1,605 @@
+{
+  "reference": "scipy.optimize.minimize(method='L-BFGS-B', maxcor=10, gtol=1e-5, ftol=2.220446049250313e-09, maxls=20)",
+  "python": "3.14.3",
+  "numpy": "2.4.2",
+  "scipy": "1.17.1",
+  "problems": [
+    {
+      "name": "FXYZ",
+      "x0": [
+        0.2,
+        0.5,
+        0.5
+      ],
+      "lower": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "x": [
+        0.12499999999763309,
+        0.20000000000287615,
+        0.3499999999973156
+      ],
+      "fun": 1.9291111663801288e-22,
+      "nit": 5,
+      "nfev": 7,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 7.574119109676758e-11
+    },
+    {
+      "name": "DeJong5",
+      "x0": [
+        1.0,
+        -1.0,
+        2.0,
+        -2.0,
+        1.0
+      ],
+      "lower": [
+        -5.12,
+        -5.12,
+        -5.12,
+        -5.12,
+        -5.12
+      ],
+      "upper": [
+        5.12,
+        5.12,
+        5.12,
+        5.12,
+        5.12
+      ],
+      "x": [
+        2.16840434497101e-19,
+        -2.16840434497101e-19,
+        4.33680868994202e-19,
+        -4.33680868994202e-19,
+        2.16840434497101e-19
+      ],
+      "fun": 5.17217514361807e-37,
+      "nit": 2,
+      "nfev": 4,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 8.67361737988404e-19
+    },
+    {
+      "name": "SumOfPowers3",
+      "x0": [
+        0.5,
+        -0.5,
+        0.5
+      ],
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "x": [
+        -2.757356819711324e-06,
+        -0.0006778130060343279,
+        0.0038050452329724937
+      ],
+      "fun": 5.286341407591404e-10,
+      "nit": 17,
+      "nfev": 18,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 5.514713639422648e-06
+    },
+    {
+      "name": "Rosenbrock2Box",
+      "x0": [
+        0.0,
+        0.0
+      ],
+      "lower": [
+        -2.048,
+        -2.048
+      ],
+      "upper": [
+        2.048,
+        2.048
+      ],
+      "x": [
+        1.0000002869400104,
+        1.0000005609361278
+      ],
+      "fun": 9.908921961653499e-14,
+      "nit": 21,
+      "nfev": 28,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 5.751471685313053e-06
+    },
+    {
+      "name": "Booth",
+      "x0": [
+        0.0,
+        0.0
+      ],
+      "lower": [
+        -10.0,
+        -10.0
+      ],
+      "upper": [
+        10.0,
+        10.0
+      ],
+      "x": [
+        0.9999999999999961,
+        3.0000000000000036
+      ],
+      "fun": 3.2343297114061484e-29,
+      "nit": 3,
+      "nfev": 5,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 1.0658141036401503e-14
+    },
+    {
+      "name": "Matyas",
+      "x0": [
+        1.0,
+        -1.0
+      ],
+      "lower": [
+        -10.0,
+        -10.0
+      ],
+      "upper": [
+        10.0,
+        10.0
+      ],
+      "x": [
+        0.0,
+        0.0
+      ],
+      "fun": 0.0,
+      "nit": 1,
+      "nfev": 2,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 0.0
+    },
+    {
+      "name": "McCormick",
+      "x0": [
+        0.0,
+        0.0
+      ],
+      "lower": [
+        -1.5,
+        -3.0
+      ],
+      "upper": [
+        4.0,
+        4.0
+      ],
+      "x": [
+        -0.5471974884843708,
+        -1.5471976100273852
+      ],
+      "fun": -1.913222954981022,
+      "nit": 6,
+      "nfev": 8,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 2.464474537777761e-07
+    },
+    {
+      "name": "Beale",
+      "x0": [
+        0.0,
+        0.0
+      ],
+      "lower": [
+        -4.5,
+        -4.5
+      ],
+      "upper": [
+        4.5,
+        4.5
+      ],
+      "x": [
+        3.0000011821494774,
+        0.500000328177108
+      ],
+      "fun": 2.520017646794697e-13,
+      "nit": 11,
+      "nfev": 14,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [],
+      "projectedGradientNorm": 1.6163438194959201e-06
+    },
+    {
+      "name": "Corner",
+      "x0": [
+        0.5,
+        0.5
+      ],
+      "lower": [
+        0.0,
+        0.0
+      ],
+      "upper": [
+        1.0,
+        1.0
+      ],
+      "x": [
+        1.0,
+        0.0
+      ],
+      "fun": 5.0,
+      "nit": 1,
+      "nfev": 2,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [
+        0,
+        1
+      ],
+      "projectedGradientNorm": 0.0
+    },
+    {
+      "name": "Linear",
+      "x0": [
+        0.0
+      ],
+      "lower": [
+        0.0
+      ],
+      "upper": [
+        1.0
+      ],
+      "x": [
+        1.0
+      ],
+      "fun": -1.0,
+      "nit": 1,
+      "nfev": 2,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [
+        0
+      ],
+      "projectedGradientNorm": 0.0
+    },
+    {
+      "name": "Rosenbrock2",
+      "x0": [
+        -1.2,
+        1.0
+      ],
+      "lower": [
+        null,
+        null
+      ],
+      "upper": [
+        null,
+        null
+      ],
+      "x": [
+        0.9999989453492933,
+        0.9999980209057526
+      ],
+      "fun": 2.8076497526060324e-12,
+      "nit": 36,
+      "nfev": 44,
+      "success": true,
+      "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "active": [],
+      "projectedGradientNorm": 5.4191667926827355e-05
+    },
+    {
+      "name": "Rosenbrock5",
+      "x0": [
+        -1.2,
+        1.0,
+        -1.2,
+        1.0,
+        -1.2
+      ],
+      "lower": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "upper": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "x": [
+        1.0000002715986869,
+        1.0000004760131493,
+        1.0000009965375514,
+        1.0000018854145014,
+        1.0000034959616948
+      ],
+      "fun": 1.4212226442322077e-11,
+      "nit": 49,
+      "nfev": 66,
+      "success": true,
+      "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "active": [],
+      "projectedGradientNorm": 9.218706253480211e-05
+    },
+    {
+      "name": "Rosenbrock10",
+      "x0": [
+        -1.2,
+        1.0,
+        -1.2,
+        1.0,
+        -1.2,
+        1.0,
+        -1.2,
+        1.0,
+        -1.2,
+        1.0
+      ],
+      "lower": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "upper": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "x": [
+        1.0000001188701086,
+        1.0000001316169962,
+        1.0000000504919353,
+        0.9999999844400876,
+        0.999999926220821,
+        0.9999999128061742,
+        0.999999924169728,
+        0.999999902694125,
+        0.9999998364935773,
+        0.999999553338158
+      ],
+      "fun": 1.0441133466052839e-11,
+      "nit": 71,
+      "nfev": 88,
+      "success": true,
+      "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "active": [],
+      "projectedGradientNorm": 6.41354278910028e-05
+    },
+    {
+      "name": "WeightedQuadraticActive",
+      "x0": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "lower": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "upper": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "x": [
+        0.0,
+        0.5,
+        1.0,
+        0.3,
+        0.0,
+        1.0
+      ],
+      "fun": 5.7,
+      "nit": 3,
+      "nfev": 4,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [
+        0,
+        2,
+        4,
+        5
+      ],
+      "projectedGradientNorm": 0.0
+    },
+    {
+      "name": "TiltedAllBounds",
+      "x0": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "upper": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "x": [
+        -1.0,
+        1.0,
+        -1.0,
+        1.0
+      ],
+      "fun": -9.8,
+      "nit": 1,
+      "nfev": 2,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "projectedGradientNorm": 0.0
+    },
+    {
+      "name": "Rosenbrock4LowerOnly",
+      "x0": [
+        -1.2,
+        1.0,
+        -1.2,
+        1.0
+      ],
+      "lower": [
+        null,
+        1.2,
+        null,
+        null
+      ],
+      "upper": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "x": [
+        -1.091062466466572,
+        1.2,
+        1.4356435317427583,
+        2.0610723770425516
+      ],
+      "fun": 4.613408209925441,
+      "nit": 14,
+      "nfev": 18,
+      "success": true,
+      "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "active": [
+        1
+      ],
+      "projectedGradientNorm": 2.1982501401618393e-05
+    },
+    {
+      "name": "Rosenbrock4UpperOnly",
+      "x0": [
+        -1.2,
+        1.0,
+        -1.2,
+        1.0
+      ],
+      "lower": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "upper": [
+        null,
+        0.8,
+        null,
+        null
+      ],
+      "x": [
+        0.8947558926512551,
+        0.8,
+        0.6435643874828844,
+        0.41417512206433466
+      ],
+      "fun": 0.17942774085030944,
+      "nit": 33,
+      "nfev": 44,
+      "success": true,
+      "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+      "active": [
+        1
+      ],
+      "projectedGradientNorm": 5.95539429926184e-06
+    },
+    {
+      "name": "Rosenbrock4Fixed",
+      "x0": [
+        -1.2,
+        1.0,
+        -1.2,
+        1.0
+      ],
+      "lower": [
+        null,
+        0.5,
+        null,
+        null
+      ],
+      "upper": [
+        null,
+        0.5,
+        null,
+        null
+      ],
+      "x": [
+        -0.6984564344300603,
+        0.5,
+        0.25742576956321556,
+        0.06626797119770603
+      ],
+      "fun": 3.7064681305022917,
+      "nit": 12,
+      "nfev": 13,
+      "success": true,
+      "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "active": [
+        1
+      ],
+      "projectedGradientNorm": 1.1180780839614712e-05
+    }
+  ]
+}

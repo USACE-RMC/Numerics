@@ -34,6 +34,11 @@ namespace Numerics.Mathematics.Optimization
         /// <summary>
         /// The Powell optimization algorithm.
         /// </summary>
-        Powell
+        Powell,
+        /// <summary>
+        /// The limited-memory BFGS algorithm for bound-constrained optimization (L-BFGS-B). Supported as the local
+        /// search of <see cref="MultiStart"/> and <see cref="MLSL"/>.
+        /// </summary>
+        LBFGSB
     }
 }

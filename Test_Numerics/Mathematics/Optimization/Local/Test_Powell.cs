@@ -572,5 +572,23 @@ namespace Mathematics.Optimization
             Assert.AreEqual(0d, solver.BestParameterSet.Fitness, 1E-8);
         }
 
+
+        /// <summary>
+        /// Runs are reproducible bit for bit, including one whose minimum lies on a bound.
+        /// </summary>
+        /// <remarks>
+        /// The fingerprint pins the exact search path; see <see cref="OptimizerFingerprint"/>. A different
+        /// fingerprint means different results.
+        /// </remarks>
+        [TestMethod]
+        public void Test_SeededRunFingerprint()
+        {
+            var a = new Powell(OptimizerFingerprint.Rosenbrock, 4, new[] { -1.2, 1d, -1.2, 1d }, new[] { -5d, -5d, -5d, -5d }, new[] { 10d, 10d, 10d, 10d }) { ComputeHessian = false };
+            a.Minimize();
+            Assert.AreEqual("x=3FEFFFFFFFFA2924,3FEFFFFFFFFC9655,3FF0000000008DFF,3FF000000000402E|f=3C2A4F3EC1F5C880|it=28|fe=2989|st=Success|trace=2989:B49F6E0DD43AC716", OptimizerFingerprint.Of(a));
+            var b = new Powell(OptimizerFingerprint.SixHumpCamel, 2, new[] { 0.25, 0.25 }, new[] { -3d, -2d }, new[] { 0.5, 0.5 }) { ComputeHessian = false };
+            b.Minimize();
+            Assert.AreEqual("x=BFB010FE65E64738,3FE0000000000000|f=BFE88043B725DD36|it=2|fe=321|st=Success|trace=321:BF48452C3758191C", OptimizerFingerprint.Of(b));
+        }
     }
 }
