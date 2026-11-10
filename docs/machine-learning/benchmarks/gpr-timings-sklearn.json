@@ -1,0 +1,42 @@
+{
+ "library": "scikit-learn",
+ "sklearn": "1.8.0",
+ "numpy": "2.4.2",
+ "scipy": "1.17.1",
+ "python": "3.14.3",
+ "blas": "scipy-openblas 0.3.31.dev",
+ "processor": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+ "cpuCount": 22,
+ "d": 10,
+ "m": 1000,
+ "sizes": [
+  {
+   "n": 100,
+   "reps": 5,
+   "fitSeconds": 0.26133949984796345,
+   "predictSeconds": 0.0035202999133616686,
+   "logMarginalLikelihood": -34.178824394904936
+  },
+  {
+   "n": 500,
+   "reps": 3,
+   "fitSeconds": 5.264460799982771,
+   "predictSeconds": 0.02111440012231469,
+   "logMarginalLikelihood": -45.14811764871661
+  },
+  {
+   "n": 1000,
+   "reps": 3,
+   "fitSeconds": 31.263215499930084,
+   "predictSeconds": 0.04060499998740852,
+   "logMarginalLikelihood": 153.7434009117285
+  },
+  {
+   "n": 2000,
+   "reps": 1,
+   "fitSeconds": 135.71931940014474,
+   "predictSeconds": 0.09873339999467134,
+   "logMarginalLikelihood": 904.8123661536765
+  }
+ ]
+}

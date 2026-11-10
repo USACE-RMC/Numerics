@@ -228,7 +228,7 @@ namespace Numerics.MachineLearning
         private DecisionNode GrowTree(int[] indices, int lo, int hi, int depth)
         {
             int numberOfSamples = hi - lo;
-            // Count distinct responses for BOTH modes so the pure-node guard below can fire —
+            // Count distinct responses for BOTH modes so the pure-node guard below can fire:
             // scikit-learn's rule: a node is never split once it is pure. Substituting the sample
             // count makes the guard redundant with the minimum split size, and a zero-gain split of
             // a pure node beats the double.MinValue seed, so a default regression tree recurses to
@@ -264,7 +264,7 @@ namespace Numerics.MachineLearning
         }
 
         /// <summary>
-        /// Counts the distinct response values within an index range — class labels for classification,
+        /// Counts the distinct response values within an index range: class labels for classification,
         /// response values for regression.
         /// </summary>
         /// <param name="indices">The training row indices.</param>

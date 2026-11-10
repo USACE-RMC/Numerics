@@ -236,22 +236,52 @@ namespace Numerics.MachineLearning
         /// Returns the prediction of the Naive Bayes classifier.
         /// </summary>
         /// <param name="X">The matrix of predictors.</param>
+        /// <remarks>
+        /// The first row is classified on the calling thread, which validates every class-conditional
+        /// distribution; the remaining rows are independent and are classified in parallel for large
+        /// inputs.
+        /// </remarks>
         public double[]? Predict(Matrix X)
         {
             if (!IsTrained || X.NumberOfColumns != this.X.NumberOfColumns) return null;
             var result = new double[X.NumberOfRows];
-            for (int i = 0; i < X.NumberOfRows; i++)
+            var normals = ClassConditionalNormals();
+            if (X.NumberOfRows == 0) return result;
+            result[0] = MAP(X.Row(0), normals);
+            int rest = X.NumberOfRows - 1;
+            RangeParallel.For(rest, 4L * rest * Classes.Length * X.NumberOfColumns, i =>
             {
-                result[i] = MAP(X.Row(i));
-            }
+                result[i + 1] = MAP(X.Row(i + 1), normals);
+            });
             return result;
+        }
+
+        /// <summary>
+        /// Builds the Normal distribution of each class and feature from the current
+        /// <see cref="Means"/> and <see cref="StandardDeviations"/>.
+        /// </summary>
+        /// <returns>The distributions, indexed by class and feature.</returns>
+        /// <remarks>
+        /// Built once per prediction call and shared by every row. Not cached across calls because
+        /// the mean and standard deviation arrays are mutable.
+        /// </remarks>
+        private Normal[,] ClassConditionalNormals()
+        {
+            int nFeatures = X.NumberOfColumns;
+            int nClasses = Classes.Length;
+            var normals = new Normal[nClasses, nFeatures];
+            for (int i = 0; i < nClasses; i++)
+                for (int j = 0; j < nFeatures; j++)
+                    normals[i, j] = new Normal(Means[i, j], StandardDeviations[i, j]);
+            return normals;
         }
 
         /// <summary>
         /// Returns the class with the maximum posterior probability.
         /// </summary>
         /// <param name="x">A single vector of features for a prediction point.</param>
-        private double MAP(double[] x)
+        /// <param name="normals">The class-conditional distributions from <see cref="ClassConditionalNormals"/>.</param>
+        private double MAP(double[] x, Normal[,] normals)
         {
             int nFeatures = X.NumberOfColumns;
             int nClasses = Classes.Length;
@@ -267,8 +297,7 @@ namespace Numerics.MachineLearning
                 double logLH = Math.Log(Priors[i]);
                 for (int j = 0; j < nFeatures; j++)
                 {
-                    var norm = new Normal(Means[i, j], StandardDeviations[i, j]);
-                    logLH += norm.LogPDF(x[j]);
+                    logLH += normals[i, j].LogPDF(x[j]);
                 }
                 // keep track of the maximum
                 if (logLH > max)

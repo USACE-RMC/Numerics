@@ -1,0 +1,114 @@
+{
+  "hashConvention": "SHA-256 of UTF-8 text without BOM, CRLF normalized to LF",
+  "environment": {
+    "python": "3.14.3",
+    "numpy": "2.4.2",
+    "scipy": "1.17.1",
+    "scikit-learn": "1.8.0",
+    "R": "4.4.3",
+    "glmnet": "4.1.10",
+    "jsonlite": "2.0.0",
+    "DiceKriging": "1.6.1",
+    "gstat": "2.1.6",
+    "sp": "2.2.1"
+  },
+  "generators": [
+    {
+      "script": "pca_oracle.py",
+      "writes": [
+        "pca-sklearn.json",
+        "pca-random-matrix.csv"
+      ],
+      "reference": "scikit-learn PCA(svd_solver=\"full\")"
+    },
+    {
+      "script": "pca_prcomp.R",
+      "writes": [
+        "pca-prcomp.txt"
+      ],
+      "reference": "R stats::prcomp",
+      "note": "run as Rscript docs/machine-learning/oracles/pca_prcomp.R > docs/machine-learning/oracles/pca-prcomp.txt"
+    },
+    {
+      "script": "enet_glmnet.R",
+      "writes": [
+        "enet-glmnet.json"
+      ],
+      "reference": "R glmnet and cv.glmnet, thresh = 1e-24"
+    },
+    {
+      "script": "enet_sklearn.py",
+      "writes": [
+        "enet-sklearn.json"
+      ],
+      "reference": "scikit-learn ElasticNet and enet_path, tol = 1e-30",
+      "requires": "enet-glmnet.json"
+    },
+    {
+      "script": "gpr_sklearn_oracle.py",
+      "writes": [
+        "gpr-sklearn.json"
+      ],
+      "reference": "scikit-learn GaussianProcessRegressor (fixed hyperparameters and 50-restart fit)"
+    },
+    {
+      "script": "gpr_dicekriging_oracle.R",
+      "writes": [
+        "gpr-dicekriging.json"
+      ],
+      "reference": "R DiceKriging km and predict.km(type = \"UK\"), leaveOneOut.km",
+      "requires": "gpr-sklearn.json"
+    },
+    {
+      "script": "kriging_gstat_oracle.R",
+      "writes": [
+        "kriging-gstat.json"
+      ],
+      "reference": "R gstat krige and krige.cv on sp::meuse; Isaaks and Srivastava (1989) chapter 12"
+    }
+  ],
+  "data": [
+    {
+      "file": "docs/example-data/prostate-cancer.csv",
+      "sha256Utf8Lf": "27b519a3303688ce6c4db9ab015158689da37dbca0893617ff8f1ddc59adb786"
+    },
+    {
+      "file": "docs/example-data/iris-dataset.csv",
+      "sha256Utf8Lf": "f566ee20141884617d3e86fdc3fa8dbcb3bd0bf5ba9ee0a3ffdf49e3aa28881c"
+    }
+  ],
+  "files": [
+    {
+      "file": "pca-sklearn.json",
+      "sha256Utf8Lf": "378db583fd184c2d585331a15f6810f83b385ca55074178d51440e3ad0fd1cf4"
+    },
+    {
+      "file": "pca-prcomp.txt",
+      "sha256Utf8Lf": "bb786a6bafca732a81cfa2585a2f855dd5a11f0cdd5ecb6fafa15abfee4b50d1"
+    },
+    {
+      "file": "pca-random-matrix.csv",
+      "sha256Utf8Lf": "c82028468cfb34ffd59d56c75f1be140bd92d610d7b43446b27c68c99d301f98"
+    },
+    {
+      "file": "enet-glmnet.json",
+      "sha256Utf8Lf": "debc534a1716fd571ac21ac07189b2373baa91fb44d8eee364cc9e62d557681e"
+    },
+    {
+      "file": "enet-sklearn.json",
+      "sha256Utf8Lf": "45941052dc986779caf7c21f129abc12ffba71b25fedb9d02b501fa7aec8d1b7"
+    },
+    {
+      "file": "gpr-sklearn.json",
+      "sha256Utf8Lf": "5b4b86caaf21f8281bc868d80ca9e9b1cdb18d1cfa6778a78b51f779a16aafe8"
+    },
+    {
+      "file": "gpr-dicekriging.json",
+      "sha256Utf8Lf": "c8f0f6c7ef7d70206fecd121c2d8105d71a27ed489dc576cb29b8f51daf4e153"
+    },
+    {
+      "file": "kriging-gstat.json",
+      "sha256Utf8Lf": "9f209aea2de76d7ad447b589924172576773a624be8c915dc7637f44c2001a9f"
+    }
+  ]
+}

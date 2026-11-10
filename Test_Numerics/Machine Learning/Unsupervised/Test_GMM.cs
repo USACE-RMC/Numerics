@@ -224,5 +224,112 @@ namespace MachineLearning
             Assert.IsTrue(new CholeskyDecomposition(gmm.Sigmas[0]).IsPositiveDefinite);
         }
 
+        /// <summary>
+        /// Verifies one M-step against scikit-learn's GaussianMixture with full covariances.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Oracle: scikit-learn 1.9.1, <c>GaussianMixture(2, covariance_type='full', reg_covar=0.0, max_iter=1,
+        /// weights_init=[0.5, 0.5], means_init=[[0.2, 0.3], [2.0, 2.0]], precisions_init=inv([[[1, 0.3], [0.3, 1]],
+        /// [[1, -0.2], [-0.2, 1.5]]])).fit(X)</c>, which runs one E-step at the initial parameters and one M-step.
+        /// The responsibilities below are that E-step's, from <c>_estimate_log_prob_resp</c> at the initial
+        /// parameters, and the expected values are the fitted <c>weights_</c>, <c>means_</c> and
+        /// <c>covariances_</c>.
+        /// </para>
+        /// <para>
+        /// The test sets these responsibilities and runs one M-step. The covariance floor does not bind on this
+        /// fixture, so the result is the plain EM update. scikit-learn adds 10 machine epsilon to each component's
+        /// responsibility sum, which moves the values by about 1E-15.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void Test_GMM_MStep_MatchesScikitLearn()
+        {
+            var data = new double[,]
+            {
+                { 0.0, 0.2 }, { 0.5, -0.3 }, { 1.1, 0.9 }, { -0.4, 0.1 }, { 0.8, 1.4 },
+                { 1.6, 1.2 }, { 2.3, 2.0 }, { 1.9, 2.6 }, { 2.8, 1.7 }, { 1.2, 2.1 }
+            };
+            var responsibilities = new double[]
+            {
+                0.9796283429489151, 0.020371657051085058, 0.9667488260898032, 0.03325117391019694,
+                0.6764783226423449, 0.3235216773576551, 0.9924304009977198, 0.007569599002279958,
+                0.6348226281157242, 0.3651773718842756, 0.37168045591962245, 0.6283195440803774,
+                0.07232849603643313, 0.9276715039635671, 0.054737405112947946, 0.9452625948870519,
+                0.04617142321376257, 0.9538285767862374, 0.23529370279634693, 0.7647062972036534
+            };
+            var weights = new[] { 0.5030320003873621, 0.4969679996126379 };
+            var means = new[] { 0.519860421693883, 0.5582796355392851, 1.8481945977789889, 1.8294286128438793 };
+            var covariances = new[]
+            {
+                0.4966605576296129, 0.37085605948641437, 0.3708560594864144, 0.5419387205323211,
+                0.435968002661546, 0.10691915725472677, 0.10691915725472677, 0.2985049441544398
+            };
+
+            var gmm = new GaussianMixtureModel(data, 2) { MaxIterations = 1 };
+            gmm.Train(12345);
+            for (int i = 0; i < data.GetLength(0); i++)
+                for (int k = 0; k < 2; k++)
+                    gmm.LikelihoodMatrix[i, k] = responsibilities[2 * i + k];
+
+            MethodInfo mStep = typeof(GaussianMixtureModel).GetMethod(
+                "MStep",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(mStep);
+            mStep.Invoke(gmm, null);
+
+            const double tolerance = 1E-12;
+            for (int k = 0; k < 2; k++)
+            {
+                Assert.AreEqual(weights[k], gmm.Weights[k], tolerance);
+                for (int d = 0; d < 2; d++)
+                {
+                    Assert.AreEqual(means[2 * k + d], gmm.Means[k, d], tolerance);
+                    for (int j = 0; j < 2; j++)
+                        Assert.AreEqual(covariances[4 * k + 2 * d + j], gmm.Sigmas[k][d, j], tolerance);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Test that expectation-maximization training reproduces fixed reference means, weights
+        /// and covariance exactly for a fixed seed.
+        /// </summary>
+        /// <remarks>
+        /// Floating-point math functions on .NET Framework can differ from .NET in the last bit, and
+        /// the iterative fit carries such differences into the last bits of the estimates, so that
+        /// runtime has its own reference values.
+        /// </remarks>
+        [TestMethod]
+        public void Test_GMM_ReferenceValuesExact()
+        {
+            var gmm = new GaussianMixtureModel(MachineLearningFixtures.ReferenceFixture(), 3);
+            gmm.Train(12345);
+#if NETFRAMEWORK
+            MachineLearningFixtures.AssertExact(new[] { 1.6836975512647632, 0.15252813217254019, 6.5311314435756849, 4.9214154281214215, -1.5193501223541142, 0.50401330706019221 }, gmm.Means);
+            CollectionAssert.AreEqual(new[] { 0.19183326669715589, 0.60927329841690037, 0.19889343488594363 }, gmm.Weights);
+            MachineLearningFixtures.AssertExact(new[] { 0.896469916487836, -1.0502016999406476, -1.0502016999406476, 1.5091520124954216 }, gmm.Sigmas[0].ToArray());
+#else
+            MachineLearningFixtures.AssertExact(new[] { 1.6836975512647632, 0.1525281321725402, 6.531131443575685, 4.9214154281214215, -1.5193501223541142, 0.5040133070601922 }, gmm.Means);
+            CollectionAssert.AreEqual(new[] { 0.1918332666971559, 0.6092732984169004, 0.19889343488594363 }, gmm.Weights);
+            MachineLearningFixtures.AssertExact(new[] { 0.896469916487836, -1.0502016999406476, -1.0502016999406476, 1.5091520124954216 }, gmm.Sigmas[0].ToArray());
+#endif
+        }
+
+        /// <summary>
+        /// Test that a fit large enough for the parallel expectation and maximization passes reproduces
+        /// fixed reference means, log-likelihood and iteration count exactly, independent of the
+        /// processor count.
+        /// </summary>
+        [TestMethod]
+        public void Test_GMM_LargeReferenceValuesExact()
+        {
+            var gmm = new GaussianMixtureModel(MachineLearningFixtures.LargeFixture(6000), 5) { MaxIterations = 50 };
+            gmm.Train(11);
+            MachineLearningFixtures.AssertExact(new[] { 9.5066066066066774, 14.000600600600507, 18.5021021021021, 2.9885885885885908, 13.494834834834855, 18.011351351351379, 2.5003403403403386, 7.0118518518518052, 3.4998987182798067, 7.9987795552719803, 12.517916736297826, 17.016797573289967, 17.499779779779786, 1.991271271271271, 6.4977777777777463, 10.991771771771708, 3.6312741312741319, 7.9257829257829249, 10.933290433290434, 15.656799656799659 }, gmm.Means);
+            Assert.AreEqual(19299.806045657064, gmm.LogLikelihood, 0d);
+            Assert.AreEqual(7, gmm.Iterations);
+        }
+
     }
 }

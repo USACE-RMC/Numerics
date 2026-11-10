@@ -65,7 +65,7 @@ namespace MachineLearning
 
         /// <summary>
         /// Testing the Random Forest (RF) regression method. This test is mainly meant for demonstration.
-        /// I compare the RF regression against linear regression, and show the RF has better performance against the observed data.
+        /// Compares the RF regression against linear regression, and shows the RF has better performance against the observed data.
         /// <para>
         /// <see href="https://otexts.com/fpp3/least-squares.html"/>
         /// </para>

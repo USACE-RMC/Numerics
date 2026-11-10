@@ -36,7 +36,7 @@ namespace Numerics.MachineLearning
         /// <param name="data">The input data array to be classified.</param>
         /// <param name="numberOfClusters">The number of desired clusters (or classes).</param>
         /// <param name="isDataSorted">Determines if the data array is sorted. Default = false.</param>
-        /// <exception cref="ArgumentNullException">Thrown when the data array is null.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when the data array is null or the number of clusters is less than one.</exception>
         /// <exception cref="ArgumentException">
         /// Thrown when the data array is empty, when the cluster count exceeds the data length, or
         /// when more than one cluster is requested of data with fewer than two distinct values.
@@ -71,7 +71,7 @@ namespace Numerics.MachineLearning
         /// <param name="data">The input data array to be classified.</param>
         /// <param name="numberOfClusters">The number of desired clusters (or classes).</param>
         /// <param name="isDataSorted">Determines if the data array is sorted. Default = false.</param>
-        /// <exception cref="ArgumentNullException">Thrown when the data array is null.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when the data array is null or the number of clusters is less than one.</exception>
         /// <exception cref="ArgumentException">
         /// Thrown when the data array is empty, when the cluster count exceeds the data length, or
         /// when more than one cluster is requested of data with fewer than two distinct values.

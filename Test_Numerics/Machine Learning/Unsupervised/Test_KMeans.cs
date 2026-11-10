@@ -103,5 +103,37 @@ namespace MachineLearning
             Assert.AreEqual(6.5, km.Means[0, 0], 1E-12);
         }
 
+        /// <summary>
+        /// Test that k-means++ and random-start training reproduce fixed reference centroids and
+        /// labels exactly for a fixed seed.
+        /// </summary>
+        [TestMethod]
+        public void Test_KMeans_ReferenceValuesExact()
+        {
+            var X = MachineLearningFixtures.ReferenceFixture();
+            var km = new KMeans(X, 3);
+            km.Train(12345);
+            MachineLearningFixtures.AssertExact(new[] { 1.7071894991309944, 1.0225135237239453, 7.495398547128743, 5.303308621565796, -1.90030803695968, 0.8129985988466795 }, km.Means);
+            CollectionAssert.AreEqual(new[] { 0, 1, 1, 2, 0, 1, 0, 1, 1, 2, 1, 1, 0, 0, 1, 0, 1, 1, 2, 0, 1, 0, 0, 1, 2, 1, 1, 2, 0, 1 }, km.Labels);
+
+            var random = new KMeans(X, 3);
+            random.Train(12345, false);
+            MachineLearningFixtures.AssertExact(new[] { 1.7071894991309944, 1.0225135237239453, -1.90030803695968, 0.8129985988466795, 7.495398547128743, 5.303308621565796 }, random.Means);
+        }
+
+        /// <summary>
+        /// Test that a fit large enough for the parallel assignment and seeding passes reproduces fixed
+        /// reference centroids, iteration count and labels exactly, independent of the processor count.
+        /// </summary>
+        [TestMethod]
+        public void Test_KMeans_LargeReferenceValuesExact()
+        {
+            var km = new KMeans(MachineLearningFixtures.LargeFixture(6000), 10);
+            km.Train(11);
+            MachineLearningFixtures.AssertExact(new[] { 8.7850537104268422, 14.750743280594079, 17.758250788101535, 3.7090000448209435, 14.241299246266136, 17.283609768709066, 3.2344579679016769, 6.2668247717916588, 5.4909109109109, 9.9949149149148244, 14.496416416416478, 19.002922922922973, 18.235760190157595, 1.2775038882530743, 7.2146511332179042, 10.261285715683099, 2.6303547363618036, 5.6378622438693107, 11.648372754379823, 14.655880261887329, 12.738350766874273, 18.748861277384776, 1.756368784892276, 7.7668792954027825, 10.235411290687674, 13.242918798195188, 19.253429308705705, 2.260936816213198, 16.728633069929977, 2.7391435804405084, 5.7466510879480124, 11.757161598458504, 1.9101714326939545, 4.9898231564898206, 10.828991153315481, 13.935696958219474, 0.74291928915216565, 6.7534297996626744, 9.7609373071701793, 15.771447817680771 }, km.Means);
+            Assert.AreEqual(7, km.Iterations);
+            Assert.AreEqual(0x70A1F1482A08C7E5UL, MachineLearningFixtures.BitHash(km.Labels.Select(l => (double)l)));
+        }
+
     }
 }

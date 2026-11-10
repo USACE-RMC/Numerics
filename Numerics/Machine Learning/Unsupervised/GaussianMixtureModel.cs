@@ -150,6 +150,11 @@ namespace Numerics.MachineLearning
         public int Iterations { get; private set; }
 
         /// <summary>
+        /// The column variances of <see cref="X"/>, computed once per fit for the covariance floors.
+        /// </summary>
+        private double[]? _columnVariances;
+
+        /// <summary>
         /// Estimate the Gaussian Mixture Model.
         /// </summary>
         /// <param name="seed">Optional. The prng seed. If negative or zero, then the computer clock is used as a seed.</param>
@@ -170,6 +175,8 @@ namespace Numerics.MachineLearning
             Weights = new double[K];
             LikelihoodMatrix = new double[X.NumberOfRows, K];
             Sigmas = new Matrix[K];
+            var colVar = ColumnVariances();
+            _columnVariances = colVar;
             for (int k = 0; k < K; k++)
             {
                 Weights[k] = 1d / K;
@@ -203,18 +210,7 @@ namespace Numerics.MachineLearning
 
                 // Ensure positive-definite: floor diagonal at fraction of overall data variance
                 for (int d = 0; d < Dimension; d++)
-                {
-                    double colVar = 0;
-                    double colMean = 0;
-                    for (int i = 0; i < X.NumberOfRows; i++)
-                        colMean += X[i, d];
-                    colMean /= X.NumberOfRows;
-                    for (int i = 0; i < X.NumberOfRows; i++)
-                        colVar += (X[i, d] - colMean) * (X[i, d] - colMean);
-                    colVar /= X.NumberOfRows;
-
-                    Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar);
-                }
+                    Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar[d]);
             }
 
             // 2. Optimize clusters
@@ -244,17 +240,26 @@ namespace Numerics.MachineLearning
 
 
         /// <summary>
-        /// The expectation step. 
+        /// The expectation step.
         /// </summary>
         /// <returns>Returns the log-likelihood.</returns>
+        /// <remarks>
+        /// Each row's component likelihoods, label and normalization depend only on that row, so rows
+        /// are processed in parallel for large problems; the log-likelihood is then summed in row
+        /// order. Each row is whitened by <see cref="CholeskyDecomposition.Forward(Vector)"/> with the
+        /// Cholesky factor of its component covariance; the factorizations are only read, so the rows
+        /// share them.
+        /// </remarks>
         private double EStep()
         {
+            int n = X.NumberOfRows;
             var logDet = new double[K];
+            var factors = new CholeskyDecomposition[K];
+            var logWeights = new double[K];
 
-            // Outer loop for computing the likelihoods
+            // Decompose each covariance once
             for (int k = 0; k < K; k++)
             {
-                // Decompose the covariance in the outer loop
                 CholeskyDecomposition cholesky;
                 try
                 {
@@ -267,26 +272,27 @@ namespace Numerics.MachineLearning
                         exception);
                 }
                 logDet[k] = cholesky.LogDeterminant();
-                for (int i = 0; i < X.NumberOfRows; i++)
+                factors[k] = cholesky;
+                logWeights[k] = Math.Log(Weights[k]);
+            }
+
+            var rowLogLH = new double[n];
+            RangeParallel.For(n, (long)n * K * Dimension * (Dimension + 2), i =>
+            {
+                var u = new double[Dimension];
+                var residual = new Vector(u);
+                for (int k = 0; k < K; k++)
                 {
-                    // Inner loop for likelihoods
-                    var u = new Vector(Dimension);
                     for (int d = 0; d < Dimension; d++)
                         u[d] = X[i, d] - Means[k, d];
-                    // Solve L*v=u
-                    var v = cholesky.Forward(u);
+                    var v = factors[k].Forward(residual);
                     double sum = 0;
                     for (int d = 0; d < Dimension; d++)
                         sum += Tools.Sqr(v[d]);
-                    LikelihoodMatrix[i, k] = -0.5 * (sum + logDet[k]) + Math.Log(Weights[k]);
+                    LikelihoodMatrix[i, k] = -0.5 * (sum + logDet[k]) + logWeights[k];
                 }
-            }
-            // At this point we have unnormalized logs of the likelihoods.
-            // We need to normalize using log-sum-exp and compute the log-likelihoods.
-            double logLH = 0;
-            for (int i = 0; i < X.NumberOfRows; i++)
-            {
-                // Get max likelihood and index
+
+                // The row holds unnormalized log-likelihoods; normalize with log-sum-exp and record the most likely label.
                 double max = double.MinValue;
                 int idx = -1;
                 for (int k = 0; k < K; k++)
@@ -301,70 +307,119 @@ namespace Numerics.MachineLearning
                 Labels[i] = idx;
 
                 // log-sum-exp trick begins here
-                double sum = 0;
+                double total = 0;
                 for (int k = 0; k < K; k++)
-                    sum += Math.Exp(LikelihoodMatrix[i, k] - max);
-                double tmp = max + Math.Log(sum);
+                    total += Math.Exp(LikelihoodMatrix[i, k] - max);
+                double tmp = max + Math.Log(total);
                 for (int k = 0; k < K; k++)
                     LikelihoodMatrix[i, k] = Math.Exp(LikelihoodMatrix[i, k] - tmp);
-                logLH += tmp;
-            }
+                rowLogLH[i] = tmp;
+            });
+
+            double logLH = 0;
+            for (int i = 0; i < n; i++)
+                logLH += rowLogLH[i];
             // The likelihood matrix omits the constant -D/2 * ln(2*pi) per point because it cancels
             // in the responsibilities; the reported log-likelihood restores it.
             return logLH - 0.5 * Dimension * X.NumberOfRows * Math.Log(2.0 * Math.PI);
         }
-    
+
         /// <summary>
-        /// The maximization step. 
+        /// Returns the population variance of each column of <see cref="X"/>, used to floor the
+        /// component covariance diagonals.
         /// </summary>
+        /// <returns>The column variances.</returns>
+        /// <remarks>
+        /// The variances depend only on the data, so they are computed once and shared by every
+        /// component.
+        /// These are population variances (divided by n), which differ from the sample variances (divided by n - 1) of <see cref="Numerics.Data.Statistics.Statistics.ColumnVariances(double[,])"/>.
+        /// </remarks>
+        private double[] ColumnVariances()
+        {
+            var result = new double[Dimension];
+            for (int d = 0; d < Dimension; d++)
+            {
+                double colVar = 0;
+                double colMean = 0;
+                for (int i = 0; i < X.NumberOfRows; i++)
+                    colMean += X[i, d];
+                colMean /= X.NumberOfRows;
+                for (int i = 0; i < X.NumberOfRows; i++)
+                    colVar += (X[i, d] - colMean) * (X[i, d] - colMean);
+                colVar /= X.NumberOfRows;
+                result[d] = colVar;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// The maximization step.
+        /// </summary>
+        /// <remarks>
+        /// The means are updated first, and every covariance entry (d, j) is then formed about the updated
+        /// means d and j, as in the EM update of Bishop (2006), Section 9.2.2. Each (component, dimension)
+        /// task sums over rows in row order, so the tasks run in parallel for large problems.
+        /// </remarks>
         private void MStep()
         {
+            var colVar = _columnVariances ?? ColumnVariances();
+            int n = X.NumberOfRows;
+            var wgts = new double[K];
             for (int k = 0; k < K; k++)
             {
                 double wgt = 0d;
-                for (int i = 0; i < X.NumberOfRows; i++)
+                for (int i = 0; i < n; i++)
                     wgt += LikelihoodMatrix[i, k];
+                wgts[k] = wgt;
                 Weights[k] = wgt / X.NumberOfRows;
+            }
+
+            // Compute centroids
+            RangeParallel.For(K * Dimension, (long)n * K * Dimension, t =>
+            {
+                int k = t / Dimension, d = t % Dimension;
+                double wgt = wgts[k];
                 // A component with no responsibility keeps its previous parameters; updating it
                 // would divide by zero and spread NaN through the model
                 if (wgt <= 0)
-                    continue;
-                for (int d = 0; d < Dimension; d++)
+                    return;
+                double sum = 0;
+                for (int i = 0; i < n; i++)
+                    sum += LikelihoodMatrix[i, k] * X[i, d];
+                Means[k, d] = sum / wgt;
+            });
+
+            // Compute covariance
+            RangeParallel.For(K * Dimension, (long)n * K * Dimension * Dimension, t =>
+            {
+                int k = t / Dimension, d = t % Dimension;
+                double wgt = wgts[k];
+                if (wgt <= 0)
+                    return;
+                double meanD = Means[k, d];
+                for (int j = 0; j < Dimension; j++)
                 {
-                    // Compute centroids
+                    double meanJ = Means[k, j];
                     double sum = 0;
-                    for (int i = 0; i < X.NumberOfRows; i++)
-                        sum += LikelihoodMatrix[i, k] * X[i, d];
-                    Means[k, d] = sum / wgt;
-                    // Compute covariance
-                    for (int j = 0; j < Dimension; j++)
+                    for (int i = 0; i < n; i++)
                     {
-                        sum = 0;
-                        for (int i = 0; i < X.NumberOfRows; i++)
-                        {
-                            sum += LikelihoodMatrix[i, k] * (X[i, d] - Means[k, d]) * (X[i, j] - Means[k, j]);
-                        }
-                        Sigmas[k][d, j] = sum / wgt;
+                        sum += LikelihoodMatrix[i, k] * (X[i, d] - meanD) * (X[i, j] - meanJ);
                     }
+                    Sigmas[k][d, j] = sum / wgt;
                 }
+            });
+
+            for (int k = 0; k < K; k++)
+            {
+                if (wgts[k] <= 0)
+                    continue;
 
                 // Floor diagonal at a fraction of the overall data variance to prevent
                 // component collapse. When a component captures very few points, its
                 // covariance can become singular, causing Cholesky decomposition in the
                 // E-step to fail. This mirrors sklearn's reg_covar parameter.
                 for (int d = 0; d < Dimension; d++)
-                {
-                    double colVar = 0;
-                    double colMean = 0;
-                    for (int i = 0; i < X.NumberOfRows; i++)
-                        colMean += X[i, d];
-                    colMean /= X.NumberOfRows;
-                    for (int i = 0; i < X.NumberOfRows; i++)
-                        colVar += (X[i, d] - colMean) * (X[i, d] - colMean);
-                    colVar /= X.NumberOfRows;
-
-                    Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar);
-                }
+                    Sigmas[k][d, d] = Math.Max(Sigmas[k][d, d], 1E-6 * colVar[d]);
 
                 // Ensure the full covariance matrix remains symmetric positive-definite. The helper is
                 // pure: it returns the symmetrized covariance unchanged when usable and adds a
