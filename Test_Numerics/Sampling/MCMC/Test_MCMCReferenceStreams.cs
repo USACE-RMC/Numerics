@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
 using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.Optimization;
 using Numerics.Sampling.MCMC;
+using Utilities;
 
 namespace Sampling.MCMC
 {
@@ -25,6 +27,16 @@ namespace Sampling.MCMC
     /// with 64-bit FNV-1a and compares it with a reference value for the same seeded configuration. The
     /// NUTS hashes use the step size fixed at the smoothed dual-averaging value from the first sampling
     /// transition; the ARWMH hash does not depend on that rule.
+    /// </para>
+    /// <para>
+    /// The reference hashes were recorded on Windows and are checked there. The samplers call Math.Exp and Math.Log
+    /// (acceptance tests, proposals and the normal deviates), which the C library on Linux rounds differently for some
+    /// arguments. On Linux the NUTS chains first differ by a few ulp at the 32nd (analytic gradient) or 141st (numerical
+    /// gradient) recorded state, and the trajectories then diverge, so on other platforms the NUTS tests check instead
+    /// that the output reproduces the mean and second moment of every coordinate of the target within Monte Carlo error.
+    /// The ARWMH chains differ in six recorded states of one chain, by at most 64 ulp in one coordinate, and then rejoin;
+    /// its output is the same bit for bit, so on other platforms the ARWMH test pins a hash of the output alone. The
+    /// moment check runs on Windows as well (see <see cref="CLibraryRounding"/>).
     /// </para>
     /// </remarks>
     [TestClass]
@@ -91,8 +103,9 @@ namespace Sampling.MCMC
         /// Hashes every recorded chain state and output draw with 64-bit FNV-1a over the IEEE bit patterns.
         /// </summary>
         /// <param name="sampler">A sampled sampler.</param>
+        /// <param name="includeChains">Whether the recorded chain states are hashed before the output draws.</param>
         /// <returns>The hash.</returns>
-        private static ulong HashStreams(MCMCSampler sampler)
+        private static ulong HashStreams(MCMCSampler sampler, bool includeChains = true)
         {
             ulong hash = 14695981039346656037UL;
             void Add(double value)
@@ -105,7 +118,7 @@ namespace Sampling.MCMC
                 }
             }
 
-            foreach (var lists in new[] { sampler.MarkovChains, sampler.Output })
+            foreach (var lists in includeChains ? new[] { sampler.MarkovChains, sampler.Output } : new[] { sampler.Output })
             {
                 foreach (var chain in lists)
                 {
@@ -120,6 +133,60 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
+        /// Asserts the reference hash on Windows and, on every platform, that the output reproduces the target moments.
+        /// </summary>
+        /// <param name="sampler">A sampled sampler.</param>
+        /// <param name="referenceHash">The hash of the chains and the output, recorded on Windows.</param>
+        /// <param name="outputHash">The hash of the output alone, recorded on Windows and pinned on other platforms;
+        /// null when the chains diverge there.</param>
+        private static void AssertReferenceStream(MCMCSampler sampler, ulong referenceHash, ulong? outputHash = null)
+        {
+            if (CLibraryRounding.IsReferencePlatform) Assert.AreEqual(referenceHash, HashStreams(sampler));
+            if (outputHash.HasValue) Assert.AreEqual(outputHash.Value, HashStreams(sampler, includeChains: false));
+            for (int j = 0; j < Sd.Length; j++)
+            {
+                int k = j;
+                AssertWithinMonteCarloError(sampler, s => s.Values[k], 0d, $"mean of coordinate {k}");
+                AssertWithinMonteCarloError(sampler, s => s.Values[k] * s.Values[k], Sd[k] * Sd[k], $"second moment of coordinate {k}");
+            }
+        }
+
+        /// <summary>
+        /// Asserts that the output mean of a function of the draws lies within four Monte Carlo standard errors of its
+        /// exact value under the target.
+        /// </summary>
+        /// <param name="sampler">A sampled sampler.</param>
+        /// <param name="f">The function of a draw.</param>
+        /// <param name="exact">The expectation of <paramref name="f"/> under the target.</param>
+        /// <param name="what">The quantity named in the failure message.</param>
+        /// <remarks>
+        /// The standard error is the batch-means estimate: each chain's output is split into ten consecutive batches, and
+        /// the error of the overall mean is the standard deviation of the batch means divided by the square root of their
+        /// number, which accounts for the autocorrelation within a chain.
+        /// </remarks>
+        private static void AssertWithinMonteCarloError(MCMCSampler sampler, Func<ParameterSet, double> f, double exact, string what)
+        {
+            const int batchesPerChain = 10;
+            var batchMeans = new List<double>();
+            foreach (var chain in sampler.Output)
+            {
+                int size = chain.Count / batchesPerChain;
+                for (int b = 0; b < batchesPerChain; b++)
+                {
+                    double sum = 0;
+                    for (int i = b * size; i < (b + 1) * size; i++) sum += f(chain[i]);
+                    batchMeans.Add(sum / size);
+                }
+            }
+            double mean = 0, squares = 0;
+            foreach (double m in batchMeans) mean += m;
+            mean /= batchMeans.Count;
+            foreach (double m in batchMeans) squares += (m - mean) * (m - mean);
+            double standardError = Math.Sqrt(squares / (batchMeans.Count - 1) / batchMeans.Count);
+            Assert.IsLessThanOrEqualTo(4d * standardError, Math.Abs(mean - exact), $"{what}: {mean:R} against {exact:R}, standard error {standardError:R}");
+        }
+
+        /// <summary>
         /// NUTS with an analytic gradient reproduces the reference stream.
         /// </summary>
         [TestMethod]
@@ -127,7 +194,7 @@ namespace Sampling.MCMC
         {
             var sampler = Configure(new NUTS(Priors(), LogLikelihood, gradientFunction: Gradient), 1);
             sampler.Sample();
-            Assert.AreEqual(0xB3E23D0BE2FB1F5AUL, HashStreams(sampler));
+            AssertReferenceStream(sampler, 0xB3E23D0BE2FB1F5AUL);
         }
 
         /// <summary>
@@ -153,7 +220,7 @@ namespace Sampling.MCMC
             var sampler = Configure(nuts, 1);
             sampler.Sample();
 
-            Assert.AreEqual(0xB3E23D0BE2FB1F5AUL, HashStreams(sampler));
+            AssertReferenceStream(sampler, 0xB3E23D0BE2FB1F5AUL);
             Assert.AreEqual(sampler.InitialIterations, likelihoodCalls, "Only chain initialization may call the separate log-likelihood.");
             Assert.AreEqual(0, gradientCalls);
             Assert.IsGreaterThan(0, combinedCalls);
@@ -167,7 +234,7 @@ namespace Sampling.MCMC
         {
             var sampler = Configure(new NUTS(Priors(), LogLikelihood), 1);
             sampler.Sample();
-            Assert.AreEqual(0x028968BE5D65BD19UL, HashStreams(sampler));
+            AssertReferenceStream(sampler, 0x028968BE5D65BD19UL);
         }
 
         /// <summary>
@@ -213,7 +280,7 @@ namespace Sampling.MCMC
         {
             var sampler = Configure(new ARWMH(Priors(), LogLikelihood), 10);
             sampler.Sample();
-            Assert.AreEqual(0x5FA307CAFB91C514UL, HashStreams(sampler));
+            AssertReferenceStream(sampler, 0x5FA307CAFB91C514UL, 0x98C5098077CDD1DDUL);
         }
     }
 }

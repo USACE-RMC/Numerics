@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
+using Utilities;
 
 namespace Distributions.Univariate
 {
@@ -658,6 +659,12 @@ namespace Distributions.Univariate
         /// bit for bit and lies within 2 + |kappa| ln(1/q) ulp of the 200-bit mpmath value (at most 8 ulp here), while
         /// InverseCDF(1 - q) differs from the reference in 268 cases and from the exact value by more than 1E6 ulp.
         /// </summary>
+        /// <remarks>
+        /// The reference bits were recorded on Windows and are exact there. The quantile calls Math.Log and Math.Exp, which
+        /// the C library on Linux rounds differently for some arguments, so elsewhere each case is compared with its
+        /// reference within 2 ulp (on Linux one case of 300 differs, by 2 ulp); the bound against the exact value
+        /// applies on every platform (see <see cref="CLibraryRounding"/>).
+        /// </remarks>
         [TestMethod]
         public void Test_InverseCCDF_ReferenceVectors()
         {
@@ -669,7 +676,7 @@ namespace Distributions.Univariate
                 double q = FixtureBits(row, "q"), reference = FixtureBits(row, "reference"), exact = FixtureBits(row, "exact");
                 double survival = gpa.InverseCCDF(q);
                 double complement = gpa.InverseCDF(1d - q);
-                Assert.AreEqual(BitConverter.DoubleToInt64Bits(reference), BitConverter.DoubleToInt64Bits(survival), $"row {rows}");
+                CLibraryRounding.AreEqual(reference, survival, 2, $"row {rows}");
                 double ulp = Math.Abs(BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(exact) + 1) - exact);
                 // The rounding of ln q is amplified by the condition number |kappa| ln(1/q) of the heavy tail.
                 double survivalUlp = Math.Abs(survival - exact) / ulp;

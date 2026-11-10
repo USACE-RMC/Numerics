@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics.Optimization;
 using System;
 using System.Linq;
+using Utilities;
 
 namespace Mathematics.Optimization
 {
@@ -363,8 +364,9 @@ namespace Mathematics.Optimization
         /// <remarks>
         /// The objective uses products only, but the algorithm itself calls Math.Exp (step size), Math.Log (weights and
         /// the inverse normal CDF) and Math.Atan2, Math.Cos and Math.Sin (Jacobi eigensolver). On .NET Framework 4.8.1
-        /// these differ from .NET 8 to 10 in the last bits, so the bitwise fingerprint is pinned on .NET only, and every
-        /// target framework checks the run on a tolerance.
+        /// these differ from .NET 10 in the last bits, and on Linux the C library rounds them differently again, so the
+        /// bitwise fingerprint is pinned on .NET 10 on Windows only, where it was recorded, and every target framework and
+        /// platform checks the run on a tolerance (see <see cref="CLibraryRounding"/>).
         /// </remarks>
         [TestMethod]
         public void Test_SeededRunFingerprint()
@@ -375,7 +377,8 @@ namespace Mathematics.Optimization
             Assert.AreEqual(0d, solver.BestParameterSet.Fitness, 1E-10);
             foreach (var v in solver.BestParameterSet.Values) Assert.AreEqual(1d, v, 1E-5);
 #if NET
-            Assert.AreEqual("x=3FF0000055E9F204,3FF000007A6222F0,3FF00000DB7BF5BC,3FF00001DDC86F14|f=3DA0295D6888784E|it=343|fe=3792|st=Success|trace=3792:7B020A14680A142D", OptimizerFingerprint.Of(solver));
+            if (CLibraryRounding.IsReferencePlatform)
+                Assert.AreEqual("x=3FF0000055E9F204,3FF000007A6222F0,3FF00000DB7BF5BC,3FF00001DDC86F14|f=3DA0295D6888784E|it=343|fe=3792|st=Success|trace=3792:7B020A14680A142D", OptimizerFingerprint.Of(solver));
 #endif
         }
 

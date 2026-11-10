@@ -2,6 +2,7 @@ using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics;
 using Numerics.Distributions;
+using Utilities;
 
 namespace Distributions.Univariate
 {
@@ -339,14 +340,23 @@ namespace Distributions.Univariate
         /// <summary>
         /// Verifies that the truncated-gamma conditional moments for absolute skew at or above 0.6 keep their values bit for bit.
         /// </summary>
+        /// <remarks>
+        /// The values were recorded on Windows and are exact there. The incomplete gamma function calls Math.Exp and
+        /// Math.Log, which the C library on Linux rounds differently for some arguments, so elsewhere each moment is compared
+        /// within the largest distance measured on Linux for that moment over the 80 cases: 0, 21, 77 and 423 ulp for the
+        /// first to fourth. The higher central moments subtract nearly equal raw moments, which amplifies a last-bit
+        /// difference in the incomplete gamma ratios; 423 ulp of the fourth moment is about 1E-13 relative (see
+        /// <see cref="CLibraryRounding"/>).
+        /// </remarks>
         [TestMethod]
         public void Test_ConditionalMoments_LargerSkew_SameBits()
         {
+            long[] ulps = { 0, 21, 77, 423 };
             for (int i = 0; i < TruncatedGammaMoments.GetLength(0); i++)
             {
                 var actual = new PearsonTypeIII(100d, 15d, TruncatedGammaMoments[i, 0]).ConditionalMoments(TruncatedGammaMoments[i, 1], TruncatedGammaMoments[i, 2]);
                 for (int k = 0; k < 4; k++)
-                    Assert.AreEqual(TruncatedGammaMoments[i, 3 + k], actual[k], 0d, $"row {i}, moment {k + 1}");
+                    CLibraryRounding.AreEqual(TruncatedGammaMoments[i, 3 + k], actual[k], ulps[k], $"row {i}, moment {k + 1}");
             }
         }
 

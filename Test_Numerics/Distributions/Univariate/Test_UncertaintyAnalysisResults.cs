@@ -3,6 +3,7 @@ using System.Linq;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Utilities;
 
 namespace Distributions.Univariate
 {
@@ -58,7 +59,11 @@ namespace Distributions.Univariate
         /// </summary>
         /// <remarks>
         /// The expected values are the mean curve of this ensemble from the implementation that excluded the first
-        /// grid point from the log-transform decision; for a continuous ensemble both decisions agree.
+        /// grid point from the log-transform decision; for a continuous ensemble both decisions agree. They were recorded
+        /// on Windows and are exact there. The GEV quantiles and the log-scale interpolation call Math.Log, Math.Exp and
+        /// Math.Pow, which the C library on Linux rounds differently for some arguments, so elsewhere they are compared
+        /// within 6 ulp, the largest distance measured on Linux (2 of the 11 points differ; see <see cref="CLibraryRounding"/>). The
+        /// agreement with the bootstrap mean curve, computed on the same platform, stays bit for bit everywhere.
         /// </remarks>
         [TestMethod]
         public void MeanCurve_ContinuousEnsemble_BitIdentical()
@@ -66,7 +71,9 @@ namespace Distributions.Univariate
             var ensemble = GevEnsemble();
             var results = new UncertaintyAnalysisResults(ensemble[0], ensemble, Probabilities);
             var expected = new double[] { 67.76741657334799, 79.37171905272966, 92.21957589160193, 100.28024357759736, 111.17585685628735, 134.94639370381734, 165.01121449164725, 185.73194847192553, 206.81303931152775, 259.98118501394435, 350.6624427152344 };
-            AssertBitwise(expected, results.MeanCurve!);
+            Assert.HasCount(expected.Length, results.MeanCurve!);
+            for (int i = 0; i < expected.Length; i++)
+                CLibraryRounding.AreEqual(expected[i], results.MeanCurve![i], 6, $"Index {i}.");
             AssertBitwise(BootstrapMeanCurve(ensemble), results.MeanCurve!);
         }
 

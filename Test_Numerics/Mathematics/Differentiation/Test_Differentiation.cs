@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Mathematics;
+using Utilities;
 
 namespace Mathematics.Differentiation
 {
@@ -441,10 +442,16 @@ namespace Mathematics.Differentiation
         /// <summary>
         /// A tableau that is finite throughout returns the plain Ridders extrapolation, pinned bit for bit.
         /// </summary>
+        /// <remarks>
+        /// The exp reference was recorded on Windows and is exact there. On Linux the C library rounds some of the
+        /// tableau's Math.Exp evaluations differently and the extrapolation amplifies the difference: the measured distance
+        /// is 36 ulp, which the tolerance on other platforms covers (see <see cref="CLibraryRounding"/>). The sin and log
+        /// results measured the same bits on Linux, and the cubic uses no math library, so they are exact everywhere.
+        /// </remarks>
         [TestMethod]
         public void Test_RiddersMethod_FiniteTableau_Unchanged()
         {
-            Assert.AreEqual(0x40001C2A61268970L, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out _)));
+            CLibraryRounding.AreEqual(BitConverter.Int64BitsToDouble(0x40001C2A61268970L), NumericalDerivative.RiddersMethod(Math.Exp, 0.7, out _), 36, "exp");
             Assert.AreEqual(0x3FD11EB3682A4BEDL, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(Math.Sin, 1.3, out _)));
             Assert.AreEqual(0x3FDFFFFFFFFFFFBEL, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(Math.Log, 2.0, out _)));
             Assert.AreEqual(0x403AFFFFFFFFFFF4L, BitConverter.DoubleToInt64Bits(NumericalDerivative.RiddersMethod(x => x * x * x, -3.0, out _)));

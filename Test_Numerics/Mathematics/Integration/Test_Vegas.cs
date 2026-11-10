@@ -3,6 +3,7 @@ using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
 using Numerics.Sampling;
 using System;
+using Utilities;
 
 namespace Mathematics.Integration
 {
@@ -382,6 +383,11 @@ namespace Mathematics.Integration
         /// The pseudo-random path fills a reused buffer in the same draw order as Random.NextDoubles,
         /// so results are bit-identical to the allocating implementation that produced these patterns.
         /// </summary>
+        /// <remarks>
+        /// The patterns were recorded on Windows. The grid refinement calls Math.Log and Math.Pow, which the C library on
+        /// Linux rounds differently for some arguments, so elsewhere the first result is compared within 1 ulp, the
+        /// measured distance, and the evaluation count stays exact (see <see cref="CLibraryRounding"/>).
+        /// </remarks>
         [TestMethod]
         public void Test_PseudoRandomPath_BitsUnchanged()
         {
@@ -391,7 +397,7 @@ namespace Mathematics.Integration
                 UseSobolSequence = false
             };
             pi.Integrate();
-            Assert.AreEqual(0x40092569BC1889A2, BitConverter.DoubleToInt64Bits(pi.Result));
+            CLibraryRounding.AreEqual(BitConverter.Int64BitsToDouble(0x40092569BC1889A2), pi.Result, 1, "pi");
             Assert.AreEqual(19600, pi.FunctionEvaluations);
 
             // A rational integrand uses no runtime math library, so the pattern is the same on every framework.
