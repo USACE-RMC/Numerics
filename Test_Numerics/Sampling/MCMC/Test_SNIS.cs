@@ -152,8 +152,8 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
-        /// This test verifies that the resampling sort is stable — draws tied at the same fitness
-        /// keep their original draw order — and that an identically-seeded run reproduces the
+        /// This test verifies that the resampling sort is stable (draws tied at the same fitness
+        /// keep their original draw order) and that an identically-seeded run reproduces the
         /// output exactly, element for element.
         /// </summary>
         /// <remarks>
@@ -190,14 +190,200 @@ namespace Sampling.MCMC
             for (int i = 0; i < draws.Length; i++)
                 draws[i] = prior.InverseCDF(rnds[i, 0]);
 
-            // The stable ascending sort on Fitness places the negative-infinity run first and the
-            // zero-fitness run second, each preserving its original draw order.
+            // The stable ascending sort on Weight places the zero-weight (negative-infinity fitness) run
+            // first and the positive-weight run second, each preserving its original draw order.
             var expected = draws.Where(d => !(d < 0.5d)).Concat(draws.Where(d => d < 0.5d)).ToArray();
             Assert.IsTrue(draws.Any(d => !(d < 0.5d)));
             Assert.IsTrue(draws.Any(d => d < 0.5d));
             for (int i = 0; i < expected.Length; i++)
             {
                 Assert.AreEqual(expected[i], first.MarkovChains[0][i].Values[0], 0d);
+            }
+        }
+
+
+        /// <summary>
+        /// Invalid settings are rejected before initialization, so a MAP-initialized run with invalid
+        /// settings never evaluates the likelihood.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_InvalidSettings_RejectedBeforeMapInitialization()
+        {
+            int calls = 0;
+            var priors = new List<IUnivariateDistribution> { new Uniform(0d, 1d) };
+            var sampler = new SNIS(priors, x => { System.Threading.Interlocked.Increment(ref calls); return 0d; })
+            {
+                Initialize = MCMCSampler.InitializationType.MAP,
+                NumberOfChains = 2
+            };
+
+            var exception = Assert.Throws<System.ArgumentException>(() => sampler.Sample());
+            Assert.AreEqual(nameof(SNIS.NumberOfChains), exception.ParamName);
+            Assert.AreEqual(0, calls);
+        }
+
+
+        /// <summary>
+        /// With a full log-posterior delegate, naive SNIS recovers the conjugate normal posterior: prior
+        /// mu ~ N(0, 1) and one observation y = 2 with unit variance give mu | y ~ N(1, 1/2). Counting the
+        /// prior twice would give N(2/3, 1/3) instead.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_Naive_FullLogPosterior_RecoversConjugatePosterior()
+        {
+            var prior = new Normal(0d, 1d);
+            var priors = new List<IUnivariateDistribution> { prior };
+            double logPosterior(double[] x) => prior.LogPDF(x[0]) + new Normal(x[0], 1d).LogPDF(2d);
+
+            var sampler = new SNIS(priors, logPosterior) { Iterations = 200000, OutputLength = 10000, PRNGSeed = 12345 };
+            sampler.Sample();
+
+            double mean = 0, second = 0;
+            foreach (var p in sampler.MarkovChains[0])
+            {
+                mean += p.Weight * p.Values[0];
+                second += p.Weight * p.Values[0] * p.Values[0];
+            }
+            double variance = second - mean * mean;
+            Assert.AreEqual(1d, mean, 0.01);
+            Assert.AreEqual(0.5d, variance, 0.01);
+
+            // The MAP is the draw with the largest log-posterior, near the posterior mode of 1.
+            Assert.AreEqual(1d, sampler.MAP.Values[0], 0.01);
+        }
+
+        /// <summary>
+        /// With an importance distribution the sample list is ordered by the normalized weight that the
+        /// resampling CDF accumulates, and the weights sum to one.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_ImportanceSampling_SortsByWeight()
+        {
+            var prior = new Normal(0d, 1d);
+            var priors = new List<IUnivariateDistribution> { prior };
+            double logPosterior(double[] x) => prior.LogPDF(x[0]) + new Normal(x[0], 1d).LogPDF(2d);
+            var proposal = new MultivariateNormal(new[] { 0.5d }, new[,] { { 2d } });
+
+            var sampler = new SNIS(priors, logPosterior, proposal) { Iterations = 20000, OutputLength = 1000, PRNGSeed = 2024 };
+            sampler.Sample();
+
+            var chain = sampler.MarkovChains[0];
+            double sum = 0;
+            bool fitnessOrdered = true;
+            for (int i = 0; i < chain.Count; i++)
+            {
+                sum += chain[i].Weight;
+                if (i > 0)
+                {
+                    Assert.IsLessThanOrEqualTo(chain[i].Weight, chain[i - 1].Weight, $"Weights out of order at {i}.");
+                    fitnessOrdered &= chain[i - 1].Fitness <= chain[i].Fitness;
+                }
+            }
+            Assert.AreEqual(1d, sum, 1E-10);
+            Assert.IsFalse(fitnessOrdered, "With a proposal, weight order and fitness order differ.");
+
+            double mean = 0;
+            foreach (var p in chain) mean += p.Weight * p.Values[0];
+            Assert.AreEqual(1d, mean, 0.02);
+        }
+
+
+        /// <summary>
+        /// The output is the inverse of the weight CDF at the Weibull plotting positions k / (L + 1): each
+        /// position selects the first draw whose cumulative weight reaches it. The test rebuilds that
+        /// selection from the sorted draws and checks the output against it, and checks that the heaviest
+        /// draw is output in proportion to its own weight.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_Output_IsInverseWeightCdf()
+        {
+            var prior = new Normal(0d, 1d);
+            var priors = new List<IUnivariateDistribution> { prior };
+            double logPosterior(double[] x) => prior.LogPDF(x[0]) + new Normal(x[0], 0.05d).LogPDF(0.3d);
+
+            var sampler = new SNIS(priors, logPosterior) { Iterations = 2000, OutputLength = 500, PRNGSeed = 777 };
+            sampler.Sample();
+
+            var chain = sampler.MarkovChains[0];
+            int L = sampler.OutputLength;
+            double cumulative = chain[0].Weight;
+            int j = 0;
+            for (int k = 1; k <= L; k++)
+            {
+                double p = k / (L + 1d);
+                while (j < chain.Count - 1 && cumulative < p)
+                {
+                    j++;
+                    cumulative += chain[j].Weight;
+                }
+                Assert.AreEqual(chain[j].Values[0], sampler.Output[0][k - 1].Values[0], 0d, $"Position {k} selected the wrong draw.");
+            }
+
+            // The heaviest draw is last in weight order and must be selected for the positions in its weight interval.
+            var heaviest = chain[chain.Count - 1];
+            int heaviestCount = sampler.Output[0].Count(o => o.Values[0] == heaviest.Values[0]);
+            Assert.AreEqual(heaviest.Weight * (L + 1), heaviestCount, 1d);
+        }
+
+        /// <summary>
+        /// ParallelizeChains defaults to true and is honoured: with false every draw is evaluated in order on the
+        /// calling thread, and the chain and output are bit-identical to the parallel run, with and without a proposal.
+        /// </summary>
+        [TestMethod]
+        public void Test_SNIS_ParallelizeChains_SerialMatchesParallelBits()
+        {
+            var prior = new Normal(0d, 1d);
+            var priors = new List<IUnivariateDistribution> { prior };
+            double logPosterior(double[] x) => prior.LogPDF(x[0]) + new Normal(x[0], 1d).LogPDF(2d);
+            var proposals = new MultivariateNormal[] { null!, new MultivariateNormal(new[] { 0.5d }, new[,] { { 2d } }) };
+
+            foreach (var proposal in proposals)
+            {
+                var parallel = proposal == null ? new SNIS(priors, logPosterior) : new SNIS(priors, logPosterior, proposal);
+                parallel.Iterations = 3000;
+                parallel.OutputLength = 500;
+                parallel.PRNGSeed = 2024;
+                Assert.IsTrue(parallel.ParallelizeChains);
+                parallel.Sample();
+                Assert.IsTrue(parallel.ParallelizeChains);
+
+                int caller = System.Environment.CurrentManagedThreadId;
+                var order = new List<double>();
+                bool sameThread = true;
+                double recording(double[] x)
+                {
+                    sameThread &= System.Environment.CurrentManagedThreadId == caller;
+                    order.Add(x[0]);
+                    return logPosterior(x);
+                }
+                var serial = proposal == null ? new SNIS(priors, recording) : new SNIS(priors, recording, proposal);
+                serial.Iterations = 3000;
+                serial.OutputLength = 500;
+                serial.PRNGSeed = 2024;
+                serial.ParallelizeChains = false;
+                serial.Sample();
+
+                Assert.IsFalse(serial.ParallelizeChains);
+                Assert.IsTrue(sameThread);
+                Assert.IsGreaterThanOrEqualTo(3000, order.Count);
+                AssertSameSets(parallel.MarkovChains[0], serial.MarkovChains[0]);
+                AssertSameSets(parallel.Output[0], serial.Output[0]);
+                Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(parallel.MAP.Fitness), System.BitConverter.DoubleToInt64Bits(serial.MAP.Fitness));
+            }
+        }
+
+        /// <summary>
+        /// Asserts two lists of parameter sets have bit-identical values, fitness and weights.
+        /// </summary>
+        private static void AssertSameSets(List<Numerics.Mathematics.Optimization.ParameterSet> expected, List<Numerics.Mathematics.Optimization.ParameterSet> actual)
+        {
+            Assert.HasCount(expected.Count, actual);
+            for (int i = 0; i < expected.Count; i++)
+            {
+                Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(expected[i].Fitness), System.BitConverter.DoubleToInt64Bits(actual[i].Fitness));
+                Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(expected[i].Weight), System.BitConverter.DoubleToInt64Bits(actual[i].Weight));
+                for (int j = 0; j < expected[i].Values.Length; j++)
+                    Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(expected[i].Values[j]), System.BitConverter.DoubleToInt64Bits(actual[i].Values[j]));
             }
         }
 

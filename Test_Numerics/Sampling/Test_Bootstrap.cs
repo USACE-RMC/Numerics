@@ -33,7 +33,7 @@ namespace Sampling
         private Bootstrap<double[]> CreateNormalBootstrap()
         {
             // The "original data" is not used directly for parametric bootstrap;
-            // resampling is driven by the parameters. We pass null.
+            // resampling is driven by the parameters, so null is passed.
             var parms = new ParameterSet(new double[] { _mu, _sigma }, double.NaN);
             var boot = new Bootstrap<double[]>(null, parms);
             boot.Replicates = 10000;
@@ -80,7 +80,7 @@ namespace Sampling
             boot.Run();
             var results = boot.GetConfidenceIntervals(BootstrapCIMethod.Percentile);
 
-            // Verify we got results for all probabilities
+            // Verify there are results for all probabilities
             Assert.HasCount(_probabilities.Length, results.StatisticResults);
 
             // Verify valid count
@@ -350,6 +350,238 @@ namespace Sampling
         }
 
         /// <summary>
+        /// FailedAttempts counts every attempt that threw: with a fit that throws on every tenth call, it
+        /// equals the number of calls divided by ten, and a run without failures reports zero.
+        /// </summary>
+        [TestMethod]
+        public void Test_FailedAttempts_CountsEveryThrownAttempt()
+        {
+            int callCount = 0;
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 500;
+            boot.MaxRetries = 3;
+            var fit = boot.FitFunction!;
+            boot.FitFunction = sample =>
+            {
+                if (Interlocked.Increment(ref callCount) % 10 == 0) throw new InvalidOperationException("Simulated failure");
+                return fit(sample);
+            };
+            boot.Run();
+
+            // Every call either throws or yields a replicate, so calls = successful replicates + thrown attempts.
+            Assert.AreEqual(callCount / 10, boot.FailedAttempts);
+            Assert.AreEqual(boot.Replicates - boot.FailedReplicates + boot.FailedAttempts, callCount);
+
+            boot.FitFunction = fit;
+            boot.Run();
+            Assert.AreEqual(0, boot.FailedAttempts);
+        }
+
+        /// <summary>
+        /// When every fit throws, each replicate contributes one failed attempt per retry.
+        /// </summary>
+        [TestMethod]
+        public void Test_FailedAttempts_AllFail_EqualsReplicatesTimesRetries()
+        {
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 100;
+            boot.MaxRetries = 4;
+            boot.FitFunction = sample => throw new InvalidOperationException("Simulated failure");
+            boot.Run();
+
+            Assert.AreEqual(100, boot.FailedReplicates);
+            Assert.AreEqual(400, boot.FailedAttempts);
+        }
+
+        /// <summary>
+        /// A retry continues the replicate's own generator: with one replicate whose first two fits fail, the
+        /// three attempts together consume exactly the first draws of the replicate's MersenneTwister, as an
+        /// independent reconstruction from PRNGSeed gives.
+        /// </summary>
+        [TestMethod]
+        public void Test_Retries_ContinueTheReplicateStream()
+        {
+            var draws = new List<double>();
+            int fits = 0;
+            var boot = new Bootstrap<double[]>(null, new ParameterSet(new double[] { 0d }, double.NaN))
+            {
+                Replicates = 1,
+                PRNGSeed = 2468,
+                MaxRetries = 5,
+                ResampleFunction = (data, ps, rng) =>
+                {
+                    var sample = new[] { rng.NextDouble(), rng.NextDouble(), rng.NextDouble() };
+                    draws.AddRange(sample);
+                    return sample;
+                },
+                FitFunction = sample =>
+                {
+                    if (++fits <= 2) throw new InvalidOperationException("Simulated failure");
+                    return new ParameterSet(new[] { sample.Average() }, double.NaN);
+                },
+                StatisticFunction = ps => new[] { ps.Values[0] }
+            };
+            boot.Run();
+
+            var reference = new MersenneTwister(new MersenneTwister(2468).NextIntegers(1)[0]);
+            Assert.HasCount(9, draws);
+            for (int i = 0; i < draws.Count; i++)
+                Assert.AreEqual(reference.NextDouble(), draws[i], 0d);
+            Assert.AreEqual(2, boot.FailedAttempts);
+            Assert.AreEqual((draws[6] + draws[7] + draws[8]) / 3d, boot.BootstrapStatistics[0, 0], 1E-15);
+        }
+
+        /// <summary>
+        /// Records every reported progress value synchronously, so a test can inspect them after a run.
+        /// </summary>
+        private sealed class RecordingProgress : IProgress<int>
+        {
+            private int _calls;
+            private int _maximum;
+
+            /// <summary>Gets the number of reports.</summary>
+            public int Calls => _calls;
+
+            /// <summary>Gets the largest reported value.</summary>
+            public int Maximum => _maximum;
+
+            /// <inheritdoc/>
+            public void Report(int value)
+            {
+                Interlocked.Increment(ref _calls);
+                int current;
+                while (value > (current = Volatile.Read(ref _maximum)))
+                    Interlocked.CompareExchange(ref _maximum, value, current);
+            }
+        }
+
+        /// <summary>
+        /// Every outer replicate is reported once, the last count is the replicate total, and the hooks
+        /// change no bootstrap statistic.
+        /// </summary>
+        [TestMethod]
+        public void Test_ProgressAndToken_ReportEveryReplicate_AndDoNotChangeResults()
+        {
+            var plain = CreateNormalBootstrap();
+            plain.Replicates = 500;
+            plain.Run();
+
+            var progress = new RecordingProgress();
+            using var source = new CancellationTokenSource();
+            var hooked = CreateNormalBootstrap();
+            hooked.Replicates = 500;
+            hooked.Progress = progress;
+            hooked.CancellationToken = source.Token;
+            hooked.Run();
+
+            Assert.AreEqual(500, progress.Calls);
+            Assert.AreEqual(500, progress.Maximum);
+            CollectionAssert.AreEqual(plain.BootstrapStatistics, hooked.BootstrapStatistics);
+        }
+
+        /// <summary>
+        /// The double bootstrap reports outer replicates only.
+        /// </summary>
+        [TestMethod]
+        public void Test_Progress_DoubleBootstrap_ReportsOuterReplicates()
+        {
+            var progress = new RecordingProgress();
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 50;
+            boot.Progress = progress;
+            boot.RunDoubleBootstrap(20);
+
+            Assert.AreEqual(50, progress.Calls);
+            Assert.AreEqual(50, progress.Maximum);
+        }
+
+        /// <summary>
+        /// A cancelled token stops the run with <see cref="OperationCanceledException"/> and leaves no
+        /// results to request intervals from.
+        /// </summary>
+        [TestMethod]
+        public void Test_CancellationToken_Cancelled_ThrowsAndLeavesNoResults()
+        {
+            using var source = new CancellationTokenSource();
+            source.Cancel();
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 500;
+            boot.CancellationToken = source.Token;
+
+            Assert.Throws<OperationCanceledException>(() => boot.Run());
+            Assert.Throws<InvalidOperationException>(() => boot.GetConfidenceIntervals(BootstrapCIMethod.Percentile));
+        }
+
+        /// <summary>
+        /// A token cancelled part way through stops the run before every replicate is attempted.
+        /// </summary>
+        [TestMethod]
+        public void Test_CancellationToken_CancelledDuringRun_StopsEarly()
+        {
+            using var source = new CancellationTokenSource();
+            var progress = new CancellingProgress(source, 50);
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 5000;
+            boot.Progress = progress;
+            boot.CancellationToken = source.Token;
+
+            Assert.Throws<OperationCanceledException>(() => boot.Run());
+            Assert.IsLessThan(5000, progress.Calls);
+        }
+
+        /// <summary>
+        /// A studentized run cancelled after a completed regular run leaves no results to request intervals from,
+        /// rather than the partly overwritten results of the earlier run.
+        /// </summary>
+        [TestMethod]
+        public void Test_CancellationToken_CancelledStudentizedAfterRun_LeavesNoResults()
+        {
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 500;
+            boot.InnerReplicates = 20;
+            boot.UseParallel = false;
+            boot.Run();
+            Assert.IsNotNull(boot.GetConfidenceIntervals(BootstrapCIMethod.Percentile));
+
+            using var source = new CancellationTokenSource();
+            boot.Progress = new CancellingProgress(source, 50);
+            boot.CancellationToken = source.Token;
+
+            Assert.Throws<OperationCanceledException>(() => boot.RunWithStudentizedBootstrap());
+            Assert.ThrowsExactly<InvalidOperationException>(() => boot.GetConfidenceIntervals(BootstrapCIMethod.Percentile));
+        }
+
+        /// <summary>
+        /// Cancels a token once a set number of replicates have been reported.
+        /// </summary>
+        private sealed class CancellingProgress : IProgress<int>
+        {
+            private readonly CancellationTokenSource _source;
+            private readonly int _threshold;
+            private int _calls;
+
+            /// <summary>
+            /// Creates the progress receiver.
+            /// </summary>
+            /// <param name="source">The source to cancel.</param>
+            /// <param name="threshold">The report count at which to cancel.</param>
+            public CancellingProgress(CancellationTokenSource source, int threshold)
+            {
+                _source = source;
+                _threshold = threshold;
+            }
+
+            /// <summary>Gets the number of reports.</summary>
+            public int Calls => _calls;
+
+            /// <inheritdoc/>
+            public void Report(int value)
+            {
+                if (Interlocked.Increment(ref _calls) == _threshold) _source.Cancel();
+            }
+        }
+
+        /// <summary>
         /// Test that the double bootstrap method runs and produces reasonable results.
         /// </summary>
         [TestMethod]
@@ -584,7 +816,7 @@ namespace Sampling
 
                 // With a zero acceleration the BCa limits also reduce to the bias-corrected limits. The
                 // residual gap is not zero because the two methods use different plotting positions for
-                // the bias proportion — countLeq / (B + 1) versus (countLeq + 1) / (B + 1) — an offset of
+                // the bias proportion (countLeq / (B + 1) versus (countLeq + 1) / (B + 1)), an offset of
                 // 1/(B+1) in P0 that propagates to roughly 2E-4 in the limit here. The tolerance bounds
                 // that offset and nothing wider.
                 Assert.AreEqual(biasCorrected.StatisticResults[i].LowerCI, bca.StatisticResults[i].LowerCI,
@@ -695,6 +927,202 @@ namespace Sampling
 
             boot.Run();
             return boot.GetConfidenceIntervals(BootstrapCIMethod.BCa).StatisticResults;
+        }
+
+        /// <summary>
+        /// Asserts two bootstrap runs stored bit-identical statistics, parameter sets and counts.
+        /// </summary>
+        private static void AssertSameRun(Bootstrap<double[]> expected, Bootstrap<double[]> actual)
+        {
+            Assert.AreEqual(expected.FailedReplicates, actual.FailedReplicates);
+            Assert.AreEqual(expected.FailedAttempts, actual.FailedAttempts);
+            var a = expected.BootstrapStatistics;
+            var b = actual.BootstrapStatistics;
+            Assert.AreEqual(a.GetLength(0), b.GetLength(0));
+            for (int i = 0; i < a.GetLength(0); i++)
+            {
+                for (int j = 0; j < a.GetLength(1); j++)
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(a[i, j]), BitConverter.DoubleToInt64Bits(b[i, j]));
+                var pa = expected.BootstrapParameterSets[i].Values;
+                var pb = actual.BootstrapParameterSets[i].Values;
+                for (int j = 0; j < pa.Length; j++)
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(pa[j]), BitConverter.DoubleToInt64Bits(pb[j]));
+            }
+        }
+
+        /// <summary>
+        /// UseParallel defaults to true; serial and parallel runs of every run method give bit-identical results.
+        /// </summary>
+        [TestMethod]
+        public void Test_UseParallel_SerialMatchesParallelBits()
+        {
+            Assert.IsTrue(CreateNormalBootstrap().UseParallel);
+
+            var parallel = CreateNormalBootstrap();
+            parallel.Replicates = 400;
+            parallel.Run();
+            var serial = CreateNormalBootstrap();
+            serial.Replicates = 400;
+            serial.UseParallel = false;
+            serial.Run();
+            AssertSameRun(parallel, serial);
+            var pci = parallel.GetConfidenceIntervals(BootstrapCIMethod.Percentile).StatisticResults;
+            var sci = serial.GetConfidenceIntervals(BootstrapCIMethod.Percentile).StatisticResults;
+            for (int i = 0; i < pci.Length; i++)
+            {
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(pci[i].LowerCI), BitConverter.DoubleToInt64Bits(sci[i].LowerCI));
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(pci[i].UpperCI), BitConverter.DoubleToInt64Bits(sci[i].UpperCI));
+            }
+
+            parallel = CreateNormalBootstrap();
+            parallel.Replicates = 60;
+            parallel.RunDoubleBootstrap(20);
+            serial = CreateNormalBootstrap();
+            serial.Replicates = 60;
+            serial.UseParallel = false;
+            serial.RunDoubleBootstrap(20);
+            AssertSameRun(parallel, serial);
+
+            parallel = CreateNormalBootstrap();
+            parallel.Replicates = 60;
+            parallel.InnerReplicates = 20;
+            parallel.RunWithStudentizedBootstrap();
+            serial = CreateNormalBootstrap();
+            serial.Replicates = 60;
+            serial.InnerReplicates = 20;
+            serial.UseParallel = false;
+            serial.RunWithStudentizedBootstrap();
+            AssertSameRun(parallel, serial);
+            var pt = parallel.GetConfidenceIntervals(BootstrapCIMethod.BootstrapT).StatisticResults;
+            var st = serial.GetConfidenceIntervals(BootstrapCIMethod.BootstrapT).StatisticResults;
+            for (int i = 0; i < pt.Length; i++)
+                Assert.AreEqual(BitConverter.DoubleToInt64Bits(pt[i].LowerCI), BitConverter.DoubleToInt64Bits(st[i].LowerCI));
+        }
+
+        /// <summary>
+        /// A serial run calls the delegates on the calling thread, in replicate order, and reports progress in order.
+        /// </summary>
+        [TestMethod]
+        public void Test_UseParallel_False_RunsInOrderOnCallingThread()
+        {
+            int caller = Environment.CurrentManagedThreadId;
+            var threads = new List<int>();
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 50;
+            boot.UseParallel = false;
+            var fit = boot.FitFunction!;
+            boot.FitFunction = sample => { threads.Add(Environment.CurrentManagedThreadId); return fit(sample); };
+            var progress = new OrderedProgress();
+            boot.Progress = progress;
+            boot.Run();
+
+            Assert.HasCount(50, threads);
+            Assert.IsTrue(threads.All(id => id == caller));
+            CollectionAssert.AreEqual(Enumerable.Range(1, 50).ToArray(), progress.Values.ToArray());
+        }
+
+        /// <summary>
+        /// A serial run honours cancellation and wraps an escaping exception as the parallel run does.
+        /// </summary>
+        [TestMethod]
+        public void Test_UseParallel_False_CancellationAndExceptions()
+        {
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            var boot = CreateNormalBootstrap();
+            boot.Replicates = 20;
+            boot.UseParallel = false;
+            boot.CancellationToken = cancelled.Token;
+            Assert.Throws<OperationCanceledException>(() => boot.Run());
+
+            using var source = new CancellationTokenSource();
+            var stopping = new CancellingProgress(source, 5);
+            boot = CreateNormalBootstrap();
+            boot.Replicates = 1000;
+            boot.UseParallel = false;
+            boot.Progress = stopping;
+            boot.CancellationToken = source.Token;
+            Assert.Throws<OperationCanceledException>(() => boot.Run());
+            Assert.AreEqual(5, stopping.Calls);
+
+            foreach (bool useParallel in new[] { true, false })
+            {
+                boot = CreateNormalBootstrap();
+                boot.Replicates = 10;
+                boot.UseParallel = useParallel;
+                boot.Progress = new ThrowingProgress();
+                var error = Assert.Throws<AggregateException>(() => boot.Run());
+                Assert.IsInstanceOfType<InvalidOperationException>(error.InnerExceptions[0]);
+            }
+        }
+
+        /// <summary>
+        /// With UseParallel false the BCa leave-one-out jackknife runs in index order on the calling thread, and its
+        /// intervals and failure count are bit-identical to the parallel jackknife.
+        /// </summary>
+        [TestMethod]
+        public void Test_UseParallel_False_SerialisesBCaJackknife()
+        {
+            // 200 points spread over the 64 accumulation chunks, with some failing replicates.
+            var sampleData = new Normal(3.1d, 0.55d).GenerateRandomValues(200, 8675309);
+            BootstrapResults parallelResults = null;
+            int parallelFailures = -1;
+            foreach (bool useParallel in new[] { true, false })
+            {
+                int caller = Environment.CurrentManagedThreadId;
+                var calls = new List<(int Index, int Thread)>();
+                var boot = CreateJackknifeBootstrap(sampleData, 300);
+                boot.UseParallel = useParallel;
+                boot.JackknifeFunction = (data, idx) =>
+                {
+                    lock (calls) calls.Add((idx, Environment.CurrentManagedThreadId));
+                    if (idx % 17 == 3) throw new InvalidOperationException("Jackknife replicate rejected.");
+                    var list = new List<double>(data);
+                    list.RemoveAt(idx);
+                    return list.ToArray();
+                };
+                boot.Run();
+                var results = boot.GetConfidenceIntervals(BootstrapCIMethod.BCa);
+                Assert.AreEqual(12, boot.FailedJackknifeReplicates);
+                Assert.HasCount(sampleData.Length, calls);
+
+                if (useParallel)
+                {
+                    parallelResults = results;
+                    parallelFailures = boot.FailedJackknifeReplicates;
+                    continue;
+                }
+
+                CollectionAssert.AreEqual(Enumerable.Range(0, sampleData.Length).ToArray(), calls.Select(c => c.Index).ToArray());
+                Assert.IsTrue(calls.All(c => c.Thread == caller));
+                Assert.AreEqual(parallelFailures, boot.FailedJackknifeReplicates);
+                for (int i = 0; i < results.StatisticResults.Length; i++)
+                {
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(parallelResults.StatisticResults[i].LowerCI), BitConverter.DoubleToInt64Bits(results.StatisticResults[i].LowerCI));
+                    Assert.AreEqual(BitConverter.DoubleToInt64Bits(parallelResults.StatisticResults[i].UpperCI), BitConverter.DoubleToInt64Bits(results.StatisticResults[i].UpperCI));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Records the reported values in arrival order; for serial runs only.
+        /// </summary>
+        private sealed class OrderedProgress : IProgress<int>
+        {
+            /// <summary>Gets the reported values in order.</summary>
+            public List<int> Values { get; } = new List<int>();
+
+            /// <inheritdoc/>
+            public void Report(int value) => Values.Add(value);
+        }
+
+        /// <summary>
+        /// A progress receiver that throws on its first report.
+        /// </summary>
+        private sealed class ThrowingProgress : IProgress<int>
+        {
+            /// <inheritdoc/>
+            public void Report(int value) => throw new InvalidOperationException("Progress failed.");
         }
 
     }

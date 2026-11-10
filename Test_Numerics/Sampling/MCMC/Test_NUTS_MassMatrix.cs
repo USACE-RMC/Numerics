@@ -422,12 +422,13 @@ namespace Sampling.MCMC
             sampler.Sample();
 
             AssertClose(0.010797384971651152, sampler.StepSizes[0], "step size");
-            AssertClose(54.85263157894737, sampler.MeanLeapfrogSteps[0], "mean leapfrog steps");
+            AssertClose(58.2, sampler.MeanLeapfrogSteps[0], "mean leapfrog steps");
 
-            double[] firstDraw = { 0.0011958505341814842, -0.07526409822522193, -0.21184584905057402,
-                                   -0.6582920358936465, 2.1468119667523973, -0.6069130233917713 };
-            double[] lastDraw = { 0.004230279378397197, -0.009370317476825615, -0.15308785669000735,
-                                  -0.726029878587165, 3.652148817280656, -4.4283508900986215 };
+            // The smoothed step size is fixed before the first sampling transition.
+            double[] firstDraw = { 0.0002907230175912684, 0.07090381987229387, -0.059334975966023884,
+                                   -0.1254512842596425, 0.25517195065783094, 0.7036398700632396 };
+            double[] lastDraw = { 0.0031420309652544004, 0.020417669938692033, -0.044381707666251304,
+                                  -0.49162183682038674, -0.06586135399516972, -1.6187021162187583 };
             var last = sampler.Output[0][sampler.Output[0].Count - 1];
             for (int j = 0; j < 6; j++)
             {

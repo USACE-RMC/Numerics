@@ -60,7 +60,10 @@ namespace Numerics.Sampling.MCMC
         /// The Markov chains to evaluate. When lengths differ, only the common leading
         /// length of every chain is used.
         /// </param>
-        /// <param name="averageACF">Output. A jagged array of averaged autocorrelation functions, one for each parameter.</param>
+        /// <param name="averageACF">
+        /// Output. One averaged autocorrelation function per parameter: a 51 x 2 matrix whose column 0 holds the lags
+        /// 0 to 50 and column 1 the autocorrelation at each lag averaged over the chains.
+        /// </param>
         /// <returns>
         /// One conservative scalar ESS per parameter: the minimum of bulk, lower-tail,
         /// and upper-tail ESS. Unusable inputs return <see cref="double.NaN"/>.
@@ -69,7 +72,8 @@ namespace Numerics.Sampling.MCMC
         /// <exception cref="ArgumentOutOfRangeException">Thrown when no model parameters are present.</exception>
         /// <remarks>
         /// The 51-row averaged original-scale autocorrelation output is retained for plotting.
-        /// It is not used to compute the modern scalar ESS.
+        /// It is not used to compute the modern scalar ESS. Every row has its lag in column 0; the autocorrelation
+        /// in column 1 stays zero at lags the chains are too short to estimate.
         /// </remarks>
         public static double[] EffectiveSampleSize(IList<List<ParameterSet>> markovChains, out double[][,] averageACF)
         {
@@ -90,6 +94,8 @@ namespace Numerics.Sampling.MCMC
             {
                 var valuesByChain = new double[chainCount][];
                 averageACF[parameterIndex] = new double[51, 2];
+                for (int lag = 0; lag < 51; lag++)
+                    averageACF[parameterIndex][lag, 0] = lag;
                 for (int chainIndex = 0; chainIndex < chainCount; chainIndex++)
                 {
                     var values = new double[commonLength];

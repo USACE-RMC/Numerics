@@ -107,7 +107,7 @@ namespace Sampling.MCMC
             // This should complete without throwing AggregateException/ArithmeticException
             sampler.Sample();
 
-            // Verify we got some results
+            // Verify there are some results
             Assert.IsNotNull(sampler.MarkovChains);
             Assert.IsNotEmpty(sampler.MarkovChains, "Expected at least one Markov chain");
         }

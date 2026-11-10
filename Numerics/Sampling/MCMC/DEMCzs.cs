@@ -147,7 +147,7 @@ namespace Numerics.Sampling.MCMC
 
                 // Accept the proposal with probability min(1,r)
                 // otherwise leave xi unchanged
-                var logU = Math.Log(_chainPRNGs[index].NextDouble());
+                var logU = Math.Log(NextPositiveUniform(_chainPRNGs[index]));
                 if (logU <= logRatio)
                 {
                     // The proposal is accepted
@@ -228,7 +228,7 @@ namespace Numerics.Sampling.MCMC
             var logRatio = logLHp + logEDp - logLHi - logEDi;
             // Accept the proposal with probability min(1,r)
             // otherwise leave xi unchanged
-            var logU = Math.Log(_chainPRNGs[index].NextDouble());
+            var logU = Math.Log(NextPositiveUniform(_chainPRNGs[index]));
             if (logU <= logRatio)
             {
                 // The proposal is accepted

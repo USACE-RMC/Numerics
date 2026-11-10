@@ -216,7 +216,7 @@ namespace Numerics.Sampling.MCMC
                 // Step 1. Sample phi from a N~(0,M)
                 var phi = new Vector(NumberOfParameters);
                 for (int i = 0; i < NumberOfParameters; i++)
-                    phi[i] = Math.Sqrt(Mass[i]) * Normal.StandardZ(_chainPRNGs[index].NextDouble());
+                    phi[i] = Math.Sqrt(Mass[i]) * Normal.StandardZ(NextPositiveUniform(_chainPRNGs[index]));
 
                 // Get kinetic energy of the current state
                 var logKi = -0.5 * QuadraticForm(phi, _inverseMass);
@@ -275,7 +275,7 @@ namespace Numerics.Sampling.MCMC
 
                 // Accept the proposal with probability min(1,r)
                 // otherwise leave xi unchanged
-                var logU = Math.Log(_chainPRNGs[index].NextDouble());
+                var logU = Math.Log(NextPositiveUniform(_chainPRNGs[index]));
                 if (logU <= logRatio)
                 {
                     // The proposal is accepted. The closing half-step's gradient becomes the opening

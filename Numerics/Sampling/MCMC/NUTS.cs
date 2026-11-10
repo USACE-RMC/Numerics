@@ -180,6 +180,8 @@ namespace Numerics.Sampling.MCMC
         private double[][][] _gradientCachePositions = null!;
         private double[][][] _gradientCacheValues = null!;
         private bool[][] _gradientCacheOccupied = null!;
+        private double[][] _gradientCacheLogLikelihoods = null!;
+        private bool[][] _gradientCacheHasLogLikelihood = null!;
         private int[] _gradientCacheNextSlot = null!;
 
         /// <summary>
@@ -202,6 +204,39 @@ namespace Numerics.Sampling.MCMC
         /// The function for evaluating the gradient of the log-likelihood.
         /// </summary>
         public HMC.Gradient GradientFunction { get; }
+
+        /// <summary>
+        /// Evaluates the log-likelihood and its gradient at one position in a single call.
+        /// </summary>
+        /// <param name="parameters">The parameter values.</param>
+        /// <returns>The log-likelihood and its gradient at <paramref name="parameters"/>.</returns>
+        public delegate (double LogLikelihood, Vector Gradient) LogLikelihoodAndGradient(IList<double> parameters);
+
+        /// <summary>
+        /// Gets or sets an optional function that returns the log-likelihood together with its gradient.
+        /// Default = null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each leapfrog step evaluates the gradient at its end point, and the tree then needs the
+        /// log-likelihood at the same point. Automatic-differentiation backends usually produce both in
+        /// one sweep. When this function is set, the sampler calls it wherever it would call
+        /// <see cref="GradientFunction"/>, keeps the returned log-likelihood with the gradient, and reads
+        /// the leaf log-likelihood from it instead of calling
+        /// <see cref="MCMCSampler.LogLikelihoodFunction"/> again, so each leapfrog step costs one
+        /// evaluation instead of two. <see cref="GradientFunction"/> is then not called.
+        /// <see cref="MCMCSampler.LogLikelihoodFunction"/> is still used for chain initialization.
+        /// </para>
+        /// <para>
+        /// The returned value must equal <see cref="MCMCSampler.LogLikelihoodFunction"/> at the same
+        /// position, and the gradient must equal its gradient. Under that contract the draws are bit for bit
+        /// the same as without this function. An exception it throws propagates as one from
+        /// <see cref="GradientFunction"/> would; it is not converted to a negative-infinity log-likelihood.
+        /// Under <see cref="MCMCSampler.ParallelizeChains"/> it is called concurrently, like the other
+        /// delegates.
+        /// </para>
+        /// </remarks>
+        public LogLikelihoodAndGradient? LogLikelihoodAndGradientFunction { get; set; }
 
         /// <summary>
         /// Gets or sets the target Metropolis acceptance probability that dual averaging adapts the
@@ -414,6 +449,8 @@ namespace Numerics.Sampling.MCMC
             _gradientCachePositions = new double[N][][];
             _gradientCacheValues = new double[N][][];
             _gradientCacheOccupied = new bool[N][];
+            _gradientCacheLogLikelihoods = new double[N][];
+            _gradientCacheHasLogLikelihood = new bool[N][];
             _gradientCacheNextSlot = new int[N];
 
             for (int i = 0; i < N; i++)
@@ -421,6 +458,8 @@ namespace Numerics.Sampling.MCMC
                 _gradientCachePositions[i] = new double[GRADIENT_CACHE_SIZE][];
                 _gradientCacheValues[i] = new double[GRADIENT_CACHE_SIZE][];
                 _gradientCacheOccupied[i] = new bool[GRADIENT_CACHE_SIZE];
+                _gradientCacheLogLikelihoods[i] = new double[GRADIENT_CACHE_SIZE];
+                _gradientCacheHasLogLikelihood[i] = new bool[GRADIENT_CACHE_SIZE];
                 for (int s = 0; s < GRADIENT_CACHE_SIZE; s++)
                 {
                     _gradientCachePositions[i][s] = new double[D];
@@ -480,7 +519,7 @@ namespace Numerics.Sampling.MCMC
                     windowSize *= 2;
                     nextWindowEnd += windowSize;
                 }
-                // Ensure we always have the final boundary
+                // Always include the final boundary
                 if (windowEnds.Count == 0 || windowEnds[windowEnds.Count - 1] != adaptEnd - 1)
                 {
                     windowEnds.Add(adaptEnd - 1);
@@ -496,12 +535,14 @@ namespace Numerics.Sampling.MCMC
                 double[] theta0 = _chainStates[i].Values;
                 double logLH0 = _chainStates[i].Fitness;
 
+                // Only an arithmetic failure of the heuristic falls back to the configured step size. Any
+                // other exception, such as one thrown by the gradient delegate, propagates to the caller.
                 double eps0;
                 try
                 {
                     eps0 = FindReasonableEpsilon(theta0, logLH0, i);
                 }
-                catch
+                catch (ArithmeticException)
                 {
                     eps0 = _initialStepSize;
                 }
@@ -530,7 +571,7 @@ namespace Numerics.Sampling.MCMC
             // Sample momentum from current mass matrix
             var r0 = new double[D];
             for (int j = 0; j < D; j++)
-                r0[j] = Math.Sqrt(_massMatrix[chainIndex][j]) * Normal.StandardZ(_chainPRNGs[chainIndex].NextDouble());
+                r0[j] = Math.Sqrt(_massMatrix[chainIndex][j]) * Normal.StandardZ(NextPositiveUniform(_chainPRNGs[chainIndex]));
 
             // Compute initial Hamiltonian
             double H0 = -logLH0 + 0.5 * DiagonalQuadraticForm(r0, _inverseMassMatrix[chainIndex]);
@@ -544,7 +585,7 @@ namespace Numerics.Sampling.MCMC
 
             for (int iter = 0; iter < 25; iter++)
             {
-                // Check if we've crossed the 0.5 threshold
+                // Check whether the 0.5 threshold has been crossed
                 if (a * logAlpha <= -a * Math.Log(2.0))
                     break;
 
@@ -579,7 +620,7 @@ namespace Numerics.Sampling.MCMC
             {
                 LeapfrogInPlace(thetaPrime, rPrime, epsilon, chainIndex);
 
-                double logLH = SafeLogLikelihood(thetaPrime);
+                double logLH = LeafLogLikelihood(thetaPrime, chainIndex);
                 double hamiltonian = -logLH + 0.5 * DiagonalQuadraticForm(rPrime, _inverseMassMatrix[chainIndex]);
                 double logAlpha = initialHamiltonian - hamiltonian;
                 if (!Tools.IsFinite(logAlpha))
@@ -674,11 +715,25 @@ namespace Numerics.Sampling.MCMC
             var slotValue = values[next];
 
             occupied[next] = false;
+            _gradientCacheHasLogLikelihood[chainIndex][next] = false;
             for (int j = 0; j < D; j++)
                 slotPosition[j] = position[j];
 
-            double[] gradient = GradientFunction(position).Array;
+            double[] gradient;
+            var combined = LogLikelihoodAndGradientFunction;
+            if (combined != null)
+            {
+                var result = combined(position);
+                gradient = result.Gradient.Array;
+                _gradientCacheLogLikelihoods[chainIndex][next] = result.LogLikelihood;
+            }
+            else
+            {
+                gradient = GradientFunction(position).Array;
+            }
             if (gradient.Length != D) return gradient;
+
+            _gradientCacheHasLogLikelihood[chainIndex][next] = combined != null;
 
             for (int j = 0; j < D; j++)
                 slotValue[j] = gradient[j];
@@ -687,6 +742,40 @@ namespace Numerics.Sampling.MCMC
             _gradientCacheNextSlot[chainIndex] = (next + 1) % GRADIENT_CACHE_SIZE;
 
             return slotValue;
+        }
+
+        /// <summary>
+        /// Returns the log-likelihood at the end point of a leapfrog step.
+        /// </summary>
+        /// <param name="position">The end point, whose gradient the step has just evaluated.</param>
+        /// <param name="chainIndex">The chain index whose memo is consulted.</param>
+        /// <returns>
+        /// The value <see cref="LogLikelihoodAndGradientFunction"/> returned at this exact position when it is
+        /// set and the memo still holds it; otherwise <see cref="SafeLogLikelihood"/>.
+        /// </returns>
+        private double LeafLogLikelihood(double[] position, int chainIndex)
+        {
+            if (LogLikelihoodAndGradientFunction != null)
+            {
+                int D = NumberOfParameters;
+                var positions = _gradientCachePositions[chainIndex];
+                for (int slot = 0; slot < GRADIENT_CACHE_SIZE; slot++)
+                {
+                    if (!_gradientCacheOccupied[chainIndex][slot] || !_gradientCacheHasLogLikelihood[chainIndex][slot]) continue;
+                    var stored = positions[slot];
+                    bool identical = true;
+                    for (int j = 0; j < D; j++)
+                    {
+                        if (BitConverter.DoubleToInt64Bits(stored[j]) != BitConverter.DoubleToInt64Bits(position[j]))
+                        {
+                            identical = false;
+                            break;
+                        }
+                    }
+                    if (identical) return _gradientCacheLogLikelihoods[chainIndex][slot];
+                }
+            }
+            return SafeLogLikelihood(position);
         }
 
         /// <summary>
@@ -706,6 +795,7 @@ namespace Numerics.Sampling.MCMC
             // Half-step momentum update. grad is the memo's own buffer and must be read only; write
             // through it and this chain's entry is silently corrupted.
             double[] grad = EvaluateGradient(theta, chainIndex);
+            ThrowIfGradientLengthDiffers(grad, D);
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
 
@@ -721,6 +811,7 @@ namespace Numerics.Sampling.MCMC
 
             // Half-step momentum update. As above, grad is memo-owned and must be read only.
             grad = EvaluateGradient(theta, chainIndex);
+            ThrowIfGradientLengthDiffers(grad, D);
             for (int j = 0; j < D; j++)
                 momentum[j] += grad[j] * halfEps;
         }
@@ -747,13 +838,18 @@ namespace Numerics.Sampling.MCMC
             int sampleNum = SampleCount[index];
             int warmupSteps = WarmupIterations * ThinningInterval;
 
+            // The first transition after warmup fixes the step size at the smoothed dual-averaging value
+            // before it builds its trajectory, so every sampling transition, including this one, uses it.
+            if (sampleNum == warmupSteps + 1)
+                _chainStepSizes[index] = Math.Exp(_chainLogEpsBar[index]);
+
             double eps = _chainStepSizes[index];
             int D = NumberOfParameters;
 
             // Sample momentum from N(0, M) using the per-chain mass matrix.
             var phi = new Vector(D);
             for (int i = 0; i < D; i++)
-                phi[i] = Math.Sqrt(_massMatrix[index][i]) * Normal.StandardZ(_chainPRNGs[index].NextDouble());
+                phi[i] = Math.Sqrt(_massMatrix[index][i]) * Normal.StandardZ(NextPositiveUniform(_chainPRNGs[index]));
 
             // Compute initial Hamiltonian using per-chain inverse mass matrix
             double H0 = -state.Fitness + 0.5 * DiagonalQuadraticFormVec(phi, _inverseMassMatrix[index]);
@@ -820,8 +916,7 @@ namespace Numerics.Sampling.MCMC
                 if (!subtree.Valid)
                     break;
 
-                var dTheta = thetaPlus - thetaMinus;
-                if (Vector.DotProduct(dTheta, rMinus) < 0 || Vector.DotProduct(dTheta, rPlus) < 0)
+                if (IsUTurn(thetaMinus, thetaPlus, rMinus, rPlus))
                     break;
 
                 depth++;
@@ -843,18 +938,13 @@ namespace Numerics.Sampling.MCMC
                 {
                     AccumulateWelfordStatistics(index, candidate.Array);
 
-                    // Check if we're at the end of an adaptation window
+                    // Check whether this is the end of an adaptation window
                     if (IsEndOfAdaptationWindow(sampleNum))
                     {
                         var currentState = new ParameterSet(candidate.Array, candidateLogLH);
                         UpdateMassMatrix(index, currentState);
                     }
                 }
-            }
-            else if (sampleNum == warmupSteps + 1)
-            {
-                // After warmup, fix step size to the smoothed value
-                _chainStepSizes[index] = Math.Exp(_chainLogEpsBar[index]);
             }
 
             if (sampleNum > warmupSteps)
@@ -1005,7 +1095,7 @@ namespace Numerics.Sampling.MCMC
         /// <i>measured</i> variance in the same window; fallback values never set that scale, because
         /// letting them do so would put the prior range back into the floor for every other coordinate.
         /// The floor bounds the ratio of the largest <i>measured</i> window variance to any retained
-        /// variance at 1e12 — fallback values are outside that ratio — and prevents a coordinate that
+        /// variance at 1e12 (fallback values are outside that ratio) and prevents a coordinate that
         /// is numerically degenerate over the window from producing an unbounded mass. It does not
         /// correct a coordinate that merely under-explored: a variance that comes back at 1e-4 to 1e-6 of
         /// the truth is far above the floor and passes through, yielding a mass that is too large and a
@@ -1060,12 +1150,13 @@ namespace Numerics.Sampling.MCMC
 
             // Critical: after metric change, find a new reasonable step size (Stan's init_stepsize)
             // then reset dual averaging to re-adapt from the new starting point
+            // As in InitializeCustomSettings, only an arithmetic failure keeps the current step size.
             double eps0;
             try
             {
                 eps0 = FindReasonableEpsilon(currentState.Values, currentState.Fitness, chainIndex);
             }
-            catch
+            catch (ArithmeticException)
             {
                 eps0 = _chainStepSizes[chainIndex];
             }
@@ -1117,7 +1208,7 @@ namespace Numerics.Sampling.MCMC
                     return InvalidTreeState(theta, momentum);
                 }
 
-                double logLH = SafeLogLikelihood(thetaPrime.Array);
+                double logLH = LeafLogLikelihood(thetaPrime.Array, chainIndex);
                 double H = -logLH + 0.5 * DiagonalQuadraticFormVec(momentumPrime, _inverseMassMatrix[chainIndex]);
                 double logWeight = -H;
                 if (!Tools.IsFinite(logLH) || !Tools.IsFinite(H) || !Tools.IsFinite(logWeight))
@@ -1180,13 +1271,42 @@ namespace Numerics.Sampling.MCMC
                 tree.NumAlpha += tree2.NumAlpha;
 
                 // Check U-turn criterion on the combined tree
-                var dTheta = tree.ThetaPlus - tree.ThetaMinus;
-                bool uturn = Vector.DotProduct(dTheta, tree.MomentumMinus) < 0 ||
-                             Vector.DotProduct(dTheta, tree.MomentumPlus) < 0;
+                bool uturn = IsUTurn(tree.ThetaMinus, tree.ThetaPlus, tree.MomentumMinus, tree.MomentumPlus);
                 tree.Valid = tree2.Valid && !uturn;
             }
 
             return tree;
+        }
+
+        /// <summary>
+        /// Evaluates the no-U-turn criterion of Hoffman and Gelman (2014), Equation 9, for a trajectory
+        /// segment without allocating the position difference.
+        /// </summary>
+        /// <param name="thetaMinus">The backward endpoint position.</param>
+        /// <param name="thetaPlus">The forward endpoint position.</param>
+        /// <param name="momentumMinus">The backward endpoint momentum.</param>
+        /// <param name="momentumPlus">The forward endpoint momentum.</param>
+        /// <returns>True if either endpoint momentum points back along the segment.</returns>
+        /// <remarks>
+        /// Each dot product accumulates <c>(thetaPlus[i] - thetaMinus[i]) * momentum[i]</c> in index order.
+        /// The second product is evaluated only when the first is non-negative.
+        /// </remarks>
+        private static bool IsUTurn(Vector thetaMinus, Vector thetaPlus, Vector momentumMinus, Vector momentumPlus)
+        {
+            double[] minus = thetaMinus.Array;
+            double[] plus = thetaPlus.Array;
+
+            double[] r = momentumMinus.Array;
+            double sum = 0;
+            for (int i = 0; i < plus.Length; i++)
+                sum += (plus[i] - minus[i]) * r[i];
+            if (sum < 0) return true;
+
+            r = momentumPlus.Array;
+            sum = 0;
+            for (int i = 0; i < plus.Length; i++)
+                sum += (plus[i] - minus[i]) * r[i];
+            return sum < 0;
         }
 
         /// <summary>
@@ -1227,33 +1347,54 @@ namespace Numerics.Sampling.MCMC
         {
             int D = NumberOfParameters;
             double[] invMass = _inverseMassMatrix[chainIndex];
+            double halfEps = epsilon * 0.5;
 
-            // Half-step momentum update. new Vector(double[]) wraps without copying, so grad is a live
-            // view onto the memo's own buffer and must be read only. Vector's arithmetic operators all
-            // allocate their result, so the expression below cannot write through it, but Vector's
-            // indexer setter is public: do not accumulate, clamp, or negate in place through grad.
-            var grad = new Vector(EvaluateGradient(theta.Array, chainIndex));
-            var r = momentum + grad * (epsilon * 0.5);
+            // The two result vectors are the only allocations; each momentum element is momentum[j] + grad[j] * halfEps.
+            var r = new Vector(D);
+            var q = new Vector(D);
+            double[] rA = r.Array;
+            double[] qA = q.Array;
+            double[] thetaA = theta.Array;
+            double[] momentumA = momentum.Array;
+
+            // Half-step momentum update. grad is the memo's own buffer and must be read only.
+            double[] grad = EvaluateGradient(thetaA, chainIndex);
+            ThrowIfGradientLengthDiffers(grad, D);
+            for (int j = 0; j < D; j++)
+                rA[j] = momentumA[j] + grad[j] * halfEps;
 
             // Full-step position update using per-chain inverse mass matrix
-            var q = new Vector(D);
             for (int j = 0; j < D; j++)
-                q[j] = theta[j] + invMass[j] * r[j] * epsilon;
+                qA[j] = thetaA[j] + invMass[j] * rA[j] * epsilon;
 
             // Enforce parameter bounds
             for (int j = 0; j < D; j++)
             {
-                if (q[j] < PriorDistributions[j].Minimum)
-                    q[j] = PriorDistributions[j].Minimum + Tools.DoubleMachineEpsilon;
-                if (q[j] > PriorDistributions[j].Maximum)
-                    q[j] = PriorDistributions[j].Maximum - Tools.DoubleMachineEpsilon;
+                if (qA[j] < PriorDistributions[j].Minimum)
+                    qA[j] = PriorDistributions[j].Minimum + Tools.DoubleMachineEpsilon;
+                if (qA[j] > PriorDistributions[j].Maximum)
+                    qA[j] = PriorDistributions[j].Maximum - Tools.DoubleMachineEpsilon;
             }
 
-            // Half-step momentum update. As above, grad wraps the memo's buffer and must be read only.
-            grad = new Vector(EvaluateGradient(q.Array, chainIndex));
-            r = r + grad * (epsilon * 0.5);
+            // Half-step momentum update. As above, grad is memo-owned and must be read only.
+            grad = EvaluateGradient(qA, chainIndex);
+            ThrowIfGradientLengthDiffers(grad, D);
+            for (int j = 0; j < D; j++)
+                rA[j] = rA[j] + grad[j] * halfEps;
 
             return (q, r);
+        }
+
+        /// <summary>
+        /// Rejects a gradient whose length differs from the parameter count.
+        /// </summary>
+        /// <param name="gradient">The gradient returned for the current position.</param>
+        /// <param name="length">The number of parameters.</param>
+        /// <exception cref="ArgumentException">Thrown when the lengths differ.</exception>
+        private static void ThrowIfGradientLengthDiffers(double[] gradient, int length)
+        {
+            if (gradient.Length != length)
+                throw new ArgumentException("Vectors must be the same length.");
         }
 
         /// <summary>

@@ -107,22 +107,24 @@ namespace Numerics.Sampling
         }
 
         /// <summary>
-        /// Comparison of two bins. The bins cannot be overlapping.
+        /// Comparison of two bins. Distinct bins cannot be overlapping.
         /// </summary>
         /// <param name="other">The bin to compare to.</param>
         /// <returns>
-        /// 0 if the upper bound and lower bound are bit-for-bit equal.
-        /// +1 if this bin is lower than the compared bin.
+        /// 0 if the upper bound and lower bound are bit-for-bit equal (including a bin compared with itself).
+        /// +1 if this bin lies above the compared bin (its lower bound is at or above the other's upper bound), or the
+        /// compared bin is null.
         /// -1 otherwise.
         /// </returns>
+        /// <exception cref="ArgumentException">Thrown when the bins are not identical and overlap.</exception>
         public int CompareTo(StratificationBin? other)
         {
             if (other is null) return 1;
-            if (UpperBound > other.LowerBound && LowerBound < other.UpperBound)
-                throw new ArgumentException("The bins cannot be overlapping.", nameof(other));
-
             if (UpperBound.Equals(other.UpperBound) && LowerBound.Equals(other.LowerBound))
                 return 0;
+
+            if (UpperBound > other.LowerBound && LowerBound < other.UpperBound)
+                throw new ArgumentException("The bins cannot be overlapping.", nameof(other));
 
             return other.UpperBound <= LowerBound ? 1 : -1;
         }

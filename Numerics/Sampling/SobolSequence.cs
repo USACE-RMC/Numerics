@@ -166,7 +166,7 @@ namespace Numerics.Sampling
 
                    if (dim >= 2 && dim <= Dimension)
                    {
-                        // we have found the right dimension
+                        // the right dimension is found
                         int i, s = 0, a = 0;
                         for (i = 1; i < st.Length; i++)
                         {

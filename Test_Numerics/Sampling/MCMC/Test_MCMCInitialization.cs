@@ -59,6 +59,79 @@ namespace Sampling.MCMC
         }
 
         /// <summary>
+        /// Random initialization evaluates the prior means and then the prior quantiles of a Latin hypercube
+        /// sample drawn from a generator seeded by the first draw of the PRNGSeed stream, exactly as an
+        /// independent reconstruction with the seeded LatinHypercube overload gives.
+        /// </summary>
+        [TestMethod]
+        public void RandomInitializationFollowsSeededLatinHypercube()
+        {
+            var priors = new List<IUnivariateDistribution> { new Normal(1d, 2d), new Uniform(-3d, 7d) };
+            var evaluated = new List<double[]>();
+            var sampler = new InitializableRwmh(priors, x => { evaluated.Add((double[])x.Clone()); return -0.5 * (x[0] * x[0] + x[1] * x[1]); })
+            {
+                PRNGSeed = 98765,
+                NumberOfChains = 2,
+                InitialIterations = 25
+            };
+            sampler.InitializeOnly();
+
+            var lhs = Numerics.Sampling.LatinHypercube.Random(25, 2, new Numerics.Sampling.MersenneTwister(98765).Next());
+            Assert.HasCount(25, evaluated);
+            CollectionAssert.AreEqual(new[] { priors[0].Mean, priors[1].Mean }, evaluated[0]);
+            for (int i = 1; i < 25; i++)
+            {
+                Assert.AreEqual(priors[0].InverseCDF(lhs[i, 0]), evaluated[i][0], 0d);
+                Assert.AreEqual(priors[1].InverseCDF(lhs[i, 1]), evaluated[i][1], 0d);
+            }
+        }
+
+        /// <summary>
+        /// A failed MAP initialization leaves Initialize set to MAP, initializes that run exactly as
+        /// Randomize does, and is attempted again on the next run.
+        /// </summary>
+        /// <remarks>
+        /// A flat log-likelihood has a zero Hessian, so the Fisher information cannot be inverted into a
+        /// proposal covariance and the MAP branch falls back.
+        /// </remarks>
+        [TestMethod]
+        public void FailedMapInitializationKeepsSettingAndMatchesRandomize()
+        {
+            RWMH Build(MCMCSampler.InitializationType initialize) =>
+                new RWMH(new List<IUnivariateDistribution> { new Uniform(-5d, 5d), new Uniform(-5d, 5d) }, x => 0d, Matrix.Identity(2))
+                {
+                    PRNGSeed = 4321,
+                    NumberOfChains = 2,
+                    Iterations = 200,
+                    WarmupIterations = 50,
+                    ThinningInterval = 1,
+                    OutputLength = 100,
+                    Initialize = initialize
+                };
+
+            var map = Build(MCMCSampler.InitializationType.MAP);
+            map.Sample();
+            Assert.IsTrue(map.MAPInitializationFailed);
+            Assert.AreEqual(MCMCSampler.InitializationType.MAP, map.Initialize);
+
+            var randomize = Build(MCMCSampler.InitializationType.Randomize);
+            randomize.Sample();
+            for (int c = 0; c < map.NumberOfChains; c++)
+            {
+                Assert.HasCount(randomize.Output[c].Count, map.Output[c]);
+                for (int i = 0; i < map.Output[c].Count; i++)
+                    CollectionAssert.AreEqual(randomize.Output[c][i].Values, map.Output[c][i].Values);
+            }
+
+            // A second run on the same instance attempts MAP again rather than silently randomizing.
+            map.ResumeSimulation = false;
+            map.Reset();
+            Assert.IsFalse(map.MAPInitializationFailed);
+            map.Sample();
+            Assert.IsTrue(map.MAPInitializationFailed);
+        }
+
+        /// <summary>
         /// Verifies that NUTS uses an analytical gradient during its step-size initialization heuristic.
         /// </summary>
         [TestMethod]

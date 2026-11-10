@@ -19,6 +19,14 @@ namespace Numerics.Sampling.MCMC
     ///     <b> Authors: </b>
     ///     Haden Smith, USACE Risk Management Center, cole.h.smith@usace.army.mil
     /// </para>
+    /// <para>
+    /// <see cref="MCMCSampler.LogLikelihoodFunction"/> returns the full log-posterior, as for the MCMC
+    /// samplers, in both modes. Each draw is weighted by the delegate value minus the log-density of the
+    /// distribution it was drawn from: the joint prior, the sum of the
+    /// <see cref="MCMCSampler.PriorDistributions"/> log-densities, when no importance distribution is
+    /// given, or the importance distribution q, supplied to the constructor or built from the MAP estimate
+    /// when <see cref="MCMCSampler.Initialize"/> is <see cref="MCMCSampler.InitializationType.MAP"/>.
+    /// </para>
     /// </remarks>
     [Serializable]
     public class SNIS : MCMCSampler
@@ -84,28 +92,32 @@ namespace Numerics.Sampling.MCMC
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The resampling list is ordered by <c>Fitness</c>, not by <c>Weight</c>. After the normalized
-        /// posterior weights are computed, the sample list is sorted ascending on
-        /// <c>ParameterSet.Fitness</c>, and the resampling CDF is then accumulated from
-        /// <c>ParameterSet.Weight</c> in that order. With no importance distribution supplied the weight
-        /// is the log-likelihood itself, so the two keys coincide; with an importance distribution the
-        /// weight is the log-likelihood minus the proposal log-density, so the list is not ordered by the
-        /// quantity the CDF accumulates. The CDF is non-decreasing either way, because every increment is
-        /// clamped non-negative, so the ordering affects which sample each plotting position selects
-        /// rather than the validity of the draw.
+        /// After the normalized posterior weights are computed, the sample list is sorted ascending on
+        /// <c>ParameterSet.Weight</c>, the quantity the resampling CDF then accumulates, and the output is
+        /// drawn from that CDF at the Weibull plotting positions k / (OutputLength + 1): each position
+        /// selects the first draw whose cumulative weight reaches it, so every draw is output in proportion
+        /// to its own weight. <see cref="MCMCSampler.MAP"/> is the draw
+        /// with the largest finite <c>Fitness</c>, the largest log-posterior.
         /// </para>
         /// <para>
-        /// The sort is stable, so draws with tied fitness — commonly many -Infinity values under wide
-        /// priors — keep their original draw order and a seeded run resamples the same output on every
-        /// run and platform.
+        /// The sort is stable, so draws with tied weights (commonly many zero weights from -Infinity
+        /// log-posteriors under wide priors) keep their original draw order and a seeded run resamples the
+        /// same output on every run and platform.
+        /// </para>
+        /// <para>
+        /// The draws are evaluated with <see cref="Parallel.For(int, int, Action{int})"/> when
+        /// <see cref="MCMCSampler.ParallelizeChains"/> is true (the default), so the log-likelihood is then called
+        /// concurrently and must be thread safe; when false they are evaluated in order on the calling thread. Every
+        /// draw comes from a matrix generated up front from <see cref="MCMCSampler.PRNGSeed"/> and is stored at its own
+        /// index, so both settings give bit-identical output.
         /// </para>
         /// </remarks>
         public override void Sample()
         {
+            // Validate before initializing, because MAP initialization runs a full optimization.
+            ValidateSettings();
             InitializeChains();
             InitializeCustomSettings();
-            ValidateSettings();
-            ParallelizeChains = true;
             ResumeSimulation = false;
             CancellationTokenSource = new CancellationTokenSource();
 
@@ -131,7 +143,7 @@ namespace Numerics.Sampling.MCMC
             var rnds = _masterPRNG.NextDoubles(Iterations, NumberOfParameters);
 
             // Perform sampling
-            Parallel.For(0, Iterations, (idx) =>
+            ForEachDraw(idx =>
             {
                 // Sample parameters
                 var parameters = new double[NumberOfParameters];
@@ -145,22 +157,30 @@ namespace Numerics.Sampling.MCMC
                 }
                 else
                 {
+                    // The draw comes from the joint prior, so its log-density is the importance correction.
+                    double logPrior = 0;
                     for (int i = 0; i < NumberOfParameters; i++)
+                    {
                         parameters[i] = PriorDistributions[i].InverseCDF(rnds[idx, i]);
+                        logPrior += PriorDistributions[i].LogPDF(parameters[i]);
+                    }
                     logLH = LogLikelihoodFunction(parameters);
-                    weight = logLH;
+                    weight = logLH - logPrior;
                 }
                 // Record sample
                 MarkovChains[0][idx] = new ParameterSet(parameters, logLH, weight);
             });
        
-            // Get the maximum a posteriori
+            // Get the maximum a posteriori, the draw with the largest log-posterior
             for (int i = 0; i < Iterations; i++)
-                if (Tools.IsFinite(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight > MAP.Weight)
+                if (Tools.IsFinite(MarkovChains[0][i].Fitness) && MarkovChains[0][i].Fitness > MAP.Fitness)
                     MAP = MarkovChains[0][i].Clone();
 
-            // Get the normalization factor
-            double max = MAP.Weight;
+            // Get the normalization factor from the largest finite log-weight
+            double max = double.NegativeInfinity;
+            for (int i = 0; i < Iterations; i++)
+                if (Tools.IsFinite(MarkovChains[0][i].Weight) && MarkovChains[0][i].Weight > max)
+                    max = MarkovChains[0][i].Weight;
             if (!Tools.IsFinite(max))
                 throw new InvalidOperationException("SNIS failed because all importance weights are non-finite.");
 
@@ -180,18 +200,17 @@ namespace Numerics.Sampling.MCMC
                 throw new InvalidOperationException("SNIS failed because the importance-weight normalization is non-finite.");
 
             // Compute the posterior weights
-            Parallel.For(0, Iterations, (idx) => 
+            ForEachDraw(idx =>
             {
                 double w = Tools.IsFinite(MarkovChains[0][idx].Weight) ? Math.Exp(MarkovChains[0][idx].Weight - normalization) : 0d;
                 MarkovChains[0][idx] = new ParameterSet(MarkovChains[0][idx].Values, MarkovChains[0][idx].Fitness, w);
             });
 
-            // The list is sorted ascending on Fitness while the CDF below accumulates Weight; the two
-            // keys coincide only when no importance distribution is supplied. See the remarks on Sample().
-            // OrderBy is a stable sort, so tied fitness values (commonly many -Infinity draws under wide
-            // priors) keep their draw order; List<T>.Sort's tie order is implementation-defined and
-            // differs between target frameworks, so a seeded run would resample differently per runtime.
-            MarkovChains[0] = MarkovChains[0].OrderBy(x => x.Fitness).ToList();
+            // Sort ascending on the normalized weight the CDF below accumulates. OrderBy is a stable sort,
+            // so tied weights (commonly many zero weights from -Infinity draws under wide priors) keep their
+            // draw order; List<T>.Sort's tie order is implementation-defined and differs between target
+            // frameworks, so a seeded run would resample differently per runtime.
+            MarkovChains[0] = MarkovChains[0].OrderBy(x => x.Weight).ToList();
             var cdf = new double[Iterations];
             cdf[0] = Math.Max(0.0, MarkovChains[0][0].Weight);
 
@@ -199,15 +218,39 @@ namespace Numerics.Sampling.MCMC
             for (int i = 1; i < Iterations; i++)
                 cdf[i] = cdf[i-1] + Math.Max(0.0, MarkovChains[0][i].Weight);
 
-            // Record output
+            // Record output. Each plotting position p selects the first draw whose cumulative weight
+            // reaches p, the inverse of the weight CDF, so draw j is selected for p in (cdf[j-1], cdf[j]]
+            // and is output in proportion to its own weight. The positions ascend, so the scan only moves
+            // forward; it stops at the last draw in case rounding leaves cdf[^1] just below a position.
             var rndOut  = PlottingPositions.Weibull(OutputLength);
             int idx = 0;
             for (int i = 0; i < OutputLength; i++)
             {
-                idx = Search.Sequential(rndOut[i], cdf, idx);
-                //idx = Math.Max(0, Math.Min(OutputLength - 1, idx));
+                while (idx < Iterations - 1 && cdf[idx] < rndOut[i])
+                    idx++;
                 Output[0].Add(MarkovChains[0][idx].Clone());
             }
+        }
+
+        /// <summary>
+        /// Runs a loop over the draws, in parallel or in index order as <see cref="MCMCSampler.ParallelizeChains"/> selects.
+        /// </summary>
+        /// <param name="body">The body, called once for each draw index from 0 to <see cref="MCMCSampler.Iterations"/> - 1.</param>
+        /// <remarks>
+        /// The loop does not use the machine-learning range helper, which chooses serial or parallel execution from an
+        /// arithmetic work estimate: a draw's cost is that of the caller's log-likelihood, and
+        /// <see cref="MCMCSampler.ParallelizeChains"/> selects the mode explicitly. Each draw writes only its own index,
+        /// so either schedule gives the same results.
+        /// </remarks>
+        private void ForEachDraw(Action<int> body)
+        {
+            if (ParallelizeChains)
+            {
+                Parallel.For(0, Iterations, body);
+                return;
+            }
+            for (int idx = 0; idx < Iterations; idx++)
+                body(idx);
         }
 
     }

@@ -59,7 +59,7 @@ namespace Sampling.MCMC
         /// <summary>
         /// Seed each parameter's alpha-independent diagnostics with sentinel values.
         /// These would normally be populated by the <see cref="MCMCResults(MCMCSampler, double)"/>
-        /// path; for test purposes we set them directly to verify the snapshot/restore.
+        /// path; for test purposes they are set directly to verify the snapshot/restore.
         /// </summary>
         private static (double[] rhats, double[] esss, double[][,] acfs) SeedDiagnostics(MCMCResults results)
         {
@@ -90,7 +90,7 @@ namespace Sampling.MCMC
 
             results.RecomputeParameterResults(alpha: 0.05);
 
-            // The Output list must be the same reference — the chain itself is not touched.
+            // The Output list must be the same reference; the chain itself is not touched.
             Assert.AreSame(outputRef, results.Output, "Output reference must not change.");
             Assert.HasCount(1000, results.Output, "Output count must be preserved.");
         }
@@ -230,7 +230,7 @@ namespace Sampling.MCMC
         [TestMethod]
         public void Recompute_PreservesMeanAndMedian()
         {
-            // Mean and Median are alpha-independent — should be preserved exactly.
+            // Mean and Median are alpha-independent and should be preserved exactly.
             var results = BuildResults(alpha: 0.10);
             var meansBefore = results.ParameterResults.Select(p => p.SummaryStatistics.Mean).ToArray();
             var mediansBefore = results.ParameterResults.Select(p => p.SummaryStatistics.Median).ToArray();
@@ -257,7 +257,7 @@ namespace Sampling.MCMC
 
             results.RecomputeParameterResults(alpha: 0.05);
 
-            // Should be a no-op — ParameterResults stays null, no exception.
+            // Should be a no-op: ParameterResults stays null, no exception.
             Assert.IsNull(results.ParameterResults);
         }
     }
