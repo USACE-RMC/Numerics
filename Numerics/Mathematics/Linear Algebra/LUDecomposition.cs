@@ -40,6 +40,7 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// Constructs new LU Decomposition.
         /// </summary>
         /// <param name="A">The input matrix A that is to be LU decomposed.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when A is not square.</exception>
         /// <remarks>
         /// The input matrix is not altered; a copy is made, on which outer product
         /// Gaussian elimination is then done in-place.
@@ -51,8 +52,10 @@ namespace Numerics.Mathematics.LinearAlgebra
             // partial pivoting; d is output as +-1 depending on whether the number of row interchanges was even or odd, respectively.
             // This routine is used in combination with Solve to solve linear equations or inverse a matrix. 
 
-            this.A = new Matrix(A.ToArray());
-            LU = new Matrix(A.ToArray());
+            if (A.NumberOfRows != A.NumberOfColumns)
+                throw new ArgumentOutOfRangeException(nameof(A), "The matrix A must be square.");
+            this.A = new Matrix(A.Array);
+            LU = new Matrix(A.Array);
             n = A.NumberOfRows;
             index = new int[n];
             var vv = new double[n];
@@ -74,6 +77,11 @@ namespace Numerics.Mathematics.LinearAlgebra
                 if (big == 0.0d) throw new ArgumentException("Singular matrix in LU decomposition.");
                 vv[i] = 1.0d / big;
             }
+            if (n >= VectorizedDimension)
+            {
+                d = EliminateByRows(LU.Array, n, vv, index);
+                return;
+            }
             // This is the outermost k-i-j loop. 
             for (k = 0; k < n; k++)
             {
@@ -92,7 +100,7 @@ namespace Numerics.Mathematics.LinearAlgebra
 
                 if (k != imax)
                 {
-                    // Do we need to interchange rows? Yes, do so...
+                    // Interchange rows if needed.
                     for (j = 0; j < n; j++)
                     {
                         temp = LU[imax, j];
@@ -117,6 +125,66 @@ namespace Numerics.Mathematics.LinearAlgebra
                         LU[i, j] -= LU[i, k] * LU[k, j]; // True Upper triangular matrix
                 }
             }
+        }
+
+        /// <summary>
+        /// From this order on, the elimination updates each row with SIMD vectors.
+        /// </summary>
+        private const int VectorizedDimension = 32;
+
+        /// <summary>
+        /// The pivoting and elimination of the constructor on a flat row-major copy, with each row update
+        /// LU[i, j] −= LU[i, k]·LU[k, j] over j applied as one vectorized operation.
+        /// </summary>
+        /// <param name="lu">The matrix to decompose in place.</param>
+        /// <param name="n">The order of the matrix.</param>
+        /// <param name="vv">The implicit row scaling.</param>
+        /// <param name="index">Output: the row permutation.</param>
+        /// <returns>The permutation parity, ±1.</returns>
+        /// <remarks>
+        /// Every entry receives the same operations in the same order as in the scalar loop, and subtracting a product
+        /// equals adding its negation exactly, so the decomposition is identical.
+        /// </remarks>
+        private static double EliminateByRows(double[,] lu, int n, double[] vv, int[] index)
+        {
+            const double TINY = 1.0E-40d;
+            var a = new double[n * n];
+            Buffer.BlockCopy(lu, 0, a, 0, a.Length * sizeof(double));
+            double d = 1.0d;
+            for (int k = 0; k < n; k++)
+            {
+                double big = 0.0d;
+                int imax = k;
+                for (int i = k; i < n; i++)
+                {
+                    double temp = vv[i] * Math.Abs(a[i * n + k]);
+                    if (temp > big)
+                    {
+                        big = temp;
+                        imax = i;
+                    }
+                }
+                if (k != imax)
+                {
+                    for (int j = 0; j < n; j++)
+                    {
+                        double temp = a[imax * n + j];
+                        a[imax * n + j] = a[k * n + j];
+                        a[k * n + j] = temp;
+                    }
+                    d = -d;
+                    vv[imax] = vv[k];
+                }
+                index[k] = imax;
+                if (a[k * n + k] == 0.0d) a[k * n + k] = TINY;
+                for (int i = k + 1; i < n; i++)
+                {
+                    a[i * n + k] /= a[k * n + k];
+                    CrossProductKernel.Axpy(-a[i * n + k], a, k * n + k + 1, a, i * n + k + 1, n - k - 1);
+                }
+            }
+            Buffer.BlockCopy(a, 0, lu, 0, a.Length * sizeof(double));
+            return d;
         }
 
         private readonly int n; // Number of rows in A
@@ -174,11 +242,12 @@ namespace Numerics.Mathematics.LinearAlgebra
         /// <summary>
         /// Solves m sets of n linear equations A*X=B using LU decomposition of A.
         /// </summary>
-        /// <param name="B">The right-hand side matrix B [0..n-1][0..n-1].</param>
+        /// <param name="B">The right-hand side matrix B [0..n-1][0..m-1].</param>
+        /// <returns>The solution matrix X [0..n-1][0..m-1].</returns>
         public Matrix Solve(Matrix B)
         {
             int i, j, m = B.NumberOfColumns;
-            var x = new Matrix(n);
+            var x = new Matrix(n, m);
             var xx = new Vector(n);
             if (B.NumberOfRows != n)
             {

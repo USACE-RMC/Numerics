@@ -34,8 +34,8 @@ namespace Numerics.Mathematics.LinearAlgebra
     public enum DecompositionMethod
     {
         /// <summary>
-        /// Cholesky decomposition Σ = L·Lᵀ. This is the faster factorization — roughly twice as efficient
-        /// as an LU decomposition and considerably cheaper than a singular value decomposition — and is the
+        /// Cholesky decomposition Σ = L·Lᵀ. This is the faster factorization (roughly twice as efficient
+        /// as an LU decomposition and considerably cheaper than a singular value decomposition) and is the
         /// default. It requires a strictly positive-definite matrix and fails when the matrix is singular,
         /// so choose it when the covariance is known to be well conditioned.
         /// </summary>

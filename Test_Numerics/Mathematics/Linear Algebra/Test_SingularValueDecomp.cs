@@ -222,6 +222,56 @@ namespace Mathematics.LinearAlgebra
         }
 
         /// <summary>
+        /// Solve(Matrix) accepts a rectangular A (rows of B = rows of A) and returns the column-wise least-squares
+        /// solutions, equal bit for bit to Solve(Vector) of each column; a B with the wrong row count is rejected.
+        /// </summary>
+        [TestMethod()]
+        public void Test_SolveMatrix_Rectangular()
+        {
+            // A is 4 by 2: an overdetermined line fit y = c0 + c1 t at t = 0, 1, 2, 3.
+            var A = new Matrix(new double[,] { { 1d, 0d }, { 1d, 1d }, { 1d, 2d }, { 1d, 3d } });
+            var B = new Matrix(new double[,] { { 1d, 2d }, { 3d, 1d }, { 5d, 0d }, { 7d, -1d } });
+            var svd = new SingularValueDecomposition(A);
+            var X = svd.Solve(B);
+            Assert.AreEqual(2, X.NumberOfRows);
+            Assert.AreEqual(2, X.NumberOfColumns);
+            for (int j = 0; j < 2; j++)
+            {
+                var column = svd.Solve(new Vector(new[] { B[0, j], B[1, j], B[2, j], B[3, j] }));
+                for (int i = 0; i < 2; i++) Assert.AreEqual(column[i], X[i, j], 0d);
+            }
+            // The columns lie exactly on lines: y = 1 + 2t and y = 2 - t (numpy.linalg.lstsq gives the same).
+            Assert.AreEqual(1d, X[0, 0], 1E-14);
+            Assert.AreEqual(2d, X[1, 0], 1E-14);
+            Assert.AreEqual(2d, X[0, 1], 1E-14);
+            Assert.AreEqual(-1d, X[1, 1], 1E-14);
+
+            // Least squares for data off the line: numpy.linalg.lstsq([[1,0],[1,1],[1,2],[1,3]], [0,2,1,4]) = (0.1, 1.1).
+            var off = svd.Solve(new Matrix(new double[,] { { 0d }, { 2d }, { 1d }, { 4d } }));
+            Assert.AreEqual(0.1, off[0, 0], 1E-14);
+            Assert.AreEqual(1.1, off[1, 0], 1E-14);
+
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => svd.Solve(new Matrix(2, 1)));
+        }
+
+        /// <summary>
+        /// For a square A, Solve(Matrix) equals Solve(Vector) of each column bit for bit.
+        /// </summary>
+        [TestMethod()]
+        public void Test_SolveMatrix_SquareMatchesVector()
+        {
+            var A = new Matrix(new double[,] { { 3d, -2d, 1d }, { -2d, 3d, 2d }, { 1d, 2d, 2d } });
+            var B = new Matrix(new double[,] { { 3d, 1d }, { -3d, 0.5d }, { 2d, -7d } });
+            var svd = new SingularValueDecomposition(A);
+            var X = svd.Solve(B);
+            for (int j = 0; j < 2; j++)
+            {
+                var column = svd.Solve(new Vector(new[] { B[0, j], B[1, j], B[2, j] }));
+                for (int i = 0; i < 3; i++) Assert.AreEqual(column[i], X[i, j], 0d);
+            }
+        }
+
+        /// <summary>
         /// Testing known square matrix with positive singular values to check correct decomposition
         /// </summary>
         [TestMethod()]
@@ -326,8 +376,8 @@ namespace Mathematics.LinearAlgebra
         /// The matrix below has its third row equal to its first, so it has rank two and its smallest
         /// singular value is zero in exact arithmetic. In floating point that singular value comes out at
         /// roughly 3E-16 rather than exactly zero, so the parameterless
-        /// <see cref="SingularValueDecomposition.LogPseudoDeterminant()"/> — which zeroes a singular value
-        /// only on an exact comparison against zero — includes it and returns a large negative number. The
+        /// <see cref="SingularValueDecomposition.LogPseudoDeterminant()"/>, which zeroes a singular value
+        /// only on an exact comparison against zero, includes it and returns a large negative number. The
         /// thresholded overload zeroes it at the same threshold used by
         /// <see cref="SingularValueDecomposition.Rank(double)"/> and returns the pseudo-determinant of
         /// 4.158312395177701 * 0.8416876048222999, whose log is 1.2527629684953678 (verified against
@@ -367,5 +417,16 @@ namespace Mathematics.LinearAlgebra
             Assert.AreEqual(3.056356895370426d, svd.LogPseudoDeterminant(threshold), 1E-12d);
         }
 
+        /// <summary>
+        /// An empty matrix decomposes with no singular values and a zero threshold, without an
+        /// IndexOutOfRangeException.
+        /// </summary>
+        [TestMethod()]
+        public void Test_EmptyMatrix()
+        {
+            var svd = new SingularValueDecomposition(new Matrix(0));
+            Assert.AreEqual(0, svd.W.Length);
+            Assert.AreEqual(0d, svd.Threshold);
+        }
     }
 }
