@@ -12,11 +12,17 @@ The ***Numerics*** library provides machine learning algorithms for both supervi
 - Random Forests
 - k-Nearest Neighbors (KNN)
 - Naive Bayes
+- Gaussian Process Regression (GPR)
+- Kriging
+- Elastic Net Regression (lasso, ridge and elastic net paths with cross-validation)
 
 **Unsupervised Learning:**
 - k-Means Clustering
 - Gaussian Mixture Models (GMM)
 - Jenks Natural Breaks
+- Principal Component Analysis (PCA)
+
+**Parallel execution.** k-Means, Gaussian mixture models, KNN and Naive Bayes split large passes (cluster assignment, the EM steps, query batches and prediction rows) across processors and run small problems serially. Each row or component is computed independently and every sum is accumulated in a fixed order, so results are identical for any processor count.
 
 ---
 
@@ -66,13 +72,25 @@ where the individual log-likelihood contribution $\ell(\mu_i, y_i)$ depends on t
 \ell(\mu_i, y_i) = y_i \log(\mu_i) + (1 - y_i)\log(1 - \mu_i)
 ```
 
+**Fitting.** The estimate is computed by iteratively reweighted least squares (Fisher scoring), the algorithm used by R's `glm`, which also centers the optimizer's starting point and bounds; the optimizer selected with `SetOptimizer` then refines it, and the fit with the higher likelihood is kept. If Fisher scoring does not converge, as under complete separation in a binary model, the optimizer starts from family-specific values inside fixed bounds.
+
+**Standard errors.** The parameter covariance is the inverse Fisher information scaled by the dispersion:
+
+```math
+\operatorname{Cov}(\hat{\beta}) = \phi\,(X^\top W X)^{-1}, \qquad W_{ii} = \frac{(d\mu_i/d\eta_i)^2}{V(\mu_i)}
+```
+
+with variance function $V(\mu) = 1$, $\mu$ and $\mu(1-\mu)$ for the Normal, Poisson and Binomial families, and dispersion $\phi$ equal to the residual variance for the Normal family and 1 otherwise. Setting `UseRobustSE = true` gives the HC0 sandwich estimator instead.
+
+**Confidence intervals for the mean.** `Predict(x, alpha)` forms $\hat{\eta} \pm z_{1-\alpha/2}\,\text{se}(\hat{\eta})$ on the link scale, with $\text{se}(\hat{\eta})^2 = x^\top \operatorname{Cov}(\hat{\beta})\, x$, and maps both ends through the inverse link, so the interval stays inside the response range. It describes the uncertainty of the mean response, not the spread of new observations.
+
 **Model selection.** The Akaike Information Criterion (AIC) balances goodness of fit against model complexity:
 
 ```math
 \text{AIC} = 2k - 2\ln(\hat{L})
 ```
 
-where $k$ is the number of estimated parameters and $\hat{L}$ is the maximized likelihood. The corrected AIC (AICc) adjusts for small sample sizes, and the Bayesian Information Criterion (BIC) applies a stronger penalty for additional parameters.
+where $k$ is the number of regression coefficients and $\hat{L}$ is the maximized likelihood. For the Normal family the likelihood is evaluated at the maximum likelihood variance $\hat{\sigma}^2 = \text{SSE}/n$, which matches statsmodels GLM; R's `glm` also counts $\sigma^2$ as a parameter, so its Gaussian AIC is larger by 2. The residual standard error `StandardError` keeps the divisor $n - k$. With `hasIntercept = true`, `ParameterNames` is `"Intercept"` followed by the predictor matrix header names (or β1, β2, ... when the matrix has no header). The corrected AIC (AICc) adjusts for small sample sizes, and the Bayesian Information Criterion (BIC) applies a stronger penalty for additional parameters.
 
 ```cs
 using Numerics.MachineLearning;
@@ -80,7 +98,7 @@ using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Mathematics.Optimization;
 using Numerics.Functions;
 
-// Training data (no intercept column needed — GLM adds it automatically when hasIntercept = true)
+// Training data (no intercept column needed; GLM adds it automatically when hasIntercept = true)
 double[,] X = {
     { 2.5, 1.2 },  // Observation 1: [feature1, feature2]
     { 3.1, 1.5 },
@@ -130,10 +148,10 @@ for (int i = 0; i < predictions.Length; i++)
     Console.WriteLine($"  X_new[{i}] → {predictions[i]:F2}");
 }
 
-// Prediction intervals (alpha = 0.1 for 90% interval)
+// Confidence intervals for the mean response (alpha = 0.1 for 90% intervals)
 double[,] intervals = glm.Predict(new Matrix(XNew), alpha: 0.1);
 
-Console.WriteLine($"\n90% Prediction Intervals:");
+Console.WriteLine($"\n90% Confidence Intervals for the Mean:");
 for (int i = 0; i < XNew.GetLength(0); i++)
 {
     Console.WriteLine($"  X_new[{i}]: [{intervals[i, 0]:F2}, {intervals[i, 2]:F2}]");
@@ -203,6 +221,7 @@ double[] y = { 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2 };  // Classes: Setosa(0), Versic
 
 // Create and train decision tree
 var tree = new DecisionTree(X, y);
+tree.IsRegression = false;  // Classification (default: regression)
 tree.MaxDepth = 5;  // Optional: limit tree depth (default: 100)
 tree.Train();
 
@@ -267,6 +286,7 @@ double[] y = { 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2 };
 
 // Create and train random forest
 var forest = new RandomForest(X, y, seed: 12345);
+forest.IsRegression = false;  // Classification (default: regression)
 forest.NumberOfTrees = 100;   // Default: 1000
 forest.MaxDepth = 5;          // Default: 100
 forest.Train();
@@ -303,7 +323,7 @@ for (int i = 0; i < testSamples.GetLength(0); i++)
 **Advantages of Random Forests:**
 - Reduces overfitting compared to single tree
 - Provides prediction uncertainty
-- Handles missing values well
+- Accepts missing (NaN) predictors: at each split such rows go to the right child
 - Works with mixed feature types
 
 ### k-Nearest Neighbors (KNN)
@@ -322,7 +342,7 @@ where $p$ is the number of features.
 \hat{y} = \frac{\sum_{i=1}^{k} w_i \cdot y_i}{\sum_{i=1}^{k} w_i}, \quad w_i = \frac{1}{d(\mathbf{x}, \mathbf{x}_i)^2}
 ```
 
-If the distance to a neighbor is exactly zero (i.e., the query point coincides with a training point), that neighbor receives a weight of $w_i = 1$ and all other weights are set accordingly.
+If one or more of the $k$ neighbors are at exactly zero distance (the query coincides with training points), the prediction is the plain average of those neighbors' responses and the other neighbors receive no weight, the rule scikit-learn applies for distance weighting.
 
 **Classification prediction.** For classification, the prediction is determined by majority vote among the $k$ nearest neighbors: the class that appears most frequently is assigned to the new observation.
 
@@ -348,8 +368,9 @@ double[,] X = {
 
 double[] y = { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1 };  // Binary classification
 
-// Create KNN classifier (no explicit training needed — lazy learner)
+// Create KNN classifier (no explicit training needed; KNN is a lazy learner)
 var knn = new KNearestNeighbors(X, y, k: 3);
+knn.IsRegression = false;  // Classification (default: regression)
 
 // Predict single sample
 double[,] testPoint = { { 2.0, 3.0 } };
@@ -367,10 +388,7 @@ for (int i = 0; i < predictions.Length; i++)
 }
 ```
 
-**Distance Metrics:**
-- Euclidean (default)
-- Manhattan
-- Minkowski
+**Distance metric:** Euclidean. Scale the features first when they have different units.
 
 **Choosing k:**
 - Small k: More sensitive to noise
@@ -456,6 +474,332 @@ for (int i = 0; i < predictions.Length; i++)
 - Fast training and prediction
 - Good for text classification
 
+### Gaussian Process Regression (GPR)
+
+Gaussian process regression [[17]](#17) is a nonparametric Bayesian regression method that gives a predictive mean and a predictive variance at every point. It is well suited to surrogate models of expensive simulations, where the data are a few hundred to a few thousand runs and an honest measure of uncertainty is needed. The response is modeled as
+
+```math
+y = m(\mathbf{x}) + f(\mathbf{x}) + \varepsilon, \qquad f \sim \mathcal{GP}\left(0, \sigma_f^2 \rho(r)\right), \qquad \varepsilon \sim N(0, \sigma_n^2)
+```
+
+where $\sigma_f^2$ is the signal variance, $\sigma_n^2$ is the noise (nugget) variance, and $\rho$ is a stationary correlation of the scaled distance
+
+```math
+r = \sqrt{\sum_{j=1}^{d} \frac{(x_j - x'_j)^2}{\ell_j^2}}
+```
+
+With automatic relevance determination (ARD, the default) each feature has its own length scale $\ell_j$, so features that do not affect the response get long length scales. Set `UseARD = false` to share one length scale.
+
+**Covariance functions** (`GaussianProcessKernel`):
+
+| Kernel | $\rho(r)$ | Smoothness |
+|---|---|---|
+| `SquaredExponential` | $\exp(-r^2/2)$ | Infinitely differentiable |
+| `Matern52` (default) | $(1 + \sqrt{5} r + 5r^2/3)\exp(-\sqrt{5} r)$ | Twice differentiable |
+| `Matern32` | $(1 + \sqrt{3} r)\exp(-\sqrt{3} r)$ | Once differentiable |
+| `Exponential` | $\exp(-r)$ | Continuous |
+
+**Mean functions** (`GaussianProcessMean`): `Zero`, `Constant` (default) or `Linear` in the features. The mean coefficients $\boldsymbol\beta$ are estimated by generalized least squares for the current covariance, as in universal kriging, and the predictive variance includes their estimation uncertainty.
+
+**Prediction.** With $K = \sigma_f^2 R + \sigma_n^2 I$ the covariance of the training responses, $F$ the mean basis, $\mathbf{k}_*$ the covariances between a new point and the training points, and $\boldsymbol\alpha = K^{-1}(\mathbf{y} - F\boldsymbol\beta)$:
+
+```math
+\mu_* = \mathbf{f}_*^\top \boldsymbol\beta + \mathbf{k}_*^\top \boldsymbol\alpha, \qquad
+\sigma_*^2 = \sigma_f^2 - \mathbf{k}_*^\top K^{-1} \mathbf{k}_* + \mathbf{u}^\top (F^\top K^{-1} F)^{-1} \mathbf{u}, \quad \mathbf{u} = \mathbf{f}_* - F^\top K^{-1} \mathbf{k}_*
+```
+
+`PredictWithVariance(x)` returns the variance of the latent function $f$; `PredictWithVariance(x, includeNoise: true)` adds $\sigma_n^2$ to give the variance of a new observation.
+
+**Hyperparameter estimation.** `Train()` maximizes the log marginal likelihood
+
+```math
+\ln p(\mathbf{y} \mid \boldsymbol\theta) = -\tfrac{1}{2} (\mathbf{y} - F\boldsymbol\beta)^\top K^{-1} (\mathbf{y} - F\boldsymbol\beta) - \tfrac{1}{2} \ln |K| - \tfrac{n}{2} \ln 2\pi
+```
+
+with respect to the hyperparameters. The covariance is written $K = \sigma^2(R + gI)$ with the noise-to-signal ratio $g = \sigma_n^2/\sigma_f^2$, and $\sigma^2$ is profiled out at its closed-form maximum $\hat\sigma^2 = (\mathbf{y} - F\boldsymbol\beta)^\top (R + gI)^{-1} (\mathbf{y} - F\boldsymbol\beta)/n$, as in DiceKriging [[19]](#19). `LBFGSB` maximizes the resulting concentrated likelihood over $(\ln \ell_1, \ldots, \ln \ell_d, \ln g)$ with the analytic gradient $\partial \ln p / \partial \theta_k = \tfrac{1}{2}\operatorname{tr}\left((\boldsymbol\alpha\boldsymbol\alpha^\top - K^{-1})\,\partial K/\partial\theta_k\right)$ [[17]](#17), stopping at a projected gradient of `Tolerance` (default $10^{-5}$) or a relative reduction of $2.2 \times 10^{-9}$, the L-BFGS-B defaults that scikit-learn also uses; see the [optimization guide](../mathematics/optimization.md). The likelihood usually has several local maxima that differ in which features are judged irrelevant (their length scales go to the upper bound). Two data-based starts are therefore always run, $\ell_j = r_j/2$ and $\ell_j = r_j$ with $g = 0.01$, where $r_j$ is the range of feature $j$, and the better result is kept; `NumberOfRestarts` adds starts drawn uniformly from a box of plausible values by a Mersenne Twister seeded with `PRNGSeed`. `Train(noiseVariance)` holds the noise fixed (zero gives an interpolating model), and `SetHyperparameters` conditions the model on given values without optimization. `MeanCoefficients` holds the generalized least squares coefficients $\boldsymbol\beta$ of the mean function: empty for a zero mean, $[\beta_0]$ for a constant mean and $[\beta_0, \beta_1, \ldots, \beta_d]$ for a linear mean. `EvaluateLogMarginalLikelihood(theta, gradient)` evaluates the log marginal likelihood, and optionally its gradient, at the log hyperparameters $(\ln\sigma_f^2, \ln\ell_1, \ldots, \ln\ell_q, \ln\sigma_n^2)$ without changing the model, with $q = d$ under ARD and $q = 1$ otherwise. It returns NaN when the covariance matrix is not numerically positive-definite, and it is not available for a model with a custom distance.
+
+```cs
+using Numerics.MachineLearning;
+
+// A deterministic two-input test function, sampled at 40 points
+int n = 40;
+var x = new double[n, 2];
+var y = new double[n];
+for (int i = 0; i < n; i++)
+{
+    x[i, 0] = (i * 0.6180339887) % 1.0 * 4.0;
+    x[i, 1] = (i * 0.7548776662) % 1.0 * 4.0;
+    y[i] = Math.Sin(x[i, 0]) + 0.5 * Math.Cos(2.0 * x[i, 1]);
+}
+
+var gp = new GaussianProcessRegression(x, y, GaussianProcessKernel.Matern52, GaussianProcessMean.Constant)
+{
+    NumberOfRestarts = 5,
+    PRNGSeed = 12345
+};
+gp.Train();
+
+Console.WriteLine($"Signal variance: {gp.SignalVariance:F4}");
+Console.WriteLine($"Length scales: {string.Join(", ", gp.LengthScales.Select(l => l.ToString("F3")))}");
+Console.WriteLine($"Noise variance: {gp.NoiseVariance:E2}");
+Console.WriteLine($"Log marginal likelihood: {gp.LogMarginalLikelihood:F3}");
+
+// Predictive mean and standard deviation at new points
+double[,] xNew = { { 1.0, 1.0 }, { 2.5, 3.0 } };
+var (mean, variance) = gp.PredictWithVariance(xNew);
+for (int i = 0; i < mean.Length; i++)
+    Console.WriteLine($"f({xNew[i, 0]}, {xNew[i, 1]}) = {mean[i]:F4} ± {1.96 * Math.Sqrt(variance[i]):F4}");
+
+// Leave-one-out cross-validation without refitting
+var (looMean, looVariance) = gp.LeaveOneOut();
+double rmse = Math.Sqrt(Enumerable.Range(0, n).Average(i => Math.Pow(y[i] - looMean[i], 2)));
+Console.WriteLine($"Leave-one-out RMSE: {rmse:F4}");
+
+// The log marginal likelihood and its gradient at given log hyperparameters
+double[] theta = { Math.Log(gp.SignalVariance), Math.Log(gp.LengthScales[0]), Math.Log(gp.LengthScales[1]), Math.Log(gp.NoiseVariance) };
+var gradient = new double[theta.Length];
+double lnp = gp.EvaluateLogMarginalLikelihood(theta, gradient);   // the fitted values give gp.LogMarginalLikelihood
+```
+
+**Leave-one-out cross-validation.** `LeaveOneOut()` returns, for every observation, the mean and variance predicted from the others with the same hyperparameters and re-estimated mean coefficients, in closed form [[18]](#18) at the cost of one extra matrix inversion. The standardized residuals $(y_i - \mu_{-i})/\sigma_{-i}$ should look like standard normal draws when the model is adequate.
+
+**Numerical notes.** The covariance matrix is factored by a blocked Cholesky factorization with 256-bit vector instructions, and the work is split in fixed tiles so the results do not depend on the number of threads. When the matrix is not numerically positive-definite (for example duplicate inputs without noise), the factorization falls back to `CholeskyDecomposition.TryCholesky`, which adds the smallest diagonal jitter that works; it is reported in `Jitter` and acts as extra noise. Each likelihood evaluation costs $O(n^3)$ time and $O(n^2)$ memory, which is practical up to a few thousand observations. Results agree with scikit-learn `GaussianProcessRegressor` and R `DiceKriging::km` [[19]](#19) to about $10^{-15}$ for fixed hyperparameters; the oracle scripts are in [oracles](oracles/).
+
+**Practical tips:**
+- Scale the features to comparable ranges; the default bounds for each length scale are $10^{-3}$ to $10^{3}$ times the feature range.
+- Use `Matern52` for physical responses; the squared exponential is often too smooth and makes the covariance matrix ill-conditioned.
+- Add restarts with `NumberOfRestarts` when $d$ is large or the data are few; each start costs one optimization.
+- For a deterministic simulator, `Train(0.0)` or a small fixed noise interpolates the runs.
+
+### Kriging
+
+Kriging [[20]](#20) is the geostatistical form of Gaussian process prediction, parameterized by a variogram instead of a covariance function. The `Kriging` class is a thin layer over `GaussianProcessRegression` with fixed hyperparameters. The semivariogram is
+
+```math
+\gamma(h) = c_0 + c\,(1 - \rho(h)) \quad (h > 0), \qquad \gamma(0) = 0
+```
+
+with nugget $c_0$, partial sill $c$ and range parameter $a$. The covariance is $C(h) = c\,\rho(h)$ for $h > 0$ and $C(0) = c_0 + c$.
+
+| `VariogramModel` | $\rho(h)$ | Practical range |
+|---|---|---|
+| `Spherical` | $1 - 1.5(h/a) + 0.5(h/a)^3$ for $h < a$, else 0 | $a$ |
+| `Exponential` | $\exp(-h/a)$ | $3a$ |
+| `Gaussian` | $\exp(-(h/a)^2)$ | $\sqrt{3}\,a$ |
+
+The range parameter follows the R package gstat [[21]](#21) (`vgm`). Isaaks and Srivastava [[20]](#20) write the exponential and Gaussian models with the practical range, so divide their range by 3 or $\sqrt{3}$.
+
+**Kriging variants** (`KrigingType`):
+- `Simple`: known mean $m$, passed as the `mean` argument.
+- `Ordinary` (default): unknown constant mean.
+- `Universal`: unknown mean linear in the coordinates, $\beta_0 + \sum_j \beta_j x_j$.
+
+`KnownMean` holds the simple kriging mean (NaN for the other variants), and `TrendCoefficients` the estimated trend: empty for simple kriging, $[\beta_0]$ for ordinary kriging and $[\beta_0, \beta_1, \ldots, \beta_d]$ for universal kriging. `Semivariance(h)` and `Covariance(h)` evaluate the fitted variogram model at a separation distance $h \ge 0$; at $h = 0$ they return 0 and the total sill `Sill` $= c_0 + c$.
+
+Ordinary and universal kriging estimate the trend by generalized least squares, which gives the same predictor and kriging variance as the kriging system with Lagrange multipliers. The nugget is part of the covariance at zero distance, so the prediction at an observed location equals the observation with zero kriging variance. Elsewhere the kriging variance $E[(Z(\mathbf{x}_0) - \hat Z(\mathbf{x}_0))^2]$ includes the nugget.
+
+The following is the ordinary kriging example of Isaaks and Srivastava [[20]](#20) (chapter 12): seven samples and the covariance $C(h) = 10\exp(-0.3h)$, which is the exponential model with $c = 10$ and $a = 1/0.3$.
+
+```cs
+using Numerics.MachineLearning;
+
+double[,] locations = { { 61, 139 }, { 63, 140 }, { 64, 129 }, { 68, 128 }, { 71, 140 }, { 73, 141 }, { 75, 128 } };
+double[] values = { 477, 696, 227, 646, 606, 791, 783 };
+
+var kriging = new Kriging(locations, values, VariogramModel.Exponential,
+    nugget: 0.0, partialSill: 10.0, range: 1.0 / 0.3, type: KrigingType.Ordinary);
+
+var (estimate, variance) = kriging.PredictWithVariance(new double[] { 65, 137 });
+Console.WriteLine($"Estimate: {estimate:F1}");          // 592.7
+Console.WriteLine($"Kriging variance: {variance:F2}");  // 8.96
+Console.WriteLine($"Trend: {kriging.TrendCoefficients[0]:F1}");   // 605.1, the GLS estimate of the constant mean
+Console.WriteLine($"γ(2) = {kriging.Semivariance(2.0):F4}, C(2) = {kriging.Covariance(2.0):F4}");   // 4.5119, 5.4881
+
+// Leave-one-out cross-validation, equivalent to gstat::krige.cv
+var (cvMean, cvVariance) = kriging.CrossValidate();
+for (int i = 0; i < values.Length; i++)
+    Console.WriteLine($"Sample {i}: observed {values[i]}, cross-validated {cvMean[i]:F1}");
+```
+
+**Custom distances.** A distance function can replace the Euclidean distance, for example a great-circle distance for latitude and longitude. The variogram model must give a valid covariance for that metric. The exponential model is valid with the great-circle distance on the sphere, because it is completely monotone [[22]](#22); a model that is valid in the plane need not be.
+
+```cs
+using Numerics.MachineLearning;
+
+// Great-circle distance in kilometers between [latitude, longitude] pairs in degrees
+Func<double[], double[], double> greatCircle = (a, b) =>
+{
+    double toRad = Math.PI / 180.0;
+    double dLat = (b[0] - a[0]) * toRad, dLon = (b[1] - a[1]) * toRad;
+    double h = Math.Pow(Math.Sin(dLat / 2), 2) + Math.Cos(a[0] * toRad) * Math.Cos(b[0] * toRad) * Math.Pow(Math.Sin(dLon / 2), 2);
+    return 2.0 * 6371.0 * Math.Asin(Math.Min(1.0, Math.Sqrt(h)));
+};
+
+double[,] sites = { { 38.6, -90.2 }, { 39.1, -94.6 }, { 41.3, -96.0 }, { 36.2, -86.8 }, { 35.1, -90.0 } };
+double[] errors = { 0.12, -0.05, 0.08, -0.10, 0.02 };
+
+// Simple kriging of zero-mean residuals, as for spatially correlated regression errors
+var residualKriging = new Kriging(sites, errors, VariogramModel.Exponential,
+    nugget: 0.0, partialSill: 0.01, range: 400.0, distance: greatCircle, type: KrigingType.Simple, mean: 0.0);
+var (error, errorVariance) = residualKriging.PredictWithVariance(new double[] { 38.0, -92.0 });
+Console.WriteLine($"Predicted error: {error:F4} (variance {errorVariance:F5})");
+```
+
+**Replacing a hand-written simple kriging.** Code that builds $K$ from a correlation function, factors it, and returns $\mathbf{k}_*^\top K^{-1}\boldsymbol\varepsilon$ and $\sigma^2 - \mathbf{k}_*^\top K^{-1}\mathbf{k}_*$ for a zero-mean process is `Kriging` with `KrigingType.Simple`, `mean: 0`, `nugget: 0`, `partialSill` equal to $\sigma^2$ and the same distance function. The class reuses one factorization for all predictions, adds jitter instead of failing when the matrix is singular, and also offers the ordinary and universal variants and cross-validation.
+
+**Accuracy.** Predictions, variances and cross-validation agree with gstat `krige` and `krige.cv` on the `sp::meuse` data to about $10^{-13}$ relative ($10^{-11}$ for universal kriging, whose trend uses large coordinates), and the textbook example reproduces the published estimate, weights and variance. The oracle scripts are in [oracles](oracles/).
+
+**Performance.** Fitting and prediction are benchmarked against scikit-learn and DiceKriging with the scripts in [benchmarks](benchmarks/) on the same deterministic data: $d = 10$ features, a Matérn 5/2 kernel with automatic relevance determination and estimated noise (Numerics with its two default starts and a constant mean; scikit-learn and DiceKriging with one start), and the mean and variance at 1000 new points. Median wall times on an Intel Core Ultra 9 185H (scikit-learn 1.8.0 with OpenBLAS 0.3.31.dev; DiceKriging 1.6.1 with the R 4.4.3 reference BLAS):
+
+| $n$ | Fit, Numerics | Fit, scikit-learn | Fit, DiceKriging | Predict, Numerics | Predict, scikit-learn | Predict, DiceKriging | ln p, Numerics | ln p, scikit-learn |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 0.064 s | 0.26 s | 0.60 s | 0.002 s | 0.004 s | 0.06 s | -34.18 | -34.18 |
+| 500 | 0.67 s | 5.3 s | 16.7 s | 0.006 s | 0.021 s | 0.34 s | -25.24 | -45.15 |
+| 1000 | 4.7 s | 31 s | 111 s | 0.023 s | 0.041 s | 0.73 s | 211.15 | 153.74 |
+| 2000 | 23 s | 136 s | 2086 s | 0.060 s | 0.099 s | 41 s | 904.82 | 904.81 |
+
+Fit times include the optimizer iterations, whose number differs between libraries. With the same start, bounds and parameterization as scikit-learn, `LBFGSB` reaches scikit-learn's log marginal likelihood at every size; the higher values at $n$ = 500 and 1000 come from the second default start, which finds a better local maximum. Timings on a laptop processor with performance and efficiency cores vary by a factor of two or more between runs.
+
+### Elastic Net Regression
+
+Penalized linear regression for variable selection and shrinkage [[12]](#12) [[13]](#13). `ElasticNetRegression` fits a Gaussian linear model along a decreasing sequence of penalties $\lambda$, minimizing at each one
+
+```math
+\min_{\beta_0,\,\beta}\; \frac{1}{2n}\sum_{i=1}^{n}\left(y_i - \beta_0 - \mathbf{x}_i^\top\beta\right)^2 + \lambda \sum_{j=1}^{p} v_j\left[\frac{1-\alpha}{2}\beta_j^2 + \alpha\,|\beta_j|\right]
+```
+
+where $\alpha \in [0, 1]$ mixes ridge regression ($\alpha = 0$) and the lasso ($\alpha = 1$), and $v_j$ are optional penalty factors (`PenaltyFactors`; $v_j = 0$ leaves a predictor unpenalized). The $L_1$ part sets coefficients exactly to zero, so the set of nonzero coefficients along the path is a ranking of the predictors; the $L_2$ part keeps groups of correlated predictors together instead of picking one at random. Typical uses are covariate selection for regional regression and screening of calibration parameters.
+
+**Algorithm.** The path is computed by cyclic coordinate descent as in glmnet [[12]](#12). The predictors are standardized to unit population variance (`Standardize`, default true) and the response to unit population variance; coefficients are reported on the original scale. On the standardized scale each coordinate update is a soft-thresholding step on the current gradient $g_j$, with $\lambda$ divided by $s_y$:
+
+```math
+\beta_j \leftarrow \frac{S\!\left(g_j + \beta_j,\; \lambda\alpha v_j\right)}{1 + \lambda(1-\alpha)v_j}, \qquad S(u, t) = \operatorname{sign}(u)\max(|u| - t, 0)
+```
+
+The gradient is kept current from cached inner products of the predictors (covariance updates), so an update costs $O(p)$ rather than $O(n)$. Full sweeps over all predictors alternate with sweeps over the active set, and each solution warm-starts the next penalty. The default sequence has 100 penalties log-spaced from $\lambda_{\max}$, the smallest penalty with all coefficients zero, down to $\epsilon\lambda_{\max}$ with $\epsilon = 10^{-4}$ ($10^{-2}$ when $n < p$). A sweep has converged when the largest weighted squared coefficient change is below `Tolerance` (default $10^{-7}$), and the path stops early when the fraction of deviance explained exceeds 0.999 or changes by less than $10^{-5}$.
+
+**Cross-validation.** `CrossValidate(folds, seed)` assigns observations to folds at random (reproducibly from the seed), or `CrossValidate(foldIds)` uses given fold labels. The labels of the last run are kept in `FoldIds`, so `enet.CrossValidate(enet.FoldIds)` repeats a seeded run with the same folds and the same errors. Each fold is solved exactly at the full-data penalties, and the error is the fold-size weighted mean squared prediction error with standard error
+
+```math
+\mathrm{SE}(\lambda) = \sqrt{\frac{\sum_k n_k\,(\mathrm{MSE}_k(\lambda) - \mathrm{CV}(\lambda))^2}{n\,(K-1)}}
+```
+
+`LambdaMin` is the largest penalty with the smallest error, and `LambdaOneStandardError` is the largest penalty whose error is within one standard error of that minimum, a sparser model whose error is statistically indistinguishable from the best [[9]](#9).
+
+The example uses the prostate cancer data of Stamey et al. [[15]](#15), the standard lasso example in Hastie, Tibshirani and Friedman [[9]](#9) (`docs/example-data/prostate-cancer.csv`):
+
+```cs
+using System;
+using System.IO;
+using System.Linq;
+using Numerics.MachineLearning;
+
+// Prostate cancer training set (docs/example-data/prostate-cancer.csv): 67 cases, 8 predictors
+double[][] rows = File.ReadAllLines("prostate-cancer.csv")
+    .Where(line => !line.StartsWith("#"))
+    .Skip(1)                                     // header
+    .Select(line => line.Split(',').Select(double.Parse).ToArray())
+    .Where(r => r[9] == 1)                       // training cases
+    .ToArray();
+string[] names = { "lcavol", "lweight", "age", "lbph", "svi", "lcp", "gleason", "pgg45" };
+var X = new double[rows.Length, 8];
+var y = new double[rows.Length];
+for (int i = 0; i < rows.Length; i++)
+{
+    for (int j = 0; j < 8; j++) X[i, j] = rows[i][j];
+    y[i] = rows[i][8];                           // lpsa
+}
+
+// Fit the full penalty path (alpha = 0.5 mixes ridge and lasso equally)
+var enet = new ElasticNetRegression(X, y) { Alpha = 0.5 };
+enet.Fit();
+int last = enet.Lambdas.Length - 1;
+Console.WriteLine($"Path: {enet.Lambdas.Length} penalties from {enet.Lambdas[0]:F4} to {enet.Lambdas[last]:F6}");
+
+// 10-fold cross-validation with a seeded fold assignment
+enet.CrossValidate(folds: 10, seed: 12345);
+Console.WriteLine($"lambda_min = {enet.LambdaMin:F4}, lambda_1se = {enet.LambdaOneStandardError:F4}");
+
+// Coefficients and selected variables at lambda_1se
+int k = enet.LambdaOneStandardErrorIndex;
+double[] beta = enet.GetCoefficients(k);
+Console.WriteLine($"Selected: {string.Join(", ", enet.SelectedVariables(k).Select(j => names[j]))}");
+Console.WriteLine($"  intercept {enet.Intercepts[k],9:F4}");
+for (int j = 0; j < 8; j++) Console.WriteLine($"  {names[j],-9} {beta[j],9:F4}");
+
+// Predict a new case at lambda_1se
+double[] patient = { 1.5, 3.6, 65, 0.1, 0, -0.5, 7, 15 };
+Console.WriteLine($"Predicted lpsa: {enet.Predict(patient, k):F3}");
+
+// Keep lcavol in every model (penalty factor 0) and trace the lasso path
+var lasso = new ElasticNetRegression(X, y)
+{
+    Alpha = 1.0,
+    PenaltyFactors = new double[] { 0, 1, 1, 1, 1, 1, 1, 1 }
+};
+lasso.Fit();
+for (int m = 0; m < lasso.Lambdas.Length; m += 15)
+    Console.WriteLine($"lambda = {lasso.Lambdas[m]:F4}  nonzero = {lasso.NonzeroCount[m]}  R2 = {lasso.DevianceRatio[m]:F3}");
+```
+
+Output:
+
+```
+Path: 73 penalties from 1.7578 to 0.002167
+lambda_min = 0.0322, lambda_1se = 0.3967
+Selected: lcavol, lweight, lbph, svi, pgg45
+  intercept    0.4846
+  lcavol       0.3681
+  lweight      0.3802
+  age          0.0000
+  lbph         0.0171
+  svi          0.3148
+  lcp          0.0000
+  gleason      0.0000
+  pgg45        0.0013
+Predicted lpsa: 2.427
+lambda = 0.2781  nonzero = 1  R2 = 0.538
+lambda = 0.0689  nonzero = 5  R2 = 0.648
+lambda = 0.0171  nonzero = 7  R2 = 0.690
+lambda = 0.0042  nonzero = 8  R2 = 0.694
+```
+
+**Key members:**
+
+| Member | Description |
+|---|---|
+| `Alpha` | Mixing parameter $\alpha$ (default 1, the lasso) |
+| `NumberOfLambdas`, `LambdaMinRatio`, `UserLambdas` | Default path length (100) and $\epsilon$, or a user-supplied penalty sequence |
+| `Standardize`, `HasIntercept` | Standardize the predictors (default true); fit an unpenalized intercept (default true) |
+| `PenaltyFactors` | Relative penalty $v_j$ per predictor, rescaled to sum to $p$ |
+| `Tolerance`, `MaxIterations` | Convergence threshold ($10^{-7}$) and maximum total sweeps (100,000) |
+| `Lambdas`, `Coefficients`, `Intercepts` | The fitted path: penalties, coefficients `[penalty, predictor]`, intercepts |
+| `DevianceRatio`, `NonzeroCount` | Fraction of variance explained and number of nonzero coefficients per penalty |
+| `CrossValidationError`, `CrossValidationStandardError` | Cross-validated error and its standard error per penalty |
+| `LambdaMinIndex`, `LambdaOneStandardErrorIndex` | Indexes of $\lambda_{\min}$ and $\lambda_{1se}$ |
+| `GetCoefficients(k)`, `SelectedVariables(k)`, `Predict(x, k)` | Coefficients, nonzero predictors and predictions at path index `k` |
+
+**Relation to glmnet and scikit-learn.** With the same settings, `ElasticNetRegression` reproduces R glmnet's penalties, coefficients, deviance ratios and path length to about $10^{-13}$, for $\alpha \in [0, 1]$, with or without intercept, standardization and penalty factors. scikit-learn parameterizes the same model differently and does not standardize the response:
+
+| ElasticNetRegression / glmnet | scikit-learn `ElasticNet` |
+|---|---|
+| `Alpha` = $\alpha$ | `l1_ratio` = $\alpha$ |
+| penalty $\lambda$ | `alpha` = $\lambda / s_y$ on standardized $X$ and $y$, where $s_y$ is the population standard deviation of $y$; for the lasso ($\alpha = 1$) the scaling cancels and `alpha` = $\lambda$ |
+| `Standardize = true` | divide each column of $X$ by its population standard deviation before fitting, then back-transform $\beta_j = b_j\,s_y / s_{x_j}$ |
+
+Cross-validation solves every fold at the full-data penalties, as scikit-learn's `ElasticNetCV` does. R's `cv.glmnet` fits each fold on its own penalty sequence and interpolates the predictions, so its cross-validated errors can differ slightly; on the prostate data both select the same $\lambda_{\min}$ and $\lambda_{1se}$.
+
+**Performance.** The inner products are computed only for predictors that enter the model, in batches, by a cache-blocked SIMD kernel, and the cross-validation folds share them through per-fold partial sums, so $k$-fold cross-validation costs about one more pass over the data rather than $k$ refits. Fits and cross-validation are reproducible on a given machine; because the SIMD register width sets the order of the partial sums, the last digits can differ between processor architectures.
+
+Median wall time on identical data (Intel Core Ultra 9 185H (16 cores), Windows 11, .NET 10; Python 3.14.3, NumPy 2.4.2, SciPy 1.17.1, scikit-learn 1.8.0 with OpenBLAS 0.3.31 (scipy-openblas, multithreaded); R 4.4.3 with glmnet 4.1.10 and R's reference BLAS and LAPACK; scripts in `docs/machine-learning/benchmarks`), $\alpha = 0.5$, 100 penalties, 10 folds:
+
+| n × p | Path: C# | scikit-learn | glmnet | 10-fold CV: C# | scikit-learn | cv.glmnet |
+|---|---|---|---|---|---|---|
+| 100 × 200 | 2.5 ms | 10.9 ms | 5.2 ms | 27 ms | 125 ms | 110 ms |
+| 1,000 × 50 | 1.3 ms | 10.5 ms | 4.1 ms | 8.3 ms | 102 ms | 165 ms |
+| 10,000 × 100 | 15 ms | 33 ms | 45 ms | 46 ms | 271 ms | 890 ms |
+| 100,000 × 500 | 0.82 s | 16.6 s | 6.7 s | 1.6 s | 203 s | 48 s |
+
 ---
 
 ## Unsupervised Learning
@@ -486,7 +830,7 @@ c_i = \arg\min_{k} \|\mathbf{x}_i - \boldsymbol{\mu}_k\|^2
 
 The algorithm converges when the cluster labels do not change between iterations, or when `MaxIterations` (default 1000) is reached.
 
-**$k$-Means++ initialization** [[11]](#11). The default initialization method selects initial centroids that are well-separated. The first centroid is chosen uniformly at random. Each subsequent centroid is selected with probability proportional to $D(\mathbf{x})^2$, where $D(\mathbf{x})$ is the Euclidean distance from $\mathbf{x}$ to the nearest already-chosen centroid. This initialization significantly reduces the chance of poor convergence compared to random initialization.
+**$k$-Means++ initialization** [[11]](#11). The default initialization method selects initial centroids that are well-separated. The first centroid is chosen uniformly at random. Each subsequent centroid is selected with probability proportional to $D(\mathbf{x})$, where $D(\mathbf{x})$ is the Euclidean distance from $\mathbf{x}$ to the nearest already-chosen centroid. This is a variant of the method of Arthur and Vassilvitskii, which samples proportional to $D(\mathbf{x})^2$; on clustered data the two seedings give fits of similar quality. This initialization significantly reduces the chance of poor convergence compared to random initialization.
 
 ```cs
 using Numerics.MachineLearning;
@@ -552,7 +896,7 @@ p(\mathbf{x}) = \sum_{k=1}^{K} \pi_k \cdot \mathcal{N}(\mathbf{x} \mid \boldsymb
 
 where $\pi_k$ are the mixing weights (with $\sum_k \pi_k = 1$ and $\pi_k \geq 0$), $\boldsymbol{\mu}_k$ is the mean vector, and $\boldsymbol{\Sigma}_k$ is the covariance matrix of component $k$.
 
-**Expectation-Maximization (EM) algorithm.** The parameters are estimated by maximizing the log-likelihood using the EM algorithm, initialized from a $k$-means solution with equal weights and near-identity covariance matrices.
+**Expectation-Maximization (EM) algorithm.** The parameters are estimated by maximizing the log-likelihood using the EM algorithm, initialized from a $k$-means solution with equal weights. Each initial covariance is the within-cluster covariance of the $k$-means cluster, with each diagonal entry floored at $10^{-6}$ times the variance of that column over all the data.
 
 The **E-step** computes the responsibility of each component $k$ for each observation $\mathbf{x}_i$:
 
@@ -675,6 +1019,98 @@ for (int c = 0; c < jenks.Clusters.Length; c++)
 - Natural grouping identification
 - Minimizes within-class variance
 
+### Principal Component Analysis (PCA)
+
+Orthogonal directions of maximum variance [[14]](#14). With the $n \times p$ data matrix centered (and, on the correlation basis, scaled to unit sample standard deviation) to $Z$, the sample covariance matrix has the eigen-decomposition
+
+```math
+S = \frac{1}{n-1} Z^\top Z = V \Lambda V^\top, \qquad \lambda_1 \ge \lambda_2 \ge \cdots \ge \lambda_p \ge 0
+```
+
+The columns of $V$ are the principal axes, $\lambda_i$ is the variance explained by component $i$, and the scores are $T = ZV$. Use the covariance basis (`PrincipalComponentBasis.Covariance`, the default) when the variables share units, and the correlation basis when they do not; on the correlation basis the eigenvalues sum to $p$ and the loadings $L_{ji} = V_{ji}\sqrt{\lambda_i}$ are the correlations between variable $j$ and component $i$.
+
+**Algorithm.** $S$ is accumulated directly from the rows of the data by a SIMD cross-product update (no transposed copy) and decomposed by Householder tridiagonalization and the implicit QL algorithm [[16]](#16), at a cost of $O(np^2 + p^3)$. Each axis is oriented so that its largest-magnitude element is positive, the convention of scikit-learn's `PCA`. R's `prcomp` does not fix the sign, so its rotation and scores agree up to a sign per component.
+
+```cs
+using System;
+using System.IO;
+using System.Linq;
+using Numerics.MachineLearning;
+
+// Fisher's iris measurements (docs/example-data/iris-dataset.csv)
+double[][] rows = File.ReadAllLines("iris-dataset.csv")
+    .Where(line => !line.StartsWith("#"))
+    .Skip(1)                                     // header
+    .Select(line => line.Split(',').Select(double.Parse).ToArray())
+    .ToArray();
+string[] names = { "SepalLength", "SepalWidth", "PetalLength", "PetalWidth" };
+var X = new double[rows.Length, 4];
+for (int i = 0; i < rows.Length; i++)
+    for (int j = 0; j < 4; j++) X[i, j] = rows[i][j];
+
+// Principal components of the correlation matrix (variables in different units)
+var pca = new PrincipalComponentAnalysis(X, PrincipalComponentBasis.Correlation);
+pca.Train();
+for (int i = 0; i < pca.NumberOfComponents; i++)
+{
+    Console.WriteLine($"PC{i + 1}: variance {pca.ExplainedVariance[i]:F4}  " +
+                      $"ratio {pca.ExplainedVarianceRatio[i]:P1}  cumulative {pca.CumulativeExplainedVarianceRatio[i]:P1}");
+}
+
+// Loadings: correlations between each variable and the first two components
+for (int j = 0; j < 4; j++)
+    Console.WriteLine($"  {names[j],-12} {pca.Loadings[j, 0],7:F3} {pca.Loadings[j, 1],7:F3}");
+
+// Scores of the first observation
+Console.WriteLine($"Scores[0]: {pca.Scores[0, 0]:F4}, {pca.Scores[0, 1]:F4}");
+
+// Keep two components, project a new flower and map it back
+var two = new PrincipalComponentAnalysis(X, PrincipalComponentBasis.Correlation, numberOfComponents: 2);
+two.Train();
+double[] t = two.Transform(new double[] { 6.0, 3.0, 4.5, 1.5 });
+double[] back = two.InverseTransform(t);
+Console.WriteLine($"Scores: {t[0]:F4}, {t[1]:F4}");
+Console.WriteLine($"Reconstruction: {string.Join(", ", back.Select(v => v.ToString("F3")))}");
+```
+
+Output (the variances match `prcomp(iris[, 1:4], scale. = TRUE)$sdev^2`):
+
+```
+PC1: variance 2.9142  ratio 72.9%  cumulative 72.9%
+PC2: variance 0.9172  ratio 22.9%  cumulative 95.8%
+PC3: variance 0.1479  ratio 3.7%  cumulative 99.5%
+PC4: variance 0.0207  ratio 0.5%  cumulative 100.0%
+  SepalLength    0.890   0.360
+  SepalWidth    -0.456   0.885
+  PetalLength    0.992   0.022
+  PetalWidth     0.965   0.063
+Scores[0]: -2.2618, 0.4843
+Scores: 0.5986, -0.0128
+Reconstruction: 6.099, 2.981, 4.372, 1.457
+```
+
+**Key members:**
+
+| Member | Description |
+|---|---|
+| `Basis`, `NumberOfComponents` | Covariance or correlation basis; number of retained components $k$ (default $\min(n, p)$) |
+| `Means`, `Scales` | Column means, and column standard deviations on the correlation basis (ones otherwise) |
+| `Components` | $k \times p$ principal axes (scikit-learn `components_`; the transpose of `prcomp` `rotation`) |
+| `ExplainedVariance`, `ExplainedVarianceRatio`, `CumulativeExplainedVarianceRatio` | $\lambda_i$ (`prcomp` `sdev^2`), $\lambda_i / \sum \lambda$ and its running sum |
+| `SingularValues`, `TotalVariance` | $\sqrt{(n-1)\lambda_i}$ and the trace of $S$ |
+| `Loadings`, `Scores` | $p \times k$ loadings $V\sqrt{\Lambda}$; $n \times k$ scores of the training data (computed on first access) |
+| `Transform`, `InverseTransform` | Project observations onto the components; map scores back to the variables (exact when $k = p$) |
+
+**Numerical notes.** Forming $S$ squares the condition number of $Z$, so eigenvalues much smaller than $\epsilon\lambda_1$ lose relative accuracy and round-off below zero is set to zero; with more variables than observations the last $p - n + 1$ variances are zero. A constant column has zero variance on the covariance basis and is rejected on the correlation basis. Results are reproducible on a given machine; the SIMD register width sets the order of the partial sums, so the last digits can differ between processor architectures.
+
+**Performance.** Median wall time to fit all components on identical data (Intel Core Ultra 9 185H (16 cores), Windows 11, .NET 10; Python 3.14.3, NumPy 2.4.2, SciPy 1.17.1, scikit-learn 1.8.0 with OpenBLAS 0.3.31 (scipy-openblas, multithreaded); R 4.4.3 with glmnet 4.1.10 and R's reference BLAS and LAPACK; scripts in `docs/machine-learning/benchmarks`):
+
+| n × p | C# | scikit-learn `PCA().fit` | R `prcomp` |
+|---|---|---|---|
+| 1,000 × 20 | 0.24 ms | 0.35 ms | 1.5 ms |
+| 10,000 × 50 | 1.1 ms | 2.7 ms | 78 ms |
+| 100,000 × 100 | 16 ms | 48 ms | 4.4 s |
+
 ---
 
 ## Practical Examples
@@ -686,7 +1122,7 @@ using Numerics.MachineLearning;
 using Numerics.Mathematics.LinearAlgebra;
 using Numerics.Functions;
 
-// Predict home prices (no intercept column — GLM adds it automatically)
+// Predict home prices (no intercept column; GLM adds it automatically)
 double[,] features = {
     { 1500, 3, 20 },  // [sqft, bedrooms, age]
     { 1800, 4, 15 },
@@ -721,7 +1157,7 @@ double[,] interval = glm.Predict(new Matrix(newHome), alpha: 0.1);
 
 Console.WriteLine($"\nPrediction for 1700 sqft, 3BR, 12 years:");
 Console.WriteLine($"  Predicted price: ${predicted:F0}");
-Console.WriteLine($"  90% Interval: [${interval[0, 0]:F0}, ${interval[0, 2]:F0}]");
+Console.WriteLine($"  90% CI for the mean: [${interval[0, 0]:F0}, ${interval[0, 2]:F0}]");
 ```
 
 ### Example 2: Classification Pipeline
@@ -739,12 +1175,13 @@ double[,] X_test = {
 };
 double[] y_test = { 0, 1 };
 
-// Train random forest (no nTrees constructor parameter — set via property)
+// Train random forest (no nTrees constructor parameter; set it via the property)
 var rf = new RandomForest(X_train, y_train, seed: 42);
+rf.IsRegression = false;
 rf.NumberOfTrees = 100;
 rf.Train();
 
-// Evaluate — Predict returns double[,] with columns: lower(0), median(1), upper(2), mean(3)
+// Evaluate: Predict returns double[,] with columns: lower(0), median(1), upper(2), mean(3)
 double[,] predictions = rf.Predict(X_test);
 int correct = 0;
 for (int i = 0; i < y_test.Length; i++)
@@ -794,7 +1231,9 @@ for (int i = 0; i < 3; i++)
 
 ### Example 4: Flood Damage Prediction with Logistic GLM
 
-Predicting whether flood damage occurs based on hydraulic variables using data from [`example-data/flood-damage-glm.csv`](example-data/flood-damage-glm.csv):
+Predicting whether flood damage occurs based on hydraulic variables using data from [`example-data/flood-damage-glm.csv`](../example-data/flood-damage-glm.csv):
+
+These synthetic data are completely separated: a combination of stage and velocity divides the damaged from the undamaged structures exactly, so the maximum likelihood estimates do not exist (R's `glm` reports fitted probabilities of 0 or 1 and coefficients in the thousands). Fisher scoring does not converge, the optimizer stops at its fixed bounds, and the coefficients and standard errors below are not meaningful. The example shows the API; with real data, check for separation before interpreting a binary GLM.
 
 ```cs
 using System.IO;
@@ -851,9 +1290,9 @@ double[,] newEvent = { { 14.0, 10, 3.5 } };  // Stage=14ft, Duration=10hr, Veloc
 double[] prob = glm.Predict(new Matrix(newEvent));
 Console.WriteLine($"\nPredicted damage probability: {prob[0]:P1}");
 
-// Prediction with 90% confidence interval
+// 90% confidence interval for the mean damage probability
 double[,] interval = glm.Predict(new Matrix(newEvent), alpha: 0.1);
-Console.WriteLine($"90% Prediction interval: [{interval[0, 0]:P1}, {interval[0, 2]:P1}]");
+Console.WriteLine($"90% CI for the mean: [{interval[0, 0]:P1}, {interval[0, 2]:P1}]");
 Console.WriteLine($"  Mean prediction: {interval[0, 1]:P1}");
 
 // Compare link functions using AIC
@@ -923,7 +1362,7 @@ for (int fold = 0; fold < k; fold++)
     }
 
     // Train and evaluate
-    var model = new DecisionTree(X_trainFold, y_trainFold);
+    var model = new DecisionTree(X_trainFold, y_trainFold) { IsRegression = false };
     model.Train();
     var predictions = model.Predict(X_testFold);
 
@@ -948,15 +1387,15 @@ double[] y = { /* training labels */ };
 double[,] X_test = { /* test features */ };
 double[] y_test = { /* test labels */ };
 
-// Train models (KNN is lazy — no Train() call needed)
-var decisionTree = new DecisionTree(X, y);
+// Train classifiers (KNN is lazy; no Train() call needed)
+var decisionTree = new DecisionTree(X, y) { IsRegression = false };
 decisionTree.Train();
 
-var randomForest = new RandomForest(X, y, seed: 42);
+var randomForest = new RandomForest(X, y, seed: 42) { IsRegression = false };
 randomForest.NumberOfTrees = 50;
 randomForest.Train();
 
-var knn = new KNearestNeighbors(X, y, k: 3);
+var knn = new KNearestNeighbors(X, y, k: 3) { IsRegression = false };
 
 // Evaluate each model
 // Note: DecisionTree and KNN return double[], RandomForest returns double[,]
@@ -993,6 +1432,7 @@ Console.WriteLine($"  KNN (k=3): {(double)knnCorrect / y_test.Length:P1}");
 4. **Tune hyperparameters** - Grid search or random search
 5. **Validate assumptions** - Check residuals for GLM
 6. **Ensemble methods** - Random Forests often outperform single trees
+7. **Select covariates with a penalty path** - Use `ElasticNetRegression` with cross-validation and prefer $\lambda_{1se}$ for a sparser model
 
 ### Unsupervised Learning
 1. **Scale features** - Clustering sensitive to feature scales
@@ -1000,6 +1440,7 @@ Console.WriteLine($"  KNN (k=3): {(double)knnCorrect / y_test.Length:P1}");
 3. **Multiple runs** - k-Means sensitive to initialization
 4. **Validate clusters** - Inspect cluster characteristics
 5. **Consider GMM** - When clusters overlap or have different shapes
+6. **Reduce dimension first** - Use PCA on the correlation basis when variables have different units
 
 ---
 
@@ -1026,6 +1467,28 @@ Console.WriteLine($"  KNN (k=3): {(double)knnCorrect / y_test.Length:P1}");
 <a id="10">[10]</a> Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data via the EM algorithm. *Journal of the Royal Statistical Society: Series B*, 39(1), 1-38.
 
 <a id="11">[11]</a> Arthur, D., & Vassilvitskii, S. (2007). k-means++: The advantages of careful seeding. *Proceedings of the 18th Annual ACM-SIAM Symposium on Discrete Algorithms*, 1027-1035.
+
+<a id="12">[12]</a> Friedman, J., Hastie, T., & Tibshirani, R. (2010). Regularization paths for generalized linear models via coordinate descent. *Journal of Statistical Software*, 33(1), 1-22. https://doi.org/10.18637/jss.v033.i01
+
+<a id="13">[13]</a> Zou, H., & Hastie, T. (2005). Regularization and variable selection via the elastic net. *Journal of the Royal Statistical Society: Series B*, 67(2), 301-320. https://doi.org/10.1111/j.1467-9868.2005.00503.x
+
+<a id="14">[14]</a> Jolliffe, I. T. (2002). *Principal Component Analysis* (2nd ed.). Springer. https://doi.org/10.1007/b98835
+
+<a id="15">[15]</a> Stamey, T. A., Kabalin, J. N., McNeal, J. E., Johnstone, I. M., Freiha, F., Redwine, E. A., & Yang, N. (1989). Prostate specific antigen in the diagnosis and treatment of adenocarcinoma of the prostate. II. Radical prostatectomy treated patients. *Journal of Urology*, 141(5), 1076-1083. https://doi.org/10.1016/S0022-5347(17)41175-X
+
+<a id="16">[16]</a> Wilkinson, J. H., & Reinsch, C. (1971). *Handbook for Automatic Computation, Volume II: Linear Algebra*. Springer. https://doi.org/10.1007/978-3-642-86940-2
+
+<a id="17">[17]</a> Rasmussen, C. E., & Williams, C. K. I. (2006). *Gaussian Processes for Machine Learning*. MIT Press.
+
+<a id="18">[18]</a> Dubrule, O. (1983). Cross validation of kriging in a unique neighborhood. *Mathematical Geology*, 15(6), 687-699. https://doi.org/10.1007/BF01033232
+
+<a id="19">[19]</a> Roustant, O., Ginsbourger, D., & Deville, Y. (2012). DiceKriging, DiceOptim: Two R packages for the analysis of computer experiments by kriging-based metamodeling and optimization. *Journal of Statistical Software*, 51(1), 1-55. https://doi.org/10.18637/jss.v051.i01
+
+<a id="20">[20]</a> Isaaks, E. H., & Srivastava, R. M. (1989). *An Introduction to Applied Geostatistics*. Oxford University Press.
+
+<a id="21">[21]</a> Pebesma, E. J. (2004). Multivariable geostatistics in S: the gstat package. *Computers & Geosciences*, 30(7), 683-691. https://doi.org/10.1016/j.cageo.2004.03.012
+
+<a id="22">[22]</a> Gneiting, T. (2013). Strictly and non-strictly positive definite functions on spheres. *Bernoulli*, 19(4), 1327-1349. https://doi.org/10.3150/12-BEJSP06
 
 ---
 

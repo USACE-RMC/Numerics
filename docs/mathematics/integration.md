@@ -79,6 +79,8 @@ double result = trap.Result;
 Console.WriteLine($"Function evaluations: {trap.FunctionEvaluations}");
 ```
 
+If `MaxIterations` or `MaxFunctionEvaluations` stops the refinement before it converges, `Result` holds the latest refinement and `Status` names the limit that was reached; the same holds for the `SimpsonsRule` class below.
+
 ### Simpson's Rule
 
 Simpson's Rule provides more accurate approximations than the Trapezoidal Rule by using quadratic interpolation. The formula approximates the region under the function $f(x)$ as a weighted average of the trapezoidal and midpoint methods:
@@ -204,6 +206,39 @@ Console.WriteLine($"Standard error: {gk.StandardError}");
 ```
 
 **Advantages**: Efficient error estimation, reuses function evaluations from the Gauss rule in the Kronrod extension.
+
+#### Choosing the method: local bisection or QAGS
+
+`AdaptiveGaussKronrod` has two adaptive strategies, selected with the `Method` property:
+
+- `AdaptiveGaussKronrodMethod.LocalBisection` (the default) bisects recursively and accepts an interval when its Kronrod-Gauss difference meets the tolerance scaled by the interval's share of the range.
+- `AdaptiveGaussKronrodMethod.Qags` is the QUADPACK QAGS algorithm [[6]](#6), the method behind `scipy.integrate.quad`. It keeps the subintervals in a priority queue by the QUADPACK error estimate, always bisects the one with the largest error, and extrapolates the sequence of composite sums with Wynn's epsilon algorithm [[7]](#7) when the largest error sits on a small interval.
+
+```cs
+var gk = new AdaptiveGaussKronrod(x => 1 / Math.Sqrt(x), 0, 1) { Method = AdaptiveGaussKronrodMethod.Qags };
+gk.Integrate();
+Console.WriteLine($"{gk.Result} {gk.FunctionEvaluations}"); // 1.9999999999999984 231
+```
+
+Choose QAGS for endpoint singularities and for integrands that local bisection fails to converge on. Keep the default for cheap smooth, peaked or oscillatory integrands, where QAGS's per-interval error estimate makes it about 1.4 times slower at the same evaluation count, and for sampling with `Recorder` (as RMC-TotalRisk does), because QAGS accepts different nodes. The table compares the two at the default tolerances (absolute and relative $10^{-8}$; $10^{-10}$ relative for the peak) against a 50-digit mpmath oracle, with BenchmarkDotNet times on .NET 10:
+
+| Integrand on [0, 1] | Local bisection: error, evaluations, time | QAGS: error, evaluations, time |
+|---|---|---|
+| $x^{-1/2}$ | 5.5e-9, 1911, 7.9 µs | 1.6e-15, 231, 1.9 µs |
+| $\ln x$ | 1.6e-9, 819, 7.9 µs | 1.0e-16, 231, 3.0 µs |
+| $x^{-0.9}$ | 0.12, 2247, 55.5 µs (not converged) | 2.1e-13, 231, 5.4 µs |
+| $\ln(x)/\sqrt{x}$ | 1.6e-8, 2247, 21.3 µs (not converged) | 8.5e-14, 315, 4.6 µs |
+| $\lvert x - 1/3 \rvert$ | 5.7e-10, 399, 0.94 µs | 4.8e-17, 189, 1.38 µs |
+| $1/((x - 0.3)^2 + 10^{-4})$ | 1.3e-14, 357, 1.0 µs | 2.4e-13, 315, 2.7 µs |
+| $e^{-(60(x - 0.3))^2} + 0.1x$ | 4.1e-18, 231, 3.5 µs | 2.4e-17, 231, 3.8 µs |
+| $\cos 100x$ | 6.5e-16, 315, 3.8 µs | 6.4e-16, 315, 3.6 µs |
+| $e^x$ | 7.7e-17, 21, 0.23 µs | 7.7e-17, 21, 0.29 µs |
+
+Across 49 test, caller and TotalRisk-style integrands, the ratio of QAGS time to local-bisection time has a geometric mean of 1.41 for smooth single-interval integrands, 1.52 for peaked ones, 1.35 for oscillatory ones, 0.52 for endpoint-singular ones and 0.88 for the integrands of the Numerics distribution and probability routines. QAGS evaluation counts and errors match those of `scipy.integrate.quad`, which calls the same QUADPACK routine. The 21-point rule accumulates its sums in the order of QUADPACK DQK21, so on 35 of the 49 comparison integrands the result is bit for bit that of `scipy.integrate.quad` 1.18.1; the others differ in the integrand implementation (the C reference integrands use their own `erfc` and distribution formulas), in `MinDepth` or `MaxDepth`, or in the handling of a NaN or infinite node value. The QAGS times in the table are from a later BenchmarkDotNet run than the local-bisection times.
+
+Against QUADPACK itself, the integrator overhead per 21-point rule (the work beyond the 21 integrand evaluations) is within about 1.5 times that of the netlib Fortran DQAGS compiled natively. End to end, QAGS is faster than `scipy.integrate.quad` on the singular, oscillatory and peaked integrands of the table. On cheap smooth integrands and the Numerics distribution moments the remaining gap to native DQAGS comes from the cost of the C# integrand against its C counterpart and, for the stratified TotalRisk-style cases, from the `MinDepth` panels that DQAGS does not evaluate, not from the integrator.
+
+Under QAGS, `MaxFunctionEvaluations` sets the subinterval limit $\lfloor (\lfloor N/21 \rfloor + 1)/2 \rfloor$, so the evaluation count never exceeds the budget; `MinDepth` starts from a uniform partition into $2^{\text{MinDepth}}$ intervals; an interval at `MaxDepth` is retired rather than bisected; `Iterations` counts bisections; and `StandardError` is the QUADPACK error estimate. A NaN or infinite estimate is bisected away, so $\int_{-1}^1 1/\sqrt{|x|} \, dx$ returns 4. The tolerance rule is QUADPACK's: a zero relative tolerance is legal with a positive absolute tolerance, and with a zero absolute tolerance the relative tolerance must be at least $\max(50\epsilon, 5 \times 10^{-29})$ with $\epsilon = 2^{-52}$. Relative tolerances below about $1.1 \times 10^{-14}$ cannot be met, because the QUADPACK error estimate never falls below $50\epsilon$ times the integral of $|f|$; such runs end with `MaximumIterationsReached`. With `Recorder`, the weighted node values sum to the composite Kronrod rule, which differs from `Result` when the extrapolated value is returned (for $x^{-1/2}$ the composite is 1.994).
 
 ### Example: Computing the Mean of a Gamma Distribution
 
@@ -339,10 +374,13 @@ mc.Random = new MersenneTwister(12345); // Set the random number generator for r
 mc.MaxIterations = 100000;
 mc.Integrate();
 
-double result = mc.Result; // 3.13824
+double result = mc.Result; // 3.15512
 Console.WriteLine($"Result: {result:F6}");
-Console.WriteLine($"Function evaluations: {mc.FunctionEvaluations}");
+Console.WriteLine($"Function evaluations: {mc.FunctionEvaluations}"); // 100000
+Console.WriteLine($"Status: {mc.Status}"); // MaximumIterationsReached
 ```
+
+Monte Carlo integration draws at most the smaller of `MaxIterations` and `MaxFunctionEvaluations` samples (both default to 10,000,000) and stops early once the relative standard error falls below `RelativeTolerance`. `Status` is `Success` only when that tolerance is met; here the 100,000-sample limit stopped it first, so the status is `MaximumIterationsReached`. `UseSobolSequence` defaults to false, which samples `Random`; set it to true to sample a Sobol sequence instead, restarted at the first point on every call.
 
 With 100,000 samples, we see that the result is close but still has a noticeable error. Now, let's run it again with the default setting, where the maximum iterations are $N=10,000,000$:
 
@@ -376,15 +414,24 @@ Now, let's solve the $\pi$ test function using Miser with $N=100,000$ iterations
 
 ```cs
 var miser = new Miser(PI, 2, a, b);
-miser.Random = new MersenneTwister(12345); // Set the random number generator for repeatability
-miser.MaxIterations = 100000;
+miser.MaxFunctionEvaluations = 100000; // Miser's sample budget
 miser.Integrate();
-double result = miser.Result; // 3.1420673978501474
+double result = miser.Result; // 3.1451276882
 Console.WriteLine($"Result: {result:F10}");
 Console.WriteLine($"Function evaluations: {miser.FunctionEvaluations}");
 ```
 
 With the same number of samples, Miser produces a more accurate result with smaller variance than basic Monte Carlo integration.
+
+Miser draws exactly `MaxFunctionEvaluations` samples (default 10,000,000); `MaxIterations` does not affect it, and `Status` is `Success` when the samples are spent. By default it samples a Sobol sequence (`UseSobolSequence = true`), so the result is deterministic and the `Random` property is used only when `UseSobolSequence` is false. The Sobol sequence restarts on every call, so calling `Integrate()` again on the same instance returns the same result:
+
+```cs
+miser.Integrate();
+Console.WriteLine($"Result: {miser.Result:F10}"); // 3.1451276882 again
+Console.WriteLine($"Status: {miser.Status}"); // Success
+```
+
+When `UseSobolSequence` is false, `Random` is not reset, so repeated calls continue its stream and differ.
 
 ### VEGAS (Adaptive Importance Sampling)
 
@@ -411,7 +458,7 @@ Console.WriteLine($"Result: {result:F10}");
 Console.WriteLine($"Function evaluations: {vegas.FunctionEvaluations}");
 ```
 
-In ***Numerics***, the VEGAS method iteratively adapts and refines the grid until convergence to a relative tolerance of $1 \times 10^{-3}$ is achieved. For this test problem, only 19,600 function evaluations are required to reach convergence.
+In ***Numerics***, the VEGAS method iteratively adapts and refines the grid until convergence to a relative tolerance of $1 \times 10^{-3}$ is achieved. For this test problem, only 19,600 function evaluations are required to reach convergence. `FunctionEvaluations` and `Iterations` count the work of the current call only, so a second `Integrate()` on the same instance again reports 19,600 evaluations and `MaxFunctionEvaluations` is a per-call budget; the `Initialize` property controls whether the adapted grid and accumulated results carry over between calls.
 
 **Advantages**: Excellent for peaked integrands, provides convergence diagnostics through chi-squared statistics.
 
@@ -566,6 +613,17 @@ All integration classes (except the static `Integration` methods) inherit from t
 - `FunctionEvaluations`: Number of function evaluations performed
 - `Status`: Integration status (Success, Failure, MaximumIterationsReached, etc.)
 
+### Status Meanings
+
+- `Success`: the tolerance was met everywhere.
+- `MaximumFunctionEvaluationsReached`: the evaluation budget stopped the integration first.
+- `MaximumIterationsReached`: an iteration limit stopped the integration first. For `AdaptiveSimpsonsRule`, `AdaptiveSimpsonsRule2D`, `AdaptiveGaussKronrod` and `AdaptiveGaussKronrod2D` this also means that at least one interval or region was accepted at the depth or width limit without meeting the tolerance, for example a divergent integral such as $\int_0^1 1/x \, dx$ under the Gauss-Kronrod rules, whose nodes avoid the endpoints, or a jump that `MaxDepth` cannot resolve. The returned `Result` is the same estimate as before; only the status says it is not certified.
+- `Failure`: the integrand threw, or (for `AdaptiveGaussKronrod`, `AdaptiveGaussLobatto`, `AdaptiveSimpsonsRule` and `AdaptiveGaussKronrod2D`) a NaN or infinite estimate was about to enter the final sum, so the result could not be finite. `AdaptiveSimpsonsRule` evaluates the endpoints, so $\int_0^1 1/x \, dx$ ends with `Failure` there. These four rules stop at that point instead of spending the rest of the evaluation budget. A NaN on an interval that is still being subdivided does not stop them, because its children can be finite: $\int_0^1 \sin(x - 0.5)/(x - 0.5) \, dx$ evaluates 0/0 at the center node and still returns 0.98621483608613 with `Success` under the Gauss-Kronrod rules. `AdaptiveSimpsonsRule` reuses every function value as an endpoint of the subintervals, so a NaN value at a node always reaches an accepted interval and that integral ends with `Failure` there.
+
+When `ReportFailure` is true (the default), a `Failure` also throws: the integrand's own exception, or an `ArithmeticException` for a non-finite estimate. Set `ReportFailure = false` to read the status instead.
+
+The one-dimensional rule constructors throw `ArgumentOutOfRangeException` when the upper limit is not greater than the lower limit (`AdaptiveSimpsonsRule2D` does the same for each axis), and `AdaptiveGaussKronrod` also rejects NaN or infinite limits with `ArgumentOutOfRangeException`. A null integrand throws `ArgumentNullException`.
+
 Example of using these properties:
 
 ```cs
@@ -611,6 +669,10 @@ This method adjusts the internal parameters to better handle integrands with ver
 <a id="4">[4]</a> G. Lepage, "A New Algorithm for Adaptive Multidimensional Integration," *Journal of Computational Physics*, vol. 27, no. 1, pp. 192-203, 1978.
 
 <a id="5">[5]</a> G. Lepage, "VEGAS: An Adaptive Multidimensional Integration Program," Cornell University, 1980.
+
+<a id="6">[6]</a> R. Piessens, E. de Doncker-Kapenga, C. W. Überhuber and D. K. Kahaner, *QUADPACK: A Subroutine Package for Automatic Integration*, Springer Series in Computational Mathematics, Berlin: Springer, 1983. https://doi.org/10.1007/978-3-642-61786-7
+
+<a id="7">[7]</a> P. Wynn, "On a Device for Computing the e_m(S_n) Transformation," *Mathematical Tables and Other Aids to Computation*, vol. 10, no. 54, pp. 91-96, 1956. https://doi.org/10.2307/2002183
 
 ---
 

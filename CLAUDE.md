@@ -34,16 +34,27 @@ evidence, and request a decision. AI confidence is not technical authority.
 - Statistical and numerical methods must cover known values, edge cases, invalid inputs, and regression cases.
 - Use small inline fixtures in tests unless a shared fixture already exists for the exact scenario.
 
+## pynumerics Coverage
+
+- Any new public Numerics class or method must, in the same change, be covered by the pynumerics wrapper in `python/pynumerics`: a wrapper with a numpydoc docstring and an oracle test, or a justified exclusion entry in the pynumerics coverage registry.
+- The pynumerics reflection coverage test (`tests/test_coverage.py`) fails on any public type or member that has neither a wrapper nor an exclusion entry.
+
 ## Required Validation
 
 Run validation before committing:
 
 ```powershell
 dotnet build -c Release
-dotnet test -c Release --no-build
+dotnet test -c Release --no-build --filter "TestCategory!=LiveServiceIntegration"
 ```
 
-Both commands must complete with zero errors, zero warnings, and zero failed tests. If validation fails, fix the issue before committing.
+Then run the pynumerics suite from `python/pynumerics` against the branch-built `Numerics.dll`, with `PYNUMERICS_DLL_DIR` set to the build output folder:
+
+```powershell
+python -m pytest
+```
+
+All commands must complete with zero errors, zero warnings, and zero failed tests. If validation fails, fix the issue before committing.
 
 ## Git Workflow
 
@@ -72,6 +83,7 @@ Update and cross-check every version-bearing file for each release:
 - `CITATION.cff`: set `version` and `date-released`.
 - `codemeta.json`: set `version` and `dateModified`.
 - `.github/workflows/Snapshot.yml`: advance the snapshot version to the next patch after the release.
+- `Numerics/Numerics.csproj`: after the release, advance `PackageValidationBaselineVersion` to the version just released and delete `Numerics/CompatibilitySuppressions.xml` entries that no longer apply.
 - Keep `PackageReleaseNotes` concise because NuGet.org displays this field on the package page.
 
 ### PR Message Checklist
@@ -89,7 +101,7 @@ Use this validation checklist:
 ```markdown
 - [ ] `dotnet restore`
 - [ ] `dotnet build Numerics/Numerics.csproj -c Release /p:Version=X.Y.Z`
-- [ ] `dotnet test -c Release` with `VSTEST_CONNECTION_TIMEOUT=600`
+- [ ] `dotnet test -c Release --filter "TestCategory!=LiveServiceIntegration"` with `VSTEST_CONNECTION_TIMEOUT=600`
 - [ ] `dotnet pack Numerics/Numerics.csproj -c Release /p:Version=X.Y.Z --no-build -o ./packages`
 - [ ] Inspect the `.nupkg` metadata and confirm version `X.Y.Z` and release notes are correct.
 ```

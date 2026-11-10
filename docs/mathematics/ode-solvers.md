@@ -8,7 +8,7 @@ An ordinary differential equation (ODE) relates a function to its derivatives. T
 \frac{dy}{dt} = f(t, y), \quad y(t_0) = y_0
 ```
 
-Given the initial condition $y(t_0) = y_0$, we seek the solution $y(t)$ for $t > t_0$. Most ODEs arising in practice — population dynamics, chemical kinetics, mechanical systems, heat transfer — cannot be solved analytically and require numerical methods.
+Given the initial condition $y(t_0) = y_0$, we seek the solution $y(t)$ for $t > t_0$. Most ODEs arising in practice (population dynamics, chemical kinetics, mechanical systems, heat transfer) cannot be solved analytically and require numerical methods.
 
 The ***Numerics*** library provides Runge-Kutta methods for solving ODEs numerically. These methods advance the solution from $y_n$ at time $t_n$ to $y_{n+1}$ at time $t_{n+1} = t_n + h$ by evaluating $f(t, y)$ at several intermediate points within the step.
 
@@ -51,7 +51,7 @@ Console.WriteLine($"Error: {Math.Abs(solution[steps - 1] - Math.E):E4}");
 
 ## Fourth-Order Runge-Kutta (RK4)
 
-The classical RK4 method is the workhorse of ODE solving — it provides an excellent balance of accuracy and efficiency. The method evaluates the derivative at four points within each step:
+The classical RK4 method is the workhorse of ODE solving: it provides an excellent balance of accuracy and efficiency. The method evaluates the derivative at four points within each step:
 
 ```math
 k_1 = f(t_n, y_n)
@@ -146,9 +146,11 @@ Both the Fehlberg and Cash-Karp methods compute a fourth-order solution $y^{(4)}
 ```
 
 The step size is then adjusted:
-- If $\text{err} \leq \text{tolerance}$: **accept** the step. If the error is very small ($< 0.01 \times \text{tolerance}$), double the step size
+- If $\text{err} \leq \text{tolerance}$: **accept** the step. If the error is very small ($< 0.01 \times \text{tolerance}$), double the step size (never beyond `dt`)
 - If $\text{err} > \text{tolerance}$: **reject** the step, halve $h$, and retry
 - If $h$ falls below the minimum step size `dtMin`, accept the step regardless (to avoid infinite loops)
+
+Both methods step with their fifth-order solution.
 
 ### Runge-Kutta-Fehlberg (RKF45)
 
@@ -166,7 +168,7 @@ The Fehlberg method [[1]](#1) uses specific coefficients optimized to minimize t
   RK5     | 16/135      0           6656/12825   28561/56430 -9/50      2/55
 ```
 
-The fourth-order solution (row labeled RK4) is used for stepping, while the difference from the fifth-order solution provides the error estimate.
+The implementation steps with the fifth-order solution (row labeled RK5), and the difference from the fourth-order solution provides the error estimate.
 
 ```cs
 using Numerics.Mathematics.ODESolvers;
@@ -188,7 +190,7 @@ Console.WriteLine($"Analytical: {Math.Exp(-15.0 * (t0 + dt)):F8}");
 
 ### Cash-Karp Method
 
-The Cash-Karp method [[2]](#2) uses a different set of coefficients optimized for a different balance of accuracy and stability:
+The Cash-Karp method [[2]](#2) uses a different set of coefficients optimized for a different balance of accuracy and stability. The implementation steps with the fifth-order solution (the 37/378 weights) and uses the embedded fourth-order solution (the 2825/27648 weights) for the error estimate.
 
 ```cs
 double y_final_ck = RungeKutta.CashKarp(f, y0, t0, dt, dtMin, tolerance);
@@ -203,7 +205,7 @@ Console.WriteLine($"Cash-Karp: y({t0 + dt:F3}) = {y_final_ck:F8}");
 
 ## Stiffness
 
-A differential equation is **stiff** when it contains dynamics on vastly different timescales — some components of the solution change rapidly while others change slowly. The classic example is a system with eigenvalues $\lambda_1 = -1$ and $\lambda_2 = -1000$: the fast component $e^{-1000t}$ decays in milliseconds, but the explicit RK4 step size is constrained by this fast component even long after it has decayed to zero.
+A differential equation is **stiff** when it contains dynamics on vastly different timescales: some components of the solution change rapidly while others change slowly. The classic example is a system with eigenvalues $\lambda_1 = -1$ and $\lambda_2 = -1000$: the fast component $e^{-1000t}$ decays in milliseconds, but the explicit RK4 step size is constrained by this fast component even long after it has decayed to zero.
 
 For the linear test equation $\frac{dy}{dt} = \lambda y$ (with $\lambda < 0$), the explicit RK4 method is stable only when:
 
@@ -211,7 +213,7 @@ For the linear test equation $\frac{dy}{dt} = \lambda y$ (with $\lambda < 0$), t
 |h \cdot \lambda| \leq 2.785
 ```
 
-This means that for $\lambda = -1000$, the step size must be smaller than $h < 0.002785$ — regardless of the accuracy requirement. For stiff problems, this stability restriction forces an impractically small step size.
+This means that for $\lambda = -1000$, the step size must be smaller than $h < 0.002785$, regardless of the accuracy requirement. For stiff problems, this stability restriction forces an impractically small step size.
 
 **Mitigation strategies:**
 - Use the adaptive methods (Fehlberg, Cash-Karp), which will automatically reduce the step size in stiff regions
@@ -365,7 +367,7 @@ The Lotka-Volterra equations model the dynamics of two interacting species:
 \frac{dy}{dt} = \delta xy - \gamma y \qquad \text{(predator)}
 ```
 
-The prey population grows exponentially in the absence of predators (rate $\alpha$) but is reduced by predation (rate $\beta xy$). Predators grow when prey is abundant (rate $\delta xy$) but die in its absence (rate $\gamma y$). The system exhibits periodic oscillations — predator peaks follow prey peaks with a phase lag.
+The prey population grows exponentially in the absence of predators (rate $\alpha$) but is reduced by predation (rate $\beta xy$). Predators grow when prey is abundant (rate $\delta xy$) but die in its absence (rate $\gamma y$). The system exhibits periodic oscillations: predator peaks follow prey peaks with a phase lag.
 
 ```cs
 double alpha = 1.0;   // Prey growth rate
@@ -433,23 +435,23 @@ for (int i = 0; i < steps; i += 100)
 
 **Step Size Guidelines:**
 - Fixed step: Choose $h$ such that the solution is smooth and verify by halving $h$
-- Adaptive: Set tolerance based on required accuracy — the method handles the rest
+- Adaptive: Set tolerance based on required accuracy; the method handles the rest
 - For stability: $h < 2.785 / |\lambda_{\max}|$ where $\lambda_{\max}$ is the largest eigenvalue magnitude of the Jacobian
 
 ## Best Practices
 
-1. **Verify with known solutions** when possible — compare against analytical results for test problems
+1. **Verify with known solutions** when possible: compare against analytical results for test problems
 2. **Check convergence** by halving the step size and confirming the solution doesn't change significantly (the error should decrease by $2^4 = 16 \times$ for RK4)
-3. **Use adaptive methods** for problems with variable dynamics — they automatically concentrate effort where the solution changes rapidly
-4. **Monitor conservation** — for Hamiltonian systems (e.g., harmonic oscillator), check that energy is conserved over long integrations
-5. **Plot solutions** to detect instabilities — oscillations growing in amplitude usually indicate the step size is too large
-6. **Consider reformulation** for stiff equations — if possible, analytically eliminate the fast component or use a change of variables
+3. **Use adaptive methods** for problems with variable dynamics: they automatically concentrate effort where the solution changes rapidly
+4. **Monitor conservation**: for Hamiltonian systems (e.g., harmonic oscillator), check that energy is conserved over long integrations
+5. **Plot solutions** to detect instabilities: oscillations growing in amplitude usually indicate the step size is too large
+6. **Consider reformulation** for stiff equations: if possible, analytically eliminate the fast component or use a change of variables
 
 ## Limitations
 
 - Fixed-step methods require careful step size selection
 - Very stiff equations may require specialized implicit solvers (not currently in the library)
-- Systems of ODEs require manual coupling of equations — the `RungeKutta` class handles scalar ODEs only
+- Systems of ODEs require manual coupling of equations: the `RungeKutta` class handles scalar ODEs only
 - No built-in event detection (e.g., finding when the solution crosses zero)
 - For very high accuracy or long-time integrations, consider symplectic integrators for Hamiltonian systems
 

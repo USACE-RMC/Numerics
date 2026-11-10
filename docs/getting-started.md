@@ -6,6 +6,8 @@ This guide will help you get up and running with the ***Numerics*** library quic
 
 ## Installation
 
+Version 2.3.0 targets .NET 10 (`net10.0`) and .NET Framework 4.8.1 (`net481`). Applications on .NET 8 or .NET 9 can stay on version 2.2.0.
+
 ### NuGet Package
 
 The easiest way to install ***Numerics*** is via NuGet:
@@ -159,7 +161,7 @@ This example uses annual peak streamflow from the Tippecanoe River near Delphi, 
 using Numerics.Distributions;
 using Numerics.Data.Statistics;
 
-// Tippecanoe River near Delphi, IN — 48 years of annual peak streamflow (cfs)
+// Tippecanoe River near Delphi, IN: 48 years of annual peak streamflow (cfs)
 // Source: Rao & Hamed (2000), Table 5.1.1
 double[] annualPeaks = {
     6290, 2700, 13100, 16900, 14600, 9600, 7740, 8490, 8130, 12000,

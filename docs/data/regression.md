@@ -41,13 +41,13 @@ SVD provides several advantages:
 
 ## Creating a Linear Regression Model
 
-The model is fitted automatically in the constructor — no separate `Train()` call is needed:
+The model is fitted automatically in the constructor; no separate `Train()` call is needed:
 
 ```cs
 using Numerics.Data;
 using Numerics.Mathematics.LinearAlgebra;
 
-// Predictor data (no intercept column needed — added automatically)
+// Predictor data (no intercept column needed; it is added automatically)
 double[,] X = {
     { 1.0 },
     { 2.0 },
@@ -77,7 +77,7 @@ After construction, the following properties are available:
 | `Parameters` | `List<double>` | Estimated coefficients (intercept first if `HasIntercept = true`) |
 | `ParameterNames` | `List<string>` | Names of each parameter |
 | `ParameterStandardErrors` | `List<double>` | Standard errors of each coefficient |
-| `ParameterTStats` | `List<double>` | t-statistics for each coefficient |
+| `ParameterTStats` | `List<double>` | t-statistics for each coefficient, `Parameters[j] / ParameterStandardErrors[j]` |
 | `Covariance` | `Matrix` | Parameter covariance matrix |
 | `Residuals` | `double[]` | Model residuals (observed − predicted) |
 | `StandardError` | `double` | Residual standard error |
@@ -176,6 +176,8 @@ Prediction intervals account for both the uncertainty in the estimated regressio
 
 The $1$ inside the square root represents the irreducible variance of a new observation; the second term represents uncertainty in the estimated mean.
 
+`PredictionIntervals` evaluates this formula with $(\mathbf{X}^T \mathbf{X})^{-1}$ from the `Covariance` property and $\mathbf{x}_0$ including the leading 1 of the intercept, matching R's `predict(model, newdata, interval = "prediction")`. The intervals therefore widen with the leverage of $\mathbf{x}_0$, away from the center of the data.
+
 ```cs
 // 90% prediction intervals (alpha = 0.1)
 double[,] intervals = lm.PredictionIntervals(new Matrix(XNew), alpha: 0.1);
@@ -227,7 +229,7 @@ Console.WriteLine($"Adjusted R²: {lm.AdjRSquared:F4}");
 
 ### Multicollinearity
 
-When predictor variables are highly correlated, the regression coefficients become unstable — small changes in the data lead to large changes in the estimated coefficients, and standard errors inflate. This is called **multicollinearity**.
+When predictor variables are highly correlated, the regression coefficients become unstable: small changes in the data lead to large changes in the estimated coefficients, and standard errors inflate. This is called **multicollinearity**.
 
 Signs of multicollinearity:
 - Large standard errors on coefficients that should be significant
@@ -258,7 +260,7 @@ Console.WriteLine($"Slope: {lm.Parameters[0]:F4}");
 
 The validity of OLS inference (standard errors, p-values, prediction intervals) depends on several assumptions about the error terms $\varepsilon_i$:
 
-1. **Linearity**: The relationship between $\mathbf{x}$ and $y$ is linear. Check by plotting residuals vs. fitted values — a systematic pattern indicates nonlinearity.
+1. **Linearity**: The relationship between $\mathbf{x}$ and $y$ is linear. Check by plotting residuals vs. fitted values; a systematic pattern indicates nonlinearity.
 
 2. **Independence**: Errors are independent. Violated with time series data or spatial data. The Ljung-Box test (available in ***Numerics*** via `HypothesisTests.LjungBoxTest`) can detect serial correlation.
 
@@ -354,12 +356,12 @@ else
 
 ## Best Practices
 
-1. **Check assumptions** — Plot residuals vs. fitted values to detect nonlinearity and heteroscedasticity. Test residual normality with Jarque-Bera
-2. **Examine residuals** — Residuals should appear random with no systematic pattern. Look for outliers (residuals beyond $\pm 3\sigma$)
-3. **Watch for multicollinearity** — Highly correlated predictors inflate standard errors and destabilize coefficients. Compute VIF if suspected
-4. **Use adjusted $R^2$** — Better for comparing models with different numbers of predictors, as it penalizes model complexity
-5. **Validate predictions** — Don't extrapolate far beyond the range of training data. Prediction intervals widen rapidly outside the data range
-6. **Consider transformations** — Log-transform skewed variables before fitting. For nonlinear relationships, consider the GLM framework available in the [Machine Learning](../machine-learning.md) documentation
+1. **Check assumptions**: Plot residuals vs. fitted values to detect nonlinearity and heteroscedasticity. Test residual normality with Jarque-Bera
+2. **Examine residuals**: Residuals should appear random with no systematic pattern. Look for outliers (residuals beyond $\pm 3\sigma$)
+3. **Watch for multicollinearity**: Highly correlated predictors inflate standard errors and destabilize coefficients. Compute VIF if suspected
+4. **Use adjusted $R^2$**: Better for comparing models with different numbers of predictors, as it penalizes model complexity
+5. **Validate predictions**: Don't extrapolate far beyond the range of training data. Prediction intervals widen rapidly outside the data range
+6. **Consider transformations**: Log-transform skewed variables before fitting. For nonlinear relationships, consider the GLM framework available in the [Machine Learning](../machine-learning.md) documentation
 
 ---
 

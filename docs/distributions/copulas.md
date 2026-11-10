@@ -72,6 +72,8 @@ The **tail dependence coefficient** is:
 
 As $\nu \to \infty$, the t copula converges to the Normal copula and tail dependence vanishes. As $\nu$ decreases, tail dependence increases.
 
+The copula accepts any $\nu > 2$, but its estimation bracket (`ParameterConstraints`) caps $\nu$ at 30. Above about 30 degrees of freedom the t copula is practically indistinguishable from the Normal copula at typical hydrologic sample sizes, so the likelihood is nearly flat and an unbounded bracket would let a uniform prior pull the estimate toward the middle of the range regardless of the data. Use the Normal copula when the data call for a larger $\nu$. `SetCopulaParameters` raises any $\nu$ at or below 2 to $2 + 10^{-10}$ and otherwise keeps it continuous.
+
 ```cs
 // t-copula with 5 degrees of freedom
 int nu = 5;
@@ -98,7 +100,9 @@ The copula density is obtained by differentiating:
 c(u,v) = -\frac{\varphi''(\varphi^{-1}(\varphi(u) + \varphi(v)))}{[\varphi'(\varphi^{-1}(\varphi(u) + \varphi(v)))]^3} \cdot \varphi'(u) \cdot \varphi'(v)
 ```
 
-Each Archimedean family is characterized by its generator, which determines the copula's dependence properties. The ***Numerics*** library implements five Archimedean families:
+The Clayton, Frank, Gumbel and Joe families evaluate their density in closed form in log space instead of through this generic ratio, which underflows or loses accuracy near the edges of the unit square and for strong dependence. `LogPDF`, which the likelihood estimators use, stays finite for every admissible $\theta$ and every $(u, v)$ strictly inside the square, and `PDF` is its exponential. The unit tests check both against mpmath for $\theta$ up to 100 (500 for Frank) and $u, v$ from $10^{-12}$ to $1 - 10^{-12}$; on the boundary the generic ratio is kept. The Clayton and Frank members (`PDF`, `LogPDF`, `CDF`, `ConditionalCDF` and `InverseConditionalCDF`) use `Expm1` and `Log1p` forms that are continuous through $\theta = 0$, where they return the independence values $1$, $0$, $uv$, $v$ and $t$; at $|\theta| = 10^{-12}$ they agree with mpmath to about $10^{-14}$.
+
+Each Archimedean family is characterized by its generator, which determines the copula's dependence properties. The generators are those of Nelsen (2006, Table 4.1), each tending to the independence generator $-\ln t$ at its independence parameter. `Generator`, `GeneratorInverse`, `GeneratorPrime`, `GeneratorPrime2` and `GeneratorPrimeInverse` use `Expm1`, `Log1p` and `Log1mExp` forms, with the half-angle identities $1 - e^{-x} = 2\tanh(x/2)/(1 + \tanh(x/2))$ and $\ln(1 - e^{-s}) = \ln(2\sinh(s/2)) - s/2$ in the Frank and Joe members where they are faster at the same accuracy, closed forms for the slope inverse of Clayton, Frank and AMH, and a safeguarded Newton iteration for Gumbel and Joe that evaluates the function and its slope together; the unit tests check every member against mpmath to $10^{-13}$, including the near-independence region. The Gumbel and Joe conditional CDFs are evaluated from their closed forms in log space rather than through the generator ratio. Their inverse conditional CDFs invert those closed forms with a safeguarded Newton iteration whose derivative is the density, working from the complement above $t = 1/2$, to full double precision (within $10^{-14}$ of mpmath on the unit tests' grid, $t$ from $10^{-12}$ to $1 - 10^{-12}$). The ***Numerics*** library implements five Archimedean families:
 
 #### Clayton Copula
 
@@ -106,16 +110,16 @@ The Clayton copula exhibits **lower tail dependence**, making it suitable for mo
 
 | Property | Value |
 |----------|-------|
-| Generator | $\varphi(t) = t^{-\theta} - 1$ |
-| Inverse generator | $\varphi^{-1}(s) = (1+s)^{-1/\theta}$ |
+| Generator | $\varphi(t) = (t^{-\theta} - 1)/\theta$, and $-\ln t$ at $\theta = 0$ |
+| Inverse generator | $\varphi^{-1}(s) = (1+\theta s)^{-1/\theta}$, and $e^{-s}$ at $\theta = 0$ |
 | CDF | $C(u,v) = (u^{-\theta} + v^{-\theta} - 1)^{-1/\theta}$ |
-| Parameter range | $\theta \in (0, \infty)$ |
+| Parameter range | $\theta \in [-1, \infty)$; $\theta > 0$ for positive dependence, $\theta = 0$ is independence |
 | Kendall's tau | $\tau = \frac{\theta}{\theta + 2}$ |
 | Lower tail dependence | $\lambda_L = 2^{-1/\theta}$ |
 | Upper tail dependence | $\lambda_U = 0$ |
 
 ```cs
-// Clayton copula (lower tail dependence), θ ∈ (0, ∞)
+// Clayton copula (lower tail dependence for θ > 0)
 var claytonCopula = new ClaytonCopula(2.0);
 ```
 
@@ -145,13 +149,13 @@ The Frank copula has **no tail dependence** and produces a symmetric dependence 
 |----------|-------|
 | Generator | $\varphi(t) = -\ln\!\left(\frac{e^{-\theta t} - 1}{e^{-\theta} - 1}\right)$ |
 | CDF | $C(u,v) = -\frac{1}{\theta}\ln\!\left(1 + \frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)$ |
-| Parameter range | $\theta \in (-\infty, \infty) \setminus \lbrace 0\rbrace$ |
+| Parameter range | $\theta \in (-\infty, \infty)$; $\theta = 0$ is independence for the density, CDF and conditional members |
 | Tail dependence | $\lambda_L = \lambda_U = 0$ |
 
 The Frank copula is the only Archimedean copula that allows both positive and negative dependence ($\theta > 0$ for positive, $\theta < 0$ for negative).
 
 ```cs
-// Frank copula (no tail dependence), θ ∈ (-∞, ∞) \ {0}
+// Frank copula (no tail dependence), θ ∈ (-∞, ∞)
 var frankCopula = new FrankCopula(5.0);
 ```
 
@@ -189,12 +193,12 @@ var amhCopula = new AMHCopula(0.5);
 
 ### Independence Copula
 
-The Independence (product) copula $\Pi(u,v) = u \cdot v$ is the copula of any pair of independent random variables. It is the natural default when no dependence structure has been asserted, and the identity against which dependence modeling is compared — every family that admits independence in its parameter interior reduces to it there (e.g., the Normal copula at $\rho = 0$, the Frank copula as $\theta \to 0$).
+The Independence (product) copula $\Pi(u,v) = u \cdot v$ is the copula of any pair of independent random variables. It is the natural default when no dependence structure has been asserted, and the identity against which dependence modeling is compared: every family that admits independence in its parameter interior reduces to it there (e.g., the Normal copula at $\rho = 0$, the Frank copula as $\theta \to 0$).
 
-The copula has **no parameters**: `NumberOfCopulaParameters` is zero, `SetCopulaParameters` is a no-op, and the copula is *permanently valid* — no assignment can invalidate it. Parameter estimation via `BivariateCopulaEstimation.Estimate` is a benign no-op for it. Its density is identically 1, its conditional CDF is $h(v|u) = v$, conditional simulation is the identity, and both tail dependence coefficients are zero.
+The copula has **no parameters**: `NumberOfCopulaParameters` is zero, `SetCopulaParameters` is a no-op, and the copula is *permanently valid*: no assignment can invalidate it. Parameter estimation via `BivariateCopulaEstimation.Estimate` is a benign no-op for it. Its density is identically 1, its conditional CDF is $h(v|u) = v$, conditional simulation is the identity, and both tail dependence coefficients are zero.
 
 ```cs
-// Independence (product) copula — no parameters
+// Independence (product) copula (no parameters)
 var independence = new IndependenceCopula();
 
 double cdf = independence.CDF(0.5, 0.7);   // 0.35 = 0.5 · 0.7
@@ -207,16 +211,16 @@ double pdf = independence.PDF(0.5, 0.7);   // 1.0
 |--------|----------------|-----------------|----------|
 | Normal | None | $\rho \in [-1, 1]$ | General symmetric dependence |
 | Student-t | Symmetric | $\rho \in [-1, 1]$, $\nu > 2$ | Heavy-tailed joint extremes |
-| Clayton | Lower tail | $\theta \in (0, \infty)$ | Joint low extremes (droughts) |
+| Clayton | Lower tail ($\theta > 0$) | $\theta \in [-1, \infty)$ | Joint low extremes (droughts) |
 | Gumbel | Upper tail | $\theta \in [1, \infty)$ | Joint high extremes (floods) |
-| Frank | None | $\theta \in \mathbb{R} \setminus \lbrace 0\rbrace$ | Moderate symmetric dependence |
+| Frank | None | $\theta \in \mathbb{R}$ | Moderate symmetric dependence |
 | Joe | Upper tail | $\theta \in [1, \infty)$ | Strong upper tail dependence |
 | AMH | None | $\theta \in [-1, 1]$ | Weak dependence structures |
 | Independence | None | (no parameters) | Independent variables; the no-dependence default |
 
 ## Fitting Copulas to Data
 
-The copula parameter can be estimated from data using the relationship between Kendall's tau and the copula parameter. The ***Numerics*** library provides the `SetThetaFromTau` method for Archimedean copulas:
+The copula parameter can be estimated from data using the relationship between Kendall's tau and the copula parameter. The Clayton, Gumbel, Frank, Joe and AMH copulas provide a `SetThetaFromTau(x, y)` method that estimates Kendall's tau from the paired sample and inverts the family's tau relation: in closed form for Clayton and Gumbel, and with Brent's method for Frank, Joe and AMH. The Joe and AMH families can only reach part of the tau range (Joe models positive dependence only; AMH is limited to about $[-0.182, 0.333]$), and the method throws when the sample tau lies outside it:
 
 ```cs
 using System.Linq;
@@ -243,24 +247,29 @@ double[] v = y.Select(yi => gevY.CDF(yi)).ToArray();
 double tau = Correlation.KendallsTau(x, y);
 Console.WriteLine($"Kendall's tau: {tau:F3}");
 
-// The tau-to-parameter relationships:
-// Clayton: θ = 2τ/(1-τ) for τ > 0
-// Gumbel:  θ = 1/(1-τ) for τ > 0
-// Normal:  ρ = sin(πτ/2)
+// Method of moments: invert the tau relation of the family
+var gumbel = new GumbelCopula();
+gumbel.SetThetaFromTau(x, y);      // θ = 1/(1-τ)
+var joe = new JoeCopula();
+joe.SetThetaFromTau(x, y);         // series relation, solved numerically
+Console.WriteLine($"Gumbel θ = {gumbel.Theta:F3}, Joe θ = {joe.Theta:F3}");
+
+// The Normal and Student-t copulas use ρ = sin(πτ/2)
+var normal = new NormalCopula(Math.Sin(Math.PI * tau / 2));
 ```
 
 Alternatively, copula parameters can be estimated by maximizing the pseudo-log-likelihood, which uses only the copula density evaluated at empirical probability-integral transforms:
 
 ```cs
 // The BivariateCopula base class provides likelihood methods:
-// PseudoLogLikelihood  — copula-only log-likelihood
-// IFMLogLikelihood     — inference functions for margins (with pre-estimated marginals)
-// LogLikelihood        — full log-likelihood (copula + marginals)
+// PseudoLogLikelihood:  copula-only log-likelihood
+// IFMLogLikelihood:     inference functions for margins (with pre-estimated marginals)
+// LogLikelihood:        full log-likelihood (copula + marginals)
 ```
 
 ## Serializing Copulas
 
-A copula's dependence structure serializes to a single XML element through `ToXElement()`: the copula type by enumeration name and the parameters as a pipe-delimited, invariant-culture, round-trip (`G17`) string. Marginal distributions are deliberately not part of the element — consumers own their marginals and attach them separately. `CopulaFactory` reconstructs a validated copula from either the element or a bare `CopulaType`:
+A copula's dependence structure serializes to a single XML element through `ToXElement()`: the copula type by enumeration name and the parameters as a pipe-delimited, invariant-culture, round-trip (`G17`) string. Marginal distributions are not part of that element, for consumers that own their marginals and attach them separately. `CopulaFactory` reconstructs a validated copula from either the element or a bare `CopulaType`:
 
 ```cs
 using System.Xml.Linq;
@@ -271,6 +280,20 @@ XElement element = copula.ToXElement();   // <Copula Type="Clayton" Parameters="
 
 BivariateCopula restored = CopulaFactory.CreateCopula(element);   // parameters bit-identical
 BivariateCopula fresh = CopulaFactory.CreateCopula(CopulaType.Gumbel);   // default parameters
+```
+
+To carry the marginal distributions as well, pass `true` to both sides. `ToXElement(true)` appends each attached marginal as a `MarginalDistributionX` or `MarginalDistributionY` child holding the distribution's own `ToXElement()`, and omits an unattached one. `CopulaFactory.CreateCopula(element, true)` rebuilds each marginal through `UnivariateDistributionFactory.CreateDistribution`. A marginal must derive from `UnivariateDistributionBase`, which carries the XML support:
+
+```cs
+using System.Xml.Linq;
+using Numerics.Distributions;
+using Numerics.Distributions.Copulas;
+
+var joint = new GumbelCopula(1.8, new LogNormal(4.0, 0.5), new Gumbel(100, 20));
+XElement full = joint.ToXElement(true);
+
+BivariateCopula copy = CopulaFactory.CreateCopula(full, true);
+Console.WriteLine($"{copy.DisplayName}: θ = {copy.Theta}, X ~ {copy.MarginalDistributionX!.DisplayName}, Y ~ {copy.MarginalDistributionY!.DisplayName}");
 ```
 
 ## Practical Example: Bivariate Distribution
@@ -314,7 +337,17 @@ var correlation = Correlation.Pearson(flow, stage);
 Console.WriteLine($"Sample correlation: {correlation:F3}");
 ```
 
-The sampling algorithm uses the **conditional method**: generate $u$ from $U(0,1)$, then generate $v$ from the conditional distribution $C(v|u) = \frac{\partial C(u,v)}{\partial u}$ by inverting this conditional CDF. The `GenerateRandomValues` method uses Latin Hypercube sampling for better coverage of the probability space.
+The sampling algorithm uses the **conditional method**: generate $u$ from $U(0,1)$, then generate $v$ from the conditional distribution $C(v|u) = \frac{\partial C(u,v)}{\partial u}$ by inverting this conditional CDF. The `GenerateRandomValues` method uses Latin Hypercube sampling for better coverage of the probability space. When both marginal distributions are attached to the copula, the samples are returned in their units; otherwise they are non-exceedance probabilities, as above.
+
+`GenerateRandomValues(n)` seeds from the clock, so its sample differs on every call; pass a positive seed for a reproducible sample. The overload `GenerateRandomValues(n, random)` draws the Latin hypercube design from a supplied generator with no clock fallback, and `new MersenneTwister(seed)` reproduces the seeded overload exactly. One generator can be shared across consecutive calls:
+
+```cs
+using Numerics.Sampling;
+
+var generator = new MersenneTwister(2024);
+double[,] first = copula.GenerateRandomValues(500, generator);
+double[,] second = copula.GenerateRandomValues(500, generator);   // independent of the first
+```
 
 ## Applications in Risk Assessment
 
@@ -363,7 +396,9 @@ where $u$ and $v$ are non-exceedance probabilities. Every copula exposes it dire
 | Student-t | $T_{\nu+1}\!\left(\dfrac{x_2 - \rho x_1}{s}\right)$, with $x_i = T_\nu^{-1}(\cdot)$, $s = \sqrt{\frac{(1-\rho^2)(\nu + x_1^2)}{\nu+1}}$ |
 | Independence | $v$ |
 
-The scalar `InverseConditionalCDF(u, t)` inverts the h-function in $v$ without allocating the array that `InverseCDF` returns (the Student-t copula is the exception: it allocates two Student's t distribution objects per call), and the array form `InverseCDF(u, t)` returns the pair `[u, v]` on top of it — the conditional-simulation surface. The base-class `ConditionalCDF` also provides a central-finite-difference fallback over `CDF`, so an external subclass that implements only `CDF` still gets a correct approximation.
+At $u = 0$ and $u = 1$, where $h$ is a limit, `InverseConditionalCDF` returns the limit of the inverse explicitly: for Gumbel ($\theta > 1$), Clayton ($\theta > 0$) and Normal ($\rho > 0$) the inverse tends to 0 as $u \to 0$, and for Gumbel, Joe ($\theta > 1$) and Normal it tends to 1 as $u \to 1$, for $0 < t < 1$ (the Normal ends swap for $\rho < 0$). At $u = 0$ the Joe inverse is the exact $1 - (1 - t)^{1/\theta}$. For the Student-t copula $h(v|u)$ tends to a constant $c = T_{\nu+1}(\pm\rho\sqrt{(\nu+1)/(1-\rho^2)})$ on $(0, 1)$, so the inverse is 0 for $t \le c$ and 1 for $t > c$. $t = 0$ and $t = 1$ return 0 and 1.
+
+The scalar `InverseConditionalCDF(u, t)` inverts the h-function in $v$ without allocating the array that `InverseCDF` returns (the Student-t copula is the exception: it allocates two Student's t distribution objects per call), and the array form `InverseCDF(u, t)` returns the pair `[u, v]` on top of it (the conditional-simulation surface). The base-class `ConditionalCDF` also provides a central-finite-difference fallback over `CDF`, so an external subclass that implements only `CDF` still gets a correct approximation.
 
 ```cs
 // Observed flow
@@ -379,6 +414,17 @@ Console.WriteLine($"  P(Stage > 15 | Flow = {observedFlow}) = {1 - h:P1}");
 // Conditional quantile: the stage exceeded with 1% probability given the flow
 double vStage = copula.InverseConditionalCDF(uFlow, 0.99);
 Console.WriteLine($"  99th percentile stage given the flow = {margin2.InverseCDF(vStage):F1}");
+```
+
+`PDF`, `CDF`, `ConditionalCDF` and `InverseConditionalCDF` also take paired lists and return one value per pair, each equal to the scalar function at that pair; lists of different lengths throw `ArgumentException`. The list form of `InverseConditionalCDF` simulates many conditional events in one call:
+
+```cs
+var clayton = new ClaytonCopula(2.0);
+double[] u = { 0.2, 0.5, 0.9 };
+double[] v = { 0.3, 0.5, 0.7 };
+double[] joint = clayton.CDF(u, v);                       // { 0.1688, 0.3780, 0.6629 }
+double[] h = clayton.ConditionalCDF(u, v);                // { 0.6008, 0.4320, 0.3997 }
+double[] back = clayton.InverseConditionalCDF(u, h);      // recovers v to rounding
 ```
 
 ## Tail Dependence
@@ -421,17 +467,17 @@ For hydrologic applications with 3+ correlated variables (e.g., peak flow, volum
 ## Best Practices
 
 1. **Check for dependence**: Use scatter plots and correlation tests before applying copulas. Kendall's tau is preferred over Pearson's $r$ because it is rank-based and invariant under monotonic transformations
-2. **Choose copula family**: Match tail behavior to application — Gumbel for joint highs, Clayton for joint lows, Student-t for symmetric tail dependence
+2. **Choose copula family**: Match tail behavior to application: Gumbel for joint highs, Clayton for joint lows, Student-t for symmetric tail dependence
 3. **Validate fit**: Compare empirical and theoretical joint exceedance curves. Use the pseudo-log-likelihood to compare copula families
 4. **Sample size**: Need sufficient data ($n > 50$–$100$) for reliable parameter estimation via Kendall's tau
-5. **Non-stationarity**: Check if dependence structure is time-varying — a copula fit to historical data may not represent future conditions
+5. **Non-stationarity**: Check if dependence structure is time-varying; a copula fit to historical data may not represent future conditions
 
 ## Limitations
 
-- Assumes marginals are correctly specified — copula inference is only valid when the marginal distributions are well-fitted
+- Assumes marginals are correctly specified; copula inference is only valid when the marginal distributions are well-fitted
 - Bivariate copulas may not capture complex nonlinear dependencies in higher dimensions
 - Parameter estimation is challenging with limited data, especially for tail dependence
-- Tail dependence is difficult to estimate from finite samples — the tail region by definition has few observations
+- Tail dependence is difficult to estimate from finite samples; the tail region by definition has few observations
 
 ---
 

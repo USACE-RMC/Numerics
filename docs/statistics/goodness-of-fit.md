@@ -364,6 +364,8 @@ where $\gamma = (\sigma_M / \mu_M) / (\sigma_O / \mu_O)$. The modified version i
 
 ### Percent Bias (PBIAS)
 
+PBIAS follows Moriasi et al. (2007) [[2]](#2), $\text{PBIAS} = 100 \sum (O_i - M_i) / \sum O_i$. It is positive when the model underestimates the observed total and negative when it overestimates. (R's hydroGOF `pbias()` reports the opposite sign.)
+
 ```cs
 double pbias = GoodnessOfFit.PBIAS(observed, modeled);
 
@@ -380,9 +382,9 @@ else
     Console.WriteLine("Unsatisfactory (bias ≥ ±25%)");
 
 if (pbias > 0)
-    Console.WriteLine("Model overestimates (positive bias)");
-else if (pbias < 0)
     Console.WriteLine("Model underestimates (negative bias)");
+else if (pbias < 0)
+    Console.WriteLine("Model overestimates (positive bias)");
 ```
 
 ### RMSE-Observations Standard Deviation Ratio (RSR)
@@ -490,7 +492,7 @@ D_n = \max_{1 \leq i \leq n} \left\{ F(x_{i:n}) - \frac{i-1}{n}, \;\; \frac{i}{n
 - Power decreases for heavy-tailed distributions
 - The Anderson-Darling test is generally preferred when tail behavior is important
 
-Tests if data comes from a specified distribution:
+Tests if data comes from a specified distribution. `KolmogorovSmirnov` and `AndersonDarling` read the observations as order statistics. Like `Statistics.Percentile`, each has an overload with a `dataIsSorted` flag: when it is false (and in the overload without the flag) the statistic is computed on a sorted copy, and when it is true the values are used as given, so the caller is responsible for ascending order. Sorted input gives the same result either way; pass `true` to skip the copy when the same sorted sample is tested many times:
 
 ```cs
 double[] data = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200 };
@@ -528,6 +530,22 @@ double adStatistic = GoodnessOfFit.AndersonDarling(data, gev);
 
 Console.WriteLine($"Anderson-Darling A²: {adStatistic:F4}");
 Console.WriteLine("Smaller A² indicates better fit");
+```
+
+### Many Samples Against Uniform(0, 1)
+
+When many samples have been mapped to probabilities, for example the probability integral transforms of each grid cell's maxima through its fitted distribution, `ColumnKolmogorovSmirnovUniform` and `ColumnAndersonDarlingUniform` compute the statistic of every column of a matrix against Uniform(0, 1) in one call. Each column must be ascending with every value in [0, 1], and each result is bitwise the one-sample statistic against `new Uniform(0, 1)`:
+
+```cs
+double[,] u =
+{
+    { 0.12, 0.05 },
+    { 0.35, 0.41 },
+    { 0.58, 0.63 },
+    { 0.91, 0.97 },
+};
+double[] d = GoodnessOfFit.ColumnKolmogorovSmirnovUniform(u);
+double[] a2 = GoodnessOfFit.ColumnAndersonDarlingUniform(u);  // +∞ for a column that holds 0 or 1
 ```
 
 ### Chi-Squared Test
@@ -593,7 +611,7 @@ See also: [`example-data/white-river-nora-floods.csv`](../example-data/white-riv
 using Numerics.Data.Statistics;
 using Numerics.Distributions;
 
-// White River near Nora, IN — 62 years of annual peak streamflow (cfs)
+// White River near Nora, IN: 62 years of annual peak streamflow (cfs)
 double[] annualPeaks = {
     23200, 2950, 10300, 23200, 4540, 9960, 10800, 26900, 23300, 20400,
     8480, 3150, 9380, 32400, 20800, 11100, 7270, 9600, 14600, 14300,
@@ -617,6 +635,7 @@ Console.WriteLine("Distribution Comparison for Annual Peak Flows");
 Console.WriteLine("=" + new string('=', 70));
 
 var results = new List<(string Name, double AIC, double BIC, double RMSE, double KS, double AD)>();
+double[] sortedPeaks = annualPeaks.OrderBy(x => x).ToArray();   // sorted once, then passed with dataIsSorted: true
 
 foreach (var (name, dist) in candidates)
 {
@@ -628,8 +647,8 @@ foreach (var (name, dist) in candidates)
     double aic = GoodnessOfFit.AIC(dist.NumberOfParameters, logLik);
     double bic = GoodnessOfFit.BIC(annualPeaks.Length, dist.NumberOfParameters, logLik);
     double rmse = GoodnessOfFit.RMSE(annualPeaks, dist);
-    double ks = GoodnessOfFit.KolmogorovSmirnov(annualPeaks, dist);
-    double ad = GoodnessOfFit.AndersonDarling(annualPeaks, dist);
+    double ks = GoodnessOfFit.KolmogorovSmirnov(sortedPeaks, dist, dataIsSorted: true);
+    double ad = GoodnessOfFit.AndersonDarling(sortedPeaks, dist, dataIsSorted: true);
     
     results.Add((name, aic, bic, rmse, ks, ad));
 }

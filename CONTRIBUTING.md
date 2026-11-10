@@ -41,6 +41,7 @@ Pull requests may take several weeks or longer to review. Before submitting code
 3. **Include unit tests** that validate against known results (R, SciPy, Mathematica, or published tables)
 4. **Use MSTest** (`[TestClass]`, `[TestMethod]`) as the testing framework
 5. **Ensure a clean build** with zero errors and zero warnings
+6. **Keep unit tests fast**: a large randomized or accuracy sweep belongs in a shared `*.Sweep.cs` file beside its test, with the unit test running a small representative case and the full size registered in `Benchmarks_Numerics/Sweeps/SweepRunner.cs`, which runs with `dotnet run -c Release --project Benchmarks_Numerics -- sweep`
 
 ## Developer Certificate of Origin
 

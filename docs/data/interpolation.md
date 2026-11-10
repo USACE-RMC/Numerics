@@ -59,10 +59,33 @@ for (int i = 0; i < xNew.Length; i++)
 **Properties:**
 - Fast: $O(\log n)$ per evaluation (bisection search for interval)
 - $C^0$ continuous (values continuous, derivatives not)
-- No overshooting — interpolant stays within bracket values
+- No overshooting: interpolant stays within bracket values
 - Good for piecewise linear trends or noisy data
 
-The `Linear` class also supports coordinate transforms via `XTransform` and `YTransform` properties, enabling log-linear or probability-scale interpolation. Available transforms are `Transform.None` (default), `Transform.Logarithmic` ($\log_{10}$), and `Transform.NormalZ` (standard normal quantile).
+`Linear.Extrapolate(x)` extends the end segments beyond the data, and `Extrapolate(double[])` evaluates a list in one call. The list overloads of `Interpolate` and `Extrapolate` (and of `Bilinear.Interpolate`) give the same bits as calling the scalar method on each point in order.
+
+The `Linear` class also supports coordinate transforms via `XTransform` and `YTransform` properties, enabling log-linear or probability-scale interpolation. Available transforms are `Transform.None` (default), `Transform.Logarithmic` ($\log_{10}$), and `Transform.NormalZ` (standard normal quantile). The NormalZ transform sends a value of 1 to $+\infty$; there interpolation returns the limit of the transformed line: the node next to it keeps its own value, and the inside of the segment takes the value 1. Extrapolation beyond such a segment is not defined and returns NaN. `StandardZ(0)` is finite (about $-38.5$) and the logarithmic transform clamps its argument to $10^{-16}$, so next to a value of 0 interpolation stays finite: inside the segment it returns about $10^{-86}$ rather than 0.
+
+### Copies for Parallel Work
+
+Each search updates the interpolator's search state, so one `Linear` instance must not be shared across threads. `ShallowClone` returns a new interpolator over the same x and y lists, with the same sort order, transforms and search mode and a fresh search state. It copies and validates nothing, so it costs O(1), and it interpolates exactly like the source. The shared lists must not be modified while a copy is in use.
+
+```cs
+using Numerics.Data;
+
+double[] stage = { 0.0, 1.0, 2.0, 3.0, 4.0 };
+double[] flow = { 0.0, 120.0, 410.0, 900.0, 1650.0 };
+var rating = new Linear(stage, flow);
+
+// One copy per worker; the copies share the stage and flow arrays.
+var results = new double[8];
+System.Threading.Tasks.Parallel.For(0, results.Length, i =>
+{
+    var local = rating.ShallowClone();
+    results[i] = local.Interpolate(0.5 * i);
+});
+Console.WriteLine(string.Join(", ", results));
+```
 
 ## Cubic Spline Interpolation
 
@@ -90,7 +113,7 @@ This system of $n-2$ equations in $n$ unknowns requires two boundary conditions.
 |f(x) - S(x)| \leq \frac{5h^4}{384} \max |f^{(4)}(\xi)|
 ```
 
-The $O(h^4)$ convergence rate means halving the data spacing reduces the error by a factor of sixteen — a significant improvement over linear interpolation.
+The $O(h^4)$ convergence rate means halving the data spacing reduces the error by a factor of sixteen, a significant improvement over linear interpolation.
 
 ```cs
 using Numerics.Data;
@@ -165,7 +188,7 @@ f(x) = \frac{1}{1 + 25x^2}
 With $n$ equally spaced points on $[-1, 1]$, the degree $n-1$ interpolating polynomial oscillates with increasing amplitude near $x = \pm 1$ as $n$ grows. For $n = 11$ (degree 10), the maximum error near the boundaries exceeds 1.0, even though $f(x)$ is perfectly smooth.
 
 **Mitigation strategies:**
-- Use **cubic splines** instead of high-degree polynomials — splines keep each piece low-degree while maintaining global smoothness
+- Use **cubic splines** instead of high-degree polynomials; splines keep each piece low-degree while maintaining global smoothness
 - Use **Chebyshev nodes** (non-uniform spacing clustered near endpoints) if you can control where data is collected
 - Keep polynomial degree low ($\leq 5$) and use a local window, as the `Polynomial` class does
 
@@ -173,7 +196,7 @@ With $n$ equally spaced points on $[-1, 1]$, the degree $n-1$ interpolating poly
 
 ## Bilinear Interpolation
 
-Bilinear interpolation extends linear interpolation to two-dimensional gridded data. For a query point $(x, y)$ in the cell bounded by grid points $(x_i, y_j)$, $(x_{i+1}, y_j)$, $(x_i, y_{j+1})$, $(x_{i+1}, y_{j+1})$, the interpolated value is computed by performing linear interpolation twice — first along one axis, then along the other:
+Bilinear interpolation extends linear interpolation to two-dimensional gridded data. For a query point $(x, y)$ in the cell bounded by grid points $(x_i, y_j)$, $(x_{i+1}, y_j)$, $(x_i, y_{j+1})$, $(x_{i+1}, y_{j+1})$, the interpolated value is computed by performing linear interpolation twice, first along one axis, then along the other:
 
 ```math
 z(x, y) = (1-t)(1-u) \cdot z_{i,j} + t(1-u) \cdot z_{i+1,j} + t \cdot u \cdot z_{i+1,j+1} + (1-t) \cdot u \cdot z_{i,j+1}
@@ -203,15 +226,13 @@ var bilinear = new Bilinear(xGrid, yGrid, zGrid);
 double z = bilinear.Interpolate(0.5, 0.5);
 Console.WriteLine($"z(0.5, 0.5) = {z:F2}");
 
-// Multiple points (loop over individual point pairs)
+// Multiple point pairs (x1[i], x2[i]) in one call
 double[] xNew = { 0.5, 1.5 };
 double[] yNew = { 0.5, 1.5 };
+double[] zNew = bilinear.Interpolate(xNew, yNew);
 
 for (int i = 0; i < xNew.Length; i++)
-{
-    double zi = bilinear.Interpolate(xNew[i], yNew[i]);
-    Console.WriteLine($"z({xNew[i]}, {yNew[i]}) = {zi:F2}");
-}
+    Console.WriteLine($"z({xNew[i]}, {yNew[i]}) = {zNew[i]:F2}");
 ```
 
 Like the `Linear` class, `Bilinear` supports coordinate transforms (`X1Transform`, `X2Transform`, `YTransform`) for log-linear or probability-scale interpolation in 2D.
@@ -221,6 +242,71 @@ Like the `Linear` class, `Bilinear` supports coordinate transforms (`X1Transform
 - Terrain elevation maps
 - Temperature/pressure fields
 - Geographic data
+
+## Ordered Paired Data
+
+`OrderedPairedData` is an editable list of `Ordinate` (x, y) pairs with declared sort orders on both axes. `IsValid` reports whether the pairs satisfy those orders. `GetYFromX` and `GetXFromY` interpolate linearly in either direction, with the same transforms as `Linear`, and return the end value outside the table unless extrapolation is requested.
+
+```cs
+using Numerics.Data;
+
+// Nondecreasing curve: strict on x, not strict on y
+var curve = new OrderedPairedData(
+    new double[] { 0, 1, 2, 3 },
+    new double[] { 0.0, 0.4, 0.4, 1.0 },
+    true, SortOrder.Ascending, false, SortOrder.Ascending);
+
+Console.WriteLine(curve.IsValid);          // True
+Console.WriteLine(curve.GetYFromX(2.5));   // 0.7
+Console.WriteLine(curve.GetXFromY(0.7));   // 2.5
+Console.WriteLine(curve.GetXFromY(0.4));   // 2: the right end of the flat stretch
+```
+
+On a flat stretch the inverse lookup `GetXFromY` has no unique answer. With the default smart search it returns the right end of an interior flat stretch, but the left end of a flat stretch at the start of the table; with `UseSmartSearch = false` the result can depend on where the previous search stopped. Do not rely on a particular end of a tied run.
+
+`Clone` copies the ordinates and validates the whole collection again. For fan-out of a curve that is already validated, for example one copy per Monte Carlo worker, `CloneWithoutValidation` copies the ordinates in one array copy and keeps the source's `IsValid` state:
+
+```cs
+var copy = curve.CloneWithoutValidation();
+copy.Add(new Ordinate(4, 1.0));   // edits do not affect the source
+Console.WriteLine($"{curve.Count} {copy.Count} {copy.IsValid}");   // 4 5 True
+```
+
+Every ordinate must be finite for `IsValid` to be true, including the last ordinate.
+
+### Uncertain Paired Data
+
+`UncertainOrderedPairedData` holds an x value and a distribution of y at each ordinate. `CurveSample(p)` returns the `OrderedPairedData` curve at non-exceedance probability `p`. `IsValid` checks each pair of neighbors at three probes: the lower percentile (1e-5, or 0.05 for PERT percentile distributions), the mean, and the upper percentile. `GetErrors` reports a message for each probe that fails.
+
+If curves will be sampled deeper in the tails than those probes, set `ValidationTailProbability` to add a probe pair at `p` and `1 - p`. The default, NaN, adds none.
+
+```cs
+using Numerics.Distributions;
+
+var envelope = new UncertainOrderedPairedData(
+    new double[] { 0, 1 },
+    new UnivariateDistributionBase[] { new Normal(0, 1), new Normal(4.6, 0.1) },
+    true, SortOrder.Ascending, true, SortOrder.Ascending, UnivariateDistributionType.Normal);
+
+Console.WriteLine(envelope.IsValid);                          // True
+Console.WriteLine(envelope.CurveSample(1 - 1e-12).IsValid);   // False: the curves cross deep in the tail
+
+envelope.ValidationTailProbability = 1e-12;
+Console.WriteLine(envelope.IsValid);                          // False
+```
+
+For one pair of neighbors, `UncertainOrdinate.OrdinateValid` and `OrdinateErrors` take the same probe as a trailing `tailProbability` argument. They run the standard checks first and then compare the two ordinates at `p` and `1 - p`; NaN adds no probe, and any other value outside (0, 0.5) throws `ArgumentOutOfRangeException`.
+
+```cs
+UncertainOrdinate first = envelope[0], second = envelope[1];
+bool valid = first.OrdinateValid(second, true, true, SortOrder.Ascending, SortOrder.Ascending,
+    compareOrdinateIsNext: true, allowDifferentTypes: false, tailProbability: 1e-12);
+Console.WriteLine(valid);                                     // False
+List<string> errors = first.OrdinateErrors(second, true, true, SortOrder.Ascending, SortOrder.Ascending,
+    true, false, 1e-12);                                      // { "Y values must increase." }
+```
+
+`Validate` does nothing while `SuppressCollectionChanged` is true. After a batch of suppressed edits, clear the flag and call `Validate()`.
 
 ## Practical Examples
 
@@ -286,7 +372,7 @@ Console.WriteLine("\nLinear connects with straight line");
 Console.WriteLine("Spline creates smooth curve (may overshoot)");
 ```
 
-Note the spline may produce values outside the range of the bracketing data points due to the smoothness constraint. For data that must remain monotonic, this overshoot can be problematic — in such cases, consider using linear interpolation instead.
+Note the spline may produce values outside the range of the bracketing data points due to the smoothness constraint. For data that must remain monotonic, this overshoot can be problematic; in such cases, consider using linear interpolation instead.
 
 ### Example 4: 2D Surface Interpolation
 
@@ -322,9 +408,9 @@ for (double t = 0; t <= 1; t += 0.2)
 ## Best Practices
 
 1. **Data spacing**: Interpolation works best with reasonably uniform spacing. Highly irregular spacing can lead to large errors in some subintervals
-2. **Extrapolation**: Avoid extrapolating beyond data range — splines and polynomials are especially unreliable outside the data bounds. The `Linear` class returns boundary values; the `Bilinear` class falls back to 1D interpolation at edges
+2. **Extrapolation**: Avoid extrapolating beyond data range; splines and polynomials are especially unreliable outside the data bounds. The `Linear` class returns boundary values; the `Bilinear` class falls back to 1D interpolation at edges
 3. **Smoothness**: Use splines for smooth physical phenomena ($C^2$ continuity), linear for piecewise trends or noisy data ($C^0$ continuity with no overshooting)
-4. **Outliers**: Check for data errors before interpolating — splines will faithfully pass through outliers
+4. **Outliers**: Check for data errors before interpolating; splines will faithfully pass through outliers
 5. **Monotonicity**: Cubic splines do not preserve monotonicity of the data. If your data should be monotonic (e.g., a CDF or rating curve), verify the interpolant doesn't violate this
 6. **Periodic data**: Consider Fourier or trigonometric interpolation for periodic signals
 
@@ -342,7 +428,7 @@ for (double t = 0; t <= 1; t += 0.2)
 
 ## Common Pitfalls
 
-1. **Runge's phenomenon**: High-degree polynomials ($>5$) oscillate wildly near interval boundaries — use splines instead
+1. **Runge's phenomenon**: High-degree polynomials ($>5$) oscillate wildly near interval boundaries; use splines instead
 2. **Extrapolation**: Results outside the data range are unreliable for all methods
 3. **Natural boundary conditions**: The zero-curvature constraint at endpoints can cause the spline to flatten near the boundaries, which may be physically inappropriate
 4. **Monotonicity violation**: Cubic splines can introduce local extrema between data points, violating monotonicity

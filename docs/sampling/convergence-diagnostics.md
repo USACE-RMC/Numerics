@@ -186,6 +186,7 @@ The single-series overload treats the input as one chain and splits it into two 
 ```cs
 // Compute ESS for all parameters across chains
 double[] essValues = MCMCDiagnostics.EffectiveSampleSize(chains, out double[][,] avgACF);
+// avgACF[i] is 51 x 2: column 0 is the lag 0..50, column 1 the chain-averaged autocorrelation
 
 Console.WriteLine("Effective Sample Size by Parameter:");
 for (int i = 0; i < essValues.Length; i++)
@@ -737,4 +738,4 @@ while (rhat.Max() > 1.01 || ess.Min() < 200)
 
 ---
 
-[← Previous: MCMC Methods](mcmc.md) | [Back to Index](../index.md)
+[← Previous: MCMC Methods](mcmc.md) | [Back to Index](../index.md) | [Next: Bootstrap →](bootstrap.md)

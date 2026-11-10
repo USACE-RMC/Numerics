@@ -18,6 +18,8 @@ All hypothesis tests in ***Numerics*** return **p-values**, not test statistics.
 
 The t-test compares sample means using the **t-statistic**, which measures how many standard errors the observed mean is from the hypothesized value. Under the null hypothesis, this statistic follows a Student's t-distribution.
 
+Every t-based p-value in the library (the four t-tests below, `LinearTrendTest` and the coefficient p-values of `LinearRegression.Summary`) is the two-sided tail $P(|T_\nu| \ge |t|) = I_{\nu/(\nu + t^2)}(\nu/2, 1/2)$, evaluated directly with the regularized incomplete beta function, so very small p-values keep their relative accuracy instead of flooring near $10^{-16}$.
+
 ### One-Sample t-Test
 
 Tests if the sample mean differs from a hypothesized population mean. The test statistic is:
@@ -161,7 +163,13 @@ else
 
 ### F-Test for Nested Models
 
-Compares restricted and full regression models:
+Compares restricted and full regression models fitted to the same data, the restricted model nested in the full one:
+
+```math
+F = \frac{(SSE_R - SSE_F) / (df_R - df_F)}{SSE_F / df_F}
+```
+
+where $df_R > df_F$ are the residual degrees of freedom. The p-value is the one-sided upper tail $P(F_{df_R - df_F,\, df_F} > F)$, as in R's `anova` for nested linear models; a statistic of zero or less gives 1.
 
 ```cs
 // SSE values from model fitting
@@ -193,7 +201,7 @@ Tests if data follows a normal distribution by measuring departures from the ske
 JB = \frac{n}{6}\left(S^2 + \frac{K^2}{4}\right)
 ```
 
-where $S$ is the sample skewness and $K$ is the sample excess kurtosis. Under $H_0$, $JB \sim \chi^2_2$ asymptotically.
+where $S = m_3 / m_2^{3/2}$ is the moment skewness and $K = m_4 / m_2^2 - 3$ the moment excess kurtosis, with $m_k = \frac{1}{n}\sum (x_i - \bar{x})^k$ (not the bias-corrected estimators), as defined by Jarque and Bera [[3]](#3) and used by R's `moments::jarque.test` and `scipy.stats.jarque_bera`. Under $H_0$, $JB \sim \chi^2_2$ asymptotically.
 
 ```cs
 double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
@@ -297,6 +305,25 @@ else
 - H₀: Distributions are equal
 - H₁: Distributions differ
 
+### Two-Sample Kolmogorov-Smirnov Statistic
+
+`HypothesisTests.TwoSampleKolmogorovSmirnov` (namespace `Numerics.Data.Statistics`) returns the exact two-sample statistic D = sup |F1(t) - F2(t)| between the empirical distribution functions of two samples. It returns the distance only, with no p-value. Both samples must be nonempty, finite and already **sorted ascending**; the method checks the order and throws an `ArgumentException` instead of sorting, so a caller holding sorted data pays no sort.
+
+```cs
+using System;
+using Numerics.Data.Statistics;
+
+double[] first = { 1, 1, 2, 2, 3 };
+double[] second = { 1, 2, 2, 2, 5, 6 };
+Array.Sort(first);   // required: the inputs must be sorted ascending
+Array.Sort(second);
+
+double d = HypothesisTests.TwoSampleKolmogorovSmirnov(first, second);
+Console.WriteLine($"D = {d:F4}");   // D = 0.3333
+```
+
+The sweep advances both distributions through every tied copy of a value before it compares the gap, so ties within and across the samples count as single jumps and D is exact for discrete data too [[7]](#7). The gap is tracked in 64-bit integers as |i n2 - j n1|, where i and j count the values of each sample at or below the current value, and the maximum is divided by n1 n2 once, so D is the correctly rounded rational whenever n1 n2 <= 2^53 (beyond that it is within two ulps). This is the per-bin statistic the PAWN sensitivity index (`GlobalSensitivity.Pawn`) uses. The value equals `scipy.stats.ks_2samp(first, second).statistic` where scipy rounds the statistic from its integer count (its exact mode in scipy 1.17); a statistic formed as the floating-point difference i/n1 - j/n2 can differ by an ulp or so.
+
 ## Trend Tests
 
 ### Mann-Kendall Trend Test
@@ -349,25 +376,79 @@ else
     Console.WriteLine("  Result: No significant linear trend");
 ```
 
-## Unimodality Test
+## Unimodality Tests
 
-Tests if distribution has a single peak using Gaussian Mixture Model comparison:
+Two tests address different questions about the shape of a sample. The Gaussian mixture test asks whether the data are better described by one normal component or by a mixture of two. Hartigan's dip test asks whether the distribution has a single mode, whatever its shape.
+
+### Gaussian Mixture Likelihood-Ratio Test
+
+`UnimodalityTest` fits one- and two-component Gaussian mixtures by expectation-maximization and forms the likelihood-ratio statistic
+
+```math
+T = 2\left(\log \hat{L}_2 - \log \hat{L}_1\right)
+```
+
+The default p-value refers $T$ to a chi-square distribution with 3 degrees of freedom, the number of extra parameters (a mean, a variance and a weight). The test suits a check of normal-versus-mixture structure, for example a flood record that combines two generating mechanisms. Two properties affect how its p-value is read:
+
+- The chi-square reference is an approximation. Under a single Gaussian the second component is not identifiable, so standard likelihood-ratio theory does not apply exactly, and the test rejects more often than the nominal level at small samples.
+- Its alternative is "two Gaussian components", not "two modes". A skewed or heavy-tailed unimodal sample, such as lognormal flows, is often fitted better by two Gaussians, so a small p-value means "not a single Gaussian" rather than "more than one mode".
+
+For a calibrated p-value at any sample size, pass a number of bootstrap realizations. The null distribution of $T$ is then simulated from the fitted single Gaussian (McLachlan [[6]](#6)), and the p-value is $(1 + \#\{T_b \ge T\})/(1 + B)$. The cost is about $2B$ mixture fits.
 
 ```cs
-double[] data = { 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10 };
+using Numerics.Data.Statistics;
 
-// Requires sample size ≥ 10
-// Returns the p-value (likelihood ratio test with chi-squared df=3)
-double pValue = HypothesisTests.UnimodalityTest(data);
+double[] data = { 3.8, 3.9, 4.0, 3.9, 4.0, 4.1, 4.0, 3.8, 3.9, 4.0, 4.1, 4.0, 3.9, 4.0, 4.0,
+                  4.3, 4.4, 4.4, 4.5, 4.4, 4.3, 4.4, 4.5, 4.4, 4.3, 4.4, 4.4, 4.5, 4.4, 4.3 };
 
-Console.WriteLine($"Unimodality test:");
-Console.WriteLine($"  p-value: {pValue:F4}");
+// Requires at least 10 values
+double pChiSquare = HypothesisTests.UnimodalityTest(data);                                   // chi-square(3) approximation
+double pBootstrap = HypothesisTests.UnimodalityTest(data, realizations: 999, seed: 12345);   // parametric bootstrap
 
-if (pValue < 0.05)
-    Console.WriteLine("  Result: Evidence of multimodality (bimodal or more)");
-else
-    Console.WriteLine("  Result: Cannot reject unimodality");
+Console.WriteLine($"Gaussian mixture test: chi-square p = {pChiSquare:E2}, bootstrap p = {pBootstrap:F4}");
 ```
+
+### Hartigan's Dip Test
+
+The dip statistic [[4]](#4) is the largest distance between the empirical distribution function $F_n$ and the closest unimodal distribution function:
+
+```math
+D = \inf_{G \,\in\, \mathcal{U}} \; \sup_x \left| F_n(x) - G(x) \right|
+```
+
+where $\mathcal{U}$ is the set of unimodal distribution functions. `HartiganDip` computes $D$ with algorithm AS 217 [[5]](#5); values agree with R's `diptest::dip`. $D$ lies between $1/(2n)$ and $1/4$, and a constant or perfectly unimodal sample has the minimum $1/(2n)$.
+
+`HartiganDipTest` returns the p-value. The uniform distribution is the least favorable unimodal null, so the p-value is the fraction of simulated uniform samples of the same size whose dip is at least the observed one, as in R's `dip.test(x, simulate.p.value = TRUE)`. The default of 2,000 realizations gives a Monte Carlo standard error of about $\sqrt{p(1-p)/2000}$; the seed makes the result reproducible. Samples of three or fewer values return 1.
+
+```cs
+using Numerics.Data.Statistics;
+
+double[] sample = { -2.1, -1.7, -1.5, -1.2, -1.1, -0.9, -0.6, -0.4, -0.3, -0.1, 0.2, 0.4, 0.6, 0.9, 1.3,
+                    4.1, 4.4, 4.6, 4.8, 5.0, 5.1, 5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.0, 7.4, 8.0 };
+
+double dip = HypothesisTests.HartiganDip(sample);              // 0.1071 (R diptest: 0.10710)
+double pDip = HypothesisTests.HartiganDipTest(sample);         // 0.0025 (R dip.test: 0.0047; Monte Carlo SE about 0.0015)
+
+Console.WriteLine($"Dip = {dip:F4}, p = {pDip:F4}");
+```
+
+Because the uniform null is least favorable, the dip test is conservative for peaked unimodal data and needs well-separated modes or larger samples to detect bimodality.
+
+### Choosing Between Them
+
+The table shows rejection rates at the 5% level from 200 simulated samples per case:
+
+| Sample | n | Mixture test, chi-square | Mixture test, bootstrap | Dip test |
+|---|---|---|---|---|
+| Normal | 30 | 17% | 4% | 0% |
+| Normal | 100 | 11% | 4.5% | 0% |
+| Lognormal ($\sigma$ = 0.6) | 30 | 85% | 47% | 0% |
+| Lognormal ($\sigma$ = 0.6) | 100 | 100% | 99.5% | 0% |
+| Two normals, means 3 SD apart | 30 | 41% | 10.5% | 4% |
+| Two normals, means 3 SD apart | 100 | 89% | 70% | 12.5% |
+
+- To check whether a sample looks like one normal population or a mixture of two, use `UnimodalityTest`, preferably with bootstrap realizations when $n$ is small.
+- To check for more than one mode without assuming a distribution shape, use `HartiganDipTest`.
 
 ## Hydrological Applications
 
@@ -531,7 +612,8 @@ else
 | Distribution difference? | `MannWhitneyTest` | Non-parametric, rank-based |
 | Monotonic trend? | `MannKendallTest` | Non-parametric trend test |
 | Linear trend? | `LinearTrendTest` | Parametric trend test |
-| Unimodal distribution? | `UnimodalityTest` | GMM-based comparison |
+| One Gaussian or a two-component mixture? | `UnimodalityTest` | Likelihood ratio; bootstrap option for calibrated p-values |
+| More than one mode? | `HartiganDipTest` | Hartigan's dip, no shape assumption |
 
 ## Effect Size
 
@@ -543,19 +625,19 @@ A p-value tells you whether an effect is statistically detectable, but not wheth
 d = \frac{\bar{x}_1 - \bar{x}_2}{s_p}
 ```
 
-where $s_p$ is the pooled standard deviation. Conventional thresholds: $|d| < 0.2$ is small, $0.2$–$0.8$ is medium, $> 0.8$ is large. With a large enough sample size, even a tiny $d$ (e.g., 0.01) will produce a significant p-value — but the effect may be meaningless in practice.
+where $s_p$ is the pooled standard deviation. Conventional thresholds: $|d| < 0.2$ is small, $0.2$–$0.8$ is medium, $> 0.8$ is large. With a large enough sample size, even a tiny $d$ (e.g., 0.01) will produce a significant p-value, but the effect may be meaningless in practice.
 
 For trend tests, the **Kendall's tau** correlation (which can be computed from the Mann-Kendall $S$ statistic) serves as a non-parametric effect size measure: $\tau = S / \binom{n}{2}$.
 
 ## Best Practices
 
-1. **Choose significance level a priori** — Typically $\alpha = 0.05$, but consider $\alpha = 0.10$ for exploratory analysis
-2. **Check test assumptions** — Many tests assume normality or independence
-3. **Use non-parametric alternatives** — When assumptions are violated (e.g., Mann-Whitney instead of t-test)
-4. **Report p-values, not just decisions** — $p = 0.049$ and $p = 0.051$ are essentially equivalent
-5. **Consider multiple testing corrections** — When performing $k$ simultaneous tests, use the Bonferroni correction: reject at $\alpha/k$ instead of $\alpha$
-6. **Report effect sizes** — Statistical significance does not imply practical significance. Always report Cohen's d or an equivalent alongside p-values
-7. **Visualize data** — Plots often reveal more than hypothesis tests
+1. **Choose significance level a priori**: Typically $\alpha = 0.05$, but consider $\alpha = 0.10$ for exploratory analysis
+2. **Check test assumptions**: Many tests assume normality or independence
+3. **Use non-parametric alternatives**: When assumptions are violated (e.g., Mann-Whitney instead of t-test)
+4. **Report p-values, not just decisions**: $p = 0.049$ and $p = 0.051$ are essentially equivalent
+5. **Consider multiple testing corrections**: When performing $k$ simultaneous tests, use the Bonferroni correction: reject at $\alpha/k$ instead of $\alpha$
+6. **Report effect sizes**: Statistical significance does not imply practical significance. Always report Cohen's d or an equivalent alongside p-values
+7. **Visualize data**: Plots often reveal more than hypothesis tests
 
 ## Important Notes
 
@@ -571,6 +653,16 @@ For trend tests, the **Kendall's tau** correlation (which can be computed from t
 <a id="1">[1]</a> Helsel, D. R., Hirsch, R. M., Ryberg, K. R., Archfield, S. A., & Gilroy, E. J. (2020). *Statistical Methods in Water Resources*. U.S. Geological Survey Techniques and Methods, Book 4, Chapter A3.
 
 <a id="2">[2]</a> Hirsch, R. M., Slack, J. R., & Smith, R. A. (1982). Techniques of trend analysis for monthly water quality data. *Water Resources Research*, 18(1), 107-121.
+
+<a id="3">[3]</a> Jarque, C. M., & Bera, A. K. (1987). A test for normality of observations and regression residuals. *International Statistical Review*, 55(2), 163-172.
+
+<a id="4">[4]</a> Hartigan, J. A., & Hartigan, P. M. (1985). The dip test of unimodality. *The Annals of Statistics*, 13(1), 70-84.
+
+<a id="5">[5]</a> Hartigan, P. M. (1985). Algorithm AS 217: Computation of the dip statistic to test for unimodality. *Journal of the Royal Statistical Society: Series C (Applied Statistics)*, 34, 320-325.
+
+<a id="6">[6]</a> McLachlan, G. J. (1987). On bootstrapping the likelihood ratio test statistic for the number of components in a normal mixture. *Journal of the Royal Statistical Society: Series C (Applied Statistics)*, 36(3), 318-324.
+
+<a id="7">[7]</a> Conover, W. J. (1999). *Practical Nonparametric Statistics* (3rd ed.). Wiley.
 
 ---
 

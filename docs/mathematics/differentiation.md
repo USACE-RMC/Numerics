@@ -18,7 +18,7 @@ where $x$ is the input point and $h$ represents a small change in $x$. In ***Num
 h = \epsilon^{1/2} \cdot (1 + |x|)
 ```
 
-where $\epsilon$ is double precision machine epsilon. The $(1 + |x|)$ term scales the step size relative to the magnitude of the input, ensuring that the relative step size is appropriate regardless of the scale of $x$. The step size $h$ can also be user-defined.
+where $\epsilon = 2^{-53} \approx 1.11 \times 10^{-16}$ is the double-precision unit roundoff (`Tools.DoubleMachineEpsilon`), so $h \approx 1.05 \times 10^{-8} (1 + |x|)$. The $(1 + |x|)$ term scales the step size relative to the magnitude of the input, ensuring that the relative step size is appropriate regardless of the scale of $x$. The step size $h$ can also be user-defined.
 
 For example, consider the simple function:
 
@@ -77,7 +77,7 @@ The forward difference approximation uses:
 ```
 
 ```cs
-double dFdx = NumericalDerivative.ForwardDifference(FX, 2); // 12.000001490104875
+double dFdx = NumericalDerivative.ForwardDifference(FX, 2); // 12.00000013180352
 ```
 
 This method is useful when you can only evaluate the function ahead of the point, but it's less accurate than the central difference method.
@@ -91,7 +91,7 @@ The backward difference approximation uses:
 ```
 
 ```cs
-double dFdx = NumericalDerivative.BackwardDifference(FX, 2); // 11.999998508229537
+double dFdx = NumericalDerivative.BackwardDifference(FX, 2); // 11.999999766530832
 ```
 
 This method is useful when you can only evaluate the function behind the point.
@@ -109,12 +109,12 @@ double dFdx = NumericalDerivative.CentralDifference(FX, 2); // 11.99999994916717
 The ***Numerics*** library also provides Ridder's method for computing the numerical derivative, which can be more accurate than the two-point method in some cases. This method also outputs an estimate of the error in the derivative:
 
 ```cs
-double dFdx = NumericalDerivative.RiddersMethod(FX, 2, out var err); // 11.99999994392223
+double dFdx = NumericalDerivative.RiddersMethod(FX, 2, out var err); // 11.999999999999968
 Console.WriteLine($"Derivative: {dFdx}");
 Console.WriteLine($"Estimated error: {err}");
 ```
 
-Ridder's method uses Richardson extrapolation to refine the estimate by evaluating the derivative at multiple step sizes and extrapolating to zero step size.
+Ridder's method uses Richardson extrapolation to refine the estimate by evaluating the derivative at multiple step sizes and extrapolating to zero step size. Its default initial step is the large step $0.1 (1 + |x|)$, as Press et al. recommend: the tableau of up to ten central differences, each step 1.4 times smaller, removes the truncation error while the steps stay far above the rounding floor, so the derivative of $e^x$ at 0.7 is accurate to about $5 \times 10^{-15}$ relative (a small starting step leaves about $10^{-8}$). Pass a smaller `stepSize` when the function is not smooth over that scale, for example close to a singularity or the edge of its domain. When the default step leaves the domain of the function, so that a central difference of the tableau is NaN or infinite, the step is halved (up to 30 times) until the whole tableau is finite: `RiddersMethod(Math.Log, 0.05, out err)` returns 19.999999999999808, where the default step 0.105 would evaluate the logarithm of a negative number. A tableau that is finite throughout is used as it is, and so is a `stepSize` you pass.
 
 ### Custom Step Size
 
@@ -203,7 +203,7 @@ And then compute the gradient:
 
 ```cs
 double[] gradient = NumericalDerivative.Gradient(FXYZ, new double[] {2, 2, 2}); 
-// {12.000000019411923, 32.000000014301264, 79.999999754774166}
+// {12.000000000814163, 32.00000000722385, 80.00000003606004}
 
 Console.WriteLine($"∂f/∂x = {gradient[0]:F6}");
 Console.WriteLine($"∂f/∂y = {gradient[1]:F6}");
@@ -256,15 +256,15 @@ Now, to compute the Hessian in ***Numerics***, simply do the following:
 
 ```cs
 double[,] hessian = NumericalDerivative.Hessian(FXYZ, new double[] {2, 2, 2}); 
-// [0,0] = 12.000009765258449
-// [0,1] = 8.5443864603330376E-06
-// [0,2] = 0
-// [1,0] = 8.5443864603330376E-06
-// [1,1] = 48.000004883487954
-// [1,2] = 0
-// [2,0] = 0
-// [2,1] = 0
-// [2,2] = 159.99999349326262
+// [0,0] = 11.999999966538708
+// [0,1] = -1.973729821554808E-08
+// [0,2] = 1.973729821554808E-08
+// [1,0] = -1.973729821554808E-08
+// [1,1] = 48.00000033984998
+// [1,2] = 1.973729821554808E-08
+// [2,0] = 1.973729821554808E-08
+// [2,1] = 1.973729821554808E-08
+// [2,2] = 160.0000020275908
 
 Console.WriteLine("Hessian matrix:");
 for (int i = 0; i < 3; i++)
@@ -277,7 +277,7 @@ for (int i = 0; i < 3; i++)
 }
 ```
 
-The small off-diagonal elements (on the order of $10^{-6}$) are numerical errors and should be zero for this particular function.
+The small off-diagonal elements (on the order of $10^{-8}$) are numerical errors and should be zero for this particular function.
 
 ### Example: Function with Interacting Variables
 
@@ -325,10 +325,10 @@ Now, compute the Hessian using ***Numerics***:
 
 ```cs
 double[,] hessian = NumericalDerivative.Hessian(FXY, new double[] {1, 2}); 
-// [0,0] = 5.9999414101667655
-// [0,1] = -2.000001627543075
-// [1,0] = -2.000001627543075
-// [1,1] = -480.00004883487958
+// [0,0] = 6.00000014117218
+// [0,1] = -1.9999999878447583
+// [1,0] = -1.9999999878447583
+// [1,1] = -480.0000112934191
 
 Console.WriteLine("Hessian matrix:");
 Console.WriteLine($"[{hessian[0,0],10:F4}  {hessian[0,1],10:F4}]");
@@ -391,10 +391,10 @@ The `CalculateStepSize` method computes an appropriate step size for numerical d
 
 ```cs
 double h = NumericalDerivative.CalculateStepSize(x: 2.0, order: 1); 
-// Returns approximately 1.49e-08 for first derivative
+// Returns approximately 3.16e-08 for first derivative: 1.05e-8 * (1 + 2)
 
 double h2 = NumericalDerivative.CalculateStepSize(x: 2.0, order: 2); 
-// Returns approximately 3.45e-06 for second derivative
+// Returns approximately 1.44e-05 for second derivative: 4.81e-6 * (1 + 2)
 ```
 
 The step size is calculated as:
@@ -403,7 +403,7 @@ The step size is calculated as:
 h = \epsilon^{1/(1+\text{order})} \cdot (1 + |x|)
 ```
 
-where $\epsilon$ is machine epsilon. The $(1 + |x|)$ term scales the step size relative to the magnitude of the input, ensuring an appropriate relative step size regardless of the scale of $x$.
+where $\epsilon = 2^{-53} \approx 1.11 \times 10^{-16}$ is the double-precision unit roundoff. The $(1 + |x|)$ term scales the step size relative to the magnitude of the input, ensuring an appropriate relative step size regardless of the scale of $x$.
 
 ## Best Practices
 
@@ -418,6 +418,8 @@ where $\epsilon$ is machine epsilon. The $(1 + |x|)$ term scales the step size r
 5. **Check for Symmetry**: For Hessian matrices, check that the result is symmetric (within numerical tolerance). Significant asymmetry indicates numerical issues.
 
 6. **Scale Considerations**: For problems with variables at very different scales, consider normalizing variables before computing derivatives.
+
+7. **Failed Evaluations**: When the function throws inside `Gradient`, `Jacobian` or `Hessian` with bounds, the step is halved and the evaluation retried, and a component that never succeeds is set to zero. Cancellation (`OperationCanceledException`) and an optimizer's evaluation or iteration budget stop are not retried; they propagate to the caller, so optimizers that use these derivatives stop at exactly their evaluation budget.
 
 ## Accuracy Considerations
 

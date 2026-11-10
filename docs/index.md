@@ -138,6 +138,7 @@ var results = sampler.Output;
 | [Linear Algebra](mathematics/linear-algebra.md) | Matrix and vector operations, decompositions |
 | [Special Functions](mathematics/special-functions.md) | Gamma, Beta, Error functions |
 | [ODE Solvers](mathematics/ode-solvers.md) | Runge-Kutta methods for initial value problems |
+| [Fourier Methods](mathematics/fourier-methods.md) | FFT of any length, convolution, correlation and autocorrelation |
 | **Data** | |
 | [Interpolation](data/interpolation.md) | Interpolation methods and splines |
 | [Linear Regression](data/regression.md) | Linear regression modeling |
@@ -152,6 +153,7 @@ var results = sampler.Output;
 | [Uncertainty Analysis](distributions/uncertainty-analysis.md) | Bootstrap and confidence intervals |
 | [Copulas](distributions/copulas.md) | Dependency modeling with copulas |
 | [Multivariate Distributions](distributions/multivariate.md) | Multivariate Normal, Student-t, Dirichlet, Multinomial |
+| [Regional Frequency Analysis](distributions/regional.md) | Hosking-Wallis discordancy, heterogeneity, goodness of fit and regional growth curves |
 | **Functions** | |
 | [Univariate Functions](functions/index.md) | Uncertain univariate function forms, composition, posterior ensembles, and link functions |
 | **Machine Learning** | |
@@ -201,6 +203,15 @@ This library is developed and maintained by the U.S. Army Corps of Engineers Ris
 ## License
 
 This software is provided under the Zero-Clause BSD (0BSD) license. See the LICENSE file for complete terms.
+
+### Third-Party Code
+
+Some methods are translations of code released under other permissive licenses. Their copyright and license notices are kept in the source files.
+
+| Component | Source | License |
+|---|---|---|
+| `LBFGSB` | SciPy's C translation (scipy/optimize/__lbfgsb.c, Copyright (C) 2024 SciPy developers) of L-BFGS-B 3.0 by C. Zhu, R. Byrd, P. Lu, J. Nocedal and J. L. Morales | 3-clause BSD (SciPy); New BSD License (L-BFGS-B 3.0) |
+| `MultivariateNormal.BivariateCDF` | Accord.NET, based on the work of Alan Genz | 3-clause BSD |
 
 ---
 

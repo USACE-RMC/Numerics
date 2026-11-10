@@ -36,6 +36,8 @@ Taking the logarithm, which is how the Numerics library works internally:
 
 The `LogLikelihoodFunction` delegate in Numerics should return the sum $\log \pi(\theta) + \log L(y \mid \theta)$, i.e., the unnormalized log-posterior.
 
+The samplers never add the prior density themselves. `PriorDistributions` is used only to reject or clamp positions outside the prior support and to draw the initial chain states. A delegate that returns the data log-likelihood alone therefore samples the posterior under a flat prior on that support, and a delegate that adds the prior twice samples $\pi(\theta)^2 L(y \mid \theta)$. The same contract holds for `SNIS` in both of its modes.
+
 ### Detailed Balance
 
 A Markov chain with transition kernel $T(\theta \to \theta')$ satisfies **detailed balance** with respect to $\pi$ if:
@@ -91,6 +93,15 @@ List<ParameterSet>[] MarkovChains // Raw MCMC chains
 ParameterSet MAP                  // Maximum a posteriori estimate
 ```
 
+### Initialization
+
+`Initialize` selects how the chains start: `Randomize` (the default) draws a Latin hypercube sample from
+the priors and starts the chains at its best points; `MAP` first finds the maximum a posteriori estimate
+with differential evolution and draws the starting points around it; `UserDefined` continues from the last
+states of the existing chains. If MAP initialization fails, for example because the Hessian at the optimum
+cannot be inverted, `MAPInitializationFailed` is set and that run starts exactly as `Randomize` would.
+`Initialize` itself is left set to `MAP`, so the next run on the same instance tries MAP again.
+
 ### How much work a run actually does
 
 `Iterations` does not describe the work performed, and at the defaults it under-reports it by a factor
@@ -112,8 +123,8 @@ transitions per chain = (Iterations + ceil(OutputLength / NumberOfChains)) * Thi
 Every transition costs at least one log-likelihood evaluation, so 480,000 is a **floor** on the
 evaluation count of a default run, not a budget. A gradient-based sampler such as HMC or NUTS spends
 many likelihood and gradient evaluations per transition, and chain initialization adds more on top,
-so the real count can be far higher. Note that `WarmupIterations` is a *subset* of `Iterations`, not an addition to it —
-`ValidateSettings` rejects a warmup longer than half of `Iterations` — so it is already inside these
+so the real count can be far higher. Note that `WarmupIterations` is a *subset* of `Iterations`, not an addition to it
+(`ValidateSettings` rejects a warmup longer than half of `Iterations`), so it is already inside these
 figures and must not be added again.
 
 Two read-only properties report these directly, so a runtime estimate does not have to reproduce the
@@ -130,8 +141,8 @@ settings the sampler otherwise accepts.
 ### Thread safety of the likelihood
 
 `ParallelizeChains` defaults to `true`, which means `Sample()` advances all chains concurrently and
-every chain calls the **same** `LogLikelihoodFunction` delegate instance. The log-likelihood — and, for
-gradient-based samplers, the gradient — is therefore invoked from multiple threads at once and must be
+every chain calls the **same** `LogLikelihoodFunction` delegate instance. The log-likelihood (and, for
+gradient-based samplers, the gradient) is therefore invoked from multiple threads at once and must be
 thread-safe or stateless.
 
 A likelihood that closes over mutable state (an autodiff tape, a reused buffer or workspace, a native
@@ -142,9 +153,72 @@ corruption is silent: it shows up as an implausible posterior, not as an excepti
 sampler.ParallelizeChains = false;  // required if the likelihood is not thread-safe
 ```
 
-Setting it to `false` is the supported remedy and the only one. The delegates receive just the
-parameter vector and no chain index, so a callback cannot select a per-chain resource from inside
-itself.
+Setting it to `false` is the simplest remedy. To keep the chains parallel, give each chain its own
+resource and select it inside the callback with the static `MCMCSampler.CurrentChainIndex`. `Sample()`
+sets it on the thread that runs each chain's transitions, so it is `0` to `NumberOfChains - 1` inside a
+transition and `-1` everywhere else, including chain initialization and MAP estimation, which run
+serially before the chains start. Reading it does not change the draws.
+
+`SNIS` has one chain but evaluates its draws with `Parallel.For` under the same switch: with `ParallelizeChains = false` it evaluates them in order on the calling thread. The draws come from a matrix generated up front from `PRNGSeed`, so both settings give bit-identical output.
+
+```cs
+using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling.MCMC;
+
+int chains = 4;
+// One non-thread-safe workspace per chain, plus one (slot 0) for the serial initialization calls.
+var workspaces = new double[chains + 1][];
+for (int i = 0; i < workspaces.Length; i++) workspaces[i] = new double[2];
+
+LogLikelihood logPosterior = theta =>
+{
+    var work = workspaces[MCMCSampler.CurrentChainIndex + 1];
+    work[0] = theta[0] * theta[0];
+    work[1] = theta[1] * theta[1];
+    return -0.5 * (work[0] + work[1]);
+};
+
+var priors = new List<IUnivariateDistribution> { new Uniform(-10, 10), new Uniform(-10, 10) };
+var rwmh = new RWMH(priors, logPosterior, Matrix.Identity(2) * 0.5)
+{
+    NumberOfChains = chains,
+    ParallelizeChains = true
+};
+rwmh.Sample();
+Console.WriteLine($"Chain 0 recorded {rwmh.MarkovChains[0].Count} iterations.");
+```
+
+### Cancelling a run and reporting progress
+
+`ProgressChanged` reports progress as a fraction between 0 and 1, every `ProgressChangedRate` of the
+run. A run can be stopped in two ways: call `CancelSimulation()` from another thread while `Sample()` is
+running, or set `CancellationToken` before it starts. `Sample()` creates a new `CancellationTokenSource`
+each time it runs, so a source assigned beforehand is replaced; the `CancellationToken` property is the
+way to pass in a token you already own.
+
+Either way the run stops after the current recorded iteration of every chain (`ThinningInterval`
+transitions per chain), without throwing, and `MarkovChains` and `Output` keep what was completed.
+`SNIS` observes neither.
+
+```cs
+using System.Threading;
+using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling.MCMC;
+
+var priors = new List<IUnivariateDistribution> { new Uniform(-10, 10) };
+LogLikelihood logPosterior = theta => -0.5 * theta[0] * theta[0];
+
+using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+var sampler = new RWMH(priors, logPosterior, Matrix.Identity(1))
+{
+    CancellationToken = cancel.Token
+};
+sampler.ProgressChanged += (fraction, text) => Console.WriteLine($"Progress: {text}");
+sampler.Sample();
+Console.WriteLine($"Recorded {sampler.MarkovChains[0].Count} of {sampler.Iterations} iterations.");
+```
 
 ## Defining the Model
 
@@ -243,6 +317,8 @@ In log space, which is how the source code computes it:
 ```
 
 The proposal is accepted if $\log U \leq \log \alpha$, where $U \sim \text{Uniform}(0,1)$. If any proposed parameter falls outside its prior bounds, the proposal is immediately rejected without evaluating the log-likelihood.
+
+The proposal covariance must be symmetric positive-definite. With `Initialize = MAP` and a successful MAP estimate it is replaced by the MAP-derived covariance; otherwise `Sample()` throws an `ArgumentException` naming `ProposalSigma` before the first iteration if it cannot be factorized (an all-zero matrix, for example).
 
 The proposal covariance matrix $\Sigma$ must be provided by the user. A common starting point is a scaled identity matrix, but better performance is achieved when $\Sigma$ approximates the shape of the posterior (e.g., from a preliminary optimization).
 
@@ -564,7 +640,7 @@ The smoothed step size uses an exponential moving average with decay exponent $\
 \log \bar{\varepsilon}_m = m^{-\kappa} \log \varepsilon_m + (1 - m^{-\kappa}) \log \bar{\varepsilon}_{m-1}
 ```
 
-After warmup, the step size is fixed to $\exp(\log \bar{\varepsilon})$.
+After warmup, the step size is fixed to $\exp(\log \bar{\varepsilon})$, starting with the first sampling transition, before its trajectory is built.
 
 **Implementation details from `NUTS.cs`:**
 
@@ -614,6 +690,40 @@ Console.WriteLine($"Parameter 0 - Median: {results.ParameterResults[0].SummarySt
 - `stepSize`: Initial leapfrog step size (adapted during warmup)
 - `maxTreeDepth`: Maximum binary tree depth (default 10, caps trajectory at 2^10 = 1024 steps)
 - `gradientFunction`: Optional analytical gradient, provided as a constructor parameter only (not a settable property). If not provided, numerical finite differences are used.
+- `LogLikelihoodAndGradientFunction`: Optional settable function that returns the log-likelihood and its gradient together (see below).
+
+### One evaluation per leapfrog step
+
+Each leapfrog step evaluates the gradient at its end point, and the tree then needs the log-likelihood at the
+same point. With separate delegates that is two evaluations per step. Automatic-differentiation backends
+usually return both from one sweep, so `NUTS` accepts a combined function. When it is set, the sampler calls
+it in place of the gradient, keeps the returned value, and uses it as the leaf log-likelihood; the separate
+`LogLikelihoodFunction` is then only called to initialize the chains.
+
+The combined value must equal `LogLikelihoodFunction` at the same point, and the gradient its gradient.
+Under that contract the draws are bit for bit the same as with the separate delegates. Exceptions from the
+combined function propagate like gradient exceptions.
+
+```cs
+using Numerics.Distributions;
+using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Sampling.MCMC;
+
+double[] sd = { 0.5, 2.0 };
+double LogPosterior(IList<double> x) => -0.5 * (x[0] * x[0] / (sd[0] * sd[0]) + x[1] * x[1] / (sd[1] * sd[1]));
+Vector Gradient(IList<double> x) => new Vector(new[] { -x[0] / (sd[0] * sd[0]), -x[1] / (sd[1] * sd[1]) });
+
+var priors = new List<IUnivariateDistribution> { new Uniform(-20, 20), new Uniform(-20, 20) };
+var nuts = new NUTS(priors, theta => LogPosterior(theta), gradientFunction: Gradient)
+{
+    // One call returns both; in practice this wraps an AD backend's value-and-gradient routine.
+    LogLikelihoodAndGradientFunction = x => (LogPosterior(x), Gradient(x))
+};
+nuts.Sample();
+var x1 = nuts.Output.SelectMany(c => c).Select(p => p.Values[1]).ToArray();
+double mean = x1.Average();
+Console.WriteLine($"Posterior sd of x1: {Math.Sqrt(x1.Select(z => (z - mean) * (z - mean)).Average()):F2}");  // about 2
+```
 
 ## Gibbs Sampler
 
@@ -780,7 +890,7 @@ using Numerics.Sampling.MCMC;
 using Numerics.Data.Statistics;
 using System.Linq;
 
-// Tippecanoe River near Delphi, IN — 48 years of annual peak streamflow (cfs)
+// Tippecanoe River near Delphi, IN: 48 years of annual peak streamflow (cfs)
 // Source: Rao & Hamed (2000), Table 5.1.1
 double[] annualPeaks = {
     6290, 2700, 13100, 16900, 14600, 9600, 7740, 8490, 8130, 12000,
@@ -837,9 +947,10 @@ for (int i = 0; i < 2; i++)
                      $"{Statistics.Percentile(vals, 0.975):F1}]");
 }
 
-// Expected results (validated against rstan):
-//   μ:  mean ≈ 12664, sd ≈ 707
-//   σ:  mean ≈ 4844,  sd ≈ 519
+// Output with PRNGSeed = 12345:
+//   μ:  mean 12657.1, sd 695.2, 95% CI [11300.2, 14009.8]
+//   σ:  mean 4837.8,  sd 519.2, 95% CI [3959.6, 5996.5]
+// rstan gives μ ≈ 12664 (sd ≈ 707) and σ ≈ 4844 (sd ≈ 519); the two agree within Monte Carlo error.
 
 // MAP estimate
 Console.WriteLine($"\nMAP estimate: μ={sampler.MAP.Values[0]:F1}, σ={sampler.MAP.Values[1]:F1}");
@@ -1107,7 +1218,7 @@ var priors = new List<IUnivariateDistribution>
     new Uniform(0, 50)
 };
 
-// Log-likelihood function
+// Data log-likelihood only.
 // Note: use a lowercase name to avoid shadowing the LogLikelihood delegate type.
 LogLikelihood computeLogLikelihood = (double[] theta) =>
 {
@@ -1117,26 +1228,34 @@ LogLikelihood computeLogLikelihood = (double[] theta) =>
     return model.LogLikelihood(observations);
 };
 
-// Naive Monte Carlo (sample from priors)
-var snis = new SNIS(priors, computeLogLikelihood);
+// Full log-posterior: log-prior plus data log-likelihood.
+LogLikelihood computeLogPosterior = (double[] theta) =>
+    priors[0].LogPDF(theta[0]) + priors[1].LogPDF(theta[1]) + computeLogLikelihood(theta);
+
+// Naive Monte Carlo (sample from priors). Each draw is weighted by the
+// log-posterior minus the log-prior it was drawn from.
+var snis = new SNIS(priors, computeLogPosterior);
 snis.Iterations = 100000;
 snis.Sample();
 
-// With a Multivariate Normal proposal distribution (importance sampling)
+// With a Multivariate Normal proposal distribution (importance sampling).
+// Each draw is weighted by the log-posterior minus the proposal log-density.
 var proposal = new MultivariateNormal(
     new double[] { 5, 10 },   // mean vector
     new double[,] { { 4, 0 }, { 0, 25 } }  // covariance matrix
 );
-var snisIS = new SNIS(priors, computeLogLikelihood, proposal);
+var snisIS = new SNIS(priors, computeLogPosterior, proposal);
 snisIS.Iterations = 100000;
 snisIS.Sample();
 ```
 
 **Key differences from MCMC samplers:**
+- The delegate returns the full log-posterior, as for the MCMC samplers. Each draw is weighted by the delegate value minus the log-density it was drawn from: the joint prior without an importance distribution, or the proposal when one is supplied or built from the MAP estimate (`Initialize = MAP`).
+- The draws are sorted by their normalized weight and the output is resampled from the weight CDF at the Weibull plotting positions. `MAP` is the draw with the largest log-posterior.
 - Single chain only (`NumberOfChains` = 1)
-- No warmup or thinning — all samples contribute
+- No warmup or thinning: all samples contribute
 - Produces weighted samples (weights stored in `ParameterSet.Weight`)
-- No autocorrelation — samples are independent
+- No autocorrelation: samples are independent
 - Best for low-dimensional problems with informative proposals
 
 ---

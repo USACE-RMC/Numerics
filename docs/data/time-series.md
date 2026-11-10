@@ -35,6 +35,8 @@ var ts2 = new TimeSeries(TimeInterval.OneDay, start, end, fixedValue: 0.0);
 Console.WriteLine($"Created time series with {ts1.Count} daily values");
 ```
 
+The dates step from the start date and stop at the last one on or before the end date, so no ordinate falls after the end date. A monthly series from January 31 to June 30, 2020 has 6 ordinates, January 31 through June 29.
+
 ### Time Series from Data
 
 ```cs
@@ -50,6 +52,20 @@ for (int i = 0; i < ts.Count; i++)
     Console.WriteLine($"{ts[i].Index:yyyy-MM-dd}: {ts[i].Value:F1} cfs");
 }
 ```
+
+### Time Series from Dates as Ticks
+
+```cs
+// Explicit dates as DateTime.Ticks and their values, in one call (for example from an interop caller)
+long[] ticks = { new DateTime(2024, 1, 1).Ticks, new DateTime(2024, 1, 3).Ticks, new DateTime(2024, 1, 7).Ticks };
+double[] stage = { 4.2, double.NaN, 5.1 };
+var irregular = new TimeSeries(TimeInterval.Irregular, ticks, stage);
+
+// IndexTicksToArray and ValuesToArray give the two arrays back
+long[] sameTicks = irregular.IndexTicksToArray();
+```
+
+The ordinates are kept in the given order, the dates have unspecified kind, and each value is stored as given, so a NaN keeps its bits.
 
 ## Time Intervals
 
@@ -78,6 +94,16 @@ var hourlyData = new TimeSeries(TimeInterval.OneHour);
 var yearlyData = new TimeSeries(TimeInterval.OneYear);
 ```
 
+The constructors, `ShiftAllDates`, `FillMissingDates` and the resampling methods step from the previous date with `AddTimeInterval`. For month, quarter and year steps from a day after the 28th, the day of month settles on the shortest one met: a monthly series from January 31, 2020 runs January 31, February 29, March 29, April 29. To count each step from the start date instead, as pandas `DateOffset(months=k)` applied to the start, use `TimeSeries.AnchoredDates` and the ticks constructor:
+
+```cs
+// January 31, February 29, March 31, April 30 (2020)
+DateTime[] monthEnds = TimeSeries.AnchoredDates(new DateTime(2020, 1, 31), 4, TimeInterval.OneMonth);
+var anchored = new TimeSeries(TimeInterval.OneMonth, monthEnds.Select(d => d.Ticks).ToArray(), new double[] { 1, 2, 3, 4 });
+```
+
+For fixed intervals and for a start on day 28 or earlier, `AnchoredDates` gives the same dates as the constructors.
+
 ## Accessing Data
 
 ### Indexing
@@ -103,7 +129,14 @@ int count = ts.Count;
 DateTime firstDate = ts.StartDate;
 DateTime lastDate = ts.EndDate;
 double[] values = ts.ValuesToArray();
+DateTime[] dates = ts.IndexesToArray();
+long[] ticks = ts.IndexTicksToArray();     // DateTime.Ticks of each date
+
+// Independent copy with new ordinate objects
+var copy = ts.Clone();
 ```
+
+`IndexTicksToArray` is a bulk accessor for interop callers, such as a Python binding, that can copy one `long` array faster than they can convert each `DateTime`. `Clone` copies the ordinates directly; its result is identical to the XML round trip `new TimeSeries(ts.ToXElement())`, about 16 times faster on a long record.
 
 ### Missing Values
 
@@ -195,6 +228,16 @@ The **autocorrelation function** (ACF) measures the correlation of a time series
 
 where $\bar{x}$ is the sample mean and $n$ is the series length. By definition, $\hat{\rho}(0) = 1$.
 
+`Autocorrelation.Function` returns the autocovariance, autocorrelation or partial autocorrelation up to a maximum lag, as a matrix whose first column is the lag. For a process whose mean is known to be zero, such as standardized residuals, pass `centered: false`; the mean is then not estimated, the autocovariance is $\sum_t x_t x_{t+k} / n$, and the autocorrelation is $\sum_t x_t x_{t+k} / \sum_t x_t^2$, each lag sum divided once by the lag-zero sum:
+
+```cs
+using Numerics.Data.Statistics;
+
+double[] residuals = { 0.3, -1.2, 0.8, 0.5, -0.7, 1.1, -0.4, -0.9, 0.6, 0.2 };
+double[,]? acf = Autocorrelation.Function(residuals, 3, Autocorrelation.Type.Correlation, centered: false);
+// acf[1, 1] = -0.4627, the lag-1 autocorrelation about zero
+```
+
 Autocorrelation is central to time series analysis: significant autocorrelation at lag $k$ indicates that values $k$ time steps apart are linearly related. For an independent series, $\hat{\rho}(k) \approx 0$ for all $k > 0$, and the approximate 95% confidence bounds are $\pm 1.96 / \sqrt{n}$.
 
 The ***Numerics*** library uses the ACF internally in several statistical tests. The **Ljung-Box test** (`SummaryHypothesisTest()`) checks whether a group of autocorrelations are jointly significant:
@@ -229,7 +272,14 @@ The **difference operator** $\nabla$ removes trends from a time series. The firs
 \nabla_d x_t = x_t - x_{t-d}
 ```
 
-First differencing ($d = 1$) removes a linear trend. Applying the operator twice ($\nabla^2 x_t = \nabla(\nabla x_t)$) removes a quadratic trend. Seasonal differencing uses a lag equal to the seasonal period — for example, $d = 12$ for monthly data with an annual cycle removes the seasonal component directly.
+First differencing ($d = 1$) removes a linear trend. Applying the operator twice ($\nabla^2 x_t = \nabla(\nabla x_t)$) removes a quadratic trend. Seasonal differencing uses a lag equal to the seasonal period; for example, $d = 12$ for monthly data with an annual cycle removes the seasonal component directly.
+
+Each difference is stored at the date of its earlier value: $x_{t+d} - x_t$ is labelled with the date of $x_t$, so the result starts at the original start date and is $d$ times the number of differences shorter. The labels are the series' own dates, so a series with gaps, or one with an irregular interval, keeps its real dates. To label each difference with the date of its later value instead, as pandas `Series.diff` does, pass `labelAtLaterDate: true`:
+
+```cs
+// Labels start at the date of the second value, as pandas s.diff().dropna()
+var laterLabels = ts.Difference(lag: 1, differences: 1, labelAtLaterDate: true);
+```
 
 ```cs
 // First difference (change from previous)
@@ -332,6 +382,10 @@ var summerAvg = dailyFlow.CustomYearSeries(
     startMonth: 6, endMonth: 8, BlockFunctionType.Average);
 ```
 
+A custom year is labeled by the calendar year in which it ends: with `startMonth: 10`, water year 2021 runs from October 2020 through September 2021. Minimum and maximum report the first ordinate that attains the extreme; sum and average report the date of the last ordinate in the block. A block whose result is NaN, such as a sum over a missing value, is left out. All block methods group the series in one pass, so they stay fast on long sub-daily records.
+
+The reported date is the date of the selected ordinate.
+
 ### Monthly and Quarterly Series
 
 ```cs
@@ -366,17 +420,41 @@ var peaks = dailyFlow.PeaksOverThresholdSeries(
 
 ## Time Interval Conversion
 
-Convert between time intervals by aggregation (downsampling) or interpolation (upsampling):
+Convert between fixed time intervals by aggregation (downsampling) or interpolation (upsampling):
 
 ```cs
-// Convert daily to monthly (average)
-var monthly = dailyFlow.ConvertTimeInterval(TimeInterval.OneMonth, average: true);
+// Convert hourly to six-hourly (average)
+var sixHourly = hourlyFlow.ConvertTimeInterval(TimeInterval.SixHour, average: true);
 
-// Convert daily to monthly (sum — e.g., for precipitation)
-var monthlySum = dailyPrecip.ConvertTimeInterval(TimeInterval.OneMonth, average: false);
+// Convert hourly to daily (sum, e.g. for precipitation)
+var dailySum = hourlyPrecip.ConvertTimeInterval(TimeInterval.OneDay, average: false);
 ```
 
-When downsampling, `average: true` computes the block mean and `average: false` computes the block sum. When upsampling, `average: true` uses linear interpolation and `average: false` disaggregates proportionally.
+When downsampling, `average: true` computes the block mean and `average: false` computes the block sum. When upsampling, `average: true` uses linear interpolation and `average: false` divides each value evenly among the shorter steps it covers.
+
+The conversion works on position, not on calendar time, so check that the series fits these rules:
+
+- Only intervals with a fixed length in hours are supported: one minute through seven days. For `OneMonth`, `OneQuarter`, `OneYear` or `Irregular`, on either side, the method returns `null`. Use `MonthlySeries`, `QuarterlySeries` or the year series methods for those.
+- The series must be regular, sorted and without gaps. Blocks hold a whole number of steps (the ratio of the intervals rounded down) counted from the first ordinate, so a daily block of an hourly series that starts at 05:00 runs from 05:00 to 04:00.
+- A missing value in a block makes that block NaN; there is no minimum-count rule.
+- When downsampling, the last block can be partial: its mean is taken over the steps it has. Every block holds data, so 72 hourly values give 3 daily values and 50 hourly values give 3 (the last over 2 hours).
+
+### Calendar-Aligned Aggregation
+
+`AggregateByInterval` aggregates on calendar time instead of position, so it handles irregular series, gaps and missing values. Each block holds the ordinates with start <= time < start + interval and is labeled by its start: hours align to midnight, days start at midnight, months, quarters and years start on their first day, and seven-day blocks start at midnight of the first ordinate's date. Missing values are skipped, and a block with fewer than `minValidCount` values is NaN, like pandas `resample` with `min_count`.
+
+```cs
+// 15-minute readings (irregular, with gaps) to hour-beginning means
+var readings = new TimeSeries(TimeInterval.Irregular);
+readings.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2024, 3, 10, 0, 5, 0), 1.5));
+readings.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2024, 3, 10, 0, 20, 0), 2.25));
+readings.Add(new SeriesOrdinate<DateTime, double>(new DateTime(2024, 3, 10, 2, 40, 0), 10.0));
+var hourly = readings.AggregateByInterval(TimeInterval.OneHour);
+// 00:00 = 1.875, 01:00 = NaN (no readings), 02:00 = 10
+
+// Calendar-day totals that need at least 20 of 24 hourly values
+var dailyTotals = hourlyPrecip.AggregateByInterval(TimeInterval.OneDay, BlockFunctionType.Sum, minValidCount: 20);
+```
 
 ## Missing Data Interpolation
 
@@ -387,7 +465,7 @@ The `InterpolateMissingData` method fills gaps using linear interpolation in dat
 ts.InterpolateMissingData(maxNumberOfMissing: 3);
 ```
 
-This prevents unreliable interpolation across long gaps while filling short data dropouts.
+This prevents unreliable interpolation across long gaps while filling short data dropouts. Time differences are taken exactly in ticks, so a fill is linear in time to rounding error at any time step.
 
 ## Resampling Methods
 
@@ -405,7 +483,7 @@ The block bootstrap preserves the marginal mean and variance and the within-bloc
 
 ### k-Nearest Neighbors
 
-The **k-nearest neighbors** (k-NN) bootstrap of Lall & Sharma (1996) is a *conditional* resampler: at each step it draws the next synthetic value from the empirical conditional distribution $p(x_{t+1} \mid x_t)$. The current state $x_t$ is standardized, the $k$ historical observations whose standardized values are closest in Euclidean distance are identified, one of those neighbor indices $j$ is selected uniformly at random, and the trajectory advances by taking the value that *historically came after* the chosen neighbor — i.e., $x_{j+1}$:
+The **k-nearest neighbors** (k-NN) bootstrap of Lall & Sharma (1996) is a *conditional* resampler: at each step it draws the next synthetic value from the empirical conditional distribution $p(x_{t+1} \mid x_t)$. The current state $x_t$ is standardized, the $k$ historical observations whose standardized values are closest in Euclidean distance are identified, one of those neighbor indices $j$ is selected uniformly at random, and the trajectory advances by taking the value that *historically came after* the chosen neighbor, i.e., $x_{j+1}$:
 
 ```cs
 // Generate synthetic series using 5-nearest neighbors
@@ -451,6 +529,111 @@ foreach (var ordinate in ts)
 }
 
 Console.WriteLine($"Filtered to {filtered.Count} values in date range");
+```
+
+## Downloading Data
+
+`TimeSeriesDownload` reads public records from the U.S. Geological Survey (`FromUSGS`), NOAA's Global Historical Climatology Network (`FromGHCN`), the Water Survey of Canada (`FromCHMN`) and the Australian Bureau of Meteorology (`FromABOM`). Every method is asynchronous and accepts a `CancellationToken`.
+
+### USGS
+
+`FromUSGS` uses the USGS Water Data API (api.waterdata.usgs.gov), which replaces the legacy NWIS WaterServices (scheduled to be retired on 22 February 2027). It takes a site number of 8 to 15 digits (for example `01646500`, or a 15-digit latitude-longitude site such as `393109104464500`) and returns the series and the raw text the service sent.
+
+```cs
+using Numerics.Data;
+using static Numerics.Data.TimeSeriesDownload;
+
+// Full period of record of daily mean discharge
+var (daily, rawText) = await FromUSGS("01646500", TimeSeriesType.DailyDischarge);
+
+// Annual peaks, and daily mean discharge for water year 2021
+var (peaks, _) = await FromUSGS("01646500", TimeSeriesType.PeakDischarge);
+var options = new UsgsDownloadOptions
+{
+    StartDate = new DateTime(2020, 10, 1),
+    EndDate = new DateTime(2021, 9, 30)
+};
+var (wy2021, _) = await FromUSGS("01646500", TimeSeriesType.DailyDischarge, options);
+```
+
+`UsgsDownloadOptions.Statistic` selects the daily statistic: `UsgsStatistic.Mean` (the default), `Maximum` or `Minimum`. Many sites publish only the daily mean, and a statistic or parameter that the site does not publish throws the "No data found" exception; site 01646500, for example, has no daily stage values.
+
+| Type | Series returned |
+|------|-----------------|
+| `DailyDischarge`, `DailyStage` | Regular one-day series of the daily statistic (mean by default); missing days are NaN |
+| `InstantaneousDischarge`, `InstantaneousStage` | Irregular series of the primary continuous record, dated in UTC (`DateTimeKind.Utc`) |
+| `PeakDischarge`, `PeakStage` | Annual peaks, as an irregular series; a peak with a time of day is dated in the site's local standard time, as in the official peak-flow file |
+| `MeasuredDischarge`, `MeasuredStage` | Field measurements, irregular and sorted by time |
+
+The raw text is the CSV (JSON for field measurements) the service returned, after `#` comment lines that name the source, each request and the retrieval time.
+
+Downloads are made as fast as the service allows: each request asks only for the fields that are used, sorted, in pages of up to 50,000 records, and an instantaneous record is requested one calendar year at a time with four requests running at once. A 54-year 15-minute record (1.3 million values) takes about half a minute.
+
+The service limits anonymous use to 1,000 requests per hour per address. An instantaneous period of record uses about one request per year of record. For heavier use, get a free key at https://api.waterdata.usgs.gov/signup/ and set it once; it is sent in a request header and never written to the raw text:
+
+```cs
+TimeSeriesDownload.UsgsApiKey = "your-key";
+```
+
+When the limit is spent, `FromUSGS` throws at once with a message that says so.
+
+### GHCN, Canada and Australia
+
+- `FromGHCN` reads a NOAA NCEI GHCN-Daily station file. Precipitation (PRCP) is stored in tenths of millimeters and snowfall (SNOW) in millimeters; both are returned in the requested `DepthUnit`. Missing days inside the record are NaN, and the days after today that the current month's record is padded with are left out.
+- `FromCHMN` reads the Water Survey of Canada services. Real-time (instantaneous) values are dated in UTC (`DateTimeKind.Utc`); daily values and peaks are calendar dates.
+- `FromABOM` reads the BOM Water Data Online service. Daily discharge, stage and rainfall use the midnight-to-midnight series (`.24HR`).
+- An unknown station, or an empty, header-only or HTML response, throws an exception whose message starts with "No data found", as `FromUSGS` does.
+
+### Qualifiers
+
+Each downloader and parser has an overload that also fills a list with one qualifier per ordinate, in series order. The series itself is the same as without it; a day filled as missing has an empty qualifier.
+
+| Source | Qualifier |
+|--------|-----------|
+| USGS | The `qualifier` field, for example `ICE` or `ESTIMATED,ICE` |
+| GHCN | The day's three flag characters (measurement, quality and source flags), for example `T 1` for a trace |
+| CHMN | The `Symbol/Symbole` field, for example `B` (ice conditions) or `E` (estimated) |
+| BOM | The KiWIS quality code, for example `10`, `90` or `-1` |
+
+```cs
+using System.Collections.Generic;
+using System.Linq;
+using Numerics.Data;
+using static Numerics.Data.TimeSeriesDownload;
+
+var qualifiers = new List<string>();
+var (daily, _) = await FromUSGS("05082500", TimeSeriesType.DailyDischarge, new UsgsDownloadOptions(), qualifiers);
+int iceDays = qualifiers.Count(q => q.Contains("ICE"));
+```
+
+### Failures and Retries
+
+Every request has a time limit (10 s for small responses, 60 s for a GHCN station file, 120 s for large USGS and instantaneous responses). The headers and the body of a GHCN station file each get the limit, so a response that stalls part way fails instead of waiting indefinitely. Server errors, 408 and 429 responses, connections that drop while the body is read, and USGS pages cut off inside their last record are retried with backoff. A `Retry-After` of up to 30 seconds is honoured, and a longer one ends the download at once with a rate-limit message. A request that times out is retried at most once.
+
+Requests identify themselves with the User-Agent `USACE-Numerics/<major>.<minor>`.
+
+### Parsing Saved Responses
+
+Each downloader fetches the provider response and then calls a public parser, so a saved response gives the same series offline, for example in tests or on a machine without Internet access:
+
+| Parser | Input |
+|--------|-------|
+| `ParseUSGS(rawText, type, peakStandardOffset)` | The raw text `FromUSGS` returns, or a Water Data API CSV response. Peaks with a time of day need the site's standard UTC offset. |
+| `ParseGHCN(dlyText, type, unit)` | A GHCN-Daily station file (`.dly`). |
+| `ParseCHMN(csvText, stationNumber, type, dischargeUnit, heightUnit)` | A Water Survey of Canada `daily_data`, `real_time_data` or `peak_data` CSV response. |
+| `ParseABOM(valuesJson, type, dischargeUnit, heightUnit, depthUnit)` | A BOM KiWIS `getTimeseriesValues` JSON response. |
+
+```cs
+using System;
+using System.IO;
+using Numerics.Data;
+using static Numerics.Data.TimeSeriesDownload;
+
+var (peaks, rawText) = await FromUSGS("01646500", TimeSeriesType.PeakDischarge);
+File.WriteAllText("peaks-01646500.csv", rawText);
+
+// Later, offline: the same series (the site's time zone is EST, five hours behind UTC)
+var again = ParseUSGS(File.ReadAllText("peaks-01646500.csv"), TimeSeriesType.PeakDischarge, TimeSpan.FromHours(-5));
 ```
 
 ## Practical Examples
@@ -580,8 +763,8 @@ else
 
 A time series can be decomposed into trend ($T_t$), seasonal ($S_t$), and residual ($R_t$) components. The two standard models are:
 
-- **Additive**: $x_t = T_t + S_t + R_t$ — when seasonal fluctuations are roughly constant in magnitude
-- **Multiplicative**: $x_t = T_t \cdot S_t \cdot R_t$ — when seasonal fluctuations scale with the level
+- **Additive**: $x_t = T_t + S_t + R_t$, when seasonal fluctuations are roughly constant in magnitude
+- **Multiplicative**: $x_t = T_t \cdot S_t \cdot R_t$, when seasonal fluctuations scale with the level
 
 The `SeasonalDecompose` method performs classical additive decomposition using a moving average for the trend and FFT-based extraction for the seasonal component:
 
@@ -675,10 +858,13 @@ foreach (var ord in monthlyAvgSeries)
 | Annual block | `CalendarYearSeries()` | Annual statistics |
 | Monthly block | `MonthlySeries()` | Monthly aggregation |
 | Convert interval | `ConvertTimeInterval()` | Up/downsampling |
+| Calendar blocks | `AggregateByInterval()` | Irregular or gappy data to a regular interval |
 | Peaks over threshold | `PeaksOverThresholdSeries()` | Event extraction |
 | Block bootstrap | `ResampleWithBlockBootstrap()` | Synthetic generation |
 | k-NN resampling | `ResampleWithKNN()` | Synthetic generation |
 | Sort | `SortByTime()` | Ensure chronological order |
+| Copy | `Clone()` | Independent copy |
+| Date ticks | `IndexTicksToArray()` | Bulk export of the dates |
 
 ---
 
@@ -686,7 +872,7 @@ foreach (var ord in monthlyAvgSeries)
 
 <a id="1">[1]</a> Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.
 
-<a id="2">[2]</a> Kundzewicz, Z. W. & Robson, A. J. (2004). Change detection in hydrological records — a review of the methodology. *Hydrological Sciences Journal*, 49(1), 7–19.
+<a id="2">[2]</a> Kundzewicz, Z. W. & Robson, A. J. (2004). Change detection in hydrological records: a review of the methodology. *Hydrological Sciences Journal*, 49(1), 7–19.
 
 ---
 

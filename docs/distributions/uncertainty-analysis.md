@@ -64,7 +64,7 @@ The bootstrap is particularly valuable when:
 using Numerics.Distributions;
 
 // Original data
-double[] annualPeakFlows = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200 };
+double[] annualPeakFlows = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };
 
 // Fit parent distribution
 var gev = new GeneralizedExtremeValue();
@@ -88,7 +88,7 @@ Console.WriteLine($"  Estimation method: {bootstrap.EstimationMethod}");
 
 - **distribution**: The fitted parent distribution (must implement `IBootstrappable`)
 - **estimationMethod**: Parameter estimation method for each bootstrap sample
-- **sampleSize**: Size of each bootstrap sample (typically original sample size)
+- **sampleSize**: Size of each bootstrap sample (typically original sample size; must be at least 10)
 - **replications**: Number of bootstrap replications (recommended: 10,000-50,000)
 - **seed**: Random seed for reproducibility (default: 12345)
 
@@ -98,8 +98,9 @@ The `Estimate()` method performs a comprehensive uncertainty analysis:
 
 ```cs
 using Numerics.Distributions;
+using Numerics.Data.Statistics;
 
-double[] data = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200 };
+double[] data = { 12500, 15300, 11200, 18700, 14100, 16800, 13400, 17200, 10500, 19300 };
 
 // Fit parent distribution
 var gev = new GeneralizedExtremeValue();
@@ -137,8 +138,8 @@ UnivariateDistributionBase ParentDistribution
 // Mode curve: quantiles from parent distribution
 double[] ModeCurve  // ModeCurve[i] = quantile at probabilities[i]
 
-// Mean curve: expected quantiles from bootstrap ensemble
-double[] MeanCurve  // MeanCurve[i] = expected quantile at probabilities[i]
+// Mean curve: quantiles of the mean (predictive) CDF, the average of the bootstrap CDFs
+double[] MeanCurve  // MeanCurve[i] = quantile of the mean CDF at probabilities[i]
 
 // Confidence intervals for quantiles
 double[,] ConfidenceIntervals  // [i, 0] = lower, [i, 1] = upper
@@ -148,6 +149,45 @@ ParameterSet[] ParameterSets
 
 // Goodness-of-fit metrics
 double AIC, BIC, DIC, RMSE, ERL
+```
+
+`AIC`, `BIC`, `DIC`, `RMSE` and `ERL` are `double.NaN` (not computed) in a results object created with the default constructor, and are set only when the corresponding metric is computed. The mean curve is interpolated between quantile knots of the mean CDF on a logarithmic scale only when every knot is positive and the knots span more than one decade, the same rule used by `BootstrapAnalysis.ExpectedProbabilities`; otherwise the interpolation is linear.
+
+## Progress Reporting and Cancellation
+
+Long bootstrap runs can report progress and be stopped early through two optional properties:
+
+- **Progress** (`IProgress<int>?`, default null): receives the number of replications completed so far. `Distributions()` and `BootstrapTQuantileCI` report once per replication, whether or not its fit succeeded, so a completed run ends at `Replications`. `Estimate` and `BCaQuantileCI` report through `Distributions()`. The inner replications of the studentized bootstrap and the BCa jackknife are not reported. Replications run in parallel, so `Report` is called concurrently from worker threads and counts can arrive out of order.
+- **CancellationToken** (default none): once the token is cancelled, no new replications start, the running ones finish, and an `OperationCanceledException` is thrown. A cancelled run returns no results.
+
+Neither property changes the random streams or the results.
+
+```cs
+var bootstrap = new BootstrapAnalysis(gev,
+    ParameterEstimationMethod.MethodOfLinearMoments,
+    sampleSize: data.Length,
+    replications: 10000);
+
+// Each count from 1 to Replications is reported once, in any order
+bootstrap.Progress = new Progress<int>(completed =>
+{
+    if (completed % 2500 == 0)
+        Console.WriteLine($"  {completed} of {bootstrap.Replications} replications");
+});
+
+// Stop the run if it takes longer than 5 minutes
+using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+bootstrap.CancellationToken = cts.Token;
+
+try
+{
+    var results = bootstrap.Estimate(new double[] { 0.9, 0.99 }, alpha: 0.1);
+    Console.WriteLine($"100-year estimate: {results.ModeCurve[1]:F0}");
+}
+catch (OperationCanceledException)
+{
+    Console.WriteLine("Bootstrap run cancelled.");
+}
 ```
 
 ## Accessing Uncertainty Results
@@ -168,12 +208,32 @@ for (int i = 0; i < probabilities.Length; i++)
     double T = 1.0 / aep;
     
     double mode = results.ModeCurve[i];          // Point estimate
-    double mean = results.MeanCurve[i];          // Expected value
+    double mean = results.MeanCurve[i];          // Quantile of the mean (predictive) CDF
     double lower = results.ConfidenceIntervals[i, 0];  // Lower bound
     double upper = results.ConfidenceIntervals[i, 1];  // Upper bound
     
     Console.WriteLine($"{aep:F3} | {T,9:F1} | {mode,8:F0} | {mean,8:F0} | [{lower,6:F0}, {upper,6:F0}]");
 }
+```
+
+### Weighted Mean Curve
+
+`ProcessMeanCurve(sampledDistributions, probabilities, weights)` averages the CDFs with weights, for example the branch weights of a logic tree. The expected non-exceedance probability at each quantile is $\sum_j w_j F_j(x) / \sum_j w_j$, the CDF of the mixture with the normalized weights, so the weights need not sum to one. The weights must be non-negative and finite; a zero weight leaves its distribution out of both the average and the quantile range, and null distributions are skipped. When every distribution has the same weight, the result is bitwise the unweighted `ProcessMeanCurve(sampledDistributions, probabilities)`.
+
+```cs
+var branches = new UnivariateDistributionBase[] { new Normal(100, 10), new Normal(120, 10) };
+double[] weights = { 3, 1 };
+double[] probabilities = { 0.5, 0.9, 0.99 };
+
+var results = new UncertaintyAnalysisResults();
+results.ProcessMeanCurve(branches, probabilities, weights);
+
+var mixture = new Mixture(new[] { 0.75, 0.25 }, branches);
+for (int i = 0; i < probabilities.Length; i++)
+    Console.WriteLine($"{probabilities[i]}: {results.MeanCurve[i]:F2} (mixture {mixture.InverseCDF(probabilities[i]):F2})");
+// 0.5: 103.83 (mixture 103.83)
+// 0.9: 123.31 (mixture 123.31)
+// 0.99: 137.54 (mixture 137.54)
 ```
 
 ### Visualizing Uncertainty
@@ -222,10 +282,10 @@ var bootstrapDists = bootstrap.Distributions();
 var parameterSets = bootstrap.ParameterSets(bootstrapDists);
 
 // Get parameter matrix [replication, parameter]
-double[,] params = bootstrap.Parameters(bootstrapDists);
+double[,] parameterMatrix = bootstrap.Parameters(bootstrapDists);
 
 Console.WriteLine("Bootstrap Parameter Statistics:");
-Console.WriteLine($"Number of successful replications: {bootstrapDists.Count(d => d != null)}");
+Console.WriteLine($"Number of successful replications: {bootstrap.Replications - bootstrap.FailedReplications}");
 
 // Analyze each parameter
 string[] paramNames = gev.ParameterNamesShortForm;
@@ -234,7 +294,8 @@ for (int j = 0; j < gev.NumberOfParameters; j++)
     var values = new List<double>();
     for (int i = 0; i < parameterSets.Length; i++)
     {
-        if (parameterSets[i].Values != null)
+        // Failed replications are filled with NaN
+        if (!double.IsNaN(parameterSets[i].Values[j]))
             values.Add(parameterSets[i].Values[j]);
     }
     
@@ -363,6 +424,8 @@ The bias-correction factor $z_0$ is computed the same way as in the BC method. T
 
 where $\hat{Q}$ is the original point estimate and $\hat{Q}_{(i)}$ is the estimate computed from the sample with observation $i$ removed. The acceleration constant measures the rate at which the standard error of $\hat{Q}$ changes as the true parameter value changes.
 
+The jackknife influence values $\hat{Q} - \hat{Q}_{(i)}$ are centered on the full-sample estimate. This is the empirical-influence form of Davison and Hinkley [[3]](#3), used by the R `boot` package (`empinf` with type `"jack"`). Efron and Tibshirani [[1]](#1) (Section 14.3) and `scipy.stats.bootstrap` center the jackknife values on their mean $\bar{Q}_{(\cdot)} = \tfrac{1}{n}\sum_i \hat{Q}_{(i)}$ instead. The two accelerations agree to $O(1/n)$; in a GEV example with $n = 20$ the resulting confidence limits differ by less than 1% of the interval width.
+
 The adjusted percentiles incorporate both bias correction and acceleration:
 
 ```math
@@ -373,7 +436,7 @@ The confidence interval is then $`CI_{1-\alpha} = [\hat{Q}^{*}_{(\alpha_1)}, \ha
 
 When $\hat{a} = 0$, the BCa method reduces to the BC method. When both $z_0 = 0$ and $\hat{a} = 0$, it reduces to the Percentile method. The BCa method is the most accurate of the percentile-based methods, but it requires the original sample data and is computationally expensive due to the jackknife (which requires $n$ additional distribution fits).
 
-> **Note:** The `BCaQuantileCI` method requires the original sample data because it re-estimates the distribution parameters internally and performs the jackknife. This means it calls `Estimate()` on the distribution, which will update the distribution's parameters.
+> **Note:** The `BCaQuantileCI` method requires the original sample data because it re-estimates the distribution parameters internally and performs the jackknife. This means it calls `Estimate()` on the distribution, which will update the distribution's parameters. `BCaQuantileCI` and `BootstrapTQuantileCI` refit the distribution, so they require a distribution that implements `IEstimation` and throw `NotSupportedException` otherwise.
 
 ```cs
 // BCa method requires original sample data
@@ -657,7 +720,7 @@ for (int i = 0; i < probsOfInterest.Length; i++)
 
 ### Computing Probabilities
 
-Reverse direction — find CDF probabilities for given quantile values. The `Probabilities()` method returns a `double[Replications, quantiles.Count]` array of raw CDF values from each replication:
+Reverse direction: find CDF probabilities for given quantile values. The `Probabilities()` method returns a `double[Replications, quantiles.Count]` array of raw CDF values from each replication:
 
 ```cs
 var designFlows = new double[] { 15000, 20000, 25000, 30000 };
@@ -755,9 +818,11 @@ Console.WriteLine($"Recommended replications: {nReplications}");
 
 ### 2. Check for Failed Replications
 
+A replication whose fit fails after all retries is excluded from every summary. `FailedReplications` holds the number of failures from the most recent call to `Distributions` (either overload); the failed entries are null in the returned array, and their rows from `Parameters` and `ParameterSets` are filled with NaN.
+
 ```cs
 var bootstrapDists = bootstrap.Distributions();
-int nFailed = bootstrapDists.Count(d => d == null);
+int nFailed = bootstrap.FailedReplications;  // Failed replications are null entries in bootstrapDists
 
 if (nFailed > bootstrapDists.Length * 0.05)
 {
@@ -820,7 +885,7 @@ The number of bootstrap replications $B$ directly affects the stability and prec
 | Precise CI endpoints | 5,000 | 20,000--50,000 |
 | Extreme quantiles (99th percentile and beyond) | 10,000 | 50,000+ |
 
-For life-safety applications, use at least 10,000 replications for confidence intervals and verify convergence by comparing results at different replication counts. The ***Numerics*** library enforces a minimum of 100 replications and a minimum sample size of 10.
+For life-safety applications, use at least 10,000 replications for confidence intervals and verify convergence by comparing results at different replication counts. The ***Numerics*** library enforces a minimum of 100 replications and a minimum sample size of 10 in the `BootstrapAnalysis` constructor. `BCaQuantileCI` sets `SampleSize` to the length of the sample passed to it and refits `Distribution` to that sample in place, so the bootstrap analysis keeps the refitted parent distribution and that sample size after the call.
 
 ## When Bootstrap Fails
 

@@ -24,7 +24,7 @@ The unbiased estimator of the population variance divides by $n-1$ rather than $
 s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2
 ```
 
-The source code implements this using a numerically stable one-pass recurrence rather than the naive two-pass formula shown above. The two approaches are mathematically equivalent, but the one-pass algorithm avoids catastrophic cancellation when the mean is large relative to the variance.
+The source code uses the corrected two-pass algorithm of Chan, Golub and LeVeque (1983): it sums $(x_i - \bar{x})^2$ about the computed mean and subtracts $\left(\sum (x_i - \bar{x})\right)^2 / n$, which removes the rounding error of the mean to first order. It keeps its accuracy when the mean is large relative to the spread: on 28,317 values $10^6 + (i \bmod 997) \cdot 10^{-6}$ the error is 5.5E-14 relative, where a running sum of squares was 2.5E-7 off. `Covariance`, `PopulationCovariance` and the weighted `Variance` use the same correction.
 
 ### Population Variance
 
@@ -103,6 +103,17 @@ Console.WriteLine($"Harmonic mean: {harmMean:F2}");
 - **Harmonic mean**: For rates and ratios, $\frac{n}{\sum \frac{1}{x_i}}$
 - Relationship: $\text{Harmonic} \leq \text{Geometric} \leq \text{Arithmetic}$
 
+### Median
+
+`Statistics.Median` returns the middle order statistic for an odd count and the midpoint of the two middle order statistics for an even count:
+
+```cs
+double[] data = { 10.5, 12.3, 11.8, 15.2, 13.7, 14.1, 16.8, 12.9, 11.2, 14.5 };
+double median = Statistics.Median(data);  // 13.3, the midpoint of 12.9 and 13.7
+```
+
+The even-count midpoint is computed as $\tfrac{1}{2}(x_{lo} + x_{hi})$, which is correctly rounded unless the sum overflows; when it overflows, the midpoint is $\tfrac{1}{2}x_{lo} + \tfrac{1}{2}x_{hi}$, so the median of finite values is always finite. Any NaN value makes the median NaN, as in `numpy.median`. `Percentile(data, 0.5)` returns the same value up to its last bit, because Type 7 interpolation computes it as $x_{lo} + \tfrac{1}{2}(x_{hi} - x_{lo})$ with two roundings. Pass `dataIsSorted: true` to skip the sorting copy.
+
 ### Dispersion
 
 Measures of spread or variability:
@@ -158,6 +169,102 @@ double sum = Statistics.Sum(data);      // 133.0
 
 Console.WriteLine($"Range: [{min:F1}, {max:F1}] with width {range:F1}");
 ```
+
+### Compensated Summation
+
+`Tools.Sum` adds the values in order, so its rounding error can grow with the number of terms and is large when terms cancel. `Tools.CompensatedSum` uses Neumaier's improvement of Kahan summation [[8]](#8): a running correction collects the exact rounding error of each addition and is added back at the end. Its error is bounded by 2u|s| + O(n u²) Σ|x_i|, so to first order it does not grow with n, and unlike plain Kahan summation it stays accurate when a term is larger than the running sum.
+
+```cs
+using Numerics;
+
+double[] x = { 1E100, 1.0, -1E100 };
+double plain = Tools.Sum(x);                       // 0
+double exact = Tools.CompensatedSum(x);            // 1, as Python math.fsum
+double kahanCase = Tools.CompensatedSum(new[] { 1.0, 1E100, 1.0, -1E100 });   // 2 (Kahan gives 0)
+
+// The values marked 1 (or 0 with useComplement), as Tools.Sum selects them
+double selected = Tools.CompensatedSum(new[] { 1E100, 1.0, -1E100, 7.0 }, new[] { 1, 1, 1, 0 });   // 1
+
+// A gather sum of values[indices[i]] for i in [start, start + count), without copying
+double gathered = Tools.CompensatedSum(new[] { 1E100, 1.0, -1E100, 3.0 }, new[] { 3, 0, 1, 2 }, 1, 3);   // 1
+
+// Running totals: entry i is the compensated sum of the first i + 1 values
+double[] running = Tools.CompensatedCumulativeSum(new[] { 1E100, 1.0, -1E100, 0.1 });   // { 1E100, 1E100, 1, 1.1 }
+
+// Classic Kahan summation instead, bit for bit, for reproducing results of the classic Kahan loop
+double kahan = Tools.CompensatedSum(new[] { 1.0, 1E100, 1.0, -1E100 }, kahan: true);       // 0
+double[] kahanRunning = Tools.CompensatedCumulativeSum(new[] { 0.1, 0.2, 0.3 }, kahan: true);
+```
+
+With `kahan: true` an infinite final sum is returned as is, but any value added after the sum becomes infinite gives NaN, as in the classic Kahan loop; the default Neumaier form returns the IEEE sum in both cases. A NaN, or +∞ and −∞ together, gives NaN, and a single infinity is returned with its sign, as in IEEE arithmetic; an intermediate overflow of finite terms returns ±∞. Python's `math.fsum` gives the same NaN or infinity, but raises for +∞ with −∞ and for an intermediate overflow. As for `Tools.Sum`, an empty list (or an empty gather range) returns NaN, and the indicator form returns NaN when the indicators differ in length from the values. The gather form throws `ArgumentOutOfRangeException` for a range outside the indices or an index outside the values.
+
+The step of each method is public, for loops that form their terms on the fly, without collecting them in a list. `Tools.NeumaierAdd(ref sum, ref compensation, value)` adds one value and `Tools.NeumaierResult(sum, compensation)` returns the result; started from zero and called in order, they give `Tools.CompensatedSum` bit for bit. `Tools.KahanAdd` is the classic Kahan step, whose running sum is the `kahan: true` result bit for bit.
+
+```cs
+using Numerics;
+
+double sum = 0, compensation = 0;
+for (int i = 1; i <= 1000; i++)
+    Tools.NeumaierAdd(ref sum, ref compensation, 1.0 / i);
+double harmonic = Tools.NeumaierResult(sum, compensation);   // 7.485470860550345, as math.fsum
+
+double t = 0, c = 0;
+foreach (double v in new[] { 0.1, 0.2, 0.3 }) Tools.KahanAdd(ref t, ref c, v);   // t is the Kahan sum
+```
+
+### Log-Sum-Exp
+
+`Tools.LogSumExp` evaluates log(Σ exp(x_i)) of log values without overflow, as `scipy.special.logsumexp` does. With m the largest value and k the number of values equal to it, the result is log1p(s / k) + log(k) + m, where s is the compensated sum of exp(x_i − m) over the other values. Separating the largest terms and using `Tools.Log1p` keeps a result near zero accurate (Blanchard, Higham and Higham, 2021), where m + log(Σ exp(x_i − m)) loses its relative accuracy. The results agree with SciPy to 2 ulps of the larger of the result and m.
+
+```cs
+using System;
+using Numerics;
+
+double pair = Tools.LogSumExp(1000.0, 1000.0);                 // 1000 + ln 2, without overflow
+double small = Tools.LogSumExp(new[] { 0.0, -30.0 });         // 9.357622968839737e-14 = log1p(exp(-30))
+double empty = Tools.LogSumExp(new double[0]);                // -∞, the log of an empty sum
+
+// One value per column (axis 0) or per row (axis 1), each bitwise the list form of that column or row
+var logs = new double[,] { { Math.Log(0.25), Math.Log(0.5) }, { Math.Log(0.75), Math.Log(0.5) } };
+double[] columns = Tools.LogSumExp(logs, 0);                  // about { 0, 0 }
+double[] rows = Tools.LogSumExp(logs, 1);                     // about { log(0.75), log(1.25) }
+```
+
+The special values follow SciPy: an empty list or a list of −∞ values returns −∞, any +∞ returns +∞, and NaN propagates (also beside +∞).
+
+### Hypotenuse
+
+`Tools.Hypot(a, b)` returns √(a² + b²) without the overflow or underflow of squaring the arguments. The larger magnitude m is factored out and the result is m·√(1 + r²) with r = min/max ≤ 1, within 2 ulps of the exact value. Special values follow IEEE 754 and C99 `hypot`: an infinite argument gives +∞ even when the other is NaN, otherwise a NaN argument gives NaN, and (0, 0) gives 0.
+
+```cs
+using Numerics;
+
+double big = Tools.Hypot(3e200, 4e200);      // about 5e200; Math.Sqrt(a * a + b * b) overflows to ∞
+double tiny = Tools.Hypot(3e-200, 4e-200);   // 5e-200; Math.Sqrt(a * a + b * b) underflows to 0
+double inf = Tools.Hypot(double.PositiveInfinity, double.NaN);   // ∞
+```
+
+### Column Statistics
+
+For a matrix with one row per member (for example one row per year) and one column per variable (for example one column per grid cell), the column members evaluate a statistic for every column in one call, in parallel over the columns. NaN and infinite entries are excluded from each column and counted in the optional `excluded` array, and every column's value is bitwise the one-sample member applied to that column's finite entries:
+
+```cs
+double[,] maxima =
+{
+    { 3.2, 101.5 },
+    { 1.7, 99.25 },
+    { 4.4, double.NaN },
+    { 2.9, 98.5 },
+    { 5.1, 102.0 },
+};
+double[] means = Statistics.ColumnMeans(maxima);
+double[] variances = Statistics.ColumnVariances(maxima, out int[] excluded);  // { 1.763, 2.890625 }, excluded { 0, 1 }
+double[] deviations = Statistics.ColumnStandardDeviations(maxima);
+double[,] lmoments = Statistics.ColumnLinearMoments(maxima);  // 4 rows: λ1, λ2, τ3, τ4
+double lcv = lmoments[1, 0] / lmoments[0, 0];  // bitwise Statistics.LinearCoefficientOfVariation of column 0
+```
+
+A column with too few finite entries gives NaN: fewer than two for the variance and standard deviation, fewer than four for the L-moments. `ColumnPercentiles` follows the same rules.
 
 ## Shape Statistics
 
@@ -250,6 +357,14 @@ The `LinearMoments` method returns $\lambda_1$ (L-location), $\lambda_2$ (L-scal
 
 where $\lambda_3$ and $\lambda_4$ are the third and fourth L-moments, computed from PWMs $\beta_0$ through $\beta_3$.
 
+`LinearMoments(data, nmom)` returns the first `nmom` L-moments $\lambda_1, \lambda_2, \tau_3, \ldots, \tau_{nmom}$ with the same unbiased estimator (the SAMLMR estimator of Hosking's LMOMENTS package), extended through $\lambda_{r+1} = \sum_{k=0}^{r} p^*_{r,k}\, b_k$ with the shifted Legendre coefficients $p^*_{r,k} = (-1)^{r-k}(r+k)!/((k!)^2(r-k)!)$ [[1]](#1). Its first four values are bitwise those of `LinearMoments(data)`, and $\tau_5$ is the extra ratio used in regional frequency analysis. Every value is NaN when the sample has fewer than `nmom` entries. The error of $	au_r$ grows by roughly a factor of 10 to 30 per order (about $10^{-10}$ at $	au_{10}$ and $10^{-3}$ at $	au_{20}$ for lognormal samples), so keep `nmom` at 10 or below for accurate ratios; at very high orders the coefficient products overflow and the ratios become infinite or NaN.
+
+```cs
+double[] moments = Statistics.LinearMoments(data, 5);   // λ1, λ2, τ3, τ4, τ5
+```
+
+The L-coefficient of variation (L-CV), $\tau = \lambda_2 / \lambda_1$ [[1]](#1), is returned by `LinearCoefficientOfVariation`. It is bitwise `LinearMoments(data)[1] / LinearMoments(data)[0]`, and like `LinearMoments` it is NaN for fewer than four values.
+
 **Why use L-moments over product moments?**
 
 - **Robust to outliers**: L-moments are based on order statistics, not powers of deviations, making them far less sensitive to extreme values.
@@ -268,6 +383,10 @@ Console.WriteLine($"  λ₁ (L-location): {lMoments[0]:F2}");
 Console.WriteLine($"  λ₂ (L-scale): {lMoments[1]:F2}");
 Console.WriteLine($"  τ₃ (L-skewness): {lMoments[2]:F4}");
 Console.WriteLine($"  τ₄ (L-kurtosis): {lMoments[3]:F4}");
+
+// L-CV, τ = λ₂ / λ₁
+double lcv = Statistics.LinearCoefficientOfVariation(data);
+Console.WriteLine($"  τ (L-CV): {lcv:F4}");
 
 // L-moments are preferred for:
 // - Small samples (n < 50)
@@ -313,6 +432,26 @@ Console.WriteLine($"  95th: {percentiles[4]:F2}");
 // Note: Can specify if data is already sorted for efficiency
 bool isSorted = false;
 double q25 = Statistics.Percentile(data, 0.25, dataIsSorted: isSorted);
+```
+
+With a plotting-position formula, the i-th order statistic sits at its plotting position $p_i = (i - \alpha)/(n + 1 - 2\alpha)$ and the percentile interpolates linearly between them, held at the end values. Weibull is Hyndman and Fan type 6, Hazen type 5 and Kaplan-Meier type 4. For Weibull, Blom and Hazen the interpolation weight is formed from $k$ and the two bracketing positions, $(k - p_j)/(p_{j+1} - p_j)$, which keeps bits of $k$ that the rank $(n + 1 - 2\alpha)k + \alpha$ loses; the other formulas use the fractional part of that rank.
+
+```cs
+double p90 = Statistics.Percentile(data, 0.9, PlottingPositions.PlottingPostionType.Weibull);
+```
+
+With weights and a plotting-position formula, point i of the sorted data sits at the weighted position $(c_{i-1} + (1-\alpha) w_i) / (W + (1 - 2\alpha)\bar{w})$, where $c_{i-1}$ is the weight before it, $W$ the total and $\bar{w}$ the mean weight; for Hazen this is $(c_{i-1} + w_i/2)/W$. The percentile interpolates linearly between the positions and is held at the end values. Zero weights keep their position. With sorted data no array is allocated:
+
+```cs
+double[] flows = { 120, 150, 180, 260 };          // ascending
+double[] weights = { 0.4, 0.3, 0.2, 0.1 };
+double p50 = Statistics.Percentile(flows, 0.5, weights, PlottingPositions.PlottingPostionType.Hazen, dataIsSorted: true);   // 145.71, between 120 at 0.2 and 150 at 0.55
+```
+
+For several probabilities, the list overload validates and sorts the sample once and serves all of them in one walk over the positions, in any order; each value is bitwise the scalar call:
+
+```cs
+double[] p = Statistics.Percentile(flows, new[] { 0.9, 0.1, 0.5 }, weights, PlottingPositions.PlottingPostionType.Hazen);   // 233.33, 120, 145.71
 ```
 
 ### Five-Number Summary
@@ -410,6 +549,8 @@ r = \frac{\sum_{i=1}^{n}(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i
 
 where $n_c$ is the number of concordant pairs, $n_d$ is the number of discordant pairs, $n_1$ is the number of pairs not tied in $x$, and $n_2$ is the number of pairs not tied in $y$.
 
+Ties are exact equality and concordance is decided by comparing values, so infinite values and values of any magnitude are ranked exactly; a NaN in either sample gives NaN, as `scipy.stats.kendalltau` does by default. For samples of 48 or more pairs, `KendallsTau` obtains the counts in $O(n \log n)$ time with Knight's algorithm [[5]](#5): sort the pairs by $x$ (ties by $y$), count the tied pairs, then count the discordant pairs as the inversions removed by a merge sort of $y$. Smaller samples use the $O(n^2)$ pair loop, which gives the same integer counts. The counts are 64-bit, so there is no practical limit on the sample size. At $n = 1{,}344$ the fast path is about 36 times faster than the pair loop, and at $n = 10{,}000$ about 170 times faster.
+
 **When to use which correlation:**
 
 | Correlation | Measures | Robust to Outliers | Handles Nonlinear |
@@ -424,6 +565,8 @@ Rules of thumb:
 - **Kendall's $\tau_b$**: more robust than Spearman for small samples and has better statistical properties. Preferred when there are many tied values.
 
 The `Correlation` class also provides matrix versions (`Pearson(double[,])` and `Spearman(double[,])`) that compute the full $p \times p$ correlation matrix for multivariate data.
+
+The Pearson sums use the corrected two-pass algorithm of `Statistics.Variance` and `Statistics.Covariance`: each sum of products of deviations is reduced by the product of the deviation sums divided by $n$, which removes the rounding error of the computed means [[9]](#9). The coefficient therefore stays accurate when the means are large relative to the spread, for example values near $10^9$ that vary in the first decimal.
 
 ```cs
 using Numerics.Data.Statistics;
@@ -562,7 +705,7 @@ See also: [`example-data/tippecanoe-river-streamflow.csv`](../example-data/tippe
 ```cs
 using Numerics.Data.Statistics;
 
-// Tippecanoe River near Delphi, IN — 48 years of annual peak streamflow (cfs)
+// Tippecanoe River near Delphi, IN: 48 years of annual peak streamflow (cfs)
 double[] annualPeaks = {
     6290, 2700, 13100, 16900, 14600, 9600, 7740, 8490, 8130, 12000,
     17200, 15000, 12400, 6960, 6500, 5840, 10400, 18800, 21400, 22600,
@@ -666,6 +809,45 @@ Console.WriteLine($"  Fall (SON): {fallMean:F0} cfs");
 Console.WriteLine($"  Winter (DJF): {winterMean:F0} cfs");
 ```
 
+## Binomial Proportion Interval
+
+`Statistics.WilsonScoreInterval(successes, trials, confidenceLevel)` returns the Wilson score interval [[10]](#10) for a binomial proportion. With $\hat{p} = s/n$ and $z$ the standard normal quantile at $0.5 + \text{level}/2$:
+
+```math
+\frac{\hat{p} + \frac{z^2}{2n}}{1 + \frac{z^2}{n}} \pm \frac{z}{1 + \frac{z^2}{n}} \sqrt{\frac{\hat{p}(1 - \hat{p})}{n} + \frac{z^2}{4n^2}}
+```
+
+Unlike the normal-approximation (Wald) interval, it stays inside [0, 1] and has a positive width when there are no successes or no failures. The bounds are clamped to [0, 1], and the counts may be fractional, for example weighted counts. A non-positive or non-finite number of trials, successes outside [0, trials], or a level outside (0, 1) throws `ArgumentOutOfRangeException`.
+
+```cs
+using Numerics.Data.Statistics;
+
+var (lower, upper) = Statistics.WilsonScoreInterval(successes: 7, trials: 20, confidenceLevel: 0.9);
+Console.WriteLine($"[{lower:F4}, {upper:F4}]");   // [0.2023, 0.5335]
+
+var (lower0, upper0) = Statistics.WilsonScoreInterval(0, 20, 0.9);
+Console.WriteLine($"[{lower0:F4}, {upper0:F4}]"); // [0.0000, 0.1192]
+```
+
+## Effective Sample Size of Weights
+
+`Statistics.EffectiveSampleSize(weights)` returns the Kish effective sample size [[7]](#7) of a weight vector, the number of equally weighted observations that carry the same information:
+
+```math
+n_{\text{eff}} = \frac{\left(\sum_i w_i\right)^2}{\sum_i w_i^2}
+```
+
+Equal positive weights give the count, zero weights drop out, and one dominant weight gives a value near one. This is the effective sample size the reliability-weighted overloads (`WeightType.Reliability`) use in their bias corrections.
+
+```cs
+using Numerics.Data.Statistics;
+
+double[] weights = { 1, 1, 2 };
+double neff = Statistics.EffectiveSampleSize(weights);   // 16 / 6 = 2.6667
+```
+
+Both sums run left to right from zero in index order, and the result is W * W / S. The bits therefore match a plain sequential loop in any language, and can differ in the last bits from a pairwise sum such as `numpy.sum` beyond eight weights. The weights are not rescaled, so weights whose squares underflow (for example ten weights of 1e-200) give NaN; divide such weights by their maximum first. Negative or non-finite weights throw `ArgumentOutOfRangeException`, all-zero weights throw `ArgumentException`, and an empty vector returns NaN.
+
 ## Running Statistics
 
 The `RunningStatistics` class implements Welford's online algorithm [[2]](#2) for numerically stable computation of variance and higher moments in a single pass through the data. This is essential for streaming data or very large datasets where it is impractical to store all values in memory.
@@ -692,6 +874,8 @@ The `RunningStatistics` class extends this to the fourth moment ($M_3$ and $M_4$
 
 **Available properties:** `Count`, `Minimum`, `Maximum`, `Mean`, `Variance`, `PopulationVariance`, `StandardDeviation`, `PopulationStandardDeviation`, `CoefficientOfVariation`, `Skewness`, `PopulationSkewness`, `Kurtosis`, `PopulationKurtosis`.
 
+**Methods:** `Push(value)` and `Push(values)` add data, `Clone()` returns an independent copy, `Combine(a, b)` (or `a + b`) merges two accumulators, and `Clear()` resets an instance to the empty state without reallocating. After `Clear()`, pushing the same values gives bitwise the same statistics as a new instance.
+
 ```cs
 using Numerics.Data.Statistics;
 
@@ -713,6 +897,48 @@ Console.WriteLine($"Skewness: {runningStats.Skewness:F3}");
 Console.WriteLine($"Kurtosis: {runningStats.Kurtosis:F3}");
 Console.WriteLine($"Min: {runningStats.Minimum:F2}");
 Console.WriteLine($"Max: {runningStats.Maximum:F2}");
+
+// Reuse the accumulator for the next batch
+runningStats.Clear();
+runningStats.Push(new double[] { 20.1, 22.4, 19.8 });
+Console.WriteLine($"After Clear: Count = {runningStats.Count}, Mean = {runningStats.Mean:F2}");
+```
+
+## Box-Cox Transformation
+
+The `BoxCox` class applies the Box-Cox power transformation [[6]](#6) to positive data, to make a skewed sample closer to normal:
+
+```math
+y^{(\lambda)} = \begin{cases} \dfrac{x^\lambda - 1}{\lambda} & \lambda \neq 0 \\ \ln x & \lambda = 0 \end{cases}, \qquad \frac{dy^{(\lambda)}}{dx} = x^{\lambda - 1}
+```
+
+The library uses the logarithm when $|\lambda| < 10^{-8}$ and limits $\lambda$ to $[-5, 5]$. Values $x \le 0$ or exponents outside that range give NaN.
+
+| Method | Description |
+|--------|-------------|
+| `FitLambda(values, out lambda)` | Maximum likelihood exponent by Brent search on $[-5, 5]$; NaN when the fit fails |
+| `TryFitLambda(values, out lambda)` | The same exponent, returning `false` instead of a silent NaN when the sample cannot support a fit (fewer than two values, a non-positive or non-finite value, all values equal) or the search fails |
+| `Transform(value, lambda)` / `Transform(values, lambda)` | The transformation |
+| `InverseTransform(value, lambda)` / `InverseTransform(values, lambda)` | The back-transformation $(\lambda y + 1)^{1/\lambda}$, or $e^y$ |
+| `Derivative(value, lambda)` | $x^{\lambda - 1}$ (or $1/x$ on the logarithm branch), the Jacobian of the change of variable |
+| `LogLikelihood(values, lambda)` | The normal log-likelihood of the transformed values at their maximum likelihood mean and variance, $-\frac{n}{2}\ln(2\pi\hat{\sigma}^2) - \frac{n}{2} + (\lambda - 1)\sum \ln x_i$, maximized by `FitLambda`; comparable with the log-likelihood of an untransformed normal fit |
+
+```cs
+using Numerics.Data.Statistics;
+
+double[] flows = { 1, 3, 59, 1, 6, 4, 9, 13, 5, 84, 35, 8, 31, 34, 9, 1, 35, 66, 1, 65, 4, 68, 46 };
+
+if (BoxCox.TryFitLambda(flows, out double lambda))
+{
+    double y = BoxCox.Transform(59.0, lambda);
+    double back = BoxCox.InverseTransform(y, lambda);
+    double dydx = BoxCox.Derivative(59.0, lambda);
+    Console.WriteLine($"λ = {lambda:F4}, y = {y:F4}, back = {back:F2}, dy/dx = {dydx:F5}");
+}
+else
+{
+    Console.WriteLine("The sample cannot support a Box-Cox fit.");
+}
 ```
 
 ## Best Practices
@@ -736,6 +962,18 @@ Console.WriteLine($"Max: {runningStats.Maximum:F2}");
 <a id="3">[3]</a> Fisher, R. A. (1930). The moments of the distribution for normal samples of measures of departure from normality. *Proceedings of the Royal Society of London. Series A*, 130(812), 16-28.
 
 <a id="4">[4]</a> Kendall, M. G. (1938). A new measure of rank correlation. *Biometrika*, 30(1/2), 81-93.
+
+<a id="5">[5]</a> Knight, W. R. (1966). A computer method for calculating Kendall's tau with ungrouped data. *Journal of the American Statistical Association*, 61(314), 436-439.
+
+<a id="6">[6]</a> Box, G. E. P., & Cox, D. R. (1964). An analysis of transformations. *Journal of the Royal Statistical Society: Series B*, 26(2), 211-252.
+
+<a id="7">[7]</a> Kish, L. (1965). *Survey Sampling*. Wiley, New York.
+
+<a id="8">[8]</a> Neumaier, A. (1974). Rundungsfehleranalyse einiger Verfahren zur Summation endlicher Summen. *ZAMM - Zeitschrift für Angewandte Mathematik und Mechanik*, 54(1), 39-51. https://doi.org/10.1002/zamm.19740540106
+
+<a id="9">[9]</a> Chan, T. F., Golub, G. H., & LeVeque, R. J. (1983). Algorithms for computing the sample variance: Analysis and recommendations. *The American Statistician*, 37(3), 242-247. https://doi.org/10.1080/00031305.1983.10483115
+
+<a id="10">[10]</a> Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. *Journal of the American Statistical Association*, 22(158), 209-212. https://doi.org/10.1080/01621459.1927.10502953
 
 ---
 

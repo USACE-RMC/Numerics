@@ -37,7 +37,7 @@ Or search for [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) in th
 | [References](docs/references.md) | Consolidated bibliography |
 
 ## Prerequisites
-- .NET 8+ runtime (or .NET Framework 4.8.1 on Windows). Install the [.NET SDK](https://dotnet.microsoft.com/download) if you don't already have it.
+- .NET 10+ runtime (or .NET Framework 4.8.1 on Windows). Version 2.3.0 targets net10.0 and net481; applications on .NET 8 or .NET 9 can stay on RMC.Numerics 2.2.0. Install the [.NET SDK](https://dotnet.microsoft.com/download) if you don't already have it.
   - The Microsoft .NET SDK is available on the App Portal for Corps users.
 
 ## Support
