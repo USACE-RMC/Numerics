@@ -1,18 +1,29 @@
 name: Python wheel
 
+# Pull request check of pynumerics. The wheel ships a Numerics.dll built from the pull request's own
+# source (dotnet build, net10.0), so a change to the C# library and the Python package is tested
+# together; build_wheel.py writes that assembly's identity (version, assembly version, SHA-256, source
+# commit and build command) into the wheel's _version.py. Releases ship the nuget.org assembly instead
+# (PythonPublish.yml).
+
 on:
   pull_request:
     branches: [ main ]
     paths:
+      - 'Numerics/**'
       - 'python/pynumerics/**'
+      - '.github/docker/linux-test/**'
       - '.github/workflows/PythonWheel.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   wheel:
     name: pynumerics (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -27,48 +38,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # A branch that still pins a locally built development Numerics.dll (NUMERICS_VERSION such as
-      # 2.3.0-dev.3) has no nuget.org package to download, so the wheel cannot be built here. The job
-      # reports the skip in the log and the run summary; once _version.py pins a published package,
-      # every step below runs.
-      - name: Check the Numerics pin
-        id: pin
-        run: |
-          version=$(tr -d '\r' < src/pynumerics/_version.py | sed -n 's/^NUMERICS_VERSION = "\(.*\)"$/\1/p')
-          if [ -z "$version" ]; then
-            echo "::error::NUMERICS_VERSION not found in src/pynumerics/_version.py"
-            exit 1
-          fi
-          if [[ "$version" == *-dev* ]]; then
-            message="Skipping the wheel build and tests: _version.py pins the development Numerics.dll $version, which is not published on nuget.org."
-            echo "::warning title=pynumerics wheel skipped::$message"
-            echo "$message" >> "$GITHUB_STEP_SUMMARY"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Building the wheel with RMC.Numerics $version from nuget.org."
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Setup .NET
-        if: steps.pin.outputs.skip != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
       - name: Setup Python
-        if: steps.pin.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Build the wheel (Numerics.dll from the pinned nuget.org package, SHA-256 checked)
-        if: steps.pin.outputs.skip != 'true'
+      - name: Build Numerics.dll from this pull request
+        working-directory: .
+        run: dotnet build Numerics/Numerics.csproj -c Release -f net10.0
+
+      - name: Build the wheel (Numerics.dll and its identity from the local build)
         run: |
           python -m pip install build
-          python scripts/build_wheel.py --download --out dist
+          python scripts/build_wheel.py --dll ../../Numerics/bin/Release/net10.0/Numerics.dll --download --out dist
 
       - name: Install the wheel into a clean environment
-        if: steps.pin.outputs.skip != 'true'
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           if [ -x "$RUNNER_TEMP/venv/bin/python" ]; then PY="$RUNNER_TEMP/venv/bin/python"; else PY="$RUNNER_TEMP/venv/Scripts/python.exe"; fi
@@ -76,24 +65,44 @@ jobs:
           "$PY" -m pip install dist/pynumerics-*-py3-none-any.whl pytest numpydoc ruff scipy statsmodels scikit-learn shapely "arviz>=0.17,<1" "dataretrieval>=1.4" "wetterdienst>=0.184" "kiwis-pie>=0.10.5"
 
       - name: Lint
-        if: steps.pin.outputs.skip != 'true'
         run: |
           "$PY" -m ruff check src tests scripts
 
       - name: Test the installed wheel
-        if: steps.pin.outputs.skip != 'true'
         run: |
           cp -r tests "$RUNNER_TEMP/tests"
           cp -r docs "$RUNNER_TEMP/docs"
+          cp -r scripts "$RUNNER_TEMP/scripts"
+          cp pyproject.toml "$RUNNER_TEMP/pyproject.toml"
           cd "$RUNNER_TEMP"
           "$PY" -m pytest -q -p no:cacheprovider tests
 
       - name: Upload the wheel
-        if: steps.pin.outputs.skip != 'true' && matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
+        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: pynumerics-wheel
           path: python/pynumerics/dist/*.whl
+
+  docker:
+    name: pynumerics (linux-test Docker image)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t numerics-linux-test .github/docker/linux-test
+
+      - name: Build the wheel from this pull request, then run ruff and pytest against it
+        run: |
+          mkdir -p "$RUNNER_TEMP/wheel"
+          docker run --rm -e CHECKS="wheel pytest" \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/wheel:/out" numerics-linux-test
+
+      - name: Install the wheel in a fresh container and check its identity
+        run: docker run --rm -v "$RUNNER_TEMP/wheel:/dist:ro" numerics-linux-test identity-check.sh /dist
 
   docs:
     name: pynumerics docs (warnings as errors)
