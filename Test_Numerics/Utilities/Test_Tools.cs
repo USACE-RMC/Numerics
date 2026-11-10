@@ -38,6 +38,24 @@ namespace Utilities
         }
 
         /// <summary>
+        /// Verifies the machine epsilons are the unit roundoffs 2^-24 (single) and about 2^-53 (double).
+        /// </summary>
+        [TestMethod]
+        public void Test_MachineEpsilon_UnitRoundoff()
+        {
+            float single = Tools.SingleMachineEpsilon;
+            // 2^-24 has the IEEE 754 single bit pattern 0x33800000.
+            Assert.AreEqual(0x33800000, BitConverter.ToInt32(BitConverter.GetBytes(single), 0));
+            Assert.AreEqual(Math.Pow(2, -24), (double)single, 0.0);
+            // Half the spacing of floats just above one: 1 + 2^-23 is the next float, 1 + 2^-24 rounds to 1.
+            float one = 1f;
+            Assert.AreEqual(one, one + single);
+            Assert.AreNotEqual(one, one + 2f * single);
+            double unit = Tools.DoubleMachineEpsilon;
+            Assert.AreEqual(Math.Pow(2, -53), unit, 1E-30);
+        }
+
+        /// <summary>
         /// Verifies clamping preserves in-range values and signed zero while bounding infinities and propagating NaN.
         /// </summary>
         [TestMethod]
@@ -52,6 +70,52 @@ namespace Utilities
 
             double negativeZero = BitConverter.Int64BitsToDouble(long.MinValue);
             Assert.AreEqual(long.MinValue, BitConverter.DoubleToInt64Bits(Tools.Clamp(negativeZero, 0d, 1d)));
+        }
+
+        /// <summary>
+        /// Verifies Hypot against mpmath values at 50 digits, without overflow or underflow at the extremes, within
+        /// 2 ulps, and its special values.
+        /// </summary>
+        [TestMethod]
+        public void Test_Hypot_ReferenceAndSpecialValues()
+        {
+            // a, b, sqrt(a^2 + b^2) from mpmath with mp.dps = 50, rounded to double.
+            var cases = new double[,]
+            {
+                { 3, 4, 5.0 },
+                { 1, 1, 1.4142135623730951 },
+                { 1e-200, 1e-200, 1.414213562373095e-200 },
+                { 1e+200, 1e+200, 1.414213562373095e+200 },
+                { 1e+308, 1e+308, 1.4142135623730951e+308 },
+                { 5e-324, 5e-324, 5e-324 },
+                { 1, 1e-17, 1.0 },
+                { -2.5, 6.25, 6.73145600891813 },
+                { 0.1, 0.2, 0.223606797749979 },
+                { 1.7976931348623157e+308, 1.0, 1.7976931348623157e+308 },
+                { 123456.789, 0.000987, 123456.789 },
+            };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                double a = cases[i, 0], b = cases[i, 1], expected = cases[i, 2];
+                double ulp = Math.Max(Math.Abs(expected) * 2.220446049250313E-16, double.Epsilon);
+                Assert.AreEqual(expected, Tools.Hypot(a, b), 2 * ulp, $"Hypot({a}, {b})");
+                Assert.AreEqual(Tools.Hypot(a, b), Tools.Hypot(b, -a), 0d, "symmetric in order and sign");
+            }
+            Assert.AreEqual(5d, Tools.Hypot(3d, 4d), 0d);
+            Assert.AreEqual(0d, Tools.Hypot(0d, -0d), 0d);
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(double.NegativeInfinity, 2d));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(2d, double.PositiveInfinity));
+            Assert.IsTrue(double.IsNaN(Tools.Hypot(double.NaN, 1d)));
+            Assert.IsTrue(double.IsNaN(Tools.Hypot(1d, double.NaN)));
+            Assert.IsTrue(double.IsNaN(Tools.Hypot(0d, double.NaN)));
+            Assert.IsTrue(double.IsNaN(Tools.Hypot(double.NaN, 0d)));
+            Assert.IsTrue(double.IsNaN(Tools.Hypot(double.NaN, double.NaN)));
+            // IEEE 754 and C99: an infinite argument gives +∞ even with NaN.
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(double.PositiveInfinity, double.NaN));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(double.NaN, double.NegativeInfinity));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(double.PositiveInfinity, double.NegativeInfinity));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(double.NegativeInfinity, double.NegativeInfinity));
+            Assert.AreEqual(double.PositiveInfinity, Tools.Hypot(double.PositiveInfinity, double.PositiveInfinity));
         }
 
         /// <summary>
@@ -591,7 +655,8 @@ namespace Utilities
         }
 
         /// <summary>
-        /// Verifies the two-value log-sum preserves finite terms beside negative infinity and existing NaN behavior.
+        /// Verifies the two-value log-sum preserves finite terms beside negative infinity, propagates NaN and returns
+        /// positive infinity for a positive infinite term, as scipy.special.logsumexp does.
         /// </summary>
         [TestMethod]
         public void Test_LogSumExp_NonfiniteInputs()
@@ -600,8 +665,8 @@ namespace Utilities
             Assert.AreEqual(5d, Tools.LogSumExp(double.NegativeInfinity, 5d));
             Assert.IsTrue(double.IsNaN(Tools.LogSumExp(double.NaN, 5d)));
             Assert.IsTrue(double.IsNaN(Tools.LogSumExp(5d, double.NaN)));
-            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(double.PositiveInfinity, 5d)));
-            Assert.IsTrue(double.IsNaN(Tools.LogSumExp(5d, double.PositiveInfinity)));
+            Assert.AreEqual(double.PositiveInfinity, Tools.LogSumExp(double.PositiveInfinity, 5d));
+            Assert.AreEqual(double.PositiveInfinity, Tools.LogSumExp(5d, double.PositiveInfinity));
         }
 
         /// <summary>
@@ -646,6 +711,27 @@ namespace Utilities
             data[2] = 255;
             var result = Tools.Decompress(data);
             Assert.IsGreaterThanOrEqualTo(result.Length, data.Length);
+        }
+
+        /// <summary>
+        /// Expm1MinusX computes exp(x) - 1 - x without cancellation, by its series below |x| = 0.5 and from Expm1 above.
+        /// </summary>
+        /// <remarks>Reference values from mpmath 1.3.0 at 40 digits.</remarks>
+        [TestMethod]
+        [DataRow(1e-12, 5.000000000001666e-25)]
+        [DataRow(-1e-08, 4.999999983333334e-17)]
+        [DataRow(0.001, 5.00166708341668e-07)]
+        [DataRow(-0.1, 0.0048374180359595734)]
+        [DataRow(0.3, 0.0498588075760031)]
+        [DataRow(-0.4999, 0.10649131581135908)]
+        [DataRow(0.5, 0.14872127070012814)]
+        [DataRow(-0.5, 0.10653065971263342)]
+        [DataRow(2.0, 4.38905609893065)]
+        [DataRow(-3.0, 2.049787068367864)]
+        [DataRow(30.0, 10686474581493.463)]
+        public void Test_Expm1MinusX(double x, double expected)
+        {
+            Assert.AreEqual(expected, Tools.Expm1MinusX(x), 2E-15 * expected);
         }
 
         /// <summary>

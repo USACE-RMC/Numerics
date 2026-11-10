@@ -13,8 +13,7 @@ namespace Utilities
     /// compensated form agrees with it bit for bit over 301,000 random arguments spanning (−1, 1e300); on other
     /// platforms the C library rounds <c>log</c> and <c>log1p</c> differently, and the values agree within one unit in
     /// the last place, which is the tolerance the assertions allow. The result is within one unit in the last place
-    /// of the correctly rounded value, not correctly rounded everywhere. The former
-    /// direct <c>log(1 + x)</c> above <c>|x| = 1e-4</c> was off by up to 8,000 units there (about 1e-12 relative).
+    /// of the correctly rounded value, not correctly rounded everywhere.
     /// </remarks>
     [TestClass]
     public class Test_Log1pAccuracy

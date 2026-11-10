@@ -70,7 +70,7 @@ namespace Serialization
                 BIC = 234.56
             };
 
-            // Using the built-in serialization methods that now include converters
+            // Using the built-in serialization methods that include converters
             byte[] bytes = UncertaintyAnalysisResults.ToByteArray(results);
             var deserializedResults = UncertaintyAnalysisResults.FromByteArray(bytes);
 
