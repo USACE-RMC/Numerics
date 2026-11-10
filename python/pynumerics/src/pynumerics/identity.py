@@ -110,7 +110,7 @@ def assert_numerics_identity(version: str | None = None, sha256: str | None = No
         ``Hydrologics.dll``. None, the default, uses the version this package pins.
     sha256 : str, optional
         Expected SHA-256 of the loaded file. None, the default, uses the digest this
-        package pins.
+        package pins, which the wheel build writes; a source checkout pins none.
 
     Returns
     -------
@@ -120,11 +120,17 @@ def assert_numerics_identity(version: str | None = None, sha256: str | None = No
     Raises
     ------
     pynumerics.RuntimeLoadError
-        If the loaded assembly's version or digest differs from the expectation.
+        If the loaded assembly's version or digest differs from the expectation, or if no
+        digest is given and this package pins none (a source checkout).
     """
     identity = numerics_identity()
     expected_version = NUMERICS_ASSEMBLY_VERSION if version is None else version
     expected_sha = NUMERICS_SHA256 if sha256 is None else sha256.lower()
+    if not expected_sha:
+        raise RuntimeLoadError(
+            "This pynumerics source checkout pins no Numerics.dll digest: NUMERICS_SHA256 is written into "
+            "the wheel when it is built. Pass sha256, or install the wheel."
+        )
     if identity.version != expected_version:
         raise RuntimeLoadError(
             f"The loaded Numerics assembly is version {identity.version} ({identity.location}); "

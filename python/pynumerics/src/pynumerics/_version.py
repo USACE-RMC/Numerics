@@ -1,37 +1,30 @@
 """Version of the pynumerics distribution and the identity of the Numerics assembly it ships.
 
-Interim (until RMC.Numerics 2.3.0 is published): the wheel ships one locally built ``Numerics.dll``
-from the release branch instead of a NuGet package assembly. It was built once, on Windows, from a
-clean committed tree with::
-
-    dotnet build Numerics/Numerics.csproj -c Release -f net10.0 -p:Version=2.3.0-dev.3
-        -p:ContinuousIntegrationBuild=true
-
-(.NET SDK 10.0.400 on its bundled runtime 10.0.11), and is staged with
-``scripts/build_wheel.py --stage-only --dll PATH``. Its assembly version stays 2.2.0.0, so no
-consumer pin moves in the interim; the SHA-256 and the informational version tell it apart. At the
-release every value below moves to the published 2.3.0 package and ``NUMERICS_SOURCE_COMMIT``
-becomes empty.
+The wheel ships ``lib/net10.0/Numerics.dll`` of the RMC.Numerics NuGet package of the same version.
+``scripts/build_wheel.py`` reads the package version, the assembly version and the SHA-256 from the
+package and writes them into the wheel's copy of this file; it refuses a package whose version or
+assembly version differs from the values below. In a source checkout ``NUMERICS_SHA256`` is empty,
+because the digest of a published package is known only when it is built. ``NUMERICS_SOURCE_COMMIT``
+and ``NUMERICS_BUILD_COMMAND`` are written only for a wheel built from a local ``Numerics.dll``
+(``build_wheel.py --dll``, as in the pull request check); they are empty in a published wheel.
 """
 
-__version__ = "2.3.0.dev3"
+__version__ = "2.3.0"
 """The distribution version; it equals the RMC.Numerics version of the bundled assembly (PEP 440 form)."""
 
-NUMERICS_VERSION = "2.3.0-dev.3"
+NUMERICS_VERSION = "2.3.0"
 """The RMC.Numerics version of the bundled ``Numerics.dll`` (a NuGet package version, or the local build's)."""
 
-NUMERICS_ASSEMBLY_VERSION = "2.2.0.0"
-"""The assembly version recorded in the bundled ``Numerics.dll`` (2.2.0.0 for the interim local build)."""
+NUMERICS_ASSEMBLY_VERSION = "2.3.0.0"
+"""The assembly version recorded in the bundled ``Numerics.dll``."""
 
-NUMERICS_SHA256 = "fb1a02dbd108dd8c135735253a66f60573cc6ad0914c31158550e6197ac9b91c"
-"""SHA-256 of the bundled ``Numerics.dll`` (the interim local build of ``NUMERICS_SOURCE_COMMIT``)."""
+NUMERICS_SHA256 = ""
+"""SHA-256 of the bundled ``Numerics.dll``, written when the wheel is built (empty in a source checkout)."""
 
-NUMERICS_SOURCE_COMMIT = "ab0983a93e97a920379fdfdac4705713c90c374c"
+NUMERICS_SOURCE_COMMIT = ""
 """The Numerics commit a locally built ``Numerics.dll`` was built from; empty for a NuGet package assembly."""
 
-NUMERICS_BUILD_COMMAND = ("dotnet build Numerics/Numerics.csproj -c Release -f net10.0 -p:Version=2.3.0-dev.3 "
-                          "-p:ContinuousIntegrationBuild=true "
-                          "(Windows, .NET SDK 10.0.400 on its bundled runtime 10.0.11)")
+NUMERICS_BUILD_COMMAND = ""
 """How a locally built ``Numerics.dll`` was built (receipts record it); empty for a NuGet package assembly."""
 
 ROSLYN_VERSION = "4.14.0"

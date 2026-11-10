@@ -195,13 +195,20 @@ def test_load_identity_reports_version_and_file_digest() -> None:
     assert identity.sha256 == file_sha256(identity.location)
 
 
-def test_packaged_assembly_is_the_pinned_nuget_bytes() -> None:
+def test_packaged_assembly_is_the_written_identity() -> None:
     # Arrange
+    if not pynumerics.NUMERICS_SHA256:
+        pytest.skip("source checkout: the wheel build writes NUMERICS_SHA256 into the wheel's _version.py")
     identity = pynumerics.numerics_identity()
     if identity.location.resolve().parent != runtime._PACKAGED_BIN.resolve():
         pytest.skip("Numerics.dll was loaded from an override directory, not the packaged _bin")
     # Act / Assert
     assert identity.sha256 == pynumerics.NUMERICS_SHA256
+    assert identity.version == pynumerics.NUMERICS_ASSEMBLY_VERSION
+    assert identity.informational_version.split("+")[0] == pynumerics.NUMERICS_VERSION
+    if pynumerics.NUMERICS_SOURCE_COMMIT:
+        # A wheel built from a local Numerics.dll records the commit named in its informational version.
+        assert identity.informational_version.endswith("+" + pynumerics.NUMERICS_SOURCE_COMMIT)
     assert identity.is_packaged
     assert pynumerics.assert_numerics_identity() == identity
     with pytest.raises(pynumerics.RuntimeLoadError, match="SHA-256"):
@@ -210,16 +217,29 @@ def test_packaged_assembly_is_the_pinned_nuget_bytes() -> None:
         pynumerics.assert_numerics_identity(version="0.0.0.0")
 
 
+def test_assert_identity_without_a_pinned_digest_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange: the unwritten digest of a source checkout
+    from pynumerics import identity as identity_module
+
+    monkeypatch.setattr(identity_module, "NUMERICS_SHA256", "")
+    loaded = pynumerics.numerics_identity()
+    # Act / Assert
+    with pytest.raises(pynumerics.RuntimeLoadError, match="pins no Numerics.dll digest"):
+        pynumerics.assert_numerics_identity()
+    assert not loaded.is_packaged
+    assert pynumerics.assert_numerics_identity(sha256=loaded.sha256.upper()) == loaded
+
+
 def test_distribution_version_equals_numerics_version() -> None:
     # Assert
     numerics = pynumerics.NUMERICS_VERSION
     base, _, dev = numerics.partition("-dev.")
     assert pynumerics.__version__.split(".post")[0] == (f"{base}.dev{dev}" if dev else numerics)
-    if dev:
-        # The interim local build keeps the 2.2.0.0 assembly version and names its source commit.
-        assert pynumerics.NUMERICS_ASSEMBLY_VERSION == "2.2.0.0"
+    assert pynumerics.NUMERICS_ASSEMBLY_VERSION.startswith(base)
+    sha = pynumerics.NUMERICS_SHA256
+    assert sha == "" or (len(sha) == 64 and set(sha) <= set("0123456789abcdef"))
+    if pynumerics.NUMERICS_SOURCE_COMMIT:
         assert len(pynumerics.NUMERICS_SOURCE_COMMIT) == 40
-        assert numerics in pynumerics.NUMERICS_BUILD_COMMAND
+        assert pynumerics.NUMERICS_BUILD_COMMAND.startswith("dotnet build")
     else:
-        assert pynumerics.NUMERICS_ASSEMBLY_VERSION.startswith(numerics)
-        assert pynumerics.NUMERICS_SOURCE_COMMIT == pynumerics.NUMERICS_BUILD_COMMAND == ""
+        assert pynumerics.NUMERICS_BUILD_COMMAND == ""
