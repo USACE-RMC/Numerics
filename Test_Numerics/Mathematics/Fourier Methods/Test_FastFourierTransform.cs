@@ -89,5 +89,156 @@ namespace Mathematics.FourierMethods
                 Assert.AreEqual(acf[i, 1], true_acf[i], 0.0001d);
             }
         }
+
+        /// <summary>
+        /// The autocorrelation is linear, with no wraparound, including for power-of-two lengths. Oracle: numpy,
+        /// r(k) = sum(x[:n-k] * x[k:]) / sum(x * x) on the centered series.
+        /// </summary>
+        /// <remarks>
+        /// The circular (wrapped-around) autocorrelation of the first case is [1, -0.0986, 0.2113, -0.6056].
+        /// </remarks>
+        [TestMethod]
+        public void Test_FFT_AutocorrelationIsLinear()
+        {
+            AssertAcf(new double[] { 1, 3, 2, 5, 4, 6, 5, 8 },
+                new[] { 1d, 0.24471830985915494, 0.4119718309859155, -0.1813380281690141 });
+            AssertAcf(new double[] { 0.3, 1.2, 0.8, 1.9, 1.4, 2.2, 2.0, 2.9, 2.4, 3.1, 3.0, 3.8, 3.3, 4.1, 4.0, 4.6 },
+                new[] { 1d, 0.6643646043013031, 0.63548839919483, 0.3286696154253628, 0.33539040152558536, 0.05436884203835153 });
+            AssertAcf(new double[] { 2.0, -1.0, 0.5, 3.0, 1.5, -0.5, 2.5, 0.0, 1.0, 2.0 },
+                new[] { 1d, -0.34025157232704395, -0.4163522012578616, 0.34402515723270444, -0.04339622641509434 });
+        }
+
+        /// <summary>
+        /// Asserts the FFT autocorrelation of a series against expected values at lags 0, 1, ...
+        /// </summary>
+        private static void AssertAcf(double[] series, double[] expected)
+        {
+            var acf = Fourier.Autocorrelation(series, expected.Length - 1)!;
+            for (int k = 0; k < expected.Length; k++)
+            {
+                Assert.AreEqual(k, acf[k, 0], 0d);
+                // FFT round-off only.
+                Assert.AreEqual(expected[k], acf[k, 1], 1E-12);
+            }
+        }
+
+        /// <summary>
+        /// An odd-length interleaved array is rejected instead of silently dropping its last element.
+        /// </summary>
+        [TestMethod]
+        public void Test_FFT_OddLengthIsRejected()
+        {
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => Fourier.FFT(new double[5]));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => Fourier.FFT(new double[9]));
+            // An even length with a power-of-two complex count is still accepted.
+            var data = new double[] { 1, 0, 2, 0, 3, 0, 4, 0 };
+            Fourier.FFT(data);
+            Assert.AreEqual(10d, data[0], 1E-12);
+        }
+
+        /// <summary>
+        /// Convolve matches numpy.convolve(a, b, mode="full") (numpy 2.4.2), including length-1 inputs.
+        /// </summary>
+        [TestMethod]
+        public void Test_Convolve_MatchesNumpy()
+        {
+            AssertClose(new[] { 0.0, 1.0, 2.5, 4.0, 1.5 }, Fourier.Convolve(new[] { 1d, 2d, 3d }, new[] { 0d, 1d, 0.5 }), 1E-14);
+            AssertClose(new[] { 0.75, -1.875, 2.0, 8.0, -5.25, -5.75, 5.625, 1.125, -0.75, 1.125, 0.25 },
+                Fourier.Convolve(new[] { 0.5, -1.25, 2.0, 3.5, -0.75, 1.0, 0.25 }, new[] { 1.5, 0.0, -2.0, 0.5, 1.0 }), 1E-14);
+            AssertClose(new[] { 10.0 }, Fourier.Convolve(new[] { 2.5 }, new[] { 4.0 }), 1E-14);
+            AssertClose(new[] { 2.0, 4.0, 6.0, 8.0 }, Fourier.Convolve(new[] { 2.0 }, new[] { 1d, 2d, 3d, 4d }), 1E-14);
+
+            // Against the direct sum for a longer, non-power-of-two total length.
+            var rng = new System.Random(7);
+            var a = new double[300];
+            var b = new double[77];
+            for (int i = 0; i < a.Length; i++) a[i] = rng.NextDouble();
+            for (int i = 0; i < b.Length; i++) b[i] = rng.NextDouble();
+            var direct = new double[a.Length + b.Length - 1];
+            for (int i = 0; i < a.Length; i++)
+                for (int j = 0; j < b.Length; j++)
+                    direct[i + j] += a[i] * b[j];
+            // Absolute error relative to the peak (about 20): a few ulps times log2 N.
+            AssertClose(direct, Fourier.Convolve(a, b), 1E-12);
+
+            Assert.ThrowsExactly<System.ArgumentException>(() => Fourier.Convolve(new double[0], new[] { 1d }));
+            Assert.ThrowsExactly<System.ArgumentNullException>(() => Fourier.Convolve(null!, new[] { 1d }));
+        }
+
+        /// <summary>
+        /// BluesteinFFT matches numpy for non-power-of-two lengths. With the library's sign convention the forward
+        /// transform equals n * numpy.fft.ifft(x) and the inverse equals numpy.fft.fft(x) (numpy 2.4.2).
+        /// </summary>
+        [TestMethod]
+        public void Test_BluesteinFFT_MatchesNumpy()
+        {
+            AssertBluestein(5,
+                new[] { 1.1531944423558773, 1.32786493403093, 1.0317858828551736, -1.5420578589148697, -0.6031455309131122, 0.1910380500013585, -0.06598977589897637, 0.3407145761970283, 3.4841549816010375, -0.3175597013144472 },
+                new[] { 1.1531944423558773, 1.32786493403093, 3.4841549816010375, -0.3175597013144472, -0.06598977589897637, 0.3407145761970283, -0.6031455309131122, 0.1910380500013585, 1.0317858828551736, -1.5420578589148697 });
+            AssertBluestein(6,
+                new[] { 2.6297820680839012, -0.2729182936586898, -0.7416964758378222, -3.3582499991255466, -1.2717845494078812, 1.11681397229258, -0.20652623222104083, 0.9137940539474203, 0.3642055687235607, 0.3957324213127314, 5.226019620659282, 1.2048278452315042 },
+                new[] { 2.6297820680839012, -0.2729182936586898, 5.226019620659282, 1.2048278452315044, 0.3642055687235607, 0.3957324213127314, -0.20652623222104138, 0.9137940539474194, -1.2717845494078812, 1.11681397229258, -0.7416964758378216, -3.3582499991255457 });
+            AssertBluestein(12,
+                new[] { 7.667960312692564, -23.646244583488794, -15.063072163864343, 0.45859267759710076, -4.217756111999144, -4.628311430296348, -2.8383044069016297, 5.060312091827379, -1.4564440747974907, 3.164472049098436, -0.4823228336773091, 2.8301388909291485, 0.3561314123415289, 2.595408720643283, 1.1849039047574106, 2.2720418416606822, 2.115342127154086, 1.607115018549265, 3.2443423373601297, -1.1945901798475362, 5.458498857984349, 4.8781055910126305, 16.030720638949845, 6.602959312314754 },
+                new[] { 7.667960312692564, -23.646244583488794, 16.030720638949848, 6.602959312314754, 5.458498857984349, 4.878105591012631, 3.244342337360129, -1.1945901798475367, 2.115342127154086, 1.607115018549265, 1.1849039047574088, 2.2720418416606822, 0.3561314123415271, 2.5954087206432814, -0.48232283367730755, 2.830138890929148, -1.4564440747974907, 3.164472049098436, -2.8383044069016314, 5.060312091827379, -4.217756111999142, -4.628311430296348, -15.063072163864344, 0.45859267759710143 });
+
+            // Round trip at a prime length, length 1, and power-of-two delegation to FFT (bit-identical).
+            var x = TestSignal(97);
+            var y = (double[])x.Clone();
+            Fourier.BluesteinFFT(y);
+            Fourier.BluesteinFFT(y, true);
+            for (int i = 0; i < x.Length; i++)
+                Assert.AreEqual(x[i], y[i] / 97d, 1E-12);
+            var one = new[] { 3d, -2d };
+            Fourier.BluesteinFFT(one);
+            Assert.AreEqual(3d, one[0]);
+            Assert.AreEqual(-2d, one[1]);
+            var p = TestSignal(8);
+            var q = (double[])p.Clone();
+            Fourier.FFT(p);
+            Fourier.BluesteinFFT(q);
+            for (int i = 0; i < p.Length; i++)
+                Assert.AreEqual(System.BitConverter.DoubleToInt64Bits(p[i]), System.BitConverter.DoubleToInt64Bits(q[i]));
+
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => Fourier.BluesteinFFT(new double[0]));
+            Assert.ThrowsExactly<System.ArgumentOutOfRangeException>(() => Fourier.BluesteinFFT(new double[3]));
+        }
+
+        /// <summary>
+        /// The interleaved complex signal x(j) = (cos(1.3 j) + 0.1 j) + i (sin(0.7 j) - 0.05 j^2) used by the numpy oracle.
+        /// </summary>
+        private static double[] TestSignal(int n)
+        {
+            var x = new double[2 * n];
+            for (int j = 0; j < n; j++)
+            {
+                x[2 * j] = System.Math.Cos(1.3 * j) + 0.1 * j;
+                x[2 * j + 1] = System.Math.Sin(0.7 * j) - 0.05 * j * j;
+            }
+            return x;
+        }
+
+        /// <summary>
+        /// Checks the forward and inverse Bluestein transforms of the test signal against expected values.
+        /// </summary>
+        private static void AssertBluestein(int n, double[] forward, double[] inverse)
+        {
+            var f = TestSignal(n);
+            Fourier.BluesteinFFT(f);
+            AssertClose(forward, f, 1E-12);
+            var g = TestSignal(n);
+            Fourier.BluesteinFFT(g, true);
+            AssertClose(inverse, g, 1E-12);
+        }
+
+        /// <summary>
+        /// Asserts equal lengths and elementwise agreement within an absolute tolerance.
+        /// </summary>
+        private static void AssertClose(double[] expected, double[] actual, double tolerance)
+        {
+            Assert.HasCount(expected.Length, actual);
+            for (int i = 0; i < expected.Length; i++)
+                Assert.AreEqual(expected[i], actual[i], tolerance);
+        }
     }
 }

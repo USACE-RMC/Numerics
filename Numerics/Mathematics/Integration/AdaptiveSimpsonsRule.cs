@@ -34,15 +34,20 @@ namespace Numerics.Mathematics.Integration
         /// <param name="function">The function to integrate.</param>
         /// <param name="min">The minimum value under which the integral must be computed.</param>
         /// <param name="max">The maximum value under which the integral must be computed.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="max"/> is not greater than <paramref name="min"/>.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="function"/> is null.</exception>
         public AdaptiveSimpsonsRule(Func<double, double> function, double min, double max)
         {
-            if (max <= min) throw new ArgumentNullException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
+            if (max <= min) throw new ArgumentOutOfRangeException(nameof(max), "The maximum value cannot be less than or equal to the minimum value.");
             Function = function ?? throw new ArgumentNullException(nameof(function), "The function cannot be null.");
             a = min;
             b = max;
         }
 
         private double a, b, _squaredError;
+
+        // Number of intervals accepted at the depth or width limit without meeting the tolerance.
+        private int _forcedAcceptances;
 
         /// <summary>
         /// The unidimensional function to integrate.
@@ -75,9 +80,22 @@ namespace Numerics.Mathematics.Integration
         public double StandardError { get; private set; }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <see cref="Integrator.Status"/> is <see cref="IntegrationStatus.MaximumFunctionEvaluationsReached"/>
+        /// when the evaluation budget is exhausted, <see cref="IntegrationStatus.MaximumIterationsReached"/>
+        /// when any interval was accepted at the depth or width limit without meeting the tolerance, and
+        /// <see cref="IntegrationStatus.Success"/> otherwise. If an interval with a NaN or infinite estimate would be
+        /// accepted, the result cannot be finite, so integration stops with <see cref="IntegrationStatus.Failure"/>
+        /// and throws an <see cref="ArithmeticException"/> when <see cref="Integrator.ReportFailure"/> is true. A
+        /// non-finite estimate on an interval that is subdivided further does not stop integration, because its
+        /// children may be finite.
+        /// </remarks>
+        /// <exception cref="ArithmeticException">Thrown when <see cref="Integrator.ReportFailure"/> is true and an
+        /// accepted interval has a NaN or infinite estimate.</exception>
         public override void Integrate()
         {
             _squaredError = 0;
+            _forcedAcceptances = 0;
             StandardError = 0;
             ClearResults();
             Validate();
@@ -102,6 +120,10 @@ namespace Numerics.Mathematics.Integration
                 {
                     Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
                 }
+                else if (_forcedAcceptances > 0)
+                {
+                    Status = IntegrationStatus.MaximumIterationsReached;
+                }
                 else
                 {
                     Status = IntegrationStatus.Success;
@@ -120,9 +142,15 @@ namespace Numerics.Mathematics.Integration
         /// Evaluates the integral.
         /// </summary>
         /// <param name="bins">The stratification bins to integrate over.</param>
+        /// <remarks>
+        /// The status and failure rules match <see cref="Integrate()"/>.
+        /// </remarks>
+        /// <exception cref="ArithmeticException">Thrown when <see cref="Integrator.ReportFailure"/> is true and an
+        /// accepted interval has a NaN or infinite estimate.</exception>
         public void Integrate(List<StratificationBin> bins)
         {
             _squaredError = 0;
+            _forcedAcceptances = 0;
             StandardError = 0;
             ClearResults();
             Validate();
@@ -154,6 +182,10 @@ namespace Numerics.Mathematics.Integration
                 if (FunctionEvaluations >= MaxFunctionEvaluations)
                 {
                     Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
+                }
+                else if (_forcedAcceptances > 0)
+                {
+                    Status = IntegrationStatus.MaximumIterationsReached;
                 }
                 else
                 {
@@ -212,9 +244,18 @@ namespace Numerics.Mathematics.Integration
             if (depth <= 0 || Math.Abs(a - b) <= Tools.DoubleMachineEpsilon || FunctionEvaluations >= MaxFunctionEvaluations ||
                 (FunctionEvaluations >= MinFunctionEvaluations && depth <= MaxDepth - MinDepth && (absoluteToleranceReached || relativeToleranceReached)))
             {
+                // Once a non-finite estimate enters the composite rule the total cannot be finite, so stop
+                // instead of spending the remaining budget on other intervals.
+                double estimate = left + right + delta;
+                if (!Tools.IsFinite(estimate))
+                    throw new ArithmeticException("The integrand produced a NaN or infinite estimate on an accepted interval, so the integral cannot be finite.");
+
+                // Count intervals accepted only because a depth, width or budget limit was reached.
+                if (!absoluteToleranceReached && !relativeToleranceReached) _forcedAcceptances++;
+
                 // Convergence is reached
                 _squaredError += delta * delta; // Accumulate squared errors
-                return left + right + delta;
+                return estimate;
             }
             else
             {

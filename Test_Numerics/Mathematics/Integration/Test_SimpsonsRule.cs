@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
 using System;
 
@@ -108,5 +109,55 @@ namespace Mathematics.Integration
             double trueResult = Math.Exp(ln.Mu + 0.5 * ln.Sigma * ln.Sigma) / (1d - alpha) * (1 - Normal.StandardCDF(Normal.StandardZ(alpha) - ln.Sigma));
             Assert.AreEqual(result, trueResult, 1E-3);
         }
+
+        /// <summary>
+        /// Reversed or equal limits throw ArgumentOutOfRangeException.
+        /// </summary>
+        [TestMethod]
+        public void Test_Constructor_Guards()
+        {
+            Func<double, double> f = x => x;
+            Assert.Throws<ArgumentNullException>(() => new SimpsonsRule(null!, 0, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SimpsonsRule(f, 1, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SimpsonsRule(f, 1, 1));
+        }
+
+        /// <summary>
+        /// Non-success exits report the latest Simpson estimate (4 T(2n) - T(n)) / 3 instead of NaN.
+        /// </summary>
+        [TestMethod]
+        public void Test_NonSuccessExit_ReportsBestEstimate()
+        {
+            var iterations = new SimpsonsRule(F, 0, 2) { MaxIterations = 4 };
+            iterations.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumIterationsReached, iterations.Status);
+            Assert.AreEqual((4 * Trapezoid(8) - Trapezoid(4)) / 3, iterations.Result, 1E-15);
+
+            var budget = new SimpsonsRule(F, 0, 2) { MaxFunctionEvaluations = 50 };
+            budget.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumFunctionEvaluationsReached, budget.Status);
+            Assert.AreEqual((4 * Trapezoid(64) - Trapezoid(32)) / 3, budget.Result, 1E-15);
+
+            // After a single pass there is nothing to extrapolate, so the trapezoid is reported.
+            var single = new SimpsonsRule(F, 0, 2) { MaxIterations = 1 };
+            single.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumIterationsReached, single.Status);
+            Assert.AreEqual(Trapezoid(1), single.Result, 1E-15);
+        }
+
+        /// <summary>
+        /// Composite trapezoid with n panels for exp(-x) cos(3x) on [0, 2], the independent reference.
+        /// </summary>
+        private static double Trapezoid(int n)
+        {
+            double h = 2.0 / n, sum = 0.5 * (F(0) + F(2));
+            for (int i = 1; i < n; i++) sum += F(i * h);
+            return h * sum;
+        }
+
+        /// <summary>
+        /// The smooth test integrand exp(-x) cos(3x).
+        /// </summary>
+        private static double F(double x) => Math.Exp(-x) * Math.Cos(3 * x);
     }
 }

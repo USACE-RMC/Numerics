@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Numerics.Distributions;
+using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
 using System;
 
@@ -107,6 +108,41 @@ namespace Mathematics.Integration
             double result = adapt.Result / (1 - alpha);
             double trueResult = Math.Exp(ln.Mu + 0.5 * ln.Sigma * ln.Sigma) / (1d - alpha) * (1 - Normal.StandardCDF(Normal.StandardZ(alpha) - ln.Sigma));
             Assert.AreEqual(result, trueResult, 1E-3);
+        }
+
+        /// <summary>
+        /// Reversed or equal limits throw ArgumentOutOfRangeException.
+        /// </summary>
+        [TestMethod]
+        public void Test_Constructor_Guards()
+        {
+            Func<double, double> f = x => x;
+            Assert.Throws<ArgumentNullException>(() => new AdaptiveGaussLobatto(null!, 0, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveGaussLobatto(f, 1, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveGaussLobatto(f, 1, 1));
+        }
+
+        /// <summary>
+        /// A NaN integrand stops with Failure once a NaN interval is accepted instead of spending
+        /// the evaluation budget (10,007,748 evaluations before), and throws when ReportFailure is true.
+        /// A smooth integrand keeps its result bits.
+        /// </summary>
+        [TestMethod]
+        public void Test_NaNIntegrand_FailsFast()
+        {
+            var silent = new AdaptiveGaussLobatto(x => double.NaN, 0, 1) { ReportFailure = false };
+            silent.Integrate();
+            Assert.AreEqual(IntegrationStatus.Failure, silent.Status);
+            Assert.IsTrue(double.IsNaN(silent.Result));
+            Assert.AreEqual(1573, silent.FunctionEvaluations);
+
+            var loud = new AdaptiveGaussLobatto(x => double.NaN, 0, 1);
+            Assert.Throws<ArithmeticException>(() => loud.Integrate());
+
+            var smooth = new AdaptiveGaussLobatto(x => Math.Exp(-x) * Math.Cos(3 * x), 0, 2);
+            smooth.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, smooth.Status);
+            Assert.AreEqual(0x3FB35E863514D493, BitConverter.DoubleToInt64Bits(smooth.Result));
         }
     }
 }

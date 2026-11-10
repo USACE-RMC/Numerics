@@ -178,5 +178,53 @@ namespace Mathematics.ODESolvers
                 Assert.AreEqual(testValid[i], testResults[i], 1E-3);
             }
         }
+
+        /// <summary>
+        /// The embedded error estimates and step growth make both adaptive methods accurate and economical on
+        /// y' = y, whose exact solution is e^t.
+        /// </summary>
+        /// <remarks>
+        /// The Fehlberg fourth-order row weights k5, and the step grows after a halving; weighting k6 with a step
+        /// that never grows takes 36,516 function calls here. Cash-Karp steps with its fifth-order solution.
+        /// </remarks>
+        [TestMethod]
+        public void Test_AdaptiveMethodsOnExponentialGrowth()
+        {
+            int calls = 0;
+            Func<double, double, double> ode = (t, y) => { calls++; return y; };
+
+            double fehlberg = RungeKutta.Fehlberg(ode, 1d, 0d, 1d, 1E-6, 1E-8);
+            Assert.AreEqual(Math.E, fehlberg, 1E-7);
+            Assert.IsLessThan(500, calls);
+
+            calls = 0;
+            double cashKarp = RungeKutta.CashKarp(ode, 1d, 0d, 1d, 1E-6, 1E-8);
+            Assert.AreEqual(Math.E, cashKarp, 1E-7);
+            Assert.IsLessThan(500, calls);
+        }
+
+        /// <summary>
+        /// After a fast transient the step size grows again. y' = -50 y for t &lt; 0.05 and 0 afterwards has the
+        /// exact solution y(1) = e^-2.5.
+        /// </summary>
+        /// <remarks>
+        /// A step that never grows once halved takes about 24 million calls per method here.
+        /// </remarks>
+        [TestMethod]
+        public void Test_AdaptiveStepGrowsAfterTransient()
+        {
+            int calls = 0;
+            Func<double, double, double> ode = (t, y) => { calls++; return t < 0.05 ? -50d * y : 0d; };
+
+            double cashKarp = RungeKutta.CashKarp(ode, 1d, 0d, 1d, 1E-8, 1E-8);
+            // The discontinuity in f at t = 0.05 limits the accuracy to about the tolerance.
+            Assert.AreEqual(Math.Exp(-2.5), cashKarp, 1E-6);
+            Assert.IsLessThan(20000, calls);
+
+            calls = 0;
+            double fehlberg = RungeKutta.Fehlberg(ode, 1d, 0d, 1d, 1E-8, 1E-8);
+            Assert.AreEqual(Math.Exp(-2.5), fehlberg, 1E-6);
+            Assert.IsLessThan(20000, calls);
+        }
     }
 }

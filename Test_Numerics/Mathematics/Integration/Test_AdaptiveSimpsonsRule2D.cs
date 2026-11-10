@@ -255,19 +255,18 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
-        /// Constructor guards, pinning the existing exception types: a null function throws
-        /// ArgumentNullException, and reversed bounds throw the ArgumentNullException the current
-        /// constructor uses (a historical quirk, pinned as-is).
+        /// Constructor guards: a null function throws ArgumentNullException, and reversed or equal
+        /// bounds throw ArgumentOutOfRangeException.
         /// </summary>
         [TestMethod]
         public void Test_Constructor_Guards()
         {
             Func<double, double, double> func = (x, y) => x + y;
             Assert.Throws<ArgumentNullException>(() => new AdaptiveSimpsonsRule2D(null!, 0, 1, 0, 1));
-            Assert.Throws<ArgumentNullException>(() => new AdaptiveSimpsonsRule2D(func, 1, 0, 0, 1));
-            Assert.Throws<ArgumentNullException>(() => new AdaptiveSimpsonsRule2D(func, 1, 1, 0, 1));
-            Assert.Throws<ArgumentNullException>(() => new AdaptiveSimpsonsRule2D(func, 0, 1, 1, 0));
-            Assert.Throws<ArgumentNullException>(() => new AdaptiveSimpsonsRule2D(func, 0, 1, 1, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveSimpsonsRule2D(func, 1, 0, 0, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveSimpsonsRule2D(func, 1, 1, 0, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveSimpsonsRule2D(func, 0, 1, 1, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveSimpsonsRule2D(func, 0, 1, 1, 1));
         }
 
         /// <summary>
@@ -282,5 +281,34 @@ namespace Mathematics.Integration
             Assert.AreEqual(1E-16, thin.Result, 1E-17);
         }
 
+        /// <summary>
+        /// A smooth integrand still reports Success with the result bits produced before forced
+        /// acceptances were counted; the exact value is pi erf(1)^2 (scipy dblquad agrees).
+        /// </summary>
+        [TestMethod]
+        public void Test_SmoothIntegrand_SuccessAndBitsUnchanged()
+        {
+            var asr2D = new AdaptiveSimpsonsRule2D((x, y) => Math.Exp(-(x * x + y * y)), -1, 1, -1, 1);
+            asr2D.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, asr2D.Status);
+            Assert.AreEqual(0x4001D90EBCEAAC90, BitConverter.DoubleToInt64Bits(asr2D.Result));
+            Assert.AreEqual(9305, asr2D.FunctionEvaluations);
+            Assert.AreEqual(2.2309851414041346, asr2D.Result, 1E-8);
+        }
+
+        /// <summary>
+        /// Regions accepted at the depth limit without meeting the tolerance report
+        /// MaximumIterationsReached with an unchanged result. The indicator of x + y at least 0.7
+        /// integrates to 1 - 0.7^2 / 2 = 0.755 on the unit square.
+        /// </summary>
+        [TestMethod]
+        public void Test_ForcedAcceptance_ReportsMaximumIterations()
+        {
+            var step = new AdaptiveSimpsonsRule2D((x, y) => x + y < 0.7 ? 0.0 : 1.0, 0, 1, 0, 1) { MaxDepth = 3 };
+            step.Integrate();
+            Assert.AreEqual(IntegrationStatus.MaximumIterationsReached, step.Status);
+            Assert.AreEqual(0x3FE8114DBF86A314, BitConverter.DoubleToInt64Bits(step.Result));
+            Assert.IsGreaterThan(1E-8, Math.Abs(step.Result - 0.755));
+        }
     }
 }

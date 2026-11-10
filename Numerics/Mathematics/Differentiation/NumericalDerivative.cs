@@ -1,4 +1,5 @@
 ﻿using Numerics.Mathematics.LinearAlgebra;
+using Numerics.Mathematics.Optimization;
 using System;
 
 namespace Numerics.Mathematics
@@ -18,6 +19,12 @@ namespace Numerics.Mathematics
     /// as well as advanced techniques like Ridders' method and adaptive step sizing.
     /// The class also supports multivariable calculus operations including Jacobian matrices,
     /// gradients, and Hessian matrices with boundary constraint handling.
+    /// </para>
+    /// <para>
+    /// When the function throws, the bounded Jacobian, gradient and Hessian retry with a smaller step. Cancellation
+    /// (<see cref="OperationCanceledException"/>) and an optimizer's budget stop (an <see cref="ArgumentException"/> for
+    /// <see cref="Optimizer.MaxFunctionEvaluations"/> or <see cref="Optimizer.MaxIterations"/>) are not retried; they
+    /// propagate to the caller.
     /// </para>
     /// <para>
     /// <b> Key Features: </b>
@@ -52,6 +59,20 @@ namespace Numerics.Mathematics
     /// </remarks>
     public sealed class NumericalDerivative
     {
+        /// <summary>
+        /// Determines whether an exception from the function is a request to stop rather than a failed evaluation:
+        /// cancellation, or an optimizer's evaluation or iteration budget being reached. Such exceptions propagate to
+        /// the caller; any other exception makes the derivative retry with a smaller step.
+        /// </summary>
+        /// <param name="exception">The exception thrown by the function.</param>
+        /// <returns>True when the exception must not be retried.</returns>
+        private static bool IsStopRequest(Exception exception)
+        {
+            return exception is OperationCanceledException
+                || (exception is ArgumentException argument
+                    && (argument.ParamName == nameof(Optimizer.MaxFunctionEvaluations) || argument.ParamName == nameof(Optimizer.MaxIterations)));
+        }
+
         #region First Derivatives - Single Variable
 
         /// <summary>
@@ -151,13 +172,33 @@ namespace Numerics.Mathematics
         /// <param name="f">Function for which the derivative is to be evaluated.</param>
         /// <param name="point">The location where the derivative is to be evaluated.</param>
         /// <param name="err">Output. An estimate of the error in the derivative.</param>
-        /// <param name="stepSize">Optional. The initial finite difference step size.</param>
+        /// <param name="stepSize">
+        /// Optional. The initial finite difference step size. If negative or zero, the large initial step
+        /// 0.1 (1 + |point|) is used.
+        /// </param>
         /// <returns>The derivative of the function f, evaluated at the given point.</returns>
         /// <remarks>
         /// <para>
         /// Ridders' method uses polynomial extrapolation with successively smaller step sizes
         /// to achieve high accuracy. It automatically estimates the error and stops when
         /// further refinement no longer improves the result.
+        /// </para>
+        /// <para>
+        /// The initial step is deliberately large. Press et al. (2007, section 5.7) advise that it should not be small but an
+        /// increment over which the function changes substantially, because the tableau of up to ten central
+        /// differences, each step 1.4 times smaller, is extrapolated to zero step; the extrapolation then removes the
+        /// truncation error while the steps stay far above the rounding floor. The default 0.1 (1 + |point|) gives,
+        /// for example, the derivative of exp at 0.7 to about 1E-15 relative, where a small starting step such as
+        /// <see cref="CalculateStepSize(double, int)"/> leaves the rounding error of about 1E-8. Pass a smaller
+        /// <paramref name="stepSize"/> when the function is not smooth over that scale (for example near a
+        /// singularity or the edge of its domain).
+        /// </para>
+        /// <para>
+        /// When the default step is used and a central difference of its tableau is not finite, because f is NaN or
+        /// infinite at point ± h (log at 0.05, for example), the step is halved, up to 30 times, until every central
+        /// difference of the tableau is finite, and that tableau is returned; if none is, the result of the default
+        /// step is returned. A tableau that is finite throughout is returned unchanged, and a given positive
+        /// <paramref name="stepSize"/> is used as it is.
         /// </para>
         /// <para>
         /// This method is particularly useful when:
@@ -175,6 +216,47 @@ namespace Numerics.Mathematics
         {
             if (f == null) throw new ArgumentNullException(nameof(f));
 
+            if (!(stepSize <= 0))
+                return RiddersTableau(f, point, stepSize, out err, out _);
+
+            double hh = 0.1 * (1.0 + Math.Abs(point));
+            double ans = RiddersTableau(f, point, hh, out err, out bool finite);
+            // The large default step can leave the domain of f (log near zero, for example); the step is then
+            // halved until every central difference in the tableau is finite.
+            for (int k = 0; !finite && k < RiddersFallbackHalvings; k++)
+            {
+                hh *= 0.5;
+                double retry = RiddersTableau(f, point, hh, out double retryErr, out finite);
+                if (finite)
+                {
+                    err = retryErr;
+                    return retry;
+                }
+            }
+            return ans;
+        }
+
+        /// <summary>
+        /// The largest number of halvings of the default Ridders step tried when its tableau is not finite; 30 halvings
+        /// reduce the step by about 1E-9.
+        /// </summary>
+        private const int RiddersFallbackHalvings = 30;
+
+        /// <summary>
+        /// Builds the Ridders extrapolation tableau from the initial step and returns its best estimate.
+        /// </summary>
+        /// <param name="f">Function for which the derivative is to be evaluated.</param>
+        /// <param name="point">The location where the derivative is to be evaluated.</param>
+        /// <param name="hh">The initial finite difference step.</param>
+        /// <param name="err">Output. An estimate of the error in the derivative.</param>
+        /// <param name="finite">Output. True when every central difference evaluated in the tableau is finite.</param>
+        /// <returns>The extrapolated derivative.</returns>
+        /// <remarks>
+        /// Up to ten central differences, each step 1.4 times smaller, are extrapolated to zero step by Neville's
+        /// algorithm (Press et al., 2007, section 5.7), stopping when a higher order is worse by a factor of two.
+        /// </remarks>
+        private static double RiddersTableau(Func<double, double> f, double point, double hh, out double err, out bool finite)
+        {
             // Algorithm parameters
             const int ntab = 10;              // Maximum size of extrapolation tableau
             const double con = 1.4;           // Step size reduction factor at each iteration
@@ -182,12 +264,12 @@ namespace Numerics.Mathematics
             const double big = double.MaxValue;
             const double safe = 2.0;          // Safety factor for early termination
 
-            double hh = stepSize <= 0 ? CalculateStepSize(point) : stepSize;
             var ans = 0.0;
             var a = new double[ntab, ntab];
 
             // Initialize with central difference at largest step size
             a[0, 0] = (f(point + hh) - f(point - hh)) / (2.0 * hh);
+            finite = Tools.IsFinite(a[0, 0]);
             err = big;
 
             // Build tableau of successively smaller step sizes and higher-order extrapolations
@@ -198,6 +280,7 @@ namespace Numerics.Mathematics
 
                 // Compute derivative at new, smaller step size
                 a[0, i] = (f(point + hh) - f(point - hh)) / (2.0 * hh);
+                finite &= Tools.IsFinite(a[0, i]);
 
                 double fac = con2;
 
@@ -394,6 +477,7 @@ namespace Numerics.Mathematics
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown if g or theta is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown if g(theta) returns null.</exception>
+        /// <exception cref="OperationCanceledException">Propagated from the function; not retried.</exception>
         public static double[,] Jacobian(
             Func<double[], double[]> g,
             double[] theta,
@@ -536,7 +620,7 @@ namespace Numerics.Mathematics
                             hj *= 0.5;
                         }
                     }
-                    catch
+                    catch (Exception ex) when (!IsStopRequest(ex))
                     {
                         // Function evaluation failed: reduce step and retry
                         hj *= 0.5;
@@ -586,6 +670,7 @@ namespace Numerics.Mathematics
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown if f or theta is null.</exception>
         /// <exception cref="ArithmeticException">Thrown if f(theta) is not finite.</exception>
+        /// <exception cref="OperationCanceledException">Propagated from the function; not retried.</exception>
         public static double[] Gradient(
             Func<double[], double> f,
             double[] theta,
@@ -711,7 +796,7 @@ namespace Numerics.Mathematics
                             hj *= 0.5;
                         }
                     }
-                    catch
+                    catch (Exception ex) when (!IsStopRequest(ex))
                     {
                         hj *= 0.5;
                     }
@@ -765,6 +850,7 @@ namespace Numerics.Mathematics
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown if f or theta is null.</exception>
         /// <exception cref="ArithmeticException">Thrown if f(theta) is not finite.</exception>
+        /// <exception cref="OperationCanceledException">Propagated from the function; not retried.</exception>
         public static double[,] Hessian(
             Func<double[], double> f,
             double[] theta,
@@ -902,7 +988,7 @@ namespace Numerics.Mathematics
                             hj *= 0.5;
                         }
                     }
-                    catch
+                    catch (Exception ex) when (!IsStopRequest(ex))
                     {
                         hj *= 0.5;
                     }
@@ -1091,7 +1177,7 @@ namespace Numerics.Mathematics
                                 }
                             }
                         }
-                        catch
+                        catch (Exception ex) when (!IsStopRequest(ex))
                         {
                             hi *= 0.5;
                             hj *= 0.5;
@@ -1141,17 +1227,17 @@ namespace Numerics.Mathematics
         /// truncation error is O(h^n).
         /// </description></item>
         /// <item><description>
-        /// <b>Rounding error:</b> Increases as h gets smaller because we're subtracting 
+        /// <b>Rounding error:</b> Increases as h gets smaller because of subtracting 
         /// nearly equal numbers (catastrophic cancellation).
         /// </description></item>
         /// </list>
         /// <para>
-        /// The optimal step size minimizes the total error. For first derivatives with central differences,
-        /// this gives h ≈ ε^(1/3) where ε is machine epsilon (~2.22e-16 for double precision).
-        /// For second derivatives, h ≈ ε^(1/4).
+        /// The optimal step size minimizes the total error.
         /// </para>
         /// <para>
-        /// The formula used is: h = ε^(1/(1+order)) · (1 + |x|)
+        /// The formula used is: h = ε^(1/(1+order)) · (1 + |x|), where ε = <see cref="Tools.DoubleMachineEpsilon"/>
+        /// = 2^(-53) ≈ 1.11e-16, the double-precision unit roundoff. For order 1 this is h ≈ 1.05e-8 · (1 + |x|),
+        /// and for order 2 h ≈ 4.81e-6 · (1 + |x|).
         /// </para>
         /// <para>
         /// The (1 + |x|) term scales the step size relative to the magnitude of the input,
@@ -1160,9 +1246,9 @@ namespace Numerics.Mathematics
         /// </remarks>
         public static double CalculateStepSize(double x, int order = 1)
         {
-            // Machine epsilon for double precision: approximately 2.22e-16
-            // For first derivatives: ε^(1/2) ≈ 1.5e-8
-            // For second derivatives: ε^(1/3) ≈ 6.1e-6
+            // Unit roundoff for double precision: 2^-53, approximately 1.11e-16
+            // For first derivatives: ε^(1/2) ≈ 1.05e-8
+            // For second derivatives: ε^(1/3) ≈ 4.81e-6
             return Math.Pow(Tools.DoubleMachineEpsilon, 1.0 / (1.0 + order)) * (1.0 + Math.Abs(x));
         }
 

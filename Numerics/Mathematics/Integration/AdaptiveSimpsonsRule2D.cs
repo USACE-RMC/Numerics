@@ -26,15 +26,15 @@
         /// <param name="maxX">The maximum x-value under which the integral must be computed.</param>
         /// <param name="minY">The minimum y-value under which the integral must be computed.</param>
         /// <param name="maxY">The maximum y-value under which the integral must be computed.</param>
-        /// <exception cref="ArgumentNullException">
-        /// Thrown when <paramref name="function"/> is null, <paramref name="maxX"/> is less than or
-        /// equal to <paramref name="minX"/>, or <paramref name="maxY"/> is less than or equal to
-        /// <paramref name="minY"/>.
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="function"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when <paramref name="maxX"/> is less than or equal to <paramref name="minX"/>, or
+        /// <paramref name="maxY"/> is less than or equal to <paramref name="minY"/>.
         /// </exception>
         public AdaptiveSimpsonsRule2D(Func<double, double, double> function, double minX, double maxX, double minY, double maxY)
         {
-            if (maxX <= minX) throw new ArgumentNullException(nameof(maxX), "The maximum x-value cannot be less than or equal to the minimum x-value.");
-            if (maxY <= minY) throw new ArgumentNullException(nameof(maxY), "The maximum y-value cannot be less than or equal to the minimum y-value.");
+            if (maxX <= minX) throw new ArgumentOutOfRangeException(nameof(maxX), "The maximum x-value cannot be less than or equal to the minimum x-value.");
+            if (maxY <= minY) throw new ArgumentOutOfRangeException(nameof(maxY), "The maximum y-value cannot be less than or equal to the minimum y-value.");
             Function = function ?? throw new ArgumentNullException(nameof(function), "The function cannot be null.");
             ax = minX;
             bx = maxX;
@@ -45,6 +45,9 @@
         // 2D bounds
         private double ax, bx, ay, by;
         private double _squaredError;
+
+        // Number of regions accepted at the depth or width limit without meeting the tolerance.
+        private int _forcedAcceptances;
 
         /// <summary>
         /// The 2D function to integrate.
@@ -87,9 +90,16 @@
         public double StandardError { get; private set; }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <see cref="Integrator.Status"/> is <see cref="IntegrationStatus.MaximumFunctionEvaluationsReached"/>
+        /// when the evaluation budget is exhausted, <see cref="IntegrationStatus.MaximumIterationsReached"/>
+        /// when any region was accepted at the depth or width limit without meeting the tolerance, and
+        /// <see cref="IntegrationStatus.Success"/> otherwise.
+        /// </remarks>
         public override void Integrate()
         {
             _squaredError = 0;
+            _forcedAcceptances = 0;
             StandardError = 0;
             ClearResults();
             Validate();
@@ -139,6 +149,10 @@
                 if (FunctionEvaluations >= MaxFunctionEvaluations)
                 {
                     Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
+                }
+                else if (_forcedAcceptances > 0)
+                {
+                    Status = IntegrationStatus.MaximumIterationsReached;
                 }
                 else
                 {
@@ -277,6 +291,9 @@
                  depth <= MaxDepth - MinDepth &&
                  (absoluteToleranceReached || relativeToleranceReached)))
             {
+                // Count regions accepted only because a depth, width or budget limit was reached.
+                if (!absoluteToleranceReached && !relativeToleranceReached) _forcedAcceptances++;
+
                 // Convergence is reached, accumulate the error
                 _squaredError += delta * delta;
                 return sum + delta;

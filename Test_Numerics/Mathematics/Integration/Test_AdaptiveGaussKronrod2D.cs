@@ -439,8 +439,8 @@ namespace Mathematics.Integration
         }
 
         /// <summary>
-        /// The recorded weights sum to the domain area on every non-Failure status — success,
-        /// budget exhaustion, and depth exhaustion — on a non-unit-area domain, and a throwing
+        /// The recorded weights sum to the domain area on every non-Failure status (success,
+        /// budget exhaustion, and depth exhaustion) on a non-unit-area domain, and a throwing
         /// integrand reports nothing at all.
         /// </summary>
         [TestMethod]
@@ -487,5 +487,90 @@ namespace Mathematics.Integration
             Assert.AreEqual(0, failureCount);
         }
 
+        /// <summary>
+        /// Pooled region storage reproduces the version 2.2.0 results bit for bit, with and without a
+        /// recorder, on a fresh instance and on every reuse of one instance.
+        /// </summary>
+        /// <remarks>
+        /// The expected bit patterns, evaluation counts, split counts and recorder hashes were produced
+        /// by the 2.2.0 implementation, kept as a bitwise reference, which allocates new storage for every region.
+        /// </remarks>
+        [TestMethod]
+        public void Test_PooledRegionsAreBitIdentical()
+        {
+            var cases = new (Func<double, double, double> F, double Ax, double Bx, double Ay, double By,
+                long Result, long Error, int Evaluations, int Splits, long RecorderHash, long Nodes)[]
+            {
+                ((x, y) => Math.Exp(-(x * x + y * y)), -3, 3, -3, 3,
+                    0x400921B28F3A4F2D, 0x3E2D999D80000000, 3087, 3, unchecked((long)0xA5637CF2D9CD412DUL), 1764),
+                ((x, y) => 1.0 / (1E-3 + (x - 0.3) * (x - 0.3) + (y - 0.7) * (y - 0.7)), 0, 1, 0, 1,
+                    0x40312AED783726BF, 0x3E3AE5DDFC000000, 18963, 21, unchecked((long)0xE17EC02E28E2FCD8UL), 9702),
+                ((x, y) => Math.Sqrt(x * y), 0, 1, 0, 1,
+                    0x3FDC71C71D051756, 0x3E445380640B6480, 63945, 72, unchecked((long)0xA9F8EBEF1C1551D6UL), 32193),
+            };
+            foreach (var c in cases)
+            {
+                var agk = new AdaptiveGaussKronrod2D(c.F, c.Ax, c.Bx, c.Ay, c.By) { RelativeTolerance = 1E-10 };
+                long hash = 17, count = 0;
+                Action<double, double, double, double> recorder = (x, y, w, v) =>
+                {
+                    count++;
+                    hash = unchecked(hash * 31 + BitConverter.DoubleToInt64Bits(x) ^ BitConverter.DoubleToInt64Bits(y) * 7
+                        ^ BitConverter.DoubleToInt64Bits(w) * 13 ^ BitConverter.DoubleToInt64Bits(v) * 19);
+                };
+                // Alternate capture and no capture so buffers and regions are recycled across both modes.
+                for (int run = 0; run < 4; run++)
+                {
+                    bool capture = run % 2 == 1;
+                    agk.Recorder = capture ? recorder : null;
+                    hash = 17;
+                    count = 0;
+                    agk.Integrate();
+                    Assert.AreEqual(c.Result, BitConverter.DoubleToInt64Bits(agk.Result));
+                    Assert.AreEqual(c.Error, BitConverter.DoubleToInt64Bits(agk.StandardError));
+                    Assert.AreEqual(c.Evaluations, agk.FunctionEvaluations);
+                    Assert.AreEqual(c.Splits, agk.Iterations);
+                    Assert.AreEqual(IntegrationStatus.Success, agk.Status);
+                    if (capture)
+                    {
+                        Assert.AreEqual(c.RecorderHash, hash);
+                        Assert.AreEqual(c.Nodes, count);
+                    }
+                }
+            }
+
+            // A failed call leaves recyclable state that does not affect the next call.
+            bool fail = true;
+            var reused = new AdaptiveGaussKronrod2D((x, y) => fail && x > 0.5 ? throw new InvalidOperationException("Integrand failure.") : Math.Sqrt(x * y), 0, 1, 0, 1)
+            {
+                RelativeTolerance = 1E-10,
+                ReportFailure = false
+            };
+            reused.Integrate();
+            Assert.AreEqual(IntegrationStatus.Failure, reused.Status);
+            fail = false;
+            reused.Integrate();
+            Assert.AreEqual(0x3FDC71C71D051756, BitConverter.DoubleToInt64Bits(reused.Result));
+            Assert.AreEqual(63945, reused.FunctionEvaluations);
+        }
+
+        /// <summary>
+        /// A NaN integrand stops with Failure once a NaN region can no longer be refined, instead of
+        /// spending the evaluation budget (10,000,557 evaluations before), and throws an
+        /// ArithmeticException when ReportFailure is true.
+        /// </summary>
+        [TestMethod]
+        public void Test_NaNIntegrand_FailsFast()
+        {
+            var silent = new AdaptiveGaussKronrod2D((x, y) => double.NaN, 0, 1, 0, 1) { ReportFailure = false };
+            silent.Integrate();
+            Assert.AreEqual(IntegrationStatus.Failure, silent.Status);
+            Assert.IsTrue(double.IsNaN(silent.Result));
+            Assert.AreEqual(88641, silent.FunctionEvaluations);
+
+            var loud = new AdaptiveGaussKronrod2D((x, y) => double.NaN, 0, 1, 0, 1);
+            Assert.Throws<ArithmeticException>(() => loud.Integrate());
+            Assert.AreEqual(IntegrationStatus.Failure, loud.Status);
+        }
     }
 }

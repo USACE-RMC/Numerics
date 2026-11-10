@@ -20,6 +20,20 @@ namespace Numerics.Mathematics.Integration
     /// </remarks>
     public sealed class Integration
     {
+        // Positive Gauss-Legendre nodes and weights, shared by every call instead of being allocated per call.
+        private static readonly double[] GL10Nodes = { 0.1488743389816312, 0.4333953941292472, 0.6794095682990244, 0.8650633666889845, 0.9739065285171717 };
+        private static readonly double[] GL10Weights = { 0.2955242247147529, 0.2692667193099963, 0.2190863625159821, 0.1494513491505806, 0.0666713443086881 };
+        private static readonly double[] GL20Nodes = {
+            0.0765265211334973338, 0.2277858511416450781, 0.3737060887154195607,
+            0.5108670019508270981, 0.6360536807265150254, 0.7463319064601507926,
+            0.8391169718222188234, 0.9122344282513259059, 0.9639719272779137912,
+            0.9931285991850949247 };
+        private static readonly double[] GL20Weights = {
+            0.1527533871307258507, 0.1491729864726037467, 0.1420961093183820514,
+            0.1316886384491766269, 0.1181945319615184174, 0.1019301198172404351,
+            0.0832767415767047487, 0.0626720483341090636, 0.0406014298003869413,
+            0.0176140071391521183 };
+
         /// <summary>
         /// Returns the integral of a function between a and b by ten-point Gauss-Legendre integration. 
         /// </summary>
@@ -29,8 +43,8 @@ namespace Numerics.Mathematics.Integration
         /// <returns>The value of a definite integral.</returns>
         public static double GaussLegendre(Func<double, double> f, double a, double b)
         {
-            var x = new double[] { 0.1488743389816312, 0.4333953941292472, 0.6794095682990244, 0.8650633666889845, 0.9739065285171717 };
-            var w = new double[] { 0.2955242247147529, 0.2692667193099963, 0.2190863625159821, 0.1494513491505806, 0.0666713443086881 };
+            var x = GL10Nodes;
+            var w = GL10Weights;
             double xm = 0.5 * (b + a);
             double xr = 0.5 * (b - a);
             double s = 0;
@@ -61,16 +75,8 @@ namespace Numerics.Mathematics.Integration
         /// </remarks>
         public static double GaussLegendre20(Func<double, double> f, double a, double b)
         {
-            var x = new double[] {
-                0.0765265211334973338, 0.2277858511416450781, 0.3737060887154195607,
-                0.5108670019508270981, 0.6360536807265150254, 0.7463319064601507926,
-                0.8391169718222188234, 0.9122344282513259059, 0.9639719272779137912,
-                0.9931285991850949247 };
-            var w = new double[] {
-                0.1527533871307258507, 0.1491729864726037467, 0.1420961093183820514,
-                0.1316886384491766269, 0.1181945319615184174, 0.1019301198172404351,
-                0.0832767415767047487, 0.0626720483341090636, 0.0406014298003869413,
-                0.0176140071391521183 };
+            var x = GL20Nodes;
+            var w = GL20Weights;
             double xm = 0.5 * (b + a);
             double xr = 0.5 * (b - a);
             double s = 0;

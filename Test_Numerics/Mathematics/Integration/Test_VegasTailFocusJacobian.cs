@@ -108,8 +108,8 @@ namespace Mathematics.Integration
 
         /// <summary>
         /// Test that the seeded scrambled-Sobol driver keeps the tail-focused integral unbiased
-        /// and the handed weights on the domain measure at every γ — the Jacobian identity is
-        /// driver-independent — while restoring reproducibility: identical seeds reproduce the
+        /// and the handed weights on the domain measure at every γ (the Jacobian identity is
+        /// driver-independent) while restoring reproducibility: identical seeds reproduce the
         /// estimate bit-for-bit and distinct seeds diverge (the property the unrandomized
         /// sequence, being seed-independent, cannot honor).
         /// </summary>

@@ -61,6 +61,16 @@ namespace Numerics.Mathematics.Integration
 
         private double ax, bx, ay, by;
 
+        // Storage reused across regions and across Integrate calls. Every reused field and buffer entry
+        // is overwritten before it is read, so pooling changes allocation only, never the arithmetic.
+        [NonSerialized] private List<Region>? _regions;
+        [NonSerialized] private List<(int Index, double Error)>? _heap;
+        [NonSerialized] private Stack<Region>? _spareRegions;
+        [NonSerialized] private Stack<double[]>? _spareNodes;
+        [NonSerialized] private Stack<double[]>? _spareValues;
+        [NonSerialized] private double[]? _xScratch;
+        [NonSerialized] private double[]? _yScratch;
+
         // Gauss-Kronrod G10K21 positive abscissas and weights on [-1, 1], identical constants to the
         // one-dimensional AdaptiveGaussKronrod rule. Kronrod indices 1, 3, 5, 7, 9 are the Gauss nodes.
         private static readonly double[] xKronrod = new double[]
@@ -255,8 +265,11 @@ namespace Numerics.Mathematics.Integration
         /// reported. Each weight carries the tensor Kronrod weight scaled by the region half-lengths,
         /// so the reported weights sum to the domain area and the weighted function values reproduce
         /// <see cref="Integrator.Result"/> up to floating-point reassociation. Nothing is reported
-        /// when integration fails. Node capture allocates three arrays per region, so leave the
-        /// recorder null when the composite rule is not needed.
+        /// when integration fails. Node capture holds three buffers per final region, so leave the
+        /// recorder null when the composite rule is not needed. Region records and capture buffers are
+        /// retained by the instance and reused by the next <see cref="Integrate"/> call, so repeated
+        /// integrations on one instance allocate little beyond the first call; results are unaffected.
+        /// The recorder must not call <see cref="Integrate"/> on the same instance.
         /// </remarks>
         public Action<double, double, double, double>? Recorder { get; set; }
 
@@ -273,6 +286,11 @@ namespace Numerics.Mathematics.Integration
         /// <see cref="Integrator.MaxIterations"/> are not consulted, and
         /// <see cref="Integrator.Iterations"/> reports the number of region splits. The computation
         /// is sequential and deterministic: identical inputs produce bit-identical results.
+        /// <para>
+        /// When a region with a NaN or infinite estimate can no longer be refined, or the final sum is
+        /// not finite, integration stops with <see cref="IntegrationStatus.Failure"/> and throws an
+        /// <see cref="ArithmeticException"/> when <see cref="Integrator.ReportFailure"/> is true.
+        /// </para>
         /// </remarks>
         public override void Integrate()
         {
@@ -284,15 +302,20 @@ namespace Numerics.Mathematics.Integration
             Action<double, double, double, double>? recorder = Recorder;
             bool capture = recorder != null;
 
+            // All regions ever created, in creation order. Split parents remain in the list but are
+            // excluded from the final sums; final sums iterate this list so the floating-point
+            // association order is independent of the heap's internal layout. The list, the heap and
+            // the region records of the previous call are recycled rather than reallocated.
+            var regions = _regions ??= new List<Region>();
+            var heap = _heap ??= new List<(int Index, double Error)>();
+            RecycleRegions(regions);
+            heap.Clear();
+
             try
             {
-                // All regions ever created, in creation order. Split parents remain in the list but are
-                // excluded from the final sums; final sums iterate this list so the floating-point
-                // association order is independent of the heap's internal layout.
-                var regions = new List<Region> { Evaluate(ax, bx, ay, by, 0, capture) };
+                regions.Add(Evaluate(ax, bx, ay, by, 0, capture));
 
                 // Max-heap of refinable region indices keyed by error estimate.
-                var heap = new List<(int Index, double Error)>();
                 Push(heap, (0, regions[0].Error));
 
                 // Running sums drive the convergence test; the reported result and error bound are
@@ -337,7 +360,7 @@ namespace Numerics.Mathematics.Integration
                     if (worst.Split || worst.Frozen) continue;
                     if (worst.Depth >= MaxDepth)
                     {
-                        worst.Frozen = true;
+                        Freeze(worst);
                         continue;
                     }
                     SplitRegion(regions, heap, worst, capture, ref resultSum, ref errorSum);
@@ -352,6 +375,7 @@ namespace Numerics.Mathematics.Integration
                     result += region.Kronrod;
                     error += region.Error;
                 }
+                if (!Tools.IsFinite(result)) throw NonFiniteEstimate();
                 Result = result;
                 StandardError = error;
                 Status = status;
@@ -393,7 +417,7 @@ namespace Numerics.Mathematics.Integration
             {
                 if (xTooNarrow)
                 {
-                    region.Frozen = true;
+                    Freeze(region);
                     return;
                 }
                 splitX = true;
@@ -413,7 +437,7 @@ namespace Numerics.Mathematics.Integration
                 double mx = 0.5 * (region.Ax + region.Bx);
                 if (mx <= region.Ax || mx >= region.Bx)
                 {
-                    region.Frozen = true;
+                    Freeze(region);
                     return;
                 }
                 left = Evaluate(region.Ax, mx, region.Ay, region.By, region.Depth + 1, capture);
@@ -424,7 +448,7 @@ namespace Numerics.Mathematics.Integration
                 double my = 0.5 * (region.Ay + region.By);
                 if (my <= region.Ay || my >= region.By)
                 {
-                    region.Frozen = true;
+                    Freeze(region);
                     return;
                 }
                 left = Evaluate(region.Ax, region.Bx, region.Ay, my, region.Depth + 1, capture);
@@ -432,9 +456,7 @@ namespace Numerics.Mathematics.Integration
             }
 
             region.Split = true;
-            region.XNodes = null;
-            region.YNodes = null;
-            region.Values = null;
+            ReleaseBuffers(region);
             resultSum += left.Kronrod + right.Kronrod - region.Kronrod;
             errorSum += left.Error + right.Error - region.Error;
             Iterations++;
@@ -463,14 +485,25 @@ namespace Numerics.Mathematics.Integration
             double cy = 0.5 * (ray + rby);
             double hy = 0.5 * (rby - ray);
 
-            var xs = new double[21];
-            var ys = new double[21];
+            // Captured nodes are owned by the region; otherwise the instance scratch buffers are used.
+            double[] xs, ys;
+            double[]? values = null;
+            if (capture)
+            {
+                xs = RentBuffer(ref _spareNodes, 21);
+                ys = RentBuffer(ref _spareNodes, 21);
+                values = RentBuffer(ref _spareValues, 441);
+            }
+            else
+            {
+                xs = _xScratch ??= new double[21];
+                ys = _yScratch ??= new double[21];
+            }
             for (int i = 0; i < 21; i++)
             {
                 xs[i] = cx + hx * Nodes[i];
                 ys[i] = cy + hy * Nodes[i];
             }
-            double[]? values = capture ? new double[441] : null;
 
             // Accumulate the four weight products in one sweep: Kronrod-Kronrod (the estimate),
             // Gauss-Gauss (the error pair), and the two mixed products (the axis indicators).
@@ -495,22 +528,86 @@ namespace Numerics.Mathematics.Integration
 
             double scale = hx * hy;
             double kronrod = sumKK * scale;
-            var region = new Region
-            {
-                Ax = rax,
-                Bx = rbx,
-                Ay = ray,
-                By = rby,
-                Kronrod = kronrod,
-                Error = Math.Abs(kronrod - sumGG * scale),
-                ErrorX = Math.Abs(kronrod - sumGxKy * scale),
-                ErrorY = Math.Abs(kronrod - sumKxGy * scale),
-                Depth = depth,
-                XNodes = capture ? xs : null,
-                YNodes = capture ? ys : null,
-                Values = values
-            };
+            var spare = _spareRegions;
+            var region = spare != null && spare.Count > 0 ? spare.Pop() : new Region();
+            region.Ax = rax;
+            region.Bx = rbx;
+            region.Ay = ray;
+            region.By = rby;
+            region.Kronrod = kronrod;
+            region.Error = Math.Abs(kronrod - sumGG * scale);
+            region.ErrorX = Math.Abs(kronrod - sumGxKy * scale);
+            region.ErrorY = Math.Abs(kronrod - sumKxGy * scale);
+            region.Depth = depth;
+            region.Split = false;
+            region.Frozen = false;
+            region.XNodes = capture ? xs : null;
+            region.YNodes = capture ? ys : null;
+            region.Values = values;
             return region;
+        }
+
+        /// <summary>
+        /// Freezes a region that can no longer be refined. A frozen region stays in the final
+        /// composite rule, so a NaN or infinite estimate there means the result cannot be finite and
+        /// integration stops.
+        /// </summary>
+        /// <param name="region">The region to freeze.</param>
+        /// <exception cref="ArithmeticException">Thrown when the region's estimate is not finite.</exception>
+        private static void Freeze(Region region)
+        {
+            if (!Tools.IsFinite(region.Kronrod)) throw NonFiniteEstimate();
+            region.Frozen = true;
+        }
+
+        /// <summary>
+        /// Creates the exception raised when a non-finite estimate enters the final composite rule.
+        /// </summary>
+        /// <returns>The exception.</returns>
+        private static ArithmeticException NonFiniteEstimate()
+        {
+            return new ArithmeticException("The integrand produced a NaN or infinite estimate on a region that cannot be refined further, so the integral cannot be finite.");
+        }
+
+        /// <summary>
+        /// Takes a buffer of the given length from a spare stack, or allocates one when the stack is empty.
+        /// </summary>
+        /// <param name="spare">The spare stack, created on first use.</param>
+        /// <param name="length">The buffer length.</param>
+        /// <returns>A buffer whose contents are stale and must be fully overwritten.</returns>
+        private static double[] RentBuffer(ref Stack<double[]>? spare, int length)
+        {
+            spare ??= new Stack<double[]>();
+            return spare.Count > 0 ? spare.Pop() : new double[length];
+        }
+
+        /// <summary>
+        /// Returns a region's captured node and value buffers to the spare stacks.
+        /// </summary>
+        /// <param name="region">The region whose buffers are released.</param>
+        private void ReleaseBuffers(Region region)
+        {
+            if (region.XNodes != null) (_spareNodes ??= new Stack<double[]>()).Push(region.XNodes);
+            if (region.YNodes != null) (_spareNodes ??= new Stack<double[]>()).Push(region.YNodes);
+            if (region.Values != null) (_spareValues ??= new Stack<double[]>()).Push(region.Values);
+            region.XNodes = null;
+            region.YNodes = null;
+            region.Values = null;
+        }
+
+        /// <summary>
+        /// Moves every region of the previous call, with its buffers, to the spare stacks and clears the list.
+        /// </summary>
+        /// <param name="regions">The region list of the previous call.</param>
+        private void RecycleRegions(List<Region> regions)
+        {
+            var spare = _spareRegions ??= new Stack<Region>();
+            for (int i = 0; i < regions.Count; i++)
+            {
+                ReleaseBuffers(regions[i]);
+                spare.Push(regions[i]);
+            }
+            regions.Clear();
         }
 
         /// <summary>

@@ -90,9 +90,23 @@ namespace Numerics.Mathematics.Integration
         /// <summary>
         /// Determines whether to use a Sobol sequence or a pseudo-Random number generator. 
         /// </summary>
-        public bool UseSobolSequence { get; set; } = true;
+        /// <remarks>
+        /// Default = false, which samples <see cref="Random"/>. When true, each call samples a Sobol
+        /// sequence restarted from its first point, so the result is deterministic and
+        /// <see cref="Random"/> is not used.
+        /// </remarks>
+        public bool UseSobolSequence { get; set; } = false;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Draws at most the smaller of <see cref="Integrator.MaxIterations"/> and
+        /// <see cref="Integrator.MaxFunctionEvaluations"/> samples, stopping early once the relative
+        /// standard error falls below <see cref="Integrator.RelativeTolerance"/> after more than
+        /// <see cref="Integrator.MinIterations"/> samples. <see cref="Integrator.Status"/> is
+        /// <see cref="IntegrationStatus.Success"/> only on that convergence; otherwise it is
+        /// <see cref="IntegrationStatus.MaximumFunctionEvaluationsReached"/> or
+        /// <see cref="IntegrationStatus.MaximumIterationsReached"/>, whichever limit stopped sampling.
+        /// </remarks>
         public override void Integrate()
         {
             ClearResults();
@@ -101,6 +115,9 @@ namespace Numerics.Mathematics.Integration
             try
             {
                 var sample = new double[Dimensions];
+                // A fresh sequence per call makes repeated calls reproduce the first.
+                var sobol = UseSobolSequence ? new SobolSequence(Dimensions) : null;
+                bool converged = false;
 
                 double sum = 0, sum2 = 0;
                 double avg = 0, avg2 = 0;
@@ -111,10 +128,20 @@ namespace Numerics.Mathematics.Integration
                     dx *= (Max[i] - Min[i]);
 
 
-                for (int i = 1; i <= MaxIterations; i++)
+                int maxSamples = Math.Min(MaxIterations, MaxFunctionEvaluations);
+                for (int i = 1; i <= maxSamples; i++)
                 {
-                    for (int j = 0; j < sample.Length; j++)
-                        sample[j] = Min[j] + Random.NextDouble() * (Max[j] - Min[j]);
+                    if (sobol != null)
+                    {
+                        double[] rnd = sobol.NextDouble();
+                        for (int j = 0; j < sample.Length; j++)
+                            sample[j] = Min[j] + rnd[j] * (Max[j] - Min[j]);
+                    }
+                    else
+                    {
+                        for (int j = 0; j < sample.Length; j++)
+                            sample[j] = Min[j] + Random.NextDouble() * (Max[j] - Min[j]);
+                    }
 
                     double f = Function(sample);
 
@@ -132,18 +159,23 @@ namespace Numerics.Mathematics.Integration
                     // Check tolerance
                     if (Iterations > MinIterations && (Math.Abs(StandardError / Result) < RelativeTolerance))
                     {
+                        converged = true;
                         break;
                     }
                 }
 
                 // Update status
-                if (FunctionEvaluations >= MaxFunctionEvaluations)
+                if (converged)
+                {
+                    Status = IntegrationStatus.Success;
+                }
+                else if (FunctionEvaluations >= MaxFunctionEvaluations)
                 {
                     Status = IntegrationStatus.MaximumFunctionEvaluationsReached;
                 }
                 else
                 {
-                    Status = IntegrationStatus.Success;
+                    Status = IntegrationStatus.MaximumIterationsReached;
                 }
 
             }

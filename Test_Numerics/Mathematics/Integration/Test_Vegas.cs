@@ -1,5 +1,7 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Numerics.Mathematics;
 using Numerics.Mathematics.Integration;
+using Numerics.Sampling;
 using System;
 
 namespace Mathematics.Integration
@@ -178,7 +180,7 @@ namespace Mathematics.Integration
             var failureProbability = vegas.Result;
 
             // Analytical approximation: P(Sum > mean + 3σ) = P(Z > 3) ≈ 0.00135
-            // We expect something in the ballpark of 1e-3 to 2e-3
+            // Expect something in the ballpark of 1e-3 to 2e-3
             Assert.IsGreaterThan(5E-4, failureProbability, $"Probability too small: {failureProbability:E6}");
             Assert.IsLessThan(5E-3, failureProbability, $"Probability too large: {failureProbability:E6}");
 
@@ -356,6 +358,51 @@ namespace Mathematics.Integration
             Assert.AreNotEqual(untouched, seeded, "A scrambled sequence must diverge from the unrandomized one.");
             Assert.AreEqual(2d / 3d, untouched, 0.01d);
             Assert.AreEqual(2d / 3d, seeded, 0.01d);
+        }
+
+        /// <summary>
+        /// FunctionEvaluations and Iterations count each call separately (they accumulated to 39,200
+        /// and 4 before), and the first call keeps its bits.
+        /// </summary>
+        [TestMethod]
+        public void Test_CountersResetPerCall()
+        {
+            var vegas = new Vegas((x, w) => Integrands.PI(x), 2, new double[] { -1, -1 }, new double[] { 1, 1 });
+            vegas.Integrate();
+            Assert.AreEqual(0x4009226882BCC678, BitConverter.DoubleToInt64Bits(vegas.Result));
+            Assert.AreEqual(19600, vegas.FunctionEvaluations);
+            Assert.AreEqual(2, vegas.Iterations);
+            vegas.Integrate();
+            Assert.AreEqual(IntegrationStatus.Success, vegas.Status);
+            Assert.AreEqual(19600, vegas.FunctionEvaluations);
+            Assert.AreEqual(2, vegas.Iterations);
+        }
+
+        /// <summary>
+        /// The pseudo-random path fills a reused buffer in the same draw order as Random.NextDoubles,
+        /// so results are bit-identical to the allocating implementation that produced these patterns.
+        /// </summary>
+        [TestMethod]
+        public void Test_PseudoRandomPath_BitsUnchanged()
+        {
+            var pi = new Vegas((x, w) => Integrands.PI(x), 2, new double[] { -1, -1 }, new double[] { 1, 1 })
+            {
+                Random = new MersenneTwister(12345),
+                UseSobolSequence = false
+            };
+            pi.Integrate();
+            Assert.AreEqual(0x40092569BC1889A2, BitConverter.DoubleToInt64Bits(pi.Result));
+            Assert.AreEqual(19600, pi.FunctionEvaluations);
+
+            // A rational integrand uses no runtime math library, so the pattern is the same on every framework.
+            var rational = new Vegas((x, w) => 1.0 / (1.0 + x[0] * x[0] + x[1] * x[1] + x[2] * x[2]), 3, new double[] { 0, 0, 0 }, new double[] { 1, 1, 1 })
+            {
+                Random = new MersenneTwister(12345),
+                UseSobolSequence = false
+            };
+            rational.Integrate();
+            Assert.AreEqual(0x3FE125673314A5AC, BitConverter.DoubleToInt64Bits(rational.Result));
+            Assert.AreEqual(19652, rational.FunctionEvaluations);
         }
     }
 }
