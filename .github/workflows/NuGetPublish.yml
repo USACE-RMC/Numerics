@@ -1,17 +1,41 @@
 name: Publish to NuGet.org
 
+# Publishes RMC.Numerics to nuget.org with trusted publishing: the job exchanges a GitHub OIDC token
+# for a one-hour nuget.org API key, so no long-lived key is stored in the repository.
+#
+# One-time setup on nuget.org (signed in as an owner of RMC.Numerics): Account > Trusted Publishing >
+# add a policy with Repository Owner USACE-RMC, Repository Numerics and Workflow File NuGetPublish.yml.
+# In the repository settings, add the secret NUGET_USER holding that nuget.org profile name (not the
+# email address).
+#
+# A published GitHub Release vX.Y.Z runs this workflow on its tag. To publish an existing tag again
+# (for example after a failed push), run it manually from main with release_tag set to that tag.
+
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to publish to nuget.org (for example, v2.3.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   publish:
     runs-on: windows-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -21,7 +45,9 @@ jobs:
       - name: Extract version from tag
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: echo "VERSION=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: dotnet build Numerics/Numerics.csproj -c Release -p:Version=${{ steps.version.outputs.VERSION }}
@@ -29,5 +55,11 @@ jobs:
       - name: Pack
         run: dotnet pack Numerics/Numerics.csproj -c Release --no-build -p:Version=${{ steps.version.outputs.VERSION }}
 
+      - name: NuGet login (OIDC token for a short-lived API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push to NuGet.org
-        run: dotnet nuget push "Numerics/bin/Release/RMC.Numerics.${{ steps.version.outputs.VERSION }}.nupkg" --api-key ${{ secrets.NUGET_ORG_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "Numerics/bin/Release/RMC.Numerics.${{ steps.version.outputs.VERSION }}.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
