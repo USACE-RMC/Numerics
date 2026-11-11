@@ -26,7 +26,7 @@ Or search for [RMC.Numerics](https://www.nuget.org/packages/RMC.Numerics/) in th
 
 ### Python
 
-[pynumerics](python/pynumerics/README.md) ships the same `Numerics.dll` with typed Python wrappers over every Numerics area. It requires CPython 3.10 to 3.14 on Linux or Windows and the .NET 10 runtime:
+[pynumerics](python/pynumerics/README.md) ships the same `Numerics.dll` with typed Python wrappers over every Numerics area. It requires CPython 3.11 to 3.14 on Linux or Windows and the .NET 10 runtime:
 ```bash
 pip install pynumerics
 ```

@@ -6,7 +6,7 @@
 pip install pynumerics
 ```
 
-The wheel is pure Python and runs on CPython 3.10 to 3.14 on Linux and Windows. It bundles
+The wheel is pure Python and runs on CPython 3.11 to 3.14 on Linux and Windows. It bundles
 `Numerics.dll` and the Roslyn C# compiler assemblies, so the one system requirement is the
 .NET 10 runtime (`Microsoft.NETCore.App` 10.0). Set `DOTNET_ROOT` when .NET is not installed in
 its default location. The Python dependencies, pythonnet and NumPy, install with the wheel.
