@@ -11,7 +11,7 @@ name = "pynumerics"
 dynamic = ["version"]
 description = "RMC.Numerics for Python: probability distributions, statistics, MCMC, optimization and numerical methods from the USACE-RMC Numerics library."
 readme = "README.md"
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.15"
 license = "0BSD"
 license-files = ["LICENSE"]
 authors = [{ name = "Haden Smith", email = "cole.h.smith@usace.army.mil" }]
@@ -24,7 +24,6 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -68,7 +67,7 @@ addopts = "-m 'not benchmark'"
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]

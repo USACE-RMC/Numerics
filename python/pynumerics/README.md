@@ -19,7 +19,7 @@ pip install pynumerics==2.3.0
 ```
 
 The 2.3.0 wheel bundles `Numerics.dll` from the RMC.Numerics 2.3.0 NuGet package. Requirements:
-CPython 3.10 to 3.14 on Linux or Windows, and the .NET 10 runtime (`Microsoft.NETCore.App` 10.0).
+CPython 3.11 to 3.14 on Linux or Windows, and the .NET 10 runtime (`Microsoft.NETCore.App` 10.0).
 Set `DOTNET_ROOT` when .NET is not installed in the default location.
 
 ```python

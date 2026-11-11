@@ -28,7 +28,7 @@ rmc-numerics" in the getting-started guide).
 
 ### Requirements
 
-- CPython 3.10 to 3.14 on Linux or Windows.
+- CPython 3.11 to 3.14 on Linux or Windows.
 - The .NET 10 runtime (`Microsoft.NETCore.App` 10.0). Set `DOTNET_ROOT` when .NET is not installed
   in the default location.
 - pythonnet 3.1 and NumPy 1.26 or later, installed as dependencies.
