@@ -343,6 +343,19 @@ def test_array_arguments_cross_once_with_the_scalar_bits(case: int) -> None:
         np.testing.assert_array_equal(_bits(array.ravel()), _bits(expected))
 
 
+def test_link_arrays_equal_element_calls_and_scipy() -> None:
+    # Arrange
+    link = fn.LogitLink()
+    points = np.linspace(0.001, 0.999, 20000)
+    # Act
+    array = link.link(points)
+    elements = np.array([link.net.Link(p) for p in points.tolist()])
+    # Assert
+    np.testing.assert_array_equal(array, elements)
+    np.testing.assert_allclose(array, special.logit(points), rtol=1e-13, atol=1e-15)
+
+
+@pytest.mark.benchmark
 def test_link_arrays_are_faster_than_element_calls() -> None:
     # Arrange
     link = fn.LogitLink()
@@ -350,13 +363,11 @@ def test_link_arrays_are_faster_than_element_calls() -> None:
     link.link(points[:5])
     # Act
     begin = time.perf_counter()
-    fast = link.link(points)
+    link.link(points)
     fast_seconds = time.perf_counter() - begin
     scalar = link.net.Link
     begin = time.perf_counter()
-    slow = np.array([scalar(p) for p in points.tolist()])
+    _ = [scalar(p) for p in points.tolist()]
     slow_seconds = time.perf_counter() - begin
     # Assert
-    np.testing.assert_array_equal(fast, slow)
-    np.testing.assert_allclose(fast, special.logit(points), rtol=1e-13, atol=1e-15)
     assert fast_seconds < slow_seconds / 3

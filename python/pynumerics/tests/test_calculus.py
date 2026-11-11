@@ -564,6 +564,7 @@ def test_python_defaults_are_the_numerics_defaults(fn, type_name, member, count)
 
 # Speed: a compiled integrand avoids the per-evaluation crossing into Python.
 
+@pytest.mark.benchmark
 @needs_roslyn
 def test_compiled_integrand_is_faster_than_a_python_callback() -> None:
     # Arrange

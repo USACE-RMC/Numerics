@@ -402,24 +402,35 @@ def test_inverse_ccdf_keeps_survival_precision_for_the_generalized_pareto(u, sig
     assert quantile == pytest.approx(float(stats.genpareto(xi, u, sigma).isf(q)), rel=1e-13)
 
 
-def test_inverse_ccdf_array_crosses_once_and_equals_the_scalar_member() -> None:
+def test_inverse_ccdf_array_equals_the_scalar_member_and_scipy() -> None:
+    # Arrange
+    gpa = d.GeneralizedPareto(1.0, 2.0, -0.2)
+    q = np.geomspace(1e-14, 0.9, 20000)
+    # Act
+    array = gpa.inverse_ccdf(q)
+    loop = [float(gpa.net.InverseCCDF(float(v))) for v in q]
+    # Assert
+    assert _bits(array) == _bits(loop)
+    np.testing.assert_allclose(array, stats.genpareto(0.2, 1.0, 2.0).isf(q), rtol=1e-12)
+    assert d.Normal().inverse_ccdf(0.025) == d.Normal().inverse_cdf(0.975)
+    assert gpa.inverse_ccdf(np.array([[0.1, 0.2]])).shape == (1, 2)
+
+
+@pytest.mark.benchmark
+def test_inverse_ccdf_array_crosses_once_faster_than_scalar_calls() -> None:
     # Arrange
     gpa = d.GeneralizedPareto(1.0, 2.0, -0.2)
     q = np.geomspace(1e-14, 0.9, 20000)
     # Act
     start = time.perf_counter()
-    array = gpa.inverse_ccdf(q)
+    gpa.inverse_ccdf(q)
     vector_time = time.perf_counter() - start
     scalar = gpa.net.InverseCCDF
     start = time.perf_counter()
-    loop = [float(scalar(float(v))) for v in q]
+    _ = [float(scalar(float(v))) for v in q]
     loop_time = time.perf_counter() - start
     # Assert
-    assert _bits(array) == _bits(loop)
     assert vector_time * 5 < loop_time, (vector_time, loop_time)
-    np.testing.assert_allclose(array, stats.genpareto(0.2, 1.0, 2.0).isf(q), rtol=1e-12)
-    assert d.Normal().inverse_ccdf(0.025) == d.Normal().inverse_cdf(0.975)
-    assert gpa.inverse_ccdf(np.array([[0.1, 0.2]])).shape == (1, 2)
 
 
 POISSON_GPD = [  # (rate, u, sigma, xi hydrologic, location, scale): Stochastics reference vectors

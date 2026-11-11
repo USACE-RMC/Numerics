@@ -201,6 +201,16 @@ def test_index_of_date_on_an_unsorted_series_returns_the_first_match() -> None:
     assert empty.index_of_date("2020-01-01") == -1
 
 
+def test_index_of_date_finds_the_last_of_many_dates() -> None:
+    # Arrange
+    series = _daily(np.zeros(100_000), start="1800-01-01")
+    # Act
+    position = series.index_of_date(series.dates[-1])
+    # Assert
+    assert position == 99_999
+
+
+@pytest.mark.benchmark
 def test_index_of_date_crosses_the_dates_once() -> None:
     # Arrange: 100,000 ordinates; one lookup copies the ticks in one transfer (about 0.3 ms measured)
     series = _daily(np.zeros(100_000), start="1800-01-01")
@@ -208,10 +218,9 @@ def test_index_of_date_crosses_the_dates_once() -> None:
     series.index_of_date(last)
     # Act
     begin = time.perf_counter()
-    position = series.index_of_date(last)
+    series.index_of_date(last)
     seconds = time.perf_counter() - begin
     # Assert
-    assert position == 99_999
     assert seconds < 0.02, seconds
 
 
@@ -699,38 +708,69 @@ def test_invalid_arguments_raise_value_error() -> None:
 # Speed ----------------------------------------------------------------------------------------
 
 
+def test_values_and_dates_in_bulk_equal_the_per_ordinate_values() -> None:
+    # Arrange
+    series = _daily(_gamma(20000))
+    # Act
+    values, dates = series.values, series.dates
+    per_ordinate = np.array([float(o.Value) for o in series.net])
+    # Assert
+    np.testing.assert_array_equal(values, per_ordinate)
+    assert len(dates) == 20000
+
+
+@pytest.mark.benchmark
 def test_values_and_dates_cross_in_bulk_faster_than_per_ordinate() -> None:
     # Arrange
     series = _daily(_gamma(20000))
     net = series.net
     # Act
     start = time.perf_counter()
-    values, dates = series.values, series.dates
+    _ = series.values, series.dates
     bulk = time.perf_counter() - start
     start = time.perf_counter()
-    slow = np.array([float(o.Value) for o in net])
+    _ = [float(o.Value) for o in net]
     per_element = time.perf_counter() - start
     # Assert
-    np.testing.assert_array_equal(values, slow)
-    assert len(dates) == 20000
     assert bulk * 10.0 < per_element, (bulk, per_element)
 
 
-def test_explicit_dates_build_faster_than_appending_each_ordinate() -> None:
-    # Arrange
+def _irregular_dates_and_values() -> tuple[np.ndarray, np.ndarray]:
+    """Return 5,000 sorted irregular daily dates and gamma values."""
     n = 5000
     dates = np.datetime64("2000-01-01") + np.sort(np.random.default_rng(1).choice(20000, n, replace=False))
-    values = _gamma(n)
+    return dates, _gamma(n)
+
+
+def _append_each_ordinate(dates: np.ndarray, values: np.ndarray) -> TimeSeries:
+    """Build an irregular series by appending one ordinate at a time."""
+    series = TimeSeries(interval="irregular")
+    for d, v in zip(dates, values, strict=True):
+        series.append(d, v)
+    return series
+
+
+def test_explicit_dates_build_the_series_that_appending_each_ordinate_builds() -> None:
+    # Arrange
+    dates, values = _irregular_dates_and_values()
+    # Act
+    bulk = TimeSeries(values, interval="irregular", dates=dates)
+    appended = _append_each_ordinate(dates, values)
+    # Assert
+    np.testing.assert_array_equal(bulk.ticks, appended.ticks)
+    np.testing.assert_array_equal(bulk.values, appended.values)
+
+
+@pytest.mark.benchmark
+def test_explicit_dates_build_faster_than_appending_each_ordinate() -> None:
+    # Arrange
+    dates, values = _irregular_dates_and_values()
     # Act
     start = time.perf_counter()
-    bulk = TimeSeries(values, interval="irregular", dates=dates)
+    TimeSeries(values, interval="irregular", dates=dates)
     bulk_time = time.perf_counter() - start
     start = time.perf_counter()
-    slow = TimeSeries(interval="irregular")
-    for d, v in zip(dates, values, strict=True):
-        slow.append(d, v)
+    _append_each_ordinate(dates, values)
     append_time = time.perf_counter() - start
     # Assert
-    np.testing.assert_array_equal(bulk.ticks, slow.ticks)
-    np.testing.assert_array_equal(bulk.values, slow.values)
     assert bulk_time < append_time, (bulk_time, append_time)

@@ -505,31 +505,43 @@ def test_augmented_lagrange_applies_the_policy_to_python_constraints() -> None:
     assert not inner.use_parallel
 
 
+def _run_ackley_differential_evolution(objective: object) -> tuple[np.ndarray, float, float]:
+    """Minimize Ackley with DifferentialEvolution three times; return the parameters, value and best seconds."""
+    best = np.inf
+    for _ in range(3):
+        optimizer = DifferentialEvolution(objective, [-5.0, -5.0], [5.0, 5.0], population_size=40,
+                                          record_traces=False, compute_hessian=False)
+        start = time.perf_counter()
+        result = optimizer.minimize()
+        best = min(best, time.perf_counter() - start)
+    return result.parameters, result.value, best
+
+
+def _ackley_math(x: np.ndarray) -> float:
+    """Return the two-dimensional Ackley function with the math module, as ACKLEY_CS computes it."""
+    import math  # noqa: PLC0415
+
+    return (-20.0 * math.exp(-0.2 * math.sqrt(0.5 * (x[0] * x[0] + x[1] * x[1])))
+            - math.exp(0.5 * (math.cos(2 * math.pi * x[0]) + math.cos(2 * math.pi * x[1]))) + math.e + 20.0)
+
+
 @needs_roslyn
-def test_differential_evolution_compiled_objective_gives_the_python_bits_faster() -> None:
-    # Arrange
-    def run(objective: object) -> tuple[np.ndarray, float, float]:
-        best = np.inf
-        for _ in range(3):
-            optimizer = DifferentialEvolution(objective, [-5.0, -5.0], [5.0, 5.0], population_size=40,
-                                              record_traces=False, compute_hessian=False)
-            start = time.perf_counter()
-            result = optimizer.minimize()
-            best = min(best, time.perf_counter() - start)
-        return result.parameters, result.value, best
-
-    def ackley_math(x: np.ndarray) -> float:
-        import math  # noqa: PLC0415
-
-        return (-20.0 * math.exp(-0.2 * math.sqrt(0.5 * (x[0] * x[0] + x[1] * x[1])))
-                - math.exp(0.5 * (math.cos(2 * math.pi * x[0]) + math.cos(2 * math.pi * x[1]))) + math.e + 20.0)
-
+def test_differential_evolution_compiled_objective_gives_the_python_bits() -> None:
     # Act
-    python_x, python_value, python_seconds = run(ackley_math)
-    compiled_x, compiled_value, compiled_seconds = run(ACKLEY_CS)
+    python_x, python_value, _ = _run_ackley_differential_evolution(_ackley_math)
+    compiled_x, compiled_value, _ = _run_ackley_differential_evolution(ACKLEY_CS)
     # Assert
     np.testing.assert_allclose(compiled_x, python_x, atol=1e-12)
     assert compiled_value == pytest.approx(python_value, abs=1e-14)
+
+
+@pytest.mark.benchmark
+@needs_roslyn
+def test_differential_evolution_compiled_objective_is_faster_than_python() -> None:
+    # Act
+    _, _, python_seconds = _run_ackley_differential_evolution(_ackley_math)
+    _, _, compiled_seconds = _run_ackley_differential_evolution(ACKLEY_CS)
+    # Assert
     assert compiled_seconds * 3 < python_seconds, (compiled_seconds, python_seconds)
 
 

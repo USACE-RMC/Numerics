@@ -296,15 +296,34 @@ def test_python_bca_jackknife_runs_serially_with_the_parallel_bits() -> None:
     assert np.float64(serial_bca.upper_ci).view(np.uint64) == np.float64(parallel_bca.upper_ci).view(np.uint64)
 
 
-@needs_roslyn
-def test_csharp_bootstrap_functions_draw_the_same_replicates_faster() -> None:
-    # Arrange
-    compiled = sampling.Bootstrap(
+def _compiled_mean_bootstrap() -> sampling.Bootstrap:
+    """Return the 2,000-replicate mean bootstrap of _mean_bootstrap with C# resample, fit and statistic."""
+    return sampling.Bootstrap(
         X, [X.mean()],
         resample="(d, p, r) => { var o = new double[d.Length]; for (int i = 0; i < d.Length; i++) "
                  "o[i] = d[r.Next(d.Length)]; return o; }",
         fit="d => new Numerics.Mathematics.Optimization.ParameterSet(new[] { d.Average() }, double.NaN)",
         statistic="p => p.Values", replicates=2000)
+
+
+@needs_roslyn
+def test_csharp_bootstrap_functions_draw_the_same_replicates() -> None:
+    # Arrange
+    compiled = _compiled_mean_bootstrap()
+    python = _mean_bootstrap()
+    # Act
+    python.run()
+    compiled.run()
+    # Assert: the same resamples; the means differ only in summation order
+    assert compiled.bootstrap_statistics == pytest.approx(python.bootstrap_statistics, rel=1e-14)
+    assert compiled.use_parallel and not python.use_parallel
+
+
+@pytest.mark.benchmark
+@needs_roslyn
+def test_csharp_bootstrap_functions_draw_the_replicates_faster() -> None:
+    # Arrange
+    compiled = _compiled_mean_bootstrap()
     python = _mean_bootstrap()
     # Act
     start = time.perf_counter()
@@ -313,11 +332,9 @@ def test_csharp_bootstrap_functions_draw_the_same_replicates_faster() -> None:
     start = time.perf_counter()
     compiled.run()
     compiled_seconds = time.perf_counter() - start
-    # Assert: the same resamples; the means differ only in summation order
-    assert compiled.bootstrap_statistics == pytest.approx(python.bootstrap_statistics, rel=1e-14)
+    # Assert
     assert compiled_seconds < python_seconds, (
         f"Bootstrap, 2000 replicates: Python {python_seconds:.3f} s, compiled {compiled_seconds:.3f} s")
-    assert compiled.use_parallel and not python.use_parallel
 
 
 @needs_roslyn

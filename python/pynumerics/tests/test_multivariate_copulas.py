@@ -274,6 +274,17 @@ def test_categorical_indices_refuse_invalid_tables_and_variates(table, uniforms,
         multivariate.Multinomial.categorical_indices(table, uniforms)
 
 
+def test_categorical_indices_return_one_index_per_uniform() -> None:
+    # Arrange
+    cumulative = np.cumsum(np.full(50, 0.02))
+    uniforms = np.random.default_rng(6).random(200000)
+    # Act
+    bulk = multivariate.Multinomial.categorical_indices(cumulative, uniforms)
+    # Assert
+    assert bulk.size == uniforms.size
+
+
+@pytest.mark.benchmark
 def test_categorical_indices_cross_once_and_beat_per_element_calls() -> None:
     # Arrange
     cumulative = np.cumsum(np.full(50, 0.02))
@@ -284,14 +295,13 @@ def test_categorical_indices_cross_once_and_beat_per_element_calls() -> None:
     multivariate.Multinomial.categorical_indices(cumulative, uniforms[:10])
     # Act
     start = time.perf_counter()
-    bulk = multivariate.Multinomial.categorical_indices(cumulative, uniforms)
+    multivariate.Multinomial.categorical_indices(cumulative, uniforms)
     bulk_seconds = time.perf_counter() - start
     start = time.perf_counter()
     for _ in range(2000):
         nd.Multinomial.CategoricalIndices(net_table, one)
     per_call = (time.perf_counter() - start) / 2000
     # Assert: the whole array costs less than a twentieth of crossing per element
-    assert bulk.size == uniforms.size
     assert bulk_seconds < per_call * uniforms.size / 20
 
 

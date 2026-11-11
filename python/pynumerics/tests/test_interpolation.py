@@ -180,41 +180,68 @@ def test_search_functions_match_numpy_searchsorted(method: data.SearchMethod) ->
     np.testing.assert_array_equal(descending, len(KNOTS) - 2 - expected)
 
 
+def test_array_interpolation_gives_the_scalar_call_bits() -> None:
+    # Arrange
+    spline = data.CubicSpline(KNOTS, VALUES)
+    x = np.random.default_rng(4).uniform(0.0, 5.5, 20000)
+    # Act
+    bulk = spline(x)
+    scalar = np.array([spline(v) for v in x])
+    # Assert
+    np.testing.assert_array_equal(bulk.view(np.uint64), scalar.view(np.uint64))
+
+
+@pytest.mark.benchmark
 def test_array_interpolation_crosses_once_faster_than_scalar_calls() -> None:
     # Arrange
     spline = data.CubicSpline(KNOTS, VALUES)
     x = np.random.default_rng(4).uniform(0.0, 5.5, 20000)
     # Act
     start = time.perf_counter()
-    bulk = spline(x)
+    spline(x)
     bulk_time = time.perf_counter() - start
     start = time.perf_counter()
-    scalar = np.array([spline(v) for v in x])
+    _ = [spline(v) for v in x]
     scalar_time = time.perf_counter() - start
     # Assert
-    np.testing.assert_array_equal(bulk.view(np.uint64), scalar.view(np.uint64))
     assert bulk_time * 10.0 < scalar_time, (bulk_time, scalar_time)
 
 
 # List overloads -------------------------------------------------------------------------------
 
 
-def test_bilinear_arrays_cross_once_with_the_scalar_bits() -> None:
-    # Arrange
+def _bilinear_grids() -> tuple[data.Bilinear, data.Bilinear, np.ndarray]:
+    """Return two identical logarithmic-x1 bilinear grids and 3,000 query points."""
     x1, x2 = np.array([1.0, 2.0, 4.0, 8.0]), np.array([10.0, 20.0, 35.0])
     y = np.add.outer(np.log(x1), np.sqrt(x2))
     points = np.random.default_rng(4).uniform([0.5, 5.0], [9.0, 40.0], (3000, 2))
     grid = data.Bilinear(x1, x2, y, x1_transform="logarithmic")
     reference = data.Bilinear(x1, x2, y, x1_transform="logarithmic")
+    return grid, reference, points
+
+
+def test_bilinear_arrays_give_the_scalar_bits() -> None:
+    # Arrange
+    grid, reference, points = _bilinear_grids()
+    # Act
+    values = grid(points[:, 0], points[:, 1])
+    expected = np.array([reference.net.Interpolate(float(a), float(b)) for a, b in points])
+    # Assert
+    np.testing.assert_array_equal(values.view(np.uint64), expected.view(np.uint64))
+
+
+@pytest.mark.benchmark
+def test_bilinear_arrays_cross_once_faster_than_scalar_calls() -> None:
+    # Arrange
+    grid, reference, points = _bilinear_grids()
     # Act
     begin = time.perf_counter()
-    values = grid(points[:, 0], points[:, 1])
+    grid(points[:, 0], points[:, 1])
     list_seconds = time.perf_counter() - begin
     begin = time.perf_counter()
-    expected = np.array([reference.net.Interpolate(float(a), float(b)) for a, b in points])
+    _ = [reference.net.Interpolate(float(a), float(b)) for a, b in points]
     loop_seconds = time.perf_counter() - begin
-    # Assert (one crossing gives the scalar calls' bits, in a fraction of the time)
-    np.testing.assert_array_equal(values.view(np.uint64), expected.view(np.uint64))
+    # Assert (one crossing takes a fraction of the time of the scalar calls)
     assert list_seconds < loop_seconds / 3
 
 

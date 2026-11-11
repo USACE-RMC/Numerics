@@ -293,18 +293,32 @@ def test_downloaded_series_fields() -> None:
         result.utc = True  # frozen
 
 
-def test_parse_usgs_bulk_speed() -> None:
-    # Arrange: 40,000 daily records with qualifiers, about a century of record
+def _usgs_century_text() -> str:
+    """Return 40,000 daily USGS records with qualifiers, about a century of record."""
     days = np.arange(np.datetime64("1900-01-01"), np.datetime64("1900-01-01") + np.timedelta64(40000, "D"))
-    text = "x,y,time,value,approval_status,qualifier\n" + "".join(
+    return "x,y,time,value,approval_status,qualifier\n" + "".join(
         f",,{d},{i % 997 + 0.5},Approved,{'ICE' if i % 50 == 0 else ''}\n" for i, d in enumerate(days))
+
+
+def test_parse_usgs_reads_a_century_of_records_with_qualifiers() -> None:
+    # Arrange
+    text = _usgs_century_text()
+    # Act
+    result = download.parse_usgs(text, qualifiers=True)
+    # Assert
+    assert len(result.values) == 40000 and result.qualifiers.count("ICE") == 800
+
+
+@pytest.mark.benchmark
+def test_parse_usgs_bulk_speed() -> None:
+    # Arrange
+    text = _usgs_century_text()
     download.parse_usgs(text[:2000])  # warm up
     # Act
     started = time.perf_counter()
-    result = download.parse_usgs(text, qualifiers=True)
+    download.parse_usgs(text, qualifiers=True)
     elapsed = time.perf_counter() - started
     # Assert: the parse runs in Numerics and the dates, values and qualifiers cross in bulk
-    assert len(result.values) == 40000 and result.qualifiers.count("ICE") == 800
     assert elapsed < 1.0, f"{elapsed:.3f} s"
 
 

@@ -440,6 +440,7 @@ def test_gamma_max_and_poles() -> None:
         special.gamma_function(0.0)
 
 
+@pytest.mark.benchmark
 def test_scalar_special_functions_are_bound_once() -> None:
     # Arrange
     x = np.linspace(0.5, 5.0, 2000)
@@ -452,6 +453,23 @@ def test_scalar_special_functions_are_bound_once() -> None:
     assert elapsed < 0.2
 
 
+def test_array_arguments_into_the_list_overloads_give_the_scalar_bits() -> None:
+    # Arrange: 20000 arguments through the IList<double> overload, against the scalar members
+    x = np.linspace(0.5, 30.0, 20000)
+    a = np.full_like(x, 3.5)
+    gamma = _sf().Gamma
+    j0 = _sf().Bessel.J0.Overloads[float]
+    # Act
+    vector_j0 = special.bessel_j0(x)
+    vector_p = special.lower_incomplete_gamma(a, x)
+    scalar_j0 = [j0(float(v)) for v in x]
+    scalar_p = [gamma.LowerIncomplete(3.5, float(v)) for v in x]
+    # Assert
+    np.testing.assert_array_equal(_bits(vector_j0), _bits(scalar_j0))
+    np.testing.assert_array_equal(_bits(vector_p), _bits(scalar_p))
+
+
+@pytest.mark.benchmark
 def test_array_arguments_cross_into_the_list_overloads_once() -> None:
     # Arrange: 20000 arguments; one crossing into the IList<double> overload, against one crossing per value
     x = np.linspace(0.5, 30.0, 20000)
@@ -462,16 +480,14 @@ def test_array_arguments_cross_into_the_list_overloads_once() -> None:
     j0 = _sf().Bessel.J0.Overloads[float]
     # Act
     start = time.perf_counter()
-    vector_j0 = special.bessel_j0(x)
-    vector_p = special.lower_incomplete_gamma(a, x)
+    special.bessel_j0(x)
+    special.lower_incomplete_gamma(a, x)
     vectorized = time.perf_counter() - start
     start = time.perf_counter()
-    scalar_j0 = [j0(float(v)) for v in x]
-    scalar_p = [gamma.LowerIncomplete(3.5, float(v)) for v in x]
+    _ = [j0(float(v)) for v in x]
+    _ = [gamma.LowerIncomplete(3.5, float(v)) for v in x]
     per_value = time.perf_counter() - start
-    # Assert: the same bits, at least five times faster than a crossing per value
-    np.testing.assert_array_equal(_bits(vector_j0), _bits(scalar_j0))
-    np.testing.assert_array_equal(_bits(vector_p), _bits(scalar_p))
+    # Assert: at least five times faster than a crossing per value
     assert vectorized * 5 < per_value
 
 
