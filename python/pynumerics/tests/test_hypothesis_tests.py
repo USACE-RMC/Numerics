@@ -181,6 +181,17 @@ def test_multiple_grubbs_beck_matches_hec_ssp() -> None:
     assert isinstance(ht.multiple_grubbs_beck_test(lognormal), int)
 
 
+def test_hot_path_tests_on_large_samples_equal_scipy() -> None:
+    # Arrange
+    rng = np.random.default_rng(1)
+    a, b = rng.normal(size=200_000), rng.normal(0.01, 1.0, 200_000)
+    # Act
+    p = ht.equal_variance_t_test(a, b)
+    # Assert
+    assert p == pytest.approx(stats.ttest_ind(a, b).pvalue, rel=1e-8)
+
+
+@pytest.mark.benchmark
 def test_hot_path_tests_cross_once_for_large_samples() -> None:
     # Arrange
     rng = np.random.default_rng(1)
@@ -188,10 +199,9 @@ def test_hot_path_tests_cross_once_for_large_samples() -> None:
     ht.equal_variance_t_test(a[:10], b[:10])
     # Act
     start = time.perf_counter()
-    p = ht.equal_variance_t_test(a, b)
+    ht.equal_variance_t_test(a, b)
     elapsed = time.perf_counter() - start
     # Assert: one bulk copy each, not one crossing per value (a per-element path takes seconds)
-    assert p == pytest.approx(stats.ttest_ind(a, b).pvalue, rel=1e-8)
     assert elapsed < 0.5
 
 

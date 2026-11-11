@@ -144,16 +144,25 @@ def test_distribution_statistics_equal_scipy() -> None:
         gof.kolmogorov_smirnov([], model)
 
 
+def test_paired_metrics_on_large_series_equal_sklearn() -> None:
+    # Arrange
+    o, m = _pair(500_000, 3)
+    # Act
+    nse = gof.nash_sutcliffe_efficiency(o, m)
+    # Assert
+    assert nse == pytest.approx(metrics.r2_score(o, m), rel=1e-10)
+
+
+@pytest.mark.benchmark
 def test_paired_metrics_cross_once_for_large_series() -> None:
     # Arrange
     o, m = _pair(500_000, 3)
     gof.nash_sutcliffe_efficiency(o[:10], m[:10])
     # Act
     start = time.perf_counter()
-    nse = gof.nash_sutcliffe_efficiency(o, m)
+    gof.nash_sutcliffe_efficiency(o, m)
     elapsed = time.perf_counter() - start
     # Assert: bulk copies, not one crossing per value
-    assert nse == pytest.approx(metrics.r2_score(o, m), rel=1e-10)
     assert elapsed < 0.5
 
 

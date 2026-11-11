@@ -264,19 +264,30 @@ def test_given_data_sensitivity_indices_match_scipy_and_analytic_values() -> Non
         statistics.first_order_sobol(x1[:10], y[:10])
 
 
+def test_bulk_statistics_on_large_arrays_equal_numpy_and_scipy() -> None:
+    # Arrange
+    x = np.random.default_rng(1).normal(size=500_000)
+    # Act
+    summary = statistics.seven_number_summary(x)
+    skew = statistics.skewness(x)
+    ess = statistics.effective_sample_size(np.abs(x))
+    # Assert
+    assert summary[3] == pytest.approx(np.median(x), rel=1e-12)
+    assert skew == pytest.approx(stats.skew(x, bias=False), rel=1e-9) and ess > 0
+
+
+@pytest.mark.benchmark
 def test_bulk_statistics_cross_once_for_large_arrays() -> None:
     # Arrange
     x = np.random.default_rng(1).normal(size=500_000)
     statistics.skewness(x[:10])
     # Act
     start = time.perf_counter()
-    summary = statistics.seven_number_summary(x)
-    skew = statistics.skewness(x)
-    ess = statistics.effective_sample_size(np.abs(x))
+    statistics.seven_number_summary(x)
+    statistics.skewness(x)
+    statistics.effective_sample_size(np.abs(x))
     elapsed = time.perf_counter() - start
     # Assert: bulk copies, not one crossing per value
-    assert summary[3] == pytest.approx(np.median(x), rel=1e-12)
-    assert skew == pytest.approx(stats.skew(x, bias=False), rel=1e-9) and ess > 0
     assert elapsed < 1.0
 
 

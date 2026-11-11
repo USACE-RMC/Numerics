@@ -359,6 +359,16 @@ def test_decomposition_method_enum_resolves_names() -> None:
     assert linalg.DecompositionMethod("Cholesky") is linalg.DecompositionMethod.CHOLESKY
 
 
+def test_large_matrices_round_trip_bit_exact() -> None:
+    # Arrange
+    a = np.random.default_rng(19).normal(size=(500, 500))
+    # Act
+    values = linalg.Matrix(a).to_array()
+    # Assert
+    np.testing.assert_array_equal(_bits(values), _bits(a))
+
+
+@pytest.mark.benchmark
 def test_large_matrices_cross_in_one_copy() -> None:
     # Arrange
     a = np.random.default_rng(19).normal(size=(500, 500))
@@ -366,11 +376,10 @@ def test_large_matrices_cross_in_one_copy() -> None:
     # Act
     start = time.perf_counter()
     for _ in range(5):
-        values = m.to_array()
+        m.to_array()
         linalg.Matrix(a)
     elapsed = time.perf_counter() - start
     # Assert: 250,000 doubles element by element would take seconds
-    np.testing.assert_array_equal(_bits(values), _bits(a))
     assert elapsed < 0.5
 
 

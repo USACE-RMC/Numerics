@@ -71,6 +71,10 @@ The repository includes a unit testing library with over 4,000 tests that also s
 
 Contributions are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on bug reports, feature requests, and pull requests.
 
+## AI Disclosure
+
+Frontier generative AI models and coding agents are used to assist with software development, documentation, testing, and verification workflows. Project maintainers remain responsible for reviewing contributions, validating scientific methods and results, and deciding what is accepted or released.
+
 ## License
 
 See [LICENSE](LICENSE) for details.

@@ -734,6 +734,18 @@ def test_kriging_custom_distance_and_universal() -> None:
 # to the Numerics call, never a per-row crossing.
 
 
+def test_predict_returns_one_value_per_row_of_a_large_feature_matrix() -> None:
+    # Arrange
+    x, y = _regression(30, 200)
+    queries = np.random.default_rng(31).normal(size=(20_000, 3))
+    model = ml.KNearestNeighbors(x, y, 3)
+    # Act
+    wrapped = model.predict(queries)
+    # Assert
+    assert wrapped.shape == (20_000,)
+
+
+@pytest.mark.benchmark
 def test_predict_crosses_the_feature_matrix_once() -> None:
     # Arrange
     x, y = _regression(30, 200)
@@ -748,10 +760,9 @@ def test_predict_crosses_the_feature_matrix_once() -> None:
     raw = time.perf_counter() - start
     start = time.perf_counter()
     for _ in range(3):
-        wrapped = model.predict(queries)
+        model.predict(queries)
     total = time.perf_counter() - start
     # Assert: the copies of 60,000 inputs and 20,000 outputs cost far less than the search itself
-    assert wrapped.shape == (20_000,)
     assert total < 1.5 * raw + 0.05, f"wrapper {total:.3f} s against {raw:.3f} s for the bare call"
 
 

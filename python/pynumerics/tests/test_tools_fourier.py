@@ -107,6 +107,7 @@ def test_log_sum_exp_axis_matches_scipy_and_list() -> None:
         m.log_sum_exp(matrix, 1.0, axis=0)
 
 
+@pytest.mark.benchmark
 def test_log_sum_exp_reduces_in_one_crossing() -> None:
     # Arrange
     values = np.random.default_rng(2).normal(size=200_000)
@@ -297,19 +298,28 @@ def test_compensated_cumulative_sum_equals_prefix_fsum() -> None:
     assert tail[1] == math.inf and math.isnan(tail[3])
 
 
+def test_compensated_sum_equals_math_fsum_on_a_large_array() -> None:
+    # Arrange
+    values = np.random.default_rng(12).standard_normal(1_000_000)
+    # Act
+    total = m.compensated_sum(values)
+    # Assert
+    assert total == pytest.approx(math.fsum(values), rel=1e-15, abs=1e-12)
+
+
+@pytest.mark.benchmark
 def test_compensated_sum_beats_math_fsum_on_a_large_array() -> None:
     # Arrange
     values = np.random.default_rng(12).standard_normal(1_000_000)
     m.compensated_sum(values[:10])
     # Act
     start = time.perf_counter()
-    total = m.compensated_sum(values)
+    m.compensated_sum(values)
     numerics_seconds = time.perf_counter() - start
     start = time.perf_counter()
-    exact = math.fsum(values)
+    math.fsum(values)
     fsum_seconds = time.perf_counter() - start
     # Assert
-    assert total == pytest.approx(exact, rel=1e-15, abs=1e-12)
     assert numerics_seconds < fsum_seconds, (numerics_seconds, fsum_seconds)
 
 
@@ -430,6 +440,7 @@ def test_autocorrelation_matches_statsmodels() -> None:
     np.testing.assert_allclose(table[:, 1], acf(series, nlags=20, fft=True), rtol=0, atol=1e-14)
 
 
+@pytest.mark.benchmark
 def test_large_fft_crosses_once() -> None:
     # Arrange
     x = np.random.default_rng(10).normal(size=2**18).astype(complex)

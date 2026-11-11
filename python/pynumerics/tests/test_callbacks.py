@@ -41,15 +41,27 @@ def test_scalar_python_callback_integrates_like_scipy() -> None:
 
 
 @needs_roslyn
-def test_compiled_lambda_gives_the_python_callback_bits_and_runs_faster() -> None:
+def test_compiled_lambda_gives_the_python_callback_bits() -> None:
     # Arrange
     python = callbacks.scalar_function(lambda x: math.exp(-x * x))
     compiled = callbacks.compile_csharp("x => Math.Exp(-x * x)")
     # Act
-    python_result, python_count, python_cost = _integrate(python)
-    compiled_result, compiled_count, compiled_cost = _integrate(compiled)
+    python_result, python_count, _ = _integrate(python)
+    compiled_result, compiled_count, _ = _integrate(compiled)
     # Assert
     assert compiled_result == python_result and compiled_count == python_count
+
+
+@pytest.mark.benchmark
+@needs_roslyn
+def test_compiled_lambda_runs_faster_than_the_python_callback() -> None:
+    # Arrange
+    python = callbacks.scalar_function(lambda x: math.exp(-x * x))
+    compiled = callbacks.compile_csharp("x => Math.Exp(-x * x)")
+    # Act
+    _, _, python_cost = _integrate(python)
+    _, _, compiled_cost = _integrate(compiled)
+    # Assert
     assert compiled_cost * 5.0 < python_cost, (compiled_cost, python_cost)
 
 
@@ -279,6 +291,7 @@ def _per_call(delegate: object, argument: object, calls: int = 20000) -> float:
     return best
 
 
+@pytest.mark.benchmark
 def test_array_callback_costs_close_to_a_raw_pythonnet_delegate() -> None:
     # Arrange: measured on a desktop, the overhead over a raw pythonnet delegate is about 0.4 us at
     # 2 to 50 values and 1 us at 1,000; the bound leaves a wide margin for slower machines.
