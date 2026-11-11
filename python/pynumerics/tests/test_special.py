@@ -366,16 +366,17 @@ def test_debye_functions_match_quadrature() -> None:
     np.testing.assert_allclose(special.debye3(x), [_debye(3, v) for v in x], rtol=1e-14)
 
 
-def test_factorials_and_binomial_coefficients_match_scipy() -> None:
-    # Arrange
+def test_factorials_and_binomial_coefficients_match_exact_values() -> None:
+    # Arrange: the oracle is the exact integer rounded to double. SciPy's floating factorial is a gamma
+    # approximation whose accuracy depends on the SciPy version and platform (1.17 on Windows: 8e-14).
     n = np.arange(0, 171)
     # Act / Assert
-    np.testing.assert_allclose(special.factorial(n), sp.factorial(n), rtol=2e-15)
+    np.testing.assert_allclose(special.factorial(n), [float(math.factorial(k)) for k in n], rtol=2e-15)
     np.testing.assert_array_equal(special.factorial(np.arange(0, 23)), [math.factorial(k) for k in range(23)])
     assert special.factorial(171) == math.inf
     np.testing.assert_allclose(special.log_factorial(np.arange(2, 500)), sp.gammaln(np.arange(3, 501)), rtol=1e-15)
     nn, kk = np.meshgrid(np.arange(60), np.arange(60), indexing="ij")
-    expected = np.where(kk <= nn, sp.comb(nn, kk, exact=False), 0.0)
+    expected = np.array([[float(math.comb(a, b)) for b in range(60)] for a in range(60)])
     np.testing.assert_allclose(special.binomial_coefficient(nn, kk), expected, rtol=1e-15)
     assert special.binomial_coefficient(52, 5) == math.comb(52, 5)
     with pytest.raises(ValueError):
