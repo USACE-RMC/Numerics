@@ -4,9 +4,8 @@ name: Publish to NuGet.org
 # for a one-hour nuget.org API key, so no long-lived key is stored in the repository.
 #
 # One-time setup on nuget.org (signed in as an owner of RMC.Numerics): Account > Trusted Publishing >
-# add a policy with Repository Owner USACE-RMC, Repository Numerics and Workflow File NuGetPublish.yml.
-# In the repository settings, add the secret NUGET_USER holding that nuget.org profile name (not the
-# email address).
+# add a policy with Package Owner USACE-RMC, Repository Owner USACE-RMC, Repository Numerics and
+# Workflow File NuGetPublish.yml. The login user is the nuget.org profile USACE-RMC.
 #
 # A published GitHub Release vX.Y.Z runs this workflow on its tag. To publish an existing tag again
 # (for example after a failed push), run it manually from main with release_tag set to that tag.
@@ -59,7 +58,7 @@ jobs:
         id: login
         uses: NuGet/login@v1
         with:
-          user: ${{ secrets.NUGET_USER }}
+          user: USACE-RMC
 
       - name: Push to NuGet.org
         run: dotnet nuget push "Numerics/bin/Release/RMC.Numerics.${{ steps.version.outputs.VERSION }}.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
